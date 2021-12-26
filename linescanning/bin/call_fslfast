@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_fslfast
+
+Wrapper for tissue segmentation with FSL FAST.
+
+Usage:
+call_fslbet <input file> <output root>
+
+Example:
+  call_fslfast /path/to/inputfile.nii.gz /path/to/outputroot
+
+Notes:
+  - suffixes will be added by FAST itself
+  
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+if [[ $# -lt 2 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+#-----------------------------------------------------------------------------
+# Run it
+if [[ -f $1 ]]; then
+  fast -t 1 -o $2 $1
+fi

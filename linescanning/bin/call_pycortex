@@ -1,0 +1,383 @@
+#!/usr/bin/env python
+
+import os
+import numpy as np
+import nibabel as nb
+import cortex
+import random
+import sys, getopt
+import pandas as pd
+from datetime import datetime
+import warnings
+from linescanning.bin.utils.utils import bool_mask, get_vertex, get_normal, get_file_from_substring, vertex_rotation, get_base_dir, rotate_normal
+warnings.filterwarnings('ignore')
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_pycortex
+
+This script calculates the orientation of the line in the first session anatomy based on
+the surfaces as outputted by FreeSurfer and later also the pRF-maps. Eventually it will
+create a csv-file containing the most important information about the orientation of the
+line
+
+
+Args:
+    -d (--deriv=)          Path to all derivatives (e.g., freesurfer/pycortex/prf)
+    -r (--run=)            Run number
+    -a (--roi=)            ROI to be analyzed (input name as specified in FreeSurfer/labels)
+    -o (--out=)            Output file containing translation and rotation values
+    -b (--browser=)        Whether to open a browser (should be no for remote servers!)
+
+Outputs:
+    a csv-file called line_pycortex.csv in the pycortex/sub-xxx directory specifying the
+    orientation of the line in the first session anatomy
+
+Example:
+    call_pycortex -c /dir/to/pycortex -p /dir/to/pRF-mapping -r 001 -f /dir/to/freesurfer
+
+Notes:
+    - You only need to specify the paths up until the sub-xxx, assuming a BIDS-like structure
+
+---------------------------------------------------------------------------------------------------
+
+    """
+
+    deriv   = os.environ['DIR_DATA_DERIV']
+    run     = None
+    roi     = None
+    out     = None
+    webshow = 1
+
+    try:
+        opts = getopt.getopt(argv,"hd:r:a:o:b:",["help", "deriv", "run=", "roi=", "out", "browser"])[0]
+    except getopt.GetoptError:
+        print(main.__doc__)
+        sys.exit(2)
+
+    for opt, arg in opts:
+        if opt == '-h':
+            print(main.__doc__)
+            sys.exit()
+        elif opt in ("-d", "--deriv"):
+            deriv = arg
+        elif opt in ("-r", "--run"):
+            run = arg
+        elif opt in ("-a", "--roi"):
+            roi = arg
+        elif opt in ("-o", "--out"):
+            out = arg
+        elif opt in ("-b", "--browser"):
+            webshow = arg
+
+    if len(argv) < 2:
+        print("\nNOT ENOUGH ARGUMENTS SPECIFIED")
+        print(main.__doc__)
+        sys.exit()
+
+
+    #----------------------------------------------------------------------------------------------------------------
+    # GET MINIMAL CURVATURE THROUGH PYCORTEX
+    #
+
+    #print(roi)
+    #print(prfdir)
+
+    cx_subject = "sub-{run}".format(run=run)
+
+    prfdir = opj(deriv, 'prf')
+    fsdir = opj(deriv, 'freesurfer_orig')
+    cxdir = opj(deriv, 'pycortex')
+
+    if os.path.isfile(out):
+        print("The file {f} already exists".format(f=out))
+    else:
+
+        if cxdir != "" and fsdir != "":
+
+            if os.path.isdir(opj(cxdir, "sub-{run}".format(run=run))):
+                print("Subject already imported from freesurfer")
+
+            else:
+                print("Importing subject from freesurfer")
+                # import subject from freesurfer (will have the same names)
+                cortex.freesurfer.import_subj(fs_subject=cx_subject,
+                                              cx_subject=cx_subject,
+                                              freesurfer_subject_dir=fsdir,
+                                              whitematter_surf='smoothwm')
+
+            ##########################################################################################################################################
+            # LOAD AND CREATE SURFACE FOR LEFT AND RIGHT HEMISPHERE
+
+            # get curvature data
+            curv_data = cortex.db.get_surfinfo(cx_subject, type="curvature")
+
+            # make left and right surface
+            left, right = cortex.db.get_surf(cx_subject, 'fiducial')
+            left_surface = cortex.polyutils.Surface(left[0], left[1])
+            right_surface = cortex.polyutils.Surface(right[0], right[1])
+
+            # Smooth minimal curvature before calculating best vertex
+            lh_curv_sm = left_surface.smooth(curv_data.data[:left[0].shape[0]], 5, 5)
+            rh_curv_sm = right_surface.smooth(curv_data.data[left[0].shape[0]:], 5, 5)
+
+            # Read in V1 labels
+            l_V1_label, r_V1_label = [nb.freesurfer.io.read_label(opj(fsdir, cx_subject, 'label', f'{hemi}.V1_exvivo.thresh.label'),
+                                                                  read_scalars=False)
+                                      for hemi in ['lh','rh']]
+
+            # Make boolean vectors of left and right hemi
+            l_V1_bin = np.zeros(left[0].shape[0], dtype=bool)
+            l_V1_bin[l_V1_label] = True
+            r_V1_bin = np.zeros(right[0].shape[0], dtype=bool)
+            r_V1_bin[r_V1_label] = True
+
+            # Concatenate to whole_V1 mask (we will apply this to the pRF-estimates)
+            whole_V1_mask = np.concatenate((l_V1_bin, r_V1_bin))
+            # whole_V1_mask_v = cortex.Vertex(np.nan_to_num(whole_V1_mask).astype(int), subject=cx_subject, cmap='magma', vmin=-0.5)
+
+
+            ##########################################################################################################################################
+            # LOAD PRF DATA AND CREATE RELEVANT PARAMETERS FROM GRID_SEARCH
+
+            # check if we already have pRF-files we can convert to vertices immediately
+            try:
+                r2      = get_file_from_substring("R2", opj(prfdir, cx_subject))
+                ecc     = get_file_from_substring("eccentricity", opj(prfdir, cx_subject))
+                polar   = get_file_from_substring("polar", opj(prfdir, cx_subject))
+            except:
+                r2 = None
+                ecc = None
+                polar = None
+
+            # I don't feel like creating separate checks for each file.. If one exists, all of them should exist.
+            # If none of them exists, check if prf_params array from call_prf.py exists. If that doesn't exist
+            # either, there's nothing I can do from here..
+            prf_file = opj(prfdir, cx_subject, f'{cx_subject}_desc-prf_params.npy')
+            if os.path.isfile(prf_file):
+                # Load in mask created in pRF_fitting.ipynb
+                print("Reading in file with pRF-parameters")
+                prf_params = np.load(prf_file)
+            else:
+                prf_params = None
+
+            if r2 == None and ecc == None and polar == None:
+
+                # Save R2-mask
+                r2 = prf_params[:,-1]
+                print("Writing {file}".format(file=opj(prfdir, cx_subject, f'{cx_subject}_desc-R2_map.npy')))
+                np.save(opj(prfdir, cx_subject, f'{cx_subject}_desc-R2_map.npy'), prf_params[:,-1])
+
+                # Eccentricity map
+                ecc = np.sqrt(prf_params[:,0]**2+prf_params[:,1]**2)
+                print("Writing {file}".format(file=opj(prfdir, cx_subject, f'{cx_subject}_desc-eccentricity_map.npy')))
+                np.save(opj(prfdir, cx_subject, f'{cx_subject}_desc-eccentricity_map.npy'), ecc)
+
+                # Polar angle map
+                polar = np.angle(prf_params[:,0]+prf_params[:,1]*1j)
+                print("Writing {file}".format(file=opj(prfdir, cx_subject, f'{cx_subject}_desc-polarangle_map.npy')))
+                np.save(opj(prfdir, cx_subject, f'{cx_subject}_desc-polarangle_map.npy'), polar)
+
+            else:
+
+                print("Loading in R2, eccentricity, and polar angle arrays")
+                r2      = np.load(r2);      r2_v    = cortex.Vertex(r2,subject=cx_subject,cmap="inferno")
+                ecc     = np.load(ecc);     ecc_v   = cortex.Vertex2D(ecc,r2,vmin=0, vmax=12,vmin2=0.05,vmax2=0.4,subject=cx_subject,cmap='spectral_alpha')
+                polar   = np.load(polar);   polar_v = cortex.Vertex2D(polar,r2,vmin=-np.pi,vmax=np.pi,vmin2=0.05,vmax2=0.4,subject=cx_subject,cmap='hsv_alpha')
+
+            check=False
+            while check == False:
+
+                while True:
+                    try:
+                        ecc_val = float(input("Cut-off value for eccentricity (0-15 [ENTER]): "))
+                    except ValueError:
+                        print("Please enter a number")
+                        continue
+                    else:
+                        pass
+
+                    if 0 <= ecc_val <= 15:
+                        break
+                    else:
+                        print(f"Hm, this seems to be an odd value. Usually you'll want something between 0-15, your value is {ecc_val}")
+                        continue
+
+                while True:
+                    try:
+                        r2_val = float(input("Cut-off value for r2           (0-1; [ENTER]): "))
+                    except ValueError:
+                        print("Please enter a number")
+                        continue
+                    else:
+                        pass
+
+                    if 0 <= r2_val <= 1:
+                        break
+                    else:
+                        print(f"Hm, this seems to be an odd value. Usually you'll want something between 0-1, your value is {ecc_val}")
+                        continue
+
+            # while val_check == False:
+            #     ecc_val = input ("  Cut-off value for eccentricity (0-15 [ENTER]): ")
+            #
+            #     r2_val = input ("  Cut-off value for r2           (0-1; [ENTER]): ")
+
+                # Define desired pRF-parameters and combine this with V1 mask
+                joint_mask = (ecc < float(ecc_val)) * (r2 > float(r2_val)) * (whole_V1_mask)
+
+                joint_mask_v = cortex.Vertex(np.nan_to_num(joint_mask).astype(int), subject=cx_subject, cmap='magma', vmin=0.5)
+                print("Writing {file}".format(file=opj(prfdir, cx_subject, f'{cx_subject}_desc-combined_mask.npy')))
+                np.save(opj(prfdir, cx_subject, f'{cx_subject}_desc-combined_mask.npy'), np.nan_to_num(joint_mask).astype(int))
+
+                # Make boolean masks for each hemi to apply as mask
+                l_prf_mask = joint_mask[0:left[0].shape[0]].astype(bool)
+                r_prf_mask = joint_mask[left[0].shape[0]:].astype(bool)
+
+                # Create vertices of these masks
+                r_prf_mask_v = cortex.Vertex(r_prf_mask,
+                                              subject=cx_subject,
+                                              cmap='magma',
+                                              vmin=0.5)
+
+                l_prf_mask_v = cortex.Vertex(l_prf_mask,
+                                              subject=cx_subject,
+                                              cmap='magma',
+                                              vmin=0.5)
+
+
+                ##########################################################################################################################################
+                # MASK CURVATURE SURFACE WITH PRF MASK AND GET TRANSLATION & NORMAL VECTOR
+
+                # curvature in left and right V1+pRF mask
+                rhV1_curv = bool_mask(rh_curv_sm, r_prf_mask)
+                lhV1_curv = bool_mask(lh_curv_sm, l_prf_mask)
+
+                # indices, vertices, and mask of best vertices in left and right hemisphere
+                idx_R, vert_R, mask_R = get_vertex(rhV1_curv, right)
+                idx_L, vert_L, mask_L = get_vertex(lhV1_curv, left)
+
+                # normal vector of vertices; uses the mask from above
+                norm_R = get_normal(right, mask_R)
+                norm_L = get_normal(left, mask_L)
+
+                print("left hemisphere:")
+                print(" coord  = {coord}".format(coord=vert_L))
+                print(" normal = {norm}".format(norm=norm_L))
+                print(" vertex = {vert}".format(vert=idx_L))
+
+                print("right hemisphere:")
+                print(" coord  = {coord}".format(coord=vert_R))
+                print(" normal = {norm}".format(norm=norm_R))
+                print(" vertex = {vert}".format(vert=idx_R))
+
+                ##########################################################################################################################################
+                # SAVE VERTICES OF BOTH HEMISPHERES
+
+                # This thing creates vertex map for best position
+                min_curv_vertex_map_R = np.zeros_like(curv_data.data)
+                min_curv_vertex_map_R[left[0].shape[0]+idx_R] = 1
+                min_curv_vertex_map_v_R = cortex.Vertex(min_curv_vertex_map_R, subject=cx_subject, cmap='magma', vmin=-0.5, vmax=1)
+
+                sm_min_curv_vertex_map_R = right_surface.smooth(min_curv_vertex_map_R[left[0].shape[0]:], 5, 5)
+                sm_min_curv_vertex_map_R /= sm_min_curv_vertex_map_R.max()
+                sm_min_curv_vertex_map_v_R = cortex.Vertex(sm_min_curv_vertex_map_R, subject=cx_subject, cmap='magma', vmin=-0.5, vmax=1)
+
+                print("Writing {file}".format(file=opj(prfdir, cx_subject, f'{cx_subject}_desc-bestvertex_hemi-R.npy')))
+                np.save(opj(prfdir, cx_subject, f'{cx_subject}_desc-bestvertex_hemi-R.npy'), sm_min_curv_vertex_map_R)
+
+                # This thing creates vertex map for best position
+                min_curv_vertex_map_L = np.zeros_like(curv_data.data)
+                min_curv_vertex_map_L[right[0].shape[0]+idx_L] = 1
+                min_curv_vertex_map_v_L = cortex.Vertex(min_curv_vertex_map_L, subject=cx_subject, cmap='magma', vmin=-0.5, vmax=1)
+
+                sm_min_curv_vertex_map_L = left_surface.smooth(min_curv_vertex_map_L[right[0].shape[0]:], 5, 5)
+                sm_min_curv_vertex_map_L /= sm_min_curv_vertex_map_L.max()
+                sm_min_curv_vertex_map_v_L = cortex.Vertex(sm_min_curv_vertex_map_L, subject=cx_subject, cmap='magma', vmin=-0.5, vmax=1)
+
+                print("Writing {file}".format(file=opj(prfdir, cx_subject, f'{cx_subject}_desc-bestvertex_hemi-L.npy')))
+                np.save(opj(prfdir, cx_subject, f'{cx_subject}_desc-bestvertex_hemi-L.npy'), sm_min_curv_vertex_map_L)
+
+                sm_bestvertex_LR = np.concatenate((sm_min_curv_vertex_map_L,sm_min_curv_vertex_map_R), axis=0)
+                print("Writing {file}".format(file=opj(prfdir, cx_subject, f'{cx_subject}_desc-bestvertex_hemi-LR.npy')))
+                np.save(opj(prfdir, cx_subject, f'{cx_subject}_desc-bestvertex_hemi-LR.npy'), sm_bestvertex_LR)
+                sm_min_curv_vertex_map_v_LR = cortex.Vertex(sm_bestvertex_LR, subject=cx_subject, cmap='magma', vmin=-0.5, vmax=1)
+
+                # visually check if parameters should be adjusted
+                print(f"Webshow is set to {webshow}")
+                port = random.randint(1024,65536)
+
+                base, place = get_base_dir()
+                if place == "spin":
+                    cortex.webshow({'best vertex': sm_min_curv_vertex_map_v_LR}, open_browser=False, port=port)
+                    txt = "Now run call_webviewer {port} in your local terminal".format(port=port)
+                else:
+                    cortex.webshow({'best vertex': sm_min_curv_vertex_map_v_LR}, open_browser=True, port=port)
+                    txt = ""
+
+                if txt != "":
+                    print(txt)
+
+                happy = input ("Happy with the position? (y/n): ")
+                if happy == 'y' or happy == 'yes' or happy == 'Y':
+                    print("Alrighty, continuing with these parameters")
+
+                    textList = ["# Created on {date}\n".format(date=datetime.now().strftime("%d/%m/%Y %H:%M:%S")),f"ecc: {ecc_val}\n",f"r2: {r2_val}\n"]
+                    outF = open(opj(cxdir, cx_subject, "cutoffs.o{ext}".format(ext=os.getpid())), "w")
+                    outF.writelines(textList)
+                    outF.close()
+                    check = True
+
+            ##########################################################################################################################################
+            # save dataframe containing both hemi's to csv file
+
+            # df_lh = get_transformation(norm_L, vert_L, "left", idx_L)
+            # df_rh = get_transformation(norm_R, vert_R, "right", idx_R)
+
+
+            rot_lh = vertex_rotation(norm_L, "left", idx_L)
+            rot_rh = vertex_rotation(norm_R, "right", idx_R)
+
+            rot_df = pd.concat([rot_lh, rot_rh]).set_index(['parameter'])
+
+            # print(rot_df)
+            print("  writing {file}".format(file=out))
+            rot_df.to_csv(out)
+
+            coord_file = opj(cxdir, cx_subject, 'coordinates.csv')
+            # get_coordinate(vert, subject, anat1=anat1)
+            ##########################################################################################################################################
+            # SAVE PRF PARAMETERS OF BEST VERTICES IN LEFT AND RIGHT HEMISPHERE
+
+            # Get pRF-parameters from best vertices
+            if isinstance(prf_params, np.ndarray):
+                prf_bestvertex = opj(cxdir, cx_subject, f'{cx_subject}_desc-prf_params_best_vertices.csv')
+                if os.path.isfile(prf_bestvertex):
+                    pass
+                else:
+                    prf_right = prf_params[left[0].shape[0]:][idx_R]
+                    prf_left = prf_params[:left[0].shape[0]][idx_L]
+
+                    best_vertex = pd.DataFrame({"hemi":     ["L", "R"],
+                                                "x":        [prf_left[0], prf_right[0]],
+                                                "y":        [prf_left[1], prf_right[1]],
+                                                "size":     [prf_left[2], prf_right[2]],
+                                                "beta":     [prf_left[3], prf_right[3]],
+                                                "baseline": [prf_left[4], prf_right[4]],
+                                                "r2":       [prf_left[5], prf_right[5]],
+                                                "index":    [idx_L, idx_R],
+                                                "position": [vert_L, vert_R],
+                                                "normal":   [norm_L, norm_R]})
+
+                    best_vertex = best_vertex.set_index(['hemi'])
+
+                    best_vertex.to_csv(prf_bestvertex)
+                    print("Writing {file}".format(file=prf_bestvertex))
+
+            print("")
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

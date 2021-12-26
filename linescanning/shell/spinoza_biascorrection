@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+spinoza_biascorrection
+
+wrapper for bias field correction with ANTs. Calls the function 'call_biasfieldcorrection'. With the
+first argument, you can point the script to where to find the image to run biasfield correction on.
+Usually this works nice if you do this on the second INV image or T1w, which you can specify with
+the third argument (e.g., "T1w" or "inv-2"). The script will look in the <input directory> for the
+tags specified in the third argument (not necessarily case sensitive).
+
+If the second inversion time image was specified, it will look automatically for the magnitude image
+and not the phase image. In addition to the flag specified in the third argument, the find command
+will also include whatever is in the ACQ1-variable. Usually this will be MP2RAGE, so make sure these
+files have been named sub-xxx_acq-MP2RAGE_T1w or something alike. This should have happened automati-
+cally if you have run spinoza_scanner2bids prior.
+
+Usage:
+  spinoza_biascorrection <-s sub> <-n ses> <dir_to_input_file> <output dir> <T1w|inv-2>
+
+Outputs:
+  <output dir>/<subject>/ses-1/<subject>${SES}_acq-${ACQ1}_desc-bfc_<T1w|inv-2>.nii.gz
+
+Example:
+  spinoza_biascorrection $DIR_DATA_HOME $DIR_DATA_DERIV/ants "T1w"
+  spinoza_biascorrection $DIR_DATA_HOME $DIR_DATA_DERIV/ants "inv-2"
+  spinoza_biascorrection -s 001 -n 1 $DIR_DATA_HOME $DIR_DATA_DERIV/ants "inv-2"
+
+Notes:
+  Has the '-s' and '-n' switches to specify a particular subject and session if present
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+# Check for subject flag
+while getopts s:n: argument
+do
+    case ${argument} in
+      s)  sub=${OPTARG}
+            ;;
+      n)  ses=${OPTARG}
+            ;;
+    esac
+done
+
+if [[ $# -lt 3 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+INPUT=${@:$OPTIND:1}
+OUTPUT=${@:$OPTIND+1:1}
+MODALITY=${@:$OPTIND+2:1}
+
+if [[ -z ${sub} ]]; then
+  # loop through subjects
+  search="${INPUT}/sub-*"
+else
+  # do for 1 subject
+  sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
+  search="${INPUT}/sub-${sub_nr}"
+fi
+
+#-----------------------------------------------------------------------------
+# Start clock
+#-----------------------------------------------------------------------------
+
+echo
+echo "==================================================================================================="
+printf "Bias field correction with ANTs\n"
+start=`date +%s`
+start_date=`date`
+
+printf "Started at ${start_date}\n"
+echo "==================================================================================================="
+
+#-----------------------------------------------------------------------------
+# Run it
+
+for dir in ${search}; do
+
+  if [[ -z ${ses} ]]; then
+    OUTPUTDIR=${OUTPUT}/$(basename ${dir})
+    INPUTDIR=${INPUT}/$(basename ${dir})
+    base="$(basename ${dir})"
+  else
+    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
+    OUTPUTDIR=${OUTPUT}/$(basename ${dir})/ses-${nr}
+    INPUTDIR=${INPUT}/$(basename ${dir})/ses-${nr}
+    base="$(basename ${dir})_ses-${nr}"
+  fi
+
+  if [[ ! -d ${OUTPUTDIR} ]]; then
+    # echo "  Creating output directory `basename $OUTPUTDIR`"
+    mkdir -p ${OUTPUTDIR}
+  fi
+
+  if [[ ! -d ${INPUTDIR} ]]; then
+    echo " `basename ${dir}`: Could not find directory containing file to be bias field corrected"
+    continue
+  fi
+
+  output=${OUTPUTDIR}/${base}_acq-${ACQ1^^}_desc-bfc_${MODALITY}.nii.gz
+  input=`find "${INPUTDIR}" -maxdepth 2 -type f \( -name "*acq-${ACQ1}*" -and -not -name "*phase*" -and -iname "*${MODALITY}*" -and -name "*.nii.gz" \) 2>/dev/null`
+
+  if [[ ! -f ${output} ]]; then
+    if [[ ! -z ${input} ]]; then
+      echo
+      echo "**************************************** Processing `basename ${dir}` ***************************************"
+      call_biasfieldcorrection ${input} ${output}
+      fslcpgeom ${input} ${output}
+    else
+      echo "`basename ${dir}`: Did not find an input file"
+    fi
+
+  else
+    echo "`basename ${dir}`: `basename ${output}` present"
+  fi
+
+done
+
+#-----------------------------------------------------------------------------
+# Calculate time spent using 'let'
+echo
+echo "---------------------------------------------------------------------------------------------------"
+end=`date +%s`
+end_date=`date`
+printf "Done at ${end_date}\n"
+
+let deltatime=end-start
+let hours=deltatime/3600
+let minutes=(deltatime/60)%60
+let seconds=deltatime%60
+printf "Time spent: %d:%02d:%02d\n" ${hours} ${minutes} ${seconds}
+echo "---------------------------------------------------------------------------------------------------"

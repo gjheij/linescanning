@@ -1,0 +1,259 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# check if there's is a setup file containing the major paths and source it if it exists
+call_loadsetup
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+spinoza_line2surface
+
+This script contains the registration cascade from single slice/line > multi-slice (9 slice) > low
+resolution MP2RAGE from session 2 > high resolution MP2RAGE from session 1 > FreeSurfer anatomy.
+In spinoza_lineplanning, we have created a matrix mapping the low resolution anatomy to the high
+resolution anatomy from session 1. Because the single- and multislice images are basically in the
+same space (header-wise) as the low resolution anatomical scan, we can just apply this matrix to the
+single- and multi-slice. We then have everything in the space of the high resolution anatomy from
+session 1.
+
+Now we need a matrix mapping the high resolution anatomical scan from session 1 with the FreeSurfer
+anatomy. For this, we can use FreeSurfer's bbregister, which registers an input image to orig.mgz.
+We can transform both matrices to FSL-format, so we can create a composite transformation matrix
+that we can apply to everything from session 2 with flirt. Because we need all these transformed
+files for pycortex, we will try to store all the files in the pycortex directory, but you can speci-
+fy this yourself (default is the pycortex directory).
+
+Easiest thing to do is run the "segmentation.ipynb" notebook to warp all segmentations to session 
+1, then everything - HOP - to FreeSurfer and Pycortex space using the matrix created with spinoza_
+lineplanning (this matrix you should definitely have..).
+
+Usage:
+  spinoza_line2surface -s <subject number> -y <anat session 2> -o <outputdir> -i <input dir>
+
+Arguments:
+  -s <sub number>         number of subject's FreeSurfer directory
+  -y <anat ses 2>         anatomical image from session 2 as outputted by spinoza_lineplanning
+  -o <output directory>   default is bids_root/derivatives/pycortex (easiest to set this to default
+                          other make it the same as Pycortex' filestore) [<sub> will be appended]
+  -i <directory to warp>  input directory that we need to warp to the surface; I'm assuming a struc-
+                          ture like "<input dir>/<sub>/ses-2"
+
+Example:
+  spinoza_line2surface -s sub-001 -y anat_session2 -d /output/directory/whatev
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+if [[ $# -le 1 ]]; then
+  Usage >&2
+  exit 1
+fi
+
+while getopts hs:y:o:i: arg
+do
+    case ${arg} in
+      s)  SUB=${OPTARG}
+            ;;
+      y)  ANAT2=${OPTARG}
+            ;;
+      o)  OUTPUTDIR=${OPTARG}
+            ;;
+      i)  INPUTDIR=${OPTARG}
+            ;;
+    esac
+done
+
+#-----------------------------------------------------------------------------
+# Start clock
+#-----------------------------------------------------------------------------
+echo
+echo "==================================================================================================="
+printf "LINE 2 SURFACE REGISTRATION CASCADE\n"
+start=`date +%s`
+start_date=`date`
+
+printf "Started at ${start_date}\n"
+echo "==================================================================================================="
+
+echo
+echo "**************************************** Processing ${SUB} ***************************************"
+
+if [[ -z ${INPUTDIR} ]]; then
+  echo
+  echo "---------------------------------------------------------------------------------------------------"
+  echo "ERROR in `basename ${0}`: input directory that needs to be warped was not specified!"
+  exit 1
+fi
+
+if [[ ! -z ${OUTPUTDIR} ]]; then
+  outputdir=${OUTPUTDIR}
+else
+  # defaulting to pycortex directory
+  outputdir=${DIR_DATA_DERIV}/pycortex
+fi
+
+# make sure filestore is set to outputdir
+fstore=`call_ctxsetfilestore show_fs`
+if [[ "${outputdir}" != "${fstore}" ]]; then
+  echo "Updating Pycortex's filestore with outputdir"
+  call_ctxsetfilestore update ${outputdir}
+fi
+
+if [[ ! -d ${outputdir}/${SUB} ]]; then
+  echo "Import subject from FreeSurfer"
+  call_ctximport -s ${SUB}
+fi
+
+#-----------------------------------------------------------------------------
+# Step 1; converting from-ses1_to-ses-2 to FSL-format
+echo
+echo "[STEP 1]: warping session 2 to FreeSurfer"
+
+if [[ -z ${ANAT2} ]]; then
+  echo
+  echo "---------------------------------------------------------------------------------------------------"
+  echo "ERROR in `basename ${0}`: second session anatomy was not specified!"
+  exit 1
+fi
+
+moving=${ANAT2}
+if [[ ! -d ${outputdir}/${SUB}/warped ]]; then
+  mkdir -p ${outputdir}/${SUB}/warped
+fi
+
+# Fetch matrix
+tmp_genaff=`find ${outputdir}/${SUB}/transforms -type f \( -name "*from-fs*" -and -name "*to-ses2*" -and -name "*genaff*" -and -name "*.mat" \) 2>/dev/null`
+if [[ ! -z ${tmp_genaff} ]]; then
+  from_fs_to_ses2=${tmp_genaff}
+else
+  echo "---------------------------------------------------------------------------------------------------"
+  echo "ERROR in `basename ${0}`: Could not find fs_to_ses2 matrix in the output directory or in the planning-folder.."
+  exit 1
+fi
+
+# Fetch moving files
+ff=`find ${INPUTDIR} -type f -name "*.nii.gz" 2>/dev/null`
+if [[ -z ${ff} ]]; then
+  echo
+  echo "---------------------------------------------------------------------------------------------------"
+  echo "ERROR in `basename ${0}`: could not find files in input directory!"
+  exit 1
+fi
+
+# Create FreeSurfer reference
+fs_ref=${FS}/${SUB}/mri/orig.nii.gz
+if [[ ! -f ${fs_ref} ]]; then
+  echo "Converting orig.mgz to orig.nii.gz to use as FS-reference"
+  call_mriconvert $(dirname ${fs_ref})/$(basename ${fs_ref} .nii.gz).mgz ${fs_ref} 2>/dev/null
+
+  if [[ $? != 0 ]]; then
+    echo
+    echo "---------------------------------------------------------------------------------------------------"
+    echo "ERROR in `basename ${0}`: call_mriconvert exited with non-zero status"
+    exit 1
+  fi
+
+else
+  echo "FreeSurfer reference: `basename ${fs_ref}`"
+fi
+
+for f in ${ff[@]}; do
+
+  # assumes a filename sub-xxx_ses-1_acq-MP2RAGE...*.nii.gz and will insert 'space-' after MP2RAGE
+  transform_fs=${outputdir}/${SUB}/warped/$(basename ${f} | cut -d'_' -f-3)_space-fs_$(basename ${f} | cut -d"_" -f4-)
+  if [[ ! -f ${transform_fs} ]]; then
+
+    echo " creating `basename ${transform_fs}`"
+    if [[ ${f} == *"layers"* ]]; then
+      interp="gen"
+    elif [[ ${f} == *"cortex"* ]]; then
+      interp="mul"
+    else
+      interp="nn"
+    fi
+    call_antsapplytransforms -i 1 -t ${interp} ${fs_ref} ${f} ${transform_fs} ${from_fs_to_ses2}
+
+    if [[ $? != 0 ]]; then
+      echo
+      echo "---------------------------------------------------------------------------------------------------"
+      echo "ERROR in `basename ${0}`: call_antsapplytransform exited with non-zero status"
+      exit 1
+    fi
+
+  else
+    echo " `basename ${transform_fs}` exists"
+  fi
+
+done
+echo "Done"
+
+#-----------------------------------------------------------------------------
+# Step 2; warp all files in FS-space to pycortex space (corrects for pycortex induced offset)
+echo
+echo "[STEP 2]: map warped FreeSurfer files to Pycortex"
+qq=`find ${outputdir}/${SUB}/warped -type f -name "*space-fs*" -and -name "*.nii.gz" 2>/dev/null`
+for f in ${qq[@]}; do
+
+  # use linescanning.utils.replace_string to replace 'space-fs' with 'space-ctx'
+  transform_ctx=`python -c "from linescanning.utils import replace_string; new = replace_string(\"${f}\", 'space-fs', 'space-ctx'); print(new)"`
+  if [[ ! -f ${transform_ctx} ]]; then
+
+    echo " creating `basename ${transform_ctx}`"
+    call_ctxsurfmove ${SUB} ${f} ${transform_ctx}
+
+    if [[ $? != 0 ]]; then
+      echo
+      echo "---------------------------------------------------------------------------------------------------"
+      echo "ERROR in `basename ${0}`: call_ctxsurfmove exited with non-zero status"
+      exit 1
+    fi
+
+  else
+    echo " `basename ${transform_fs}` exists"
+  fi
+
+done
+echo "Done"
+
+#-----------------------------------------------------------------------------
+# Step 3; create the warp that pycortex needs for the viewer
+echo
+echo "[STEP 3]: create the warp that pycortex needs for the viewer"
+
+if [[ ! -d ${outputdir}/${SUB}/transforms/fs2ctx ]]; then
+  ref=`find ${outputdir}/${SUB}/warped -type f -name "*space-ctx*" -and -name "*.nii.gz" -print -quit 2>/dev/null`
+  if [[ ! -z ${ref} ]]; then
+    call_ctxtransform -s ${SUB} -c ${outputdir} -i ${ref} -w "fs2ctx"
+  fi
+fi
+
+echo "Wrote transform to ${outputdir}/${SUB}/transforms/fs2ctx"
+echo "Use cortex.Volume(<filename>, subject=\"${SUB}\", xfmname=\"fs2ctx\", cmap=<cmap>)"
+echo
+echo "Done"
+
+# # Check webbrowser for comparison
+# echo
+# echo " Now check if line goes through intended pRF [bit of patience please].."
+# call_ctxobject -s "${SUB}" -c "${DIR_DATA_DERIV}/pycortex" -p "${DIR_DATA_DERIV}/prf" -l ${PLACE}
+#-----------------------------------------------------------------------------
+# Calculate time spent using 'let'
+
+echo "---------------------------------------------------------------------------------------------------"
+end=`date +%s`
+end_date=`date`
+printf "Done at ${end_date}\n"
+
+let deltatime=end-start
+let hours=deltatime/3600
+let minutes=(deltatime/60)%60
+let seconds=deltatime%60
+printf "Time spent: %d:%02d:%02d\n" ${hours} ${minutes} ${seconds}
+echo "---------------------------------------------------------------------------------------------------"

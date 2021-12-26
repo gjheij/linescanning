@@ -1,0 +1,12 @@
+fprep=/mnt/hgfs/shared/spinoza/projects/ANAT_SEG-Raw/derivatives/fmriprep
+subj="sub-001"
+lta_convert --initk $fprep/$subj/anat/${subj}_from-fsnative_to-T1w_mode-image_xfm.txt \
+--outlta ${subj}_T1w_target-fsnative_affine.lta \
+--outreg ${subj}_T1w_target-fsnative_affine.dat \
+--src $fprep/$subj/anat/${subj}_desc-preproc_T1w.nii.gz \
+--trg T1.mgz \
+--subject ${subj} 
+
+mri_surf2vol --o $SUBJECTS_DIR/sub-001/mri/thickness-in-volume.nii.gz \
+--so $SUBJECTS_DIR/sub-001/surf/lh.white $SUBJECTS_DIR/sub-001/surf/lh.thickness \
+--so $SUBJECTS_DIR/sub-001/surf/rh.white $SUBJECTS_DIR/sub-001/surf/rh.thickness \ --lta $SUBJECTS_DIR/sub-001/mri/surf2vol.lta

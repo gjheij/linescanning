@@ -1,0 +1,51 @@
+#!/usr/bin/env python
+
+import os, sys
+import numpy as np
+import nibabel as nb
+from linescanning.bin.utils.utils import bin_fov
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_binarize
+
+This super short script fills the entire FOV of an input image with ones.
+
+Args:
+    <input file>        string-like path to file to extract from
+    <output file>       string-like path to output new volume to
+
+Outputs
+    output file         new volume containing the extracted data from input file
+
+Example:
+    python call_binarize.py input.nii.gz output.nii.gz
+
+---------------------------------------------------------------------------------------------------
+
+    """
+
+    in_file     = ''
+    out_file    = ''
+
+    if len(argv) < 2:
+        print("NOT ENOUGH ARGUMENTS SPECIFIED")
+        print(main.__doc__)
+        sys.exit()
+
+    in_file     = argv[0]
+    out_file    = argv[1]
+
+
+    if os.path.isfile(in_file):
+
+        if os.path.isfile(out_file):
+            print(" file exists, nothing to do")
+            sys.exit(0)
+        else:
+            bin_fov(in_file, out=out_file)
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

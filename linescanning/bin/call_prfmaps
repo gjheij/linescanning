@@ -1,0 +1,62 @@
+#!/usr/bin/env python
+
+import os, sys
+import numpy as np
+from linescanning.utils import get_file_from_substring
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_prfmaps
+
+Create maps of polar angle, eccentricity, and r2 from the output of call_prf
+
+Args:
+    <subject>           subject ID
+    <output file>       if empty it will default to derivatives/<subject>/<subject>_desc-<polarangle>
+                        |<eccentricity>|<R2>.npy; specify a different basename if desired, but the 
+                        <polarangle>|<eccentricity>|<R2>.npy will be appended anyway
+
+Outputs
+    3x numpy array containing maps for polar angle, eccentricity and R2
+
+Example:
+    call_prfmaps sub-001 derivatives/prf/sub-001/sub-001_desc-
+    call_prfmaps sub-001
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    subject = None
+    out     = None
+
+    if len(argv) < 1:
+        print("NOT ENOUGH ARGUMENTS SPECIFIED")
+        print(main.__doc__)
+        sys.exit()
+
+    try:
+        subject = argv[0]
+        out = argv[1]
+    except:
+        subject = argv[0]
+    
+    prf_params = get_file_from_substring("desc-prf_params", opj(os.environ['PRF'], subject))
+    if prf_params != None:
+        prf = np.load(prf_params)
+
+    polar = np.angle(prf[:,0]+prf[:,1]*1j)
+    r2 = prf[:,-1]
+    ecc = np.sqrt(prf[:,0]**2+prf[:,1]**2)
+
+    if not out:
+        out = opj(os.path.dirname(prf_params), f'{subject}_desc-')
+
+    np.save(out+'polarangle_map.npy', polar)
+    np.save(out+'eccentricity_map.npy', r2)
+    np.save(out+'R2_map.npy', ecc)
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

@@ -1,0 +1,4 @@
+#!/usr/bin/env zsh
+
+ssh -Y -fN -L localhost:${1}:localhost:${1} heij@minerva.spinozacentre.nl;
+echo "enter this in firefox: http://localhost:${1}"

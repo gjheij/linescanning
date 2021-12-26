@@ -1,0 +1,166 @@
+#!/usr/bin/env python
+
+from nighres.brain import extract_brain_region
+import sys, getopt
+import os
+import nibabel as nb
+import linescanning.bin.utils.utils as line
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_nighresextractregions
+
+Extracts masks, probability maps and levelset surfaces for specific brain regions and regions from a
+Multiple Object Geometric Deformable Model (MGDM) segmentation result.
+
+Args:
+    -m (--mgdm=)        directory with mdgm-output
+    -s (--seg=)         segmentation image from MGDM (-seg)
+    -b (--boundary=)    boundary image from MGDM (-dist)
+    -p (--proba=)       probability image from MGDM (-mems)
+    -l (--labels=)      label image from MGDM (-lbls)
+    -r (--roi=)         region to extract
+    -o (--outputdir=)   output directory
+    -n (--name=)        basename for output
+
+Outputs:
+    (taken from https://nighres.readthedocs.io/en/latest/brain/extract_brain_region.html#nighres.brain.extract_brain_region)
+    Dictionary collecting outputs under the following keys (suffix of output files in brackets,
+    # stands for shorthand names of the different extracted regions, respectively: rcr, lcr, cr, cb, cbs, sub, an, fn)
+
+        - region_mask (niimg):      Hard segmentation mask of the (GM) region of interest (_xmask-#gm)
+        - inside_mask (niimg):      Hard segmentation mask of the (WM) inside of the region of interest (_xmask-#wm)
+        - background_mask (niimg):  Hard segmentation mask of the (CSF) region background (_xmask-#bg)
+        - region_proba (niimg):     Probability map of the (GM) region of interest (_xproba-#gm)
+        - inside_proba (niimg):     Probability map of the (WM) inside of the region of interest (_xproba-#wm)
+        - background_proba (niimg): Probability map of the (CSF) region background (_xproba-#bg)
+        - region_lvl (niimg):       Levelset surface of the (GM) region of interest (_xlvl-#gm)
+        - inside_lvl (niimg):       Levelset surface of the (WM) inside of the region of interest (_xlvl-#wm)
+        - background_lvl (niimg):   Levelset surface of the (CSF) region background (_xlvl-#bg)
+
+Example:
+    call_nighresextractregions -s sub-001_ses-1_space-average_desc-mgdm_seg.nii.gz
+                               -b sub-001_ses-1_space-average_desc-mgdm_dist.nii.gz
+                               -p sub-001_ses-1_space-average_desc-mgdm_dist.nii.gz
+                               -l sub-001_ses-1_space-average_desc-mgdm_dist.nii.gz
+                               -r cerebrum
+                               -n /nighres/sub-xxx/sub-xxx_ses-1_space-mp2rage_desc
+
+    call_nighresextractregions -m "path/to/mgdm/output"
+
+Notes:
+    - You can specify all mgdm-outputs separately or pass a directory with the outputs from mdgm (e.g., call_nighresmgdm)
+    - Output basename is defaulted to 'sub-xxx_ses-1_space-average_desc' and dirname taken from os.environ['NIGHRES']
+    - Default region to extract is set to 'cerebrum'
+
+---------------------------------------------------------------------------------------------------
+
+    """
+
+    mgdm_dir            = None
+    segmentation        = None
+    boundary_dist       = None
+    max_probas          = None
+    max_labels          = None
+    roi                 = "cerebrum"
+    outputdir           = os.path.join(os.environ['NIGHRES'], 'sub-xxx', 'region')
+    outputbase          = 'sub-xxx-space-mp2rage_desc'
+
+    try:
+        opts = getopt.getopt(argv,"hm:s:b:p:l:r:o:n:",["mgdm", "seg=", "boundary=", "proba=", "labels=", "roi=", "outputdir=", "name="])[0]
+    except getopt.GetoptError:
+        print(main.__doc__)
+        sys.exit(2)
+
+    for opt, arg in opts:
+        if opt == '-h':
+            print(main.__doc__)
+            sys.exit()
+        elif opt in ("-m", "--mgdm"):
+            mgdm_dir = arg
+        elif opt in ("-s", "--seg"):
+            segmentation = arg
+        elif opt in ("-b", "--boundary"):
+            boundary_dist = arg
+        elif opt in ("-p", "--proba"):
+            max_probas = arg
+        elif opt in ("-l", "--labels"):
+            max_labels = arg
+        elif opt in ("-r", "--roi"):
+            roi = arg
+        elif opt in ("-o", "--outputdir"):
+            outputdir = arg
+        elif opt in ("-n", "--name"):
+            outputbase = arg
+
+    if len(argv) < 1:
+            print("\nNOT ENOUGH ARGUMENTS SPECIFIED")
+            print(main.__doc__)
+            sys.exit()
+
+    #---------------------------------------------------------------------------------------------------
+    # Collect files depending on whether we got an input directory or not
+    print("Loading files..")
+    if mgdm_dir != None:
+        # we got passed an mgdm_dir, fetch files from directory
+        segm    = line.get_file_from_substring("seg.nii.gz", mgdm_dir)
+        dist    = line.get_file_from_substring("dist.nii.gz", mgdm_dir)
+        mems    = line.get_file_from_substring("mems.nii.gz", mgdm_dir)
+        lbls    = line.get_file_from_substring("lbls.nii.gz", mgdm_dir)
+
+    else:
+
+        for i in [segmentation, boundary_dist, max_probas, max_labels]:
+            if not os.path.exists(i):
+                raise FileNotFoundError(f'could not find file {i}')
+
+        segm    = segmentation
+        dist    = boundary_dist
+        mems    = max_probas
+        lbls    = max_labels
+
+    files = {"segm": segm, "dist": dist, "mems": mems, "lbls":lbls}
+    [print(f" got {f}") for f in files.values()]
+    print("Done")
+
+    #---------------------------------------------------------------------------------------------------
+    # Just plop everything in dir of segmentation
+    cortex = extract_brain_region(segmentation=files["segm"],
+                                  levelset_boundary=files["dist"],
+                                  maximum_membership=files["mems"],
+                                  maximum_label=files["lbls"],
+                                  extracted_region=roi,
+                                  file_name=outputbase,
+                                  save_data=True,
+                                  output_dir=outputdir)
+
+    suff = {'cerebrum':'cr',
+            'left_cerebrum':'lcr',
+            'right_cerebrum':'rcr',
+            'cerebellum':'cb',
+            'cerebellum_brainstem':'cbs',
+            'subcortex':'sub',
+            'tissues(anat)':'an',
+            'tissues(func)':'fn'}
+
+    for i in cortex:
+        for t in ['xmask','xproba','xlvl']:
+            if "inside" in i and t in cortex[i]:
+                fn = opj(outputdir, outputbase + f'-{t}_{suff[roi]}-wm.nii.gz')
+            elif "region" in i and t in cortex[i]:
+                fn = opj(outputdir, outputbase + f'-{t}_{suff[roi]}-gm.nii.gz')
+            elif "background" in i and t in cortex[i]:
+                fn = opj(outputdir, outputbase + f'-{t}_{suff[roi]}-csf.nii.gz')
+            else:
+                pass
+            
+        if os.path.exists(cortex[i]):
+            os.rename(cortex[i], fn)
+
+    print("Done")
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

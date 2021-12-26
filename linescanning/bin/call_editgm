@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_editgm
+
+Script to create a manual edit of gray matter segmentation based on CRUISE from Nighres. THe script
+will open ITK-Snap to create a manual edit file.
+
+Args:
+  -s <subject>  subject ID
+  -n <session>  session number
+  <t1 ref>      reference t1-weighted image
+  <cruise seg>  cruise cortical segmentation image (cruise_cortex.nii.gz)
+  <man seg fn>  output file name of manual segmentation
+
+Specify only '-s' and/or 'n' if you've run the pipeline as it is without changing directories or 
+filenames; this option will look for all the default directories and files. If you want to edit
+your own things, specify the the paths to the required files and leave the '-s' and '-n' flag 
+empty.
+
+Usage:
+  call_editgm -s <subject> -n 1 <t1w reference> <CRUISE cortex file> <segmentation file name>
+
+Example:
+  call_editgm t1w.nii.gz cruise_cortex.nii.gz sub-001_desc-manualseggm.nii.gz
+  call_editgm -s sub-001 -n 1
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+if [[ $# -lt 1 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+# Check for subject & session flags
+while getopts s:n: argument
+do
+  case ${argument} in
+    s)  sub=${OPTARG}
+          ;;
+    n)  ses=${OPTARG}
+          ;;
+  esac
+done
+
+#-----------------------------------------------------------------------------
+# Run it
+
+if [[ ! -z ${sub} ]]; then
+
+  if [[ -z ${ses} ]]; then
+    base_dir=${sub}
+    base="${sub}"
+  else
+    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
+    base="${sub}_ses-${nr}"
+    base_dir=${sub}/ses-${nr}
+  fi
+
+  REF=`find ${DIR_DATA_DERIV}/cat12/${base_dir} -type f -name "${sub}*" -and -name "*T1w.nii.gz" 2>/dev/null`
+  SEG=`find ${DIR_DATA_DERIV}/manual_masks/${base_dir} -type f -name "${sub}*" -and -name "*cruise_cortex.nii.gz" 2>/dev/null`
+  MAN=${DIR_DATA_DERIV}/manual_masks/${base_dir}/${base}_acq-${space^^}_desc-manualseggm.nii.gz
+
+else
+
+  REF=${@:$OPTIND:1}
+  SEG=${@:$OPTIND+1:1}
+  MAN=${@:$OPTIND+2:1}
+
+fi
+
+if [[ ! -f ${REF} ]] || [[ ! -f ${SEG} ]]; then
+  echo "ERROR in `basename ${0}`: could not find T1w-reference or CRUISE cortex file"
+  exit 1
+fi
+
+if [[ ! -f ${MAN} ]]; then
+  if [[ ! -d ${DIR_DATA_DERIV}/manual_masks/${base_dir} ]]; then
+    mkdir -p ${DIR_DATA_DERIV}/manual_masks/${base_dir}
+  fi
+  echo "Creating `basename ${MAN}` with call_createimg"    
+  call_createimg ${REF} ${MAN}
+fi
+
+echo "Opening ITK-Snap"
+itksnap -g ${REF} -o ${SEG} -s ${MAN} 2>/dev/null
+
+if [[ ! -f ${MAN} ]]; then
+  echo "ERROR in `basename ${0}`: manual edit file was not saved.."
+  exit 1
+else
+  fslorient -copyqform2sform ${MAN}
+fi
+  
+

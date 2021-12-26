@@ -1,0 +1,77 @@
+#!/usr/bin/env python
+
+from nighres.brain import mp2rage_dura_estimation
+import sys, getopt
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_nighresdura
+
+This script is a wrapper for the mp2rage object that can calculate a Unified T1-weighted
+image and a quantitative T1 map, based on the magnitude and phase-information of the two
+volumes of a MP2RAGE-sequence (Marques et al., 2010). It can also further correct this map
+for B1 inhomogenieties using a B1 map (Marques et al., 2014)
+
+Args:
+    -i (--inv2=)        2nd inversion image
+    -s (--inv2_mask=)   mask of inv2
+    -o (--outputdir=)   output directory
+    -b (--outputbase=)  base name for outputs
+
+Outputs
+    taken from https://nighres.readthedocs.io/en/latest/brain/mp2rage_dura_estimation.html
+    Dictionary collecting outputs under the following keys (suffix of output files in brackets)
+
+    - result (niimg): Dura probability image (_dura-proba)
+
+Example:
+    call_nighresdura -i inv2.nii.gz -m inv2_mask.nii.gz -o derivatives/nighres -f sub-001_desc
+
+---------------------------------------------------------------------------------------------------
+
+    """
+
+    inv2_skull  = ''
+    inv2_mask   = ''
+    outputdir   = ''
+    outputbase  = ''
+
+    try:
+        opts = getopt.getopt(argv,"hi:m:o:b:",["inv2=", "inv2_mask=", "outputdir=", "outputbase="])[0]
+    except getopt.GetoptError:
+        print(main.__doc__)
+        sys.exit(2)
+
+    for opt, arg in opts:
+        if opt == '-h':
+            print(main.__doc__)
+            sys.exit()
+        elif opt in ("-i", "--inv2"):
+            inv2_skull = arg
+        elif opt in ("-m", "--inv2_mask"):
+            inv2_mask = arg
+        elif opt in ("-o", "--outputdir"):
+            outputdir = arg
+        elif opt in ("-b", "--outputbase"):
+            outputbase = arg
+
+    if len(argv) < 6:
+            print("\nNOT ENOUGH ARGUMENTS SPECIFIED")
+            print(main.__doc__)
+            sys.exit()
+
+    if outputbase != "":
+        base = outputbase
+    else:
+        base = ""
+
+    mp2rage_dura_estimation(inv2_skull,
+                            inv2_mask,
+                            file_name=base,
+                            output_dir=outputdir,
+                            save_data=True)
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

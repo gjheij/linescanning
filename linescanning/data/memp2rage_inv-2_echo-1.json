@@ -1,0 +1,9 @@
+{
+	"InversionTime": 3.855,
+	"FlipAngle": 6,
+	"RepetitionTimeExcitation": 0.0314,
+	"RepetitionTimePreparation": 6.246,
+	"NumberShots": 150,
+	"EchoTime": 0.003,
+	"FieldStrength": 7	
+}

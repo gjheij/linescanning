@@ -1,0 +1,252 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# check if there's is a setup file containing the major paths and source it if it exists
+echo
+call_loadsetup
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+spinoza_fitprfs
+
+wrapper for call_prf that does the pRF-fitting using the output from pybest and the package pRFpy.
+If there is no design matrix for the pRF-modeling, we need to specify a path to the screenshots as
+outputted by the experiment on the stimulus computer. Not really sure what you should do if you do
+not have these screenshots, as it's important for pRFpy to know what kind of stimulus was presented
+when..
+
+Usage:
+  spinoza_fitprfs <-s sub> <-n ses> <prf dir> <pybest dir> <png dir>
+
+Arguments:
+  <-s sub>       digit subject number following 'sub-'
+  <-n ses>       integer session number following 'ses-'
+  <-m model>     'gauss' or 'norm' for the type of model to use for the fitting
+  <-g grid>      only run grid fit, skip iterative fit
+  <prf dir>      base output directory for prf data (derivatives/prf)
+  <pybest dir>   base input directory with pybest data (derivatives/pybest)
+  <png dir>      base path to where the pRF-experiment's Log-directories with png's is
+  <overwrite>    delete existing file and re-run analysis (y=yes|n=no)
+
+
+Eample:
+  spinoza_fitprfs ${DIR_DATA_DERIV}/prf ${DIR_DATA_DERIV}/pybest ${DIR_DATA_SOURCE}
+  spinoza_fitprfs -s 001 -n 1 ${DIR_DATA_DERIV}/prf ${DIR_DATA_DERIV}/pybest ${DIR_DATA_SOURCE}
+
+Notes:
+  - Has the '-s' and '-n' switches to specify a particular subject and session if present
+  - Also has overwrite switch
+  - Has the '-m' switch to specify type of model
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+# Check for subject & session flags
+while getopts gos:n:m: argument
+do
+    case ${argument} in
+      s)  sub=${OPTARG}
+            ;;
+      n)  ses=${OPTARG}
+            ;;
+      m)  model=${OPTARG}
+            ;;
+    esac
+done
+
+if [[ $# -lt 3 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+if [[ "${@}" == *"-o"* ]]; then
+  OW=1
+else
+  OW=0
+fi
+
+PRF=${@:$OPTIND:1}
+DENOISE=${@:$OPTIND+1:1}
+PNG=${@:$OPTIND+2:1}
+
+if [[ -z ${sub} ]]; then
+  # loop through subjects
+  search="${DENOISE}/sub-*"
+else
+  # do for 1 subject
+  search="${DENOISE}/sub-${sub}"
+fi
+
+if [[ "${@}" == *"-g"* ]]; then
+  grid_flag="-g"
+  grid_only=1
+else
+  grid_flag=""
+  grid_only=0
+fi
+
+#-----------------------------------------------------------------------------
+# Start clock
+#-----------------------------------------------------------------------------
+
+echo "==================================================================================================="
+printf "pRF-FITTING WITH pRFpy\n"
+start=`date +%s`
+start_date=`date`
+
+printf "Started at ${start_date}\n"
+echo "==================================================================================================="
+
+#-----------------------------------------------------------------------------
+# Run it
+
+for dir in ${search}; do
+
+  if [[ -z ${ses} ]]; then
+    base="$(basename ${dir})"
+    base_dir=${base}
+  else
+    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
+    base="$(basename ${dir})_ses-${nr}"
+    base_dir=$(basename ${dir})/ses-${nr}
+  fi
+
+  prf_dir=${PRF}/${base_dir}
+  pybest_dir=${DENOISE}/${base_dir}
+  png_dir=${PNG}/${base_dir}
+
+  # check if we got model specification
+  if [[ -z ${model} ]]; then
+    use_model="gauss"
+  else
+    if [[ ${model,,} == "gauss" || ${model,,} == "norm" ]]; then
+      use_model=${model,,}
+    else
+      echo "ERROR in `basename ${0}`: model specified was \"${model}\". Please use \"gauss\", or \"norm\"."
+      exit 1
+    fi
+  fi
+
+  if [[ ! -d ${prf_dir} ]]; then
+    mkdir -p ${prf_dir}
+  fi
+
+  # look for parameter file
+  if [[ ${grid_only} -eq 1 ]]; then
+    txt="grid-fit only with model ${use_model}"
+    stage="stage-grid"
+  else
+    txt="iter-fit with model ${use_model}" 
+    stage="stage-iter"
+  fi
+
+  prf_params=`find ${prf_dir} -type f \( -name "*prf_params*" -and -name "*${use_model}*" -and -name "*${stage}*" -and -name "*task-${TASK_SES1}*" -and -name "*.npy" \) 2>/dev/null`
+  # Check if we should overwrite file
+  if [[ ${OW} -eq 1 ]]; then
+    if [[ -f ${prf_params} ]]; then
+      rm -r ${prf_params}
+    fi
+  fi
+
+  if [[ ! -f ${prf_params} ]]; then
+
+    # echo $pybest_dir
+    if [[ -d ${pybest_dir}/denoising ]]; then
+
+      echo
+      echo "**************************************** Processing `basename ${dir}` ***************************************"
+
+      echo "Running pRF-analysis; ${txt}"
+
+      if [[ ! -f ${prf_dir}/vis_design.mat ]]; then
+
+        if [[ -f ${DIR_DATA_HOME}/code/vis_design.mat ]]; then
+          echo "Creating symlink to ${PROJECT}/code/vis_design.mat"
+          ln -s ${DIR_DATA_HOME}/code/vis_design.mat ${prf_dir}/vis_design.mat
+        else
+          echo "Design matrix needs to be created.."
+          # Take second run just in case the first one is empty
+          PNGS_DIR=`find ${png_dir}/prf -type d \( -name "*Logs*" -and -name "*run-2*" \) -print 2>/dev/null`
+          if [[ ! -z ${PNGS_DIR} ]]; then
+            echo " found directory: ${PNGS_DIR}"
+            PNGS=`find ${PNGS_DIR} -type d \( -name "*Screenshots*" \) -print 2>/dev/null`
+          else
+            echo "ERROR: no \"Logs\" in \"${png_dir}/prf\""
+            continue
+          fi
+
+          if [[ ! -d ${PNGS} ]]; then
+            echo "ERROR: no \"Screenshot\" in \"${PNGS_DIR}\""
+            continue
+          else
+            echo " directory contains \"Screenshot\"-folder"
+            IMGS=`find ${PNGS} -type f \( -name "*.png" \) -print 2>/dev/null`
+            if [[ -z ${IMGS} ]]; then
+              echo "ERROR: no *.png-files in \"${PNGS}\""
+              continue
+            else
+              echo " Screenshot-folder contains png-files"
+            fi
+          fi
+        fi
+      
+      else
+        echo "All good. Starting call_prf.."
+      fi
+
+      # We need to specify a setup script with the variables if we want to qsub this job
+      if [[ ${PLACE} != "SPINOZA" ]]; then
+        job="python"
+      else
+        job="qsub -wd ${prf_dir} -N $(basename ${dir})_gauss"
+        job="python"
+      fi
+
+      export DISPLAY=:0
+      ${job} ${DIR_SCRIPTS}/bin/call_prf \
+        -s "$(basename ${dir} | cut -d'-' -f2)" \
+        -n "${nr}" \
+        -t "${TASK_SES1}" \
+        -o "${prf_dir}" \
+        -i "${pybest_dir}/denoising" \
+        -p "${PNGS}" \
+        -m "${use_model}" \
+        ${grid_flag} # empty if iterfit, '-g' if grid_only -eq 1
+
+    else
+
+      echo "`basename ${dir}`: might want to run pybest first.."
+      echo "  Directory \"${pybest_dir}/denoising\" not valid"
+
+    fi
+
+  else
+
+    echo "`basename ${dir}`: pRF-data already present"
+    continue
+
+  fi
+
+done
+
+#-----------------------------------------------------------------------------
+# Calculate time spent using 'let'
+echo
+echo "---------------------------------------------------------------------------------------------------"
+end=`date +%s`
+end_date=`date`
+printf "Done at ${end_date}\n"
+
+let deltatime=end-start
+let hours=deltatime/3600
+let minutes=(deltatime/60)%60
+let seconds=deltatime%60
+printf "Time spent: %d:%02d:%02d\n" ${hours} ${minutes} ${seconds}
+echo "---------------------------------------------------------------------------------------------------"

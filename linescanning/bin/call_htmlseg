@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_htmlseg
+
+Produce html-file with various segmentations overlayed on the subject's anatomy.
+
+Args:
+  <-o overlay>    
+  <-d output dir> 
+  <-b basename>
+  <sub ID>        subject ID
+  <anat file>     anatomy file to use as background
+  <mask dir>      directory containing various masks/segmentations. The following will be used:
+                    - *cruise_cortex.nii.gz
+                    - *label-GM_probseg.nii.gz
+                    - *label-WM_probseg.nii.gz
+                    - *label-CSF_probseg.nii.gz
+
+Usage:
+  call_htmlseg <anat file> <mask dir>
+
+Example:
+  call_htmlseg anat.nii.gz ${MASKS}/sub-001/ses-1
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+if [[ $# -lt 3 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+# Check for subject & session flags
+while getopts o:d:b: argument
+do
+  case ${argument} in
+    o)  OVERLAY=${OPTARG}
+            ;;
+    d)  OUTDIR=${OPTARG}
+            ;;
+    b)  BASENAME=${OPTARG}
+            ;;            
+  esac
+done
+
+# if [[ "${@}" == *"-d"* ]]; then
+#   RM=0
+# else
+#   RM=1
+# fi
+
+SUB_ID=${@:$OPTIND:1}
+ANAT=${@:$OPTIND+1:1}
+MASK_DIR=${@:$OPTIND+2:1}
+
+#-----------------------------------------------------------------------------
+# Get bash helper functions
+source call_bashhelper
+
+#-----------------------------------------------------------------------------
+# Run it
+if [ ! -d ${MASK_DIR}/figures ]; then
+    mkdir -p ${MASK_DIR}/figures
+fi
+
+# make the first bit of the html file
+echo "$SUB_ID"
+echo " Add initial statements to html file"
+make_html_start ${MASK_DIR}/${SUB_ID}.html
+
+declare -a SEG=("label-GM" 'label-WM' 'label-CSF' 'cruise_cortex')
+for r in ${SEG[@]}; do
+    file=`find "${MASK_DIR}" -type f \( -name "*${r}*" -and -name "*.nii.gz" \) 2>/dev/null`
+    if [[ -f ${file} ]]; then
+        echo " Add: $(basename ${file} .nii.gz).png"
+        call_slicer -b $(basename ${file} .nii.gz).png -d ${MASK_DIR}/figures -o ${file} ${ANAT}
+        
+        (
+        echo "<h3 class=\"run-title\">Segmentation (${r})</h3><p class=\"elem-caption\">Segmentations as per a combination of FreeSurfer, CAT12, and manual intervention.</p>                    <img class=\"svg-reportlet\" src=\"${MASK_DIR}/figures/$(basename ${file} .nii.gz).png\" style=\"width: 100%\" />"
+        echo "</div>"
+        echo "<div class=\"elem-filename\">"
+        echo "    Get figure file: <a href=\"${MASK_DIR}/figures/$(basename ${file} .nii.gz).png\" target=\"_blank\">${MASK_DIR}/figures/$(basename ${file} .nii.gz).png</a>"
+        echo "</div>"
+        ) >> ${MASK_DIR}/${SUB_ID}.html
+
+    else
+        echo "${SUB_ID}: Could not find \"${r}\" image in directory. Make sure naming is correct"
+    fi
+done
+
+# make closing statement html-file
+echo " Add closing remarks to html file"
+make_html_end ${MASK_DIR}/${SUB_ID}.html
+
+echo "Done"
+echo

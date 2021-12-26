@@ -1,0 +1,79 @@
+#!/usr/bin/env python
+import sys
+import os
+import cortex
+import pathlib
+from linescanning.pycortex import set_ctx_path
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_ctxsetfilestore
+
+This super short script sets the filestore path in the pycortex config file. You can either specify
+an option first without a path to see the current status of the config file, you can also only spe-
+cify a path, and if it's not already in the config file, it will update it for you. If you just want
+to see the path to the config file, specify "show_pn"; if you want to see the current filestore path,
+specify "show_fs". If you want to update the config file, specify the path as first argument; it will
+update it for you.
+
+Calls on utils.py/set_ctx_path()
+
+Args:
+    <option>                    what do you want to do:
+                                 - "update"  = new filestore path (needs a string then)
+                                 - "show_fs" = show current filestore path
+                                 - "show_pn" = show path to config file
+
+    <path to new filestore>     if you want to update the filestore path, enter a string here
+                                won't do anything if the path is already specifie as filestore
+
+Example:
+    call_ctxsetfilestore ${CTX}     (update with environmental variable CTX)
+    call_ctxsetfilestore show_fs    (show the current filestore path)
+    call_ctxsetfilestore show_pn    (show the path to the config file)
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    pn  = None
+    opt = "update"
+
+    if len(argv) < 1:
+        print("NOT ENOUGH ARGUMENTS SPECIFIED")
+        print(main.__doc__)
+        sys.exit()
+
+    if len(argv) == 1:
+        # print("checking if path")
+        if os.sep in argv[0]:
+            # print("we got a path")
+            pn = argv[0]
+
+        else:
+            # print(f"regular option {opt}")
+            opt = argv[0]
+
+    elif len(argv) == 2:
+
+        opt = argv[0]
+        pn  = argv[1]
+
+        if os.path.exists(opt):
+            raise ValueError(f"You specified a pathname where it should get an option")
+
+        if not os.path.exists(pn):
+            pathlib.Path(pn).mkdir(parents=True, exist_ok=True)
+
+    # print(pn)
+    # print(opt)
+    if opt == "show_fs":
+        ff = set_ctx_path(pn, opt=opt)
+        print(ff)
+    else:
+        set_ctx_path(pn, opt=opt)
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

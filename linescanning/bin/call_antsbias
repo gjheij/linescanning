@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_antsbias
+
+Wrapper for bias field correction with ANTs' N4-function. Takes an input file and an output file
+using default setting for 'N4BiasFieldCorrection'. To add more custom functionalities, just add them
+to the N4-call in this script.
+
+If output is left empty, '_desc-bfc.nii.gz' will be appended to the input file per default
+
+Usage:
+  call_antsbias <input file> <output file>
+
+Example:
+  call_antsbias /path/to/inputfile.nii.gz /path/to/outputfile.nii.gz
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+if [[ $# -lt 1 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+if [[ $# == 1 ]]; then
+  OUT=$(dirname ${1})/$(basename ${1} .nii.gz)_desc-bfc.nii.gz
+else
+  OUT=${2}
+fi
+
+#-----------------------------------------------------------------------------
+# Run it
+if [[ -f ${1} && ! -f ${OUT} ]]; then
+  echo "Applying bias field correction to `basename $1`"
+  echo " input          = `basename $1`"
+  echo " dimensionality = `fslval $1 dim0`"
+  echo " sigma          = 2"
+  echo " convergence    = [50x50x50x50,1e-10]"
+  echo " output         = `basename ${OUT}`"
+  echo
+  echo "Running N4BiasFieldCorrection .."
+
+  N4BiasFieldCorrection \
+    -d `fslval $1 dim0` \
+    -i $1 \
+    -s 2 \
+    -c [50x50x50x50,1e-10] \
+    -o ${OUT}
+
+  echo "Done"
+
+fi

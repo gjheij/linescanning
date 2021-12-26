@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_makefloat
+
+Converts a float64 to float32 image using fslmaths. There's probably nicer ways to do this, so I'm
+currently not using this too much..
+
+Usage:
+  call_makefloat in_img.nii.gz <out_img.nii.gz>
+
+Arguments:
+  <in_img>    image to convert
+  <out_img>   output image; if empty, input file will be overwritten
+
+Example:
+  call_makefloat input.nii.gz
+  call_makefloat input.nii.gz output.nii.gz
+  
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+if [[ $# -lt 1 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+#-----------------------------------------------------------------------------
+# Start loop
+
+if [[ ! -z $2 ]]; then
+  out=$2
+else
+  out=$1
+fi
+
+fslmaths $1 ${out} -odt float

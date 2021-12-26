@@ -1,0 +1,55 @@
+#!/usr/bin/env python
+
+from hedfpy.EDFOperator import EDFOperator
+from hedfpy.HDFEyeOperator import HDFEyeOperator
+from hedfpy.EyeSignalOperator import EyeSignalOperator
+import os
+import glob
+import sys
+
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_edf2asc
+
+Convert the edf-file from the eyetracker to ascii-format so that we can actually read in the data
+properly. Save a file to *.h5-format.
+
+Args:
+    <edf folder>      folder containing the edf-files
+    <h5 output file>  output file name
+
+Example:
+    call_edf2asc /path/to/eyetrackeroutput /path/to/edf2ascii.h5
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    if len(argv) < 2:
+        print("NOT ENOUGH ARGUMENTS SPECIFIED")
+        print(main.__doc__)
+        sys.exit()
+
+    eye_dir = argv[0]
+    fout    = argv[1]
+    
+    edfs = glob.glob(opj(eye_dir, '*.edf'))
+    edfs.sort()
+
+    low_pass_pupil_f, high_pass_pupil_f = 6.0, 0.01
+    ho = HDFEyeOperator(fout)
+
+    alias = 'test_1'
+
+    for i, edf_file in enumerate(edfs):
+        ho.add_edf_file(edf_file)
+        ho.edf_message_data_to_hdf(alias=f'run_{i+1}')
+        ho.edf_gaze_data_to_hdf(alias=f'run_{i+1}',
+                                pupil_hp=high_pass_pupil_f,
+                                pupil_lp=low_pass_pupil_f)
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

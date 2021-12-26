@@ -1,0 +1,63 @@
+#!/usr/bin/env python
+
+from linescanning.pycortex import get_ctxsurfmove
+import sys, getopt
+import cortex
+import nibabel as nb
+import numpy as np
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_ctxsurfmove
+
+Pycortex introduces a minor offset to whatever it is importing from FreeSurfer. With this script,
+this offset is extracted and applied to the input file. It is assumed that the input file has Free-
+Surfer dimensions. If not, run call_warp2ses first with <from_ses> = 1 and <to_ses> = "fs"
+
+Args:
+    <subj name>     str:
+                    name of the directory as specified in the pycortex filestore directory
+    <input file>    str:
+                    path to nifti imageode; leave empty if we should use the same code as the input
+                    file
+
+    <output file>   str:
+                    optional; input image is overwritten if left empty
+
+Outputs
+    a new nifti image with pycortex offset-corrected affine
+
+Example:
+    call_ctxsurfmove input.nii.gz output.nii.gz
+
+---------------------------------------------------------------------------------------------------
+
+    """
+
+    if len(argv) < 2:
+        print("NOT ENOUGH ARGUMENTS SPECIFIED")
+        print(main.__doc__)
+        sys.exit(1)
+
+    try:
+        subject = argv[0]
+        infile  = argv[1]
+        outfile = argv[2]
+    except:
+        subject = argv[0]
+        infile  = argv[1]
+        outfile = infile
+
+    # get the surfmove offset from pycortex
+    offset_t = np.eye(4)
+    offset_t[:3,-1] = get_ctxsurfmove(subject)
+
+    # apply matrix to input affine
+    in_img = nb.load(infile)
+    new_aff = offset_t@in_img.affine
+    nb.Nifti1Image(in_img.get_fdata(), affine=new_aff).to_filename(outfile)
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_fslapplytransforms
+
+wrapper for FLIRT's applyxfm function, requiring a fixed image, a moving image, the output name and
+the FSL-formatted warp file. If this warp file is not formatted accordingly, either run call_fsl2ras
+or 'lta_convert' first, depending on what your warp file initially is.
+
+Usage:
+  call_fslapplytransforms <fixed> <moving> <output> <matrix>
+
+Arguments:
+  <fixed>          string-like path to reference object
+  <moving>         string-like path to moving object
+  <output>         string-like path to output image
+  <matrix>         string-like path to matrix
+
+Example:
+  call_fslapplytransforms fixed.nii.gz moving.nii.gz output.nii.gz affine.mat
+  
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+if [[ $# -lt 2 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+#-----------------------------------------------------------------------------
+# Start loop
+
+if [[ ! -f $1 ]]; then
+  echo " ERROR: could not find reference image"
+  exit 1
+fi
+
+if [[ ! -f $2 ]]; then
+  echo " ERROR: could not find moving image"
+  exit 1
+fi
+
+if [[ ! -f $4 ]]; then
+  echo " ERROR: could not find matrix to apply"
+  exit 1
+fi
+
+if [[ -f $1 && -f $2 && -f $4 ]]; then
+
+  if [[ ! -f $3 ]]; then
+    flirt -in ${2} -ref ${1} -out ${3} -init ${4} -applyxfm
+  fi
+
+fi

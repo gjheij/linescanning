@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# check if there's is a setup file containing the major paths and source it if it exists
+call_loadsetup
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_antsbet
+
+  wrapper for brain extraction with ANTs algorithm
+
+Usage:
+  call_antsbet.sh <input file>
+                  <output file>
+
+Example:
+  call_antsbet.sh /path/to/inputfile.nii.gz /path/to/outputfile.nii.gz
+  
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+if [[ $# -lt 2 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+#-----------------------------------------------------------------------------
+# Run it
+if [[ -f $1 && ! -f ${2}BrainExtractionBrain.nii.gz ]]; then
+
+  antsBrainExtraction.sh \
+    -a $1 \
+    -e $DIR_DATA_ATLAS/T_template0_BrainCerebellum.nii.gz \
+    -m $DIR_DATA_ATLAS/T_template0_BrainCerebellumProbabilityMask.nii.gz \
+    -c 3x1x2x3 \
+    -f $DIR_DATA_ATLAS/T_template0_BrainCerebellumRegistrationMask.nii.gz \
+    -o $2
+
+fi

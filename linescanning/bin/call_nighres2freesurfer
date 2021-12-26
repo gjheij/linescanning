@@ -1,0 +1,63 @@
+#!/usr/bin/env python
+
+import nighres
+import sys, getopt
+from linescanning.transform import fs2tkr
+import os
+import numpy as np
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_nighres2freesurfer (WIP!)
+
+Convert nighres mesh to freesurfer-interpretable data following this thread: 
+https://github.com/nighres/nighres/issues/106. The steps are the following:
+  1) Resample levelset output from CRUISE to FS (e.g., with call_antsapplytransform)
+  2) Convert resampled levelset to a mesh with call_nighreslevelmesh
+  3) Convert voxel indexing to RAS-indexing with linescanning.transform.fs2tkr
+  4) Save faces and vertices as something FreeSurfer-like (e.g., lh.nighres.white)
+  5) Overlay in FreeView
+
+Args:
+    <subject> subject ID as specified in the FreeSurfer directory.
+    <mesh>    output from call_nighreslevelmesh, a mesh-representation of your levelset image
+    <output>  output file
+
+Outputs:
+  FreeSurfer-readable nighres-output
+
+Example:
+    call_nighres2freesurfer sub-001 sub-001_desc-l2m_mesh.vtk lh.pial
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    subject = None
+    mesh_fn = None
+    output  = None
+
+    if len(argv) < 3:
+            print("\nNOT ENOUGH ARGUMENTS SPECIFIED")
+            print(main.__doc__)
+            sys.exit()
+
+    subject = argv[0]
+    mesh_fn = argv[1]
+    output = argv[2]
+
+    mesh = nighres.io.load_mesh(mesh_fn)
+    mesh.pop('data')
+
+    # nighres saves coordinates in voxel, not RAS like freesurfer
+    coords = mesh['points']
+    coords = np.hstack((coords, np.ones((coords.shape[0],1))))
+    ras_coords = fs2tkr(subject, coord=coords)
+    mesh['points'] = ras_coords
+    nighres.io.save_mesh_geometry(output, mesh)
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

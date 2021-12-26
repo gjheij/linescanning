@@ -1,0 +1,61 @@
+#!/usr/bin/env python
+
+import os, sys
+import numpy as np
+import nibabel as nb
+from linescanning.image import clip_image
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_clipimage
+
+Clip an image given a certain threshold in which certain values occur. By default, the cutoff is set 
+to the value that occurs <0.5% across the image. It's a wrapper for linescanning.image.clip_image, 
+and used for instance to boost contrast, or get rid of extreme values that might be introduced during 
+CAT12-processing in rare cases.
+
+Args:
+    <input file>        string-like path to file to extract from
+    <threshold>         cut off percentile (lower than 1) or hard value (>1)
+    <output file>       string-like path to output new volume to <if empty <input file> is over-
+                        written
+
+Outputs
+    output file         new volume containing the extracted data from input file
+
+Example:
+    call_clipimage input.nii.gz 0.001 output.nii.gz
+
+---------------------------------------------------------------------------------------------------
+
+    """
+
+    if len(argv) < 2:
+        print("NEED AT LEAST AN INPUT IMAGE AND THRESHOLD")
+        print(main.__doc__)
+        sys.exit()
+
+    try:
+        in_file     = argv[0]
+        thresh      = argv[1]
+        out_file    = argv[2]
+    except:
+        in_file     = argv[0]
+        thresh      = argv[1]
+        out_file    = in_file
+
+    if os.path.exists(in_file):
+        if float(thresh) < 1:
+            clip_image(in_file, thr=float(thresh), return_type="file", out_file=out_file)
+        else:
+            clip_image(in_file, val=float(thresh), return_type="file", out_file=out_file)
+
+        # try:
+        #     os.system(f"fslorient -copyqform2sform {out_file}")
+        # except:
+        #     print("WARNING: could not copy qform to sform. Check with e.g., 'fslhd' if your affines are correct")
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

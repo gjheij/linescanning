@@ -1,0 +1,191 @@
+#!/bin/bash
+#$ -S /bin/bash
+#$ -cwd
+#$ -j Y
+#$ -q short.q@jupiter
+#$ -V
+#$ -pe smp 5
+#Template provided by Daniel Levitas of Indiana University
+#Edits by Andrew Jahn, University of Michigan, 07.22.2020
+
+call_loadsetup
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_mriqc
+
+MRIQC extracts no-reference IQMs (image quality metrics) from structural (T1w and T2w) and functional 
+MRI (magnetic resonance imaging) data. There's also a bunch of other things you can customize, but 
+to keep it as simple as possible without making it similar to the fmriprep call itself, see arguments 
+for customizable options.
+
+Arguments:
+  -s <sub number>   number of subject's directory from which you can omit "sub-" (e.g., for "sub-001",
+                    enter "001")
+	-n <ses number>		session ID (without 'ses-')
+  -r <root>         project root directory from which to run fmriprep. Default is DIR_DATA_HOME
+  -d <derivatives>  derivatives directory. Default is DIR_DATA_DERIV
+  -i <simg>         singularity image that can be specified if -c flag is set to SGE
+  -b <binding>      binding point that can be specified if -c flag is set to SGE
+  -w <work>         working directory to store intermediate files. Default is PATH_HOME/programs/
+                    packages/mriqc             
+	-a <include anat>	no argument required; if set, we'll include anatomical images. Note that the 
+                    T1w/T2w are in the project folder, and thus won't be the custom preprocessed
+                    files.. This is why it's turned off by default.
+Example:
+  call_mriqc -s 001       (simplest form, runs the entire pipeline)
+  call_mriqc -s 001 -n 1  (only include session 1 data)
+  call_mriqc -s 001 -r /path/to/project -d /path/to/project/derivatives -b /data1 -w /tmp
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+#-----------------------------------------------------------------------------
+# Deal with arguments
+while getopts ts:n:r:d:i:b:w: arg
+do
+    case ${arg} in
+      s)  subj_ID=${OPTARG}
+            ;;
+      n)  ses_ID=${OPTARG}
+            ;;						
+      r)  ROOT=${OPTARG}
+            ;;
+      d)  DERIV=${OPTARG}
+            ;;
+      i)  IMG=${OPTARG}
+            ;;
+      b)  BIND=${OPTARG}
+            ;;
+      w)  WORK=${OPTARG}
+            ;;          
+    esac
+done
+
+if [[ $# -lt 1 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+#-----------------------------------------------------------------------------
+if [[ -z ${subj_ID} ]]; then
+  echo "Need at least a subject ID!"
+  Usage >&2
+  exit 1
+fi
+
+#-----------------------------------------------------------------------------
+if [[ -z ${ses_ID} ]]; then
+	ses_nr=""
+  base_dir="sub-${subj_ID}"
+else
+	ses_nr=${ses_ID}
+  base_dir="sub-${subj_ID}/ses-${ses_nr}"
+fi
+
+#-----------------------------------------------------------------------------
+# Check for T2w-flag
+if [[ "${@}" == *"-a"* ]]; then
+  mod="T1w T2w bold"
+else
+  mod="bold"
+fi
+
+#-----------------------------------------------------------------------------
+# Set default project root directory if none specified
+if [[ -z ${ROOT} ]]; then
+  project=${DIR_DATA_HOME}
+else
+  project=${ROOT}
+fi
+
+if [[ ! -d ${project} ]]; then
+  mkdir -p ${project}
+fi
+
+#-----------------------------------------------------------------------------
+# Set default derivatives directory if none specified
+if [[ -z ${DERIV} ]]; then
+  derivatives=${DIR_DATA_DERIV}/mriqc
+else
+  derivatives=${DERIV}
+fi
+
+if [[ ! -d ${derivatives} ]]; then
+  mkdir -p ${derivatives}
+fi
+
+#-----------------------------------------------------------------------------
+# Set default working directory if none specified
+if [[ -z ${WORK} ]]; then
+  work=${PATH_HOME}/programs/packages/mriqc/${PROJECT}
+else
+  work=${WORK}
+fi
+
+if [[ ! -d ${work} ]]; then
+  mkdir -p ${work}
+fi
+
+#Run fmriprep
+n_procs=10
+
+#-----------------------------------------------------------------------------
+# set default binding point
+if [[ -z ${BIND} ]]; then
+	binding=${PATH_HOME}
+else
+	binding=${BIND}
+fi
+
+#-----------------------------------------------------------------------------
+# Set default container if none specified
+if [[ -z ${IMG} ]]; then
+	mriqc_container=/data1/projects/MicroFunc/Jurjen/programs/packages/mriqc/containers_bids-mriqc--0.15.1.simg
+	# mriqc_container=/data1/projects/MicroFunc/Jurjen/programs/packages/mriqc/containers_bids-mriqc--21.0.0rc2.simg
+else
+	mriqc_container=${IMG}
+fi
+
+if [[ ! -f ${mriqc_container} ]]; then
+	echo "Could not find singularity image for MRIqc.."
+	exit 1
+fi
+
+# echo "derivatives = ${derivatives}"
+# echo "binding     = ${binding}"
+unset PYTHONPATH;
+
+# --cleanenv required to prevent interference from FSL v6 present on the spinoza server
+singularity run --cleanenv -B ${binding}:${binding} ${mriqc_container} \
+	${project} ${derivatives} \
+	participant \
+	--session-id ${ses_nr} \
+	--participant-label ${subj_ID} \
+	--n_procs ${n_procs} \
+	-w ${work} \
+	--verbose-reports \
+	--mem_gb 64 \
+	--modalities ${mod} \
+	--no-sub
+
+if [[ $? -ne 0 ]]; then
+  echo "ERROR in `basename ${0}`: mriqc with singularity exited with non-zero status"
+  exit 1
+fi
+
+# move html files to appropriate directory.
+html_files=`find ${derivatives} -type f -name "sub-${subj_ID}*" -and -name "*.html" 2>dev/null`
+if [[ ! -z ${html_files} ]]; then
+  mv ${html_files} ${derivatives}/${base_dir} 2>/dev/null
+else
+  echo "ERROR in `basename ${0}`: could not find html-files. This is suspicious.."
+  exit 1
+fi

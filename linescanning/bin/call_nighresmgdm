@@ -1,0 +1,197 @@
+#!/usr/bin/env python
+
+from nighres.brain import mgdm_segmentation
+import sys, getopt
+import os
+import nibabel as nb
+import linescanning.bin.utils.utils as linescanning
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_nighresmgdm
+
+Estimates brain structures from an atlas for MRI data using a Multiple Object Geometric Deformable
+Model (MGDM).
+
+This script needs at least a T1-weighted image and a T1-map. Other options described as below can be
+included, but if they are omitted then the script will default to the output directory it finds in
+os.environ['NIGHRES'] as defined in the spinoza_setup script with name 'sub-xxx-space-mp2rage_desc'.
+Because Nighres like everything in RAS-coordinates, the script will temporarily flip your axes to
+conform this need (it really will go bad if it is not RAS), but also swaps the orientation to the
+original upon completion. Mind you, that if an error occurs AFTER this re-orientating, the files
+will have RAS!!
+
+Args:
+    -t (--t1w=)         T1-weighted image
+    -m (--t1map=)       T1map
+    -s (--skull=)       Skull mask
+    -d (--dura=)        Dura mask
+    -o (--outputdir=)   output directory    (def. = current working directory)
+    -b (--outputbase=)  output basename     (def. = 'output_desc-')
+
+Outputs
+    taken from https://nighres.readthedocs.io/en/latest/brain/mgdm_segmentation.html
+    Dictionary collecting outputs under the following keys (suffix of output files in brackets)
+
+    segmentation (niimg):   Hard brain segmentation with topological constraints (if chosen)
+                            (_mgdm_seg)
+    labels (niimg):         Maximum tissue probability labels (_mgdm_lbls)
+    memberships (niimg):    Maximum tissue probability values, 4D image where the first dimension
+                            shows each voxel’s highest probability to belong to a specific tissue, 
+                            the second dimension shows the second highest probability to belong to 
+                            another tissue etc. (_mgdm_mems)
+    distance (niimg):       Minimum distance to a segmentation boundary (_mgdm_dist)
+
+
+Example:
+    call_nighresmgdm -t t1w.nii.gz.nii.gz -m t1map.nii.gz -s skull_mask.nii.gz -d dura_mask.nii.gz
+                     -o derivatives/nighres
+    call_nighresmgdm -t t1w.nii.gz.nii.gz -m t1map.nii.gz
+
+---------------------------------------------------------------------------------------------------
+
+    """
+
+    t1w         = None
+    t1map       = None
+    skull       = None
+    dura        = None
+    outputdir   = os.getcwd()
+    outputbase  = 'output_desc-'
+
+    try:
+        opts = getopt.getopt(argv,"ht:m:s:d:o:b:",["t1w=", "t1map=", "skull=", "dura=", "outputdir=", "outputbase="])[0]
+    except getopt.GetoptError:
+        print(main.__doc__)
+        sys.exit(2)
+
+    for opt, arg in opts:
+        if opt == '-h':
+            print(main.__doc__)
+            sys.exit()
+        elif opt in ("-t", "--t1w"):
+            t1w = arg
+        elif opt in ("-m", "--t1map"):
+            t1map = arg
+        elif opt in ("-s", "--skull"):
+            skull = arg
+        elif opt in ("-d", "--dura"):
+            dura = arg
+        elif opt in ("-o", "--outputdir"):
+            outputdir = arg
+        elif opt in ("-b", "--outputbase"):
+            outputbase = arg
+
+    if len(argv) < 2:
+            print("\nNOT ENOUGH ARGUMENTS SPECIFIED")
+            print(main.__doc__)
+            sys.exit()
+
+    #---------------------------------------------------------------------------------------------------
+    # collect files
+    print("Loading files..")
+    # collect files
+    if t1w != None and t1map != None:
+        files = {"T1w": t1w, "T1map": t1map}
+    else:
+        print(main.__doc__)
+        print("ERROR: Really do need at least a t1-weighted and a T1map to run this function")
+        sys.exit(1)
+
+    if skull and dura:
+        files["skull"], files["dura"] = skull, dura
+
+    [print(f" got {f}") for f in files.values()]
+    print("Done")
+
+    #---------------------------------------------------------------------------------------------------
+    # temporarily reorient to RAS
+    print("Checking orientation..")
+
+    orig = {}
+    ras_files = {}
+    for i in files:
+
+        ax  = nb.aff2axcodes(nb.load(files[i]).affine, labels=(('R', 'L'), ('A', 'P'), ('S', 'I')))
+        orig[i] = ax[0]+ax[1]+ax[2]
+        ras = ('R','A','S')#temp_code
+        lpi = ('L','P','I')#nb.as_closest_canonical (= RAS+, also seems to work with MGDM)
+        code = ras[0].lower()+ras[1].lower()+ras[2].lower()
+
+        if not ax == ras and not ax == lpi:
+            orient = True
+            print(" {f}: Reorient {ax} to {ras}".format(f=os.path.basename(files[i]), ax=orig[i], ras=code.upper()))
+            linescanning.reorient_img(files[i], code=code, out=files[i].split('.')[0]+f"_{code}-valid.nii.gz")
+            ras_files[i] = files[i].split('.')[0]+f"_{code}-valid.nii.gz"
+        else:
+            orient = False
+            print(" {f}: orientation = {ax}".format(f=os.path.basename(files[i]), ax=orig[i]))
+            ras_files[i] = files[i]
+
+    print("Initialization (i.e., orienting) done. Starting procedure..")
+
+    #---------------------------------------------------------------------------------------------------
+    # Start
+    try:
+        # also include skull $ dura filters
+        results = mgdm_segmentation(contrast_image1=ras_files["T1w"],
+                                    contrast_type1="Mp2rage7T",
+                                    contrast_image2=ras_files["T1map"],
+                                    contrast_type2="T1map7T",
+                                    contrast_image3=ras_files["dura"],
+                                    contrast_type3="Filters",
+                                    contrast_image4=ras_files["skull"],
+                                    contrast_type4="Filters",
+                                    output_dir=outputdir,
+                                    file_name=outputbase,
+                                    save_data=True)
+
+    except:
+        # just use T1-weighted and T1-map
+        results = mgdm_segmentation(contrast_image1=ras_files["T1w"],
+                                    contrast_type1="Mp2rage7T",
+                                    contrast_image2=ras_files["T1map"],
+                                    contrast_type2="T1map7T",
+                                    output_dir=outputdir,
+                                    file_name=outputbase,
+                                    overwrite=True,
+                                    save_data=True)
+
+    #---------------------------------------------------------------------------------------------------
+    # reorient back to original orientation
+    if orient == True:
+        try:
+            print("Reorient results to input orientation")
+            for i in results:
+                print(" {f}: Reorient {ax} to {ras}".format(f=os.path.basename(results[i]), ax=code.upper(), ras=orig[list(orig.keys())[0]]))
+                linescanning.reorient_img(results[i], code=orig[list(orig.keys())[0]])
+        except:
+            print("Could not reorient results to input orientation")
+
+        try:
+            print("Cleaning directory")
+            for i in ras_files:
+                if ras_files[i].endswith(f"{code}-valid.nii.gz"):
+                    print(" removing {}".format(ras_files[i]))
+                    os.remove(ras_files[i])
+        except:
+            pass
+
+    #---------------------------------------------------------------------------------------------------
+    # Nicer formatting
+    for i in ["seg", "dist", "lbls", "mems"]:
+
+        fn_old = opj(outputdir, outputbase + "_mgdm-" + i + ".nii.gz")
+        fn_new = opj(outputdir, outputbase + "-mgdm_" + i + ".nii.gz")
+
+        if os.path.exists(fn_old):
+            # print("moving {fo} to {fn}".format(fo=os.path.basename(fn_old), fn=os.path.basename(fn_new)))
+            os.rename(fn_old, fn_new)
+            
+    print("Done")
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

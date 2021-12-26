@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+
+function Usage {
+  cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_ses1_to_ses
+
+This script warps session 1 anatomy as per output for pymp2rage to the anatomy of session X as spe-
+cified in /project_folder/<subject>/ses-X/anat. It uses predefined paths only so unless you changed 
+something in previous steps you can use it with just the subject ID.
+
+It will look for the following files:
+  - ses-1 anat: $PYMP2RAGE/<subject>/ses-1
+  - ses-2 anat: $DIR_DATA_HOME/<subject>/ses-2/anat
+
+And output a transformation matrix as:
+  $CTX/transforms/<subject>_from-ses1_to-ses2_desc-genaff.mat
+
+Arguments:
+  <subject>    subject ID, e.g., sub-001
+  <ses nr>     session number, e.g., 2
+Usage:
+  call_ses1_to_ses <subject> <ses_nr>
+
+Example:
+  call_ses1_to_ses sub-001 2
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+  exit 1
+}
+
+if [[ $# -lt 1 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+#-----------------------------------------------------------------------------
+# Check some directories/files
+if [[ ! -d $CTX/${1} ]]; then
+  call_ctximport -s ${1}
+fi
+
+ses1=`find ${DIR_DATA_DERIV}/pymp2rage/${1}/ses-1 -type f -name "${1}*" -and -name "*T1w.nii.gz" 2>/dev/null`
+ses2=`find ${DIR_DATA_HOME}/${1}/ses-${2}/anat -type f -name "${1}*" -and -name "*acq-MP2RAGE*" -and -name "*T1w.nii.gz" 2>/dev/null`
+
+if [[ -z ${ses1} ]] || [[ -z ${ses2} ]]; then
+  echo "ERROR in `basename ${0}`: could not find ses-1 or ses-${2} anatomy"
+  exit 1
+fi
+
+aff=${CTX}/${1}/transforms/${1}_from-ses1_to-ses${2}_desc-genaff.mat
+if [[ ! -d $(dirname ${aff}) ]]; then
+  mkdir -p $(dirname ${aff})
+fi
+
+cmd="call_antsregistration ${ses2} ${ses1} $(dirname ${aff})/$(basename ${aff} genaff.mat) rigid"
+echo ${cmd}
+exec ${cmd}

@@ -1,0 +1,292 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# check if there's is a setup file containing the major paths and source it if it exists
+echo
+call_loadsetup
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+spinoza_layering
+
+Equivolumetric layering with either nighres or Wagstyl's surface_tools, as specified by the third
+argument. Surface_tools is based on FreeSurfer, so make sure that has run before it. This script is
+by default in overwrite mode, meaning that the files created earlier will be overwritten when re-ran.
+This doesn't take too long, so it doesn't really matter and prevents the need for an overwrite switch.
+To disable, you can specify a condition before running this particular script.
+
+Possible inputs for software are:
+ Nighres: "nighres", "Nighres", "nigh", "NIGHRES" for nighres or"
+ Suface tools: "surface", "surface_tools", "SURFACE", "SURFACE_TOOLS", or "ST" for Wagstyl's surface
+               tools"
+
+Usage:
+  spinoza_layering <input dir (FS|nighres)> <software>
+
+Example:
+  spinoza_layering $FS surface
+  spinoza_layering $DIR_DATA_DERIV/nighres nighres
+
+Notes:
+  - The script will recognize any of the software inputs specified above, with these variations in
+    capitalization.
+  - The script will look for a surface_tools installation on the PATH and if it can't find it there,
+    it will look for the first match in the HOME directory. To be sure, place the script either in
+    the home directory or place it on the PATH.
+  - If the script doesn't give an error before printing the starting time, it means it found the
+    script.
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+
+}
+#---------------------------------------------------------------------------------------------------------
+# Define possible inputs
+function Options {
+    cat <<EOF
+Nighres: "nighres", "Nighres", "nigh", "NIGHRES" for nighres or"
+Suface tools:"surface", "surface_tools", "SURFACE", "SURFACE_TOOLS", or "ST" for Wagstyl's surface tools"
+
+EOF
+    exit 1
+}
+
+if [[ $# -lt 2 ]] ; then
+  echo NOT ENOUGH ARGUMENTS SPECIFIED
+  Usage >&2
+  exit 1
+fi
+
+# Check for subject & session flags
+while getopts os:n: argument
+do
+    case ${argument} in
+      s)  sub=${OPTARG}
+            ;;
+      n)  ses=${OPTARG}
+            ;;
+    esac
+done
+
+if [[ $# -lt 3 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+if [[ "${@}" == *"-o"* ]]; then
+  OW=1
+else
+  OW=0
+fi
+
+INPUT=${@:$OPTIND:1}
+SOFTWARE=${@:$OPTIND+1:1}
+
+if [[ -z ${sub} ]]; then
+  # loop through subjects
+  search="${INPUT}/sub-*"
+else
+  # do for 1 subject
+  sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
+  search="${INPUT}/sub-${sub_nr}"
+fi
+
+if [[ ${SOFTWARE,,} == "nighres" ]] || [[ ${SOFTWARE} == "nigh" ]]; then
+  software="NIGHRES"
+elif [[ ${SOFTWARE,,} == "surface" ]] || [[ ${SOFTWARE,,} == "surface_tools" ]] || [[ ${SOFTWARE,,} == "st" ]]; then
+
+  software="SURFACE"
+
+  # check if generate_equivolumetric_surfaces.py is on the PATH
+  CMD=`command -v generate_equivolumetric_surfaces.py`
+  if [[ -z ${CMD} ]]; then
+    # checking if it's somewhere in home directory > "print quit" means stop looking at the first instance of a match.
+    FILE=`find ${HOME} -type f \( -name "*generate_equivolumetric_surfaces.py*" \) -print -quit 2>/dev/null`
+    if [[ ! -z ${FILE} ]]; then
+      CMD="python ${FILE}"
+    else
+      FILE=`find ${PATH_HOME} -type f \( -name "*generate_equivolumetric_surfaces.py*" \) -print -quit 2>/dev/null`
+      if [[ ! -z ${FILE} ]]; then
+        CMD="python ${FILE}"
+      else
+        echo "generate_equivolumetric_surfaces is not on your PATH, in HOME, or PATH_HOME.."
+        echo "type \"spinoza_layering\" for more help"
+        exit 1
+      fi
+
+    fi
+
+  fi
+
+else
+
+  if [[ ! -z ${SOFTWARE} ]]; then
+    echo "You specified \"${SOFTWARE}\", accepted strings are:"
+    Options >&2
+    exit 1
+  else
+    echo "Please specify one of the following"
+    Options >&2
+    exit 1
+  fi
+
+fi
+
+#-----------------------------------------------------------------------------
+# Start clock
+#-----------------------------------------------------------------------------
+
+echo "==================================================================================================="
+printf "NEW LAYERING WITH ${software^^}\n"
+start=`date +%s`
+start_date=`date`
+
+printf "Started at ${start_date}\n"
+echo "==================================================================================================="
+echo 
+
+#-----------------------------------------------------------------------------
+# Run it
+for dir in ${search}; do
+
+  if [[ -z ${ses} ]]; then
+    input_dir=${INPUT}/$(basename ${dir})
+    base="$(basename ${dir})"
+  else
+    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
+
+    # remove this statement if you have multiple freesurfer sessions
+    if [[ $(basename ${INPUT}) == *"freesurfer"* ]]; then
+      input_dir=${INPUT}/$(basename ${dir})
+    else
+      input_dir=${INPUT}/$(basename ${dir})/ses-${nr}
+    fi
+
+    base="$(basename ${dir})_ses-${nr}"
+  fi
+
+  if [[ ${software,,} == "nighres" ]]; then
+
+    #----------------------------------------------------------------------------------------------------------------------------------------------------------
+    # Running equivolumetric layering with nighres
+
+    if [[ ! -d ${input_dir}/cruise ]]; then
+      echo "`basename ${dir}`: Could not find nighres' CRUISE directory"
+      continue
+    fi
+
+    declare -a LAYER=(gwb cgb)
+    declare -a INPUTS=()
+    for r in ${LAYER[@]}; do
+      file=`find "${input_dir}/cruise" -type f \( -name "*acq-${space^^}*" -and -name "*${r}*" -and -name "*.nii.gz" \) 2>/dev/null`
+      if [[ -f ${file} ]]; then
+        INPUTS+=(${file})
+      else
+        echo "Could not find \"$r\" image in cruise directory. Make sure naming is correct"
+        continue
+      fi
+    done
+
+    if [[ -z "${INPUTS}" ]]; then
+      echo "Did not find required inputs"
+      continue
+    fi
+
+    output_root=${input_dir}/layering/${base}_acq-${space^^}_desc
+    output=${output_root}-layering_depth.nii.gz
+
+    if [[ ! -d $(dirname ${output_root}) ]]; then
+      mkdir -p $(dirname ${output_root})
+    fi
+
+    if [[ ${OW} -eq 1 ]]; then
+      rm ${output}
+    fi
+
+    if [[ ! -f ${output} ]]; then
+      
+      echo
+      echo "**************************************** Processing `basename ${dir}` ***************************************"
+      nr_layers=10
+      echo "Creating `basename ${output}` with ${nr_layers} layers"
+      call_nighreslayering \
+        -i ${INPUTS[0]} \
+        -o ${INPUTS[1]} \
+        -l ${nr_layers} \
+        -d $(dirname ${output_root}) \
+        -n $(basename ${output_root})
+
+      if [[ $? != 0 ]]; then
+        echo
+        echo "---------------------------------------------------------------------------------------------------"
+        echo "ERROR in `basename ${0}`: call_nighreslayering exited with non-zero status"
+        exit 1
+      fi
+
+    else
+
+      echo "`basename ${dir}`: `basename ${output}` already exists"
+
+    fi
+
+  elif [[ ${software,,} == "surface" ]]; then
+
+    echo
+    echo "**************************************** Processing `basename ${dir}` ***************************************"  
+
+    #----------------------------------------------------------------------------------------------------------------------------------------------------------
+    # Running equivolumetric layering with surface tools
+
+    if [[ ! -d ${input_dir} ]]; then
+      echo "This program requires you to run FreeSurfer first. Couldn't find subject's directory"
+      continue
+    fi
+
+    # if [[ -z ${SUBJECTS_DIR} ]]; then
+    #   echo "  SUBJECTS_DIR not set"
+    #   continue
+    # fi
+
+    export SUBJECTS_DIR=${INPUT}
+
+    for i in "lh" "rh"; do
+
+      echo "Running generate_equivolumetric_surfaces.py on ${i}"
+      ${CMD} \
+        --smoothing  0 \
+        ${input_dir}/surf/${i}.pial \
+        ${input_dir}/surf/${i}.white \
+        5 \
+        ${i}.equi \
+        --software freesurfer \
+        --subject_id $(basename ${dir})
+
+      echo "Stored outputs in ${FS}/$(basename ${dir})/surf"
+      echo
+
+    done
+
+  fi
+
+done
+
+#-----------------------------------------------------------------------------
+# Calculate time spent using 'let'
+echo
+echo "---------------------------------------------------------------------------------------------------"
+end=`date +%s`
+end_date=`date`
+printf "Done at ${end_date}\n"
+
+let deltatime=end-start
+let hours=deltatime/3600
+let minutes=(deltatime/60)%60
+let seconds=deltatime%60
+printf "Time spent: %d:%02d:%02d\n" ${hours} ${minutes} ${seconds}
+echo "---------------------------------------------------------------------------------------------------"

@@ -1,0 +1,195 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_stats2surf
+
+This script warps your statistical image to the FreeSurfer inflated surface using the registration
+files from fmriprep. First, we need to warp the rendered_zstat image to the T1w-space with from-
+template_to-T1w.h5 (call_antsapplytransforms), then we warp it to the surface with mri_vol2surf.
+
+I will always need at least a subject ID, a FEAT-directory with the stats map, and the warp file
+mapping template to T1w-space. You can leave fsdir empty if you want to use the path described in
+SUBJECTS_DIR.
+
+Usage:
+  call_stats2surf -s <subj_ID> -f <fsdir> -w <warpfile> -t 3.1
+
+Args:
+  -s <subj ID>        subject ID as per output of FreeSurfer (e.g., 'sub-001')
+
+  -f <fsdir>          path to freesurfer directory; if left empty > reads SUBJECTS_DIR
+
+  -o <featdir>        path to FEAT-directory (can also be group-directory, but in that case it should
+                      be specified up to the dir.gfeat/cope?.feat-directory). Whatever you named the
+                      stats-map; make sure you have something with "zstat?" in it.. If you have com-
+                      pletely changed the name (while keeping zstat? [!!!]), use the '-a' flag
+
+                      If you specify a gfeat directory, you have to specify some registration file to
+                      on of the subjects, and warp it to the surface from there. So if you want to
+                      warp the group-file to the surface:
+                        - warp zstat to sub-xxx (-s sub-xxx)
+                        - warp zstat_space-subxxx to surface of fsaverage
+
+  -w <warp file>      h5 (or other) warp file mapping your stats file to T1w-space.
+
+  -a <str>            here you can specify substring to look for the statistical image. If you do not want
+                      to use the standard rendered_thresh_zstat1.nii.gz, add some more search criteria.
+                      For now, please use only 1 extra search parameter.. (leave this empty if you want
+                      to use the regular rendered_thresh_zstat?.nii.gz images)
+
+  -t <thresh>         threshold rendered stats map? Leave empty to skip thresholding. Skipping will
+                      show both the negative and positive values of the zstat-image on the surface
+
+  -q <some suffix>    string to add to the .mgh files to differentiate?
+
+Example:
+  call_stats2surf -s sub-001 -f /path/to/freesurfer -o <featdir> -w /path/to/warp.h5 -t 3.1
+  call_stats2surf -s sub-001 -f /path/to/freesurfer -o <gfeat/cope1.feat> -w /path/to/warp.h5
+
+You can view the results with:
+  freeview -f $SUBJECTS_DIR/sub-xxx/surf/?h.inflated:overlay=/path/to/?h.stats.mgh-file
+
+Notes:
+  - Given that I'm too lazy to implement each hemisphere separately, I'm just going to do both hemispheres
+    at once..
+  - Again, because I'm lazy, I will also do this for all zstat files I can find in the FEAT-directory..
+
+---------------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+#-----------------------------------------------------------------------------
+# Deal with arguments
+while getopts s:f:o:w:a:t:q: arg
+do
+    case ${arg} in
+      s)  subj_ID=${OPTARG}
+            ;;
+      f)  fsdir=${OPTARG}
+            ;;
+      o)  featdir=${OPTARG}
+            ;;
+      w)  warp=${OPTARG}
+            ;;
+      a)  search=${OPTARG}
+            ;;
+      t)  thresh=${OPTARG}
+            ;;
+      q)  thresh=${OPTARG}
+            ;;
+    esac
+
+done
+
+if [[ $# -lt 3 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+# we need SUBJECTS_DIR for mri_vol2surf
+if [[ -z ${fsdir} ]]; then
+  if [[ -z ${SUBJECTS_DIR} ]]; then
+    echo "  SUBJECTS_DIR variable not set and no new path specified.."
+    exit 1
+  fi
+else
+  export SUBJECTS_DIR=${fsdir}
+fi
+
+# start by warping file from template to anat-space
+if [[ ! -d ${fsdir} ]] || [[ ! -d ${featdir} ]]; then
+  echo "  Could not find FreeSurfer and FEAT-directory.."
+  exit 1
+fi
+
+if [[ ! -f ${warp} ]]; then
+  echo "  Could not find warp file.."
+  exit 1
+fi
+
+if [[ ! -z ${search} ]]; then
+
+  # ARRAY=()
+  # for i in ${search[@]}; do
+  #   INITIAL=$(echo "-and -name \"*${i}*\"")
+  #   ARRAY+=("${INITIAL}")
+  # done
+  #
+  # echo "${INITIAL[@]}"
+
+  zstat=`find "${featdir}" -maxdepth 1 -type f \( -name "*.nii.gz" -and -name "*${search}*" \) 2>/dev/null`
+  # echo "find \"${featdir}\" -maxdepth 1 -type f \( -name \"*.nii.gz\" ${ARRAY[@]} \)"
+
+else
+
+  zstat=`find "${featdir}" -maxdepth 1 -type f \( -name "*rendered_thresh*" -and -name "*.nii.gz" \) 2>/dev/null`
+
+fi
+
+for i in ${zstat[@]}; do
+
+  char=`awk -F\"zstat\" '{print length($1)+1}' <<< "$(basename $i)"`
+  nr=$(basename ${i} | cut -c "$(( ${char} + 5))")
+  new_warp=${featdir}/${subj_ID}_space-T1w_desc-zstat${nr}.nii.gz
+
+  T1=`find "${featdir}" -type f \( -name "*highres*" -and -name "*.nii.gz" \) 2>/dev/null`
+  if [[ ! -f ${T1} ]]; then
+    echo "  Could not locate highres.nii.gz image.. Need this as reference"
+    exit 1
+  fi
+
+  if [[ ! -f ${new_warp} ]]; then
+    echo "  warping `basename ${i}` image to T1w-space"
+    call_antsapplytransforms ${T1} ${i} ${new_warp} 0 ${warp}x
+  fi
+
+  if [[ ! -z ${thresh} ]]; then
+     if [[ `fslstats ${i} -R | awk '{print $1}'` != "0.000000" ]]; then
+       echo "  thresholding `basename ${new_warp}` with z=${thresh}"
+       fslmaths ${new_warp} -thr ${thresh} ${new_warp}
+     fi
+  fi
+
+  if [[ $? -ne 0 ]]; then
+    echo "  call_antsapplytransforms exited with nonzero status"
+    exit 1
+  fi
+
+  for h in "rh" "lh"; do
+
+    if [[ ! -f ${featdir}/${subj_ID}.${h}.zstat${nr}${q}.fsnative.mgh ]]; then
+      echo "  creating ${h}_zstat${nr}_fsnative.mgh"
+      mri_vol2surf --src ${new_warp} --out ${featdir}/${subj_ID}.${h}.zstat${nr}${q}_fsnative.mgh --regheader ${subj_ID} --hemi ${h}
+    fi
+
+    if [[ -f ${featdir}/${h}_zstat${nr}_fsnative.mgh ]]; then
+
+      if [[ -d ${SUBJECTS_DIR}/fsaverage ]]; then
+        if [[ ! -f ${featdir}/${subj_ID}.${h}.zstat${nr}${q}_fsaverage.mgh ]]; then
+          echo "  creating ${h}_zstat${nr}_fsaverage.mgh"
+          mri_surf2surf \
+            --srcsubject ${subj_ID} \
+            --trgsubject fsaverage \
+            --hemi ${h} \
+            --sval ${featdir}/${subj_ID}.${h}.zstat${nr}${q}_fsnative.mgh \
+            --tval ${featdir}/${subj_ID}.${h}.zstat${nr}${q}_fsaverage.mgh
+        fi
+      fi
+
+    fi
+
+    if [[ $? -ne 0 ]]; then
+      echo "  mri_vol2surf exited with nonzero status"
+      exit 1
+    fi
+
+  done
+
+done

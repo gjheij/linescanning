@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_checkfunction
+
+This function uses "type" to check whether the given function exists within the system. This can be
+useful if you're not sure everything is setup appropriately, and is used for instance to check if
+the linescanning repo is setup accordingly, and whether we have dcm2niix.
+
+You can specify multiple function and check their existence. The function will loop through the given
+arguments.
+
+Usage:
+  call_checkfunction <function1> <function2>
+
+Example
+  call_checkfunction dcm2niix call_freesurfer
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+if [[ $# -lt 1 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+for i in "$@"; do
+
+  FN=`type -t ${i}`
+
+  if [[ -z ${FN} ]]; then
+    exit 1
+  fi
+
+done

@@ -1,0 +1,192 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------------
+spinoza_averagesanatomies
+
+This script takes the MP2RAGE and MEMP2RAGE-derived T1-weighted images to calculate the average. This re-
+sults in an image that takes advantage of the better WM/GM contrast of the MP2RAGE and the QSM-properties
+of the MEMP2RAGE sequence.
+
+This will only happen if you have two elements in the ACQ variable of the setup script and if the DATA-
+variable is set to "AVERAGE"
+
+Usage:
+  spinoza_averagesanatomies <-s sub> <-n ses> <directory with anatomies to average> <root output directory>
+
+Example:
+  spinoza_averagesanatomies $DIR_DATA_DERIV $DIR_DATA_DERIV
+  spinoza_averagesanatomies -s 001 -n 1 $DIR_DATA_DERIV $DIR_DATA_DERIV
+
+Notes:
+  - Has the '-s' and '-n' switches to specify a particular subject and session if present
+
+---------------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+if [[ $# -lt 2 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+# Check for subject & session flags
+while getopts s:n: argument
+do
+    case ${argument} in
+      s)  sub=${OPTARG}
+            ;;
+      n)  ses=${OPTARG}
+            ;;
+    esac
+done
+
+if [[ $# -lt 2 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+INPUT=${@:$OPTIND:1}
+OUTPUT=${@:$OPTIND+1:1}
+SESSION=${@:$OPTIND+2:1}
+
+if [[ -z ${sub} ]]; then
+  # loop through subjects
+  search="${INPUT}/sub-*"
+else
+  # do for 1 subject
+  sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
+  search="${INPUT}/sub-${sub_nr}"
+fi
+
+#-----------------------------------------------------------------------------
+# Start clock
+#-----------------------------------------------------------------------------
+
+echo "==================================================================================================="
+printf "NEW AVERAGING OF ANATOMICAL SCANS CREATED WITH PYMP2RAGE AND REGISTERED WITH ANTs\n"
+start=`date +%s`
+start_date=`date`
+
+printf "Started at ${start_date}\n"
+echo "==================================================================================================="
+
+#-----------------------------------------------------------------------------
+# Run it
+
+for dir in ${search}; do
+
+  if [[ ! -d ${INPUT} ]]; then
+    echo "  `basename ${dir}`: Could not find input directory"
+		continue
+  fi
+
+  #-------------------------------------------------------------------------------------------------
+  # calculate the averages of UNI T1, INV1, and INV2
+
+  echo
+  echo "**************************************** Processing `basename ${dir}` ***************************************"
+
+  if [[ ! -z ${SESSION} ]]; then
+    outdir=${OUTPUT}/$(basename ${dir})/ses-${SESSION}
+    indir=${INPUT}/$(basename ${dir})/ses-${SESSION}
+    base="$(basename ${dir})_ses-${SESSION}"
+  else
+    outdir=${OUTPUT}/$(basename ${dir})
+    indir=${INPUT}/$(basename ${dir})
+    base="$(basename ${dir})"
+  fi
+
+  if [[ ! -d ${outdir} ]]; then
+    mkdir -p ${outdir}
+  fi
+
+  if [[ ${DATA^^} != "AVERAGE" ]]; then
+    echo "${DATA^^} != \"AVERAGE\".. Check spinoza_setup first.."
+    exit 1
+  fi
+
+  declare -a OUTPUTS=(T1w T1map)
+  declare -a MAX=("4095" "5050")
+
+  for i in ${OUTPUTS[@]}; do
+
+    out=${outdir}/${base}_acq-${DATA}_${i}.nii.gz
+
+    if [[ ! -f ${out} ]]; then
+
+      in_1=`find "${indir}" -type f \( -name "*acq-${ACQ1^^}*" -and -name "*${i}.nii.gz" \) 2>/dev/null`
+      in_2=`find "${indir}" -type f \( -name "*space-${ACQ1^^}*" -and -name "*acq-${ACQ2^^}*" -and -name "*${i}.nii.gz" \) 2>/dev/null`
+
+      if [[ ! -z ${in_1} && ! -z ${in_2} ]]; then
+
+        echo "  Calculate mean over `basename ${in_1}` and `basename ${in_2}`"
+        call_calculatemean ${in_1} ${in_2} ${out}
+
+      else
+        if [[ -z ${in_1} ]]; then
+          echo "  Couldn't find ANTs registered ${i} image"
+        elif [[ -z ${in_2} ]]; then
+          echo "  Couldn't pymp2rage ${i} image"
+        else
+          echo "  Missing both ANTs registered and pymp2rage image"
+        fi
+        continue
+      fi
+
+      if [[ ${i} == "T1w" ]] || [[ ${i} == "T1map" ]]; then
+
+        # check if registration induced NANs
+        NAN=`fslstats ${out} -R | awk '{print $1}'`
+        if [[ ${NAN} == "-nan" ]]; then
+          echo "  Found NANs, replacing these values with zeroes"
+          fslmaths ${out} -nan ${out}
+        fi
+
+        # check if registration induced NANs
+        ZERO=`fslstats ${out} -R | awk '{print $1}'`
+        if [[ ${ZERO} != "0" ]]; then
+
+          if [[ ${i} == "T1w" ]]; then
+            max=${MAX[0]}
+          elif [[ ${i} == "T1map" ]]; then
+            max=${MAX[1]}
+          fi
+
+          echo "  Rescaling to [0, ${max}] with ImageMath"
+          call_rescale ${out} 0 ${max}
+
+        fi
+
+      fi
+
+    else
+
+      echo "  `basename ${out}` already present"
+
+    fi
+
+  done
+
+done
+
+#-----------------------------------------------------------------------------
+# Calculate time spent using 'let'
+echo
+echo "---------------------------------------------------------------------------------------------------"
+end=`date +%s`
+end_date=`date`
+printf "Done at ${end_date}\n"
+
+let deltatime=end-start
+let hours=deltatime/3600
+let minutes=(deltatime/60)%60
+let seconds=deltatime%60
+printf "Time spent: %d:%02d:%02d\n" ${hours} ${minutes} ${seconds}
+echo "---------------------------------------------------------------------------------------------------"

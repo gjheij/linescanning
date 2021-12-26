@@ -1,0 +1,89 @@
+#!/usr/bin/env python
+
+from linescanning.utils import get_file_from_substring
+import sys, getopt
+import os
+import numpy as np
+np.set_printoptions(precision=3, suppress=True)
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_prfinfo
+
+Fetch pRF-information about a given vertex. Fetches the information from *desc-prf_params.npy in 
+the derivatives/prf/<subject> folder
+
+Args:
+    -s <subj name>      str:
+                        name of the directory as specified in the pycortex filestore directory
+
+    -v <vertex>         int:
+                        vertex to extract information from
+
+    -h <hemi>           str:   
+                        'lh' or 'rh', as numpy array is stacked left hemi first, then right hemi
+                        (default = lh)
+
+    -p <prf_file>       str:
+                        if left empty, will default to derivatives/prf/<subject>/*desc-prf_params.npy
+
+Outputs
+    array of pRF-parameters of requested vertex
+
+Example:
+    call_prfinfo -s sub-001 -v 3386 -h lh
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    subject     = None
+    vertex      = None
+    prf_info    = None
+    hemi        = 'lh'
+
+    try:
+        opts = getopt.getopt(argv,"qs:v:p:h:",["subject=", "vertex=", "prf=", "hemi="])[0]
+    except getopt.GetoptError:
+        print(main.__doc__)
+        sys.exit(2)
+
+    for opt, arg in opts:
+        if opt == '-q':
+            print(main.__doc__)
+            sys.exit()
+        elif opt in ("-s", "--subject"):
+            subject = arg
+        elif opt in ("-v", "--vertex"):
+            vertex = int(arg)
+        elif opt in ("-p", "--prf"):
+            prf_info = arg  
+        elif opt in ("-h", "--hemi"):
+            hemi = arg
+
+    if len(argv) < 1:
+        print("\nNEED AT LEAST A SUBJECT ID")
+        print(main.__doc__)
+        sys.exit()
+
+    if not prf_info:
+        prf_info = get_file_from_substring('desc-prf_params', opj(os.environ['PRF'], subject))
+    
+    info = np.load(prf_info)
+
+    if hemi == "rh":
+        tmp = get_file_from_substring("desc-avg_bold_hemi-L.npy", opj(os.environ['PRF'], subject))
+        vertex = np.load(tmp).shape[-1]+vertex
+
+    vert_info = info[vertex,:]
+    polar = np.angle(vert_info[0]+vert_info[1]*1j)
+    ecc = np.sqrt(vert_info[0]**2+vert_info[1]**2)
+
+    vert_info = np.append(vert_info,(polar,ecc))
+    info = {'x': vert_info[0],'y': vert_info[1],'size': vert_info[2],'beta': vert_info[3],'baseline': vert_info[4],'r2': vert_info[5],'polar': vert_info[6],'ecc': vert_info[7]}
+    print(info)
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

@@ -1,0 +1,63 @@
+#!/usr/bin/env python
+
+import os
+from numpy.lib.arraysetops import isin
+from scipy import ndimage
+import nibabel as nb
+import sys
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_dilate
+
+Dilate a binary mask with ndimage
+
+Args:
+    <input img>     path to input image
+    <output img>    path to output image (if left empty, <input img> will be overwritten)
+    <iterations>    number of iterations
+    <mask>          If a mask is given, only those elements with a True value at the corresponding 
+                    mask element are modified at each iteration.
+
+Example:
+    call_dilate  input.nii.gz output.nii.gz
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    input   = None
+    output  = None
+    nr_iter = 2
+    mask    = None
+
+    if len(argv) < 2:
+        print("\nPLEASE SPECIFY INPUT AND OUTPUT IMAGE")
+        print(main.__doc__)
+        sys.exit()
+
+    try:
+        input   = argv[0]
+        output  = argv[1]
+        nr_iter = int(argv[2])
+        mask    = argv[3]
+    except:
+        input   = argv[0]
+        output  = argv[1]
+        nr_iter = int(argv[2])
+
+    img = nb.load(input)
+
+    if mask:
+        mask = nb.load(mask).get_fdata()
+        dilated = ndimage.binary_dilation(img.get_fdata(), iterations=nr_iter, mask=mask)
+    else:
+        dilated = ndimage.binary_dilation(img.get_fdata(), iterations=nr_iter)
+        
+    nb.Nifti1Image(dilated, affine=img.affine, header=img.header).to_filename(output)
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

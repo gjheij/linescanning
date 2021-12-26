@@ -1,0 +1,77 @@
+#!/usr/bin/env python
+
+import sys, getopt
+import os
+from nilearn import image
+from scipy import ndimage
+import pathlib
+import nibabel as nb
+import warnings
+warnings.filterwarnings("ignore")
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_rmbackground
+
+Remove background noise from an MP2RAGE-image using a brain mask and the second inversion image (1st
+echo).
+
+Args:
+    -t (--t1w)      T1-weighted image with background noise
+    -m (--mask)     Brain mask (e.g., from running FSL's BET on INV2)
+    -i (--inv2)     Second inversion
+    -o (--output)   Output image
+
+Outputs
+    - masked T1w image
+
+Example:
+    call_rmbackground -t t1w.nii.gz -m mask.nii.gz -i inv2.nii.gz -o masked.nii.gz
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    t1w_fn  = None
+    mask    = None
+    inv2    = None
+    output  = None
+
+    try:
+        opts = getopt.getopt(argv,"ht:m:i:o:",["t1w=", "mask=", "inv=", "output="])[0]
+    except getopt.GetoptError:
+        print(main.__doc__)
+        sys.exit(2)
+
+    for opt, arg in opts:
+        if opt == '-h':
+            print(main.__doc__)
+            sys.exit()
+        elif opt in ("-t", "--t1w"):
+            t1w_fn = arg
+        elif opt in ("-m", "--mask"):
+            mask = arg
+        elif opt in ("-i", "--inv2"):
+            inv2 = arg            
+        elif opt in ("-o", "--output"):
+            output = arg
+
+    if len(argv) < 4:
+        print("\nNOT ENOUGH ARGUMENTS SPECIFIED")
+        print(main.__doc__)
+        sys.exit()
+
+    mask = image.math_img('(t1w_mask > 0)', t1w_mask=mask)
+
+    new_t1w = image.math_img('t1w * t1w_mask * np.mean(inv2[t1w_mask == 1]/np.max(inv2))'
+                                '+ t1w * inv2/np.max(inv2) * (1-t1w_mask)',
+                                t1w=t1w_fn,
+                                t1w_mask=mask,
+                                inv2=inv2)
+
+    new_t1w.to_filename(output)
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

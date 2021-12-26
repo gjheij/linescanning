@@ -1,0 +1,208 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+spinoza_biassanlm
+
+Sometimes CAT12 can be a bit of an overkill with smoothing and bias corrections. This script should
+be run prior to "spinoza_brainextraction", and runs a SANLM-filter over the image as well as an bias
+field correction with SPM. The subsequent "spinoza_brainextraction" should be run with the "-m brain"
+flag as to turn off bias correction and denoising with CAT12.
+
+The input image is expected to reside in the input directory and to contain "acq-${ACQ1}" and end
+with *T1w.nii.gz.
+
+Usage:
+  spinoza_biascorrection <-s sub> <-n ses> <dir_to_input_file> <dir_to_output>
+
+Outputs:
+  <dir_to_output>/<subject>/ses-1/<subject>${SES}_acq-${ACQ1}_<T1w|inv-2>.nii.gz
+
+Example:
+  spinoza_biascorrection $DIR_DATA_DERIV/pymp2rage
+  spinoza_biascorrection $DIR_DATA_DERIV/pymp2rage $DIR_DATA_DERIV/bias
+  spinoza_biascorrection -s 001 -n 1 $DIR_DATA_HOME
+
+Notes:
+  - Has the '-s' and '-n' switches to specify a particular subject and session if present
+  - <dir_to_output> is not a required argument. If not specified, the input file will be overwritten.
+    The latter is default.
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+# Check for subject flag
+while getopts os:n: argument
+do
+  case ${argument} in
+    s)  sub=${OPTARG}
+          ;;
+    n)  ses=${OPTARG}
+          ;;
+  esac
+done
+
+if [[ $# -lt 1 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+INPUT=${@:$OPTIND:1}
+OUTPUT=${@:$OPTIND+1:1}
+
+if [[ -z ${sub} ]]; then
+  # loop through subjects
+  search="${INPUT}/sub-*"
+else
+  # do for 1 subject
+  sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
+  search="${INPUT}/sub-${sub_nr}"
+fi
+
+if [[ "${@}" == *"-o"* ]]; then
+  OW=1
+else
+  OW=0
+fi
+
+#-----------------------------------------------------------------------------
+# Start clock
+#-----------------------------------------------------------------------------
+
+echo
+echo "==================================================================================================="
+printf "Bias field correction and sanlm-filtering\n"
+start=`date +%s`
+start_date=`date`
+
+printf "Started at ${start_date}\n"
+echo "==================================================================================================="
+
+#-----------------------------------------------------------------------------
+# Run it
+
+for dir in ${search}; do
+
+  if [[ -z ${ses} ]]; then
+    base_dir=$(basename ${dir})
+    base="$(basename ${dir})"
+  else
+    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
+    base_dir=$(basename ${dir})/ses-${nr}
+    base="$(basename ${dir})_ses-${nr}"
+  fi
+
+  if [[ "${INPUT}" == "${DIR_DATA_HOME}" ]]; then
+    INPUTDIR=${INPUT}/${base_dir}/anat
+  else
+    INPUTDIR=${INPUT}/${base_dir}
+  fi
+
+  # set outputdir to inputdir if outputdir not specified
+  if [[ ! -z ${OUTPUT} ]]; then
+    OUTPUTDIR=${OUTPUT}/${base_dir}
+  else
+    OUTPUTDIR=${INPUTDIR}
+  fi
+
+  if [[ ! -d ${OUTPUTDIR} ]]; then
+    mkdir -p ${OUTPUTDIR}
+  fi
+
+  if [[ ! -d ${INPUTDIR} ]]; then
+    echo " `basename ${dir}`: Could not find directory containing file to be bias field corrected"
+    continue
+  fi
+
+  input=`find "${INPUTDIR}" -maxdepth 1 -type f \( -name "*acq-${ACQ1}*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
+
+  if [[ ! -z ${input} ]]; then
+
+    output=${OUTPUTDIR}/$(basename ${input})
+
+    if [[ ${OW} -eq 1 ]]; then
+      rm ${output}
+    fi
+
+    t1map=`find "${INPUTDIR}" -maxdepth 1 -type f \( -name "*acq-${ACQ1}*" -and -name "*T1map.nii.gz" \) 2>/dev/null`
+    if [[ ! -z ${t1map} ]]; then
+      # copy t1map to output for later reference
+      cp ${t1map} $(dirname ${output})
+    fi
+    
+    if [[ ! -f ${output} ]]; then
+
+      echo
+      echo "**************************************** Processing `basename ${dir}` ***************************************"
+
+      echo "Running SANLM-filter"
+      call_spmsanlm ${input} ${OUTPUTDIR}/denoised.nii.gz
+
+      if [[ $? != 0 ]]; then
+        echo
+        echo "---------------------------------------------------------------------------------------------------"
+        echo "ERROR in `basename ${0}`: call_spmsanlm exited with non-zero status"
+        exit 1
+      fi
+
+      # check if we should overwrite input image or store in different directory
+      if [[ ${INPUTDIR} == ${OUTPUTDIR} ]]; then
+        output=${input}
+      else
+        output=${OUTPUTDIR}/$(basename ${input})
+      fi
+
+      echo "Running bias field correction with SPM"
+      call_spmbias ${OUTPUTDIR}/denoised.nii.gz ${output}
+
+      if [[ $? != 0 ]]; then
+        echo
+        echo "---------------------------------------------------------------------------------------------------"
+        echo "ERROR in `basename ${0}`: call_spmbias exited with non-zero status"
+        exit 1
+      fi
+
+      rm -r ${OUTPUTDIR}/denoised.nii.gz 2>/dev/null
+
+      echo "Done"
+
+    else
+      echo "`basename ${dir}`: `basename ${output}` already exists"
+      continue
+    fi
+
+  else
+
+    echo "`basename ${dir}`: Did not find an input file"
+    continue
+
+  fi
+
+  spm_mask=`find "${INPUTDIR}" -maxdepth 1 -type f \( -name "*acq-${ACQ1}*" -and -name "*spm_mask.nii.gz" \) 2>/dev/null`
+  if [ ! -z ${spm_mask} ]; then
+    cp ${spm_mask} ${OUTPUTDIR} 2>/dev/null
+  fi
+
+done
+
+#-----------------------------------------------------------------------------
+# Calculate time spent using 'let'
+echo
+echo "---------------------------------------------------------------------------------------------------"
+end=`date +%s`
+end_date=`date`
+printf "Done at ${end_date}\n"
+
+let deltatime=end-start
+let hours=deltatime/3600
+let minutes=(deltatime/60)%60
+let seconds=deltatime%60
+printf "Time spent: %d:%02d:%02d\n" ${hours} ${minutes} ${seconds}
+echo "---------------------------------------------------------------------------------------------------"

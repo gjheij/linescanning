@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_fslbet
+
+wrapper for brain extraction with FSL's BET algorithm. Automatically creates a mask as well. Used
+in spinoza_brainextraction
+
+Usage:
+call_fslbet <input file> <output file> <generate output (y|n)>
+
+Example:
+  call_fslbet.sh /path/to/inputfile.nii.gz /path/to/outputfile.nii.gz y
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+if [[ $# -lt 3 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+#-----------------------------------------------------------------------------
+# Run it
+if [[ -f $1 && ! -f $2 ]]; then
+
+  if [[ $3 == y ]] || [[ $3 == Y ]]; then
+    # generating segmented output
+    bet $1 $2 -m -s -A
+  elif [[ $3 == n ]] || [[ $3 == N ]]; then
+    # not generating output, only need mask
+    bet2 $1 $2 -m -s -n
+  else
+    # no valid option specified as 3rd argument
+    echo "Please specify either \"y\" or \"n\" as 3rd argument.."
+    exit 1
+  fi
+
+fi

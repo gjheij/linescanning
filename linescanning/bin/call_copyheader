@@ -1,0 +1,54 @@
+#!/usr/bin/env python
+
+import os, sys
+from linescanning.utils import copy_hdr
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_copyheader
+
+This super short script copies the header from a source image to a destination image. It has similar
+features as fslcpgeom, but then more rigorous: it copies EVERYTHING.
+
+Args:
+    <src file>        string-like path to file to extract header from
+    <dest file>       string-like path to copy header to
+    <out file>        string-like path to output file (optional; if not specified <dest file> will
+                      be overwritten)
+
+Outputs
+    output file       new volume with updated header
+
+Example:
+    call_copyheader source.nii.gz destination.nii.gz <output.nii.gz>
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    src_file     = None
+    dest_file    = None
+    out_file     = None
+
+    if len(argv) < 2:
+        print("NOT ENOUGH ARGUMENTS SPECIFIED")
+        print(main.__doc__)
+        sys.exit()
+
+    try:
+        src_file     = argv[0]
+        dest_file    = argv[1]
+        out_file     = argv[2]
+    except:
+        src_file     = argv[0]
+        dest_file    = argv[1]
+        out_file     = dest_file
+
+    if os.path.isfile(src_file):
+        new = copy_hdr(src_file,dest_file)
+        new.to_filename(out_file)
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

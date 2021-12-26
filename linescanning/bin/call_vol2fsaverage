@@ -1,0 +1,170 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_vol2fsaverage
+
+This script projects a volume in subject space to the surface from FSAverage. Assumes that the vo-
+lume is in FS-space (can be achieved with spinoza_line2surface). It first projects the volume to
+the surface of the subject with mri_vol2surf, and then to the surface of FSAverage with mri_surf2-
+surf. It will do the projection for both hemispheres automatically.
+
+Args:
+  <-r file>   registration file; sometimes useful if you're warping partial FOVs and want to use
+              an identity matrix for instance.
+  <-o out>    output directory
+  <-p prefix> use custom prefix rather than <subject>
+  <-t>        set repetition time in .gii-files
+  <subject>   subject ID as used in the FreeSurfer directory
+  <in_file>   path to the input file that needs to be projected to the surface
+  <suffix>    suffix for the output. The output file will be an .gii file in both the subject-
+              specific folder (mri_vol2surf) and fsaverage/volumes. <subject>_hemi-<L|R>_space-
+              <fsnative|fsaverage>_<suffix>.gii is default
+
+Usage:
+  call_vol2fsaverage <-r register.dat> <-o output dir> <-p prefix> <subject> <in_file> <out_name>
+
+Example:
+  call_vol2fsaverage sub-001 t1map.nii.gz T1map
+  call_vol2fsaverage -r ident.dat sub-001 bold.nii.gz bold.func
+  call_vol2fsaverage -o /some/directory -r ident.dat sub-001 bold.nii.gz bold.func
+  call_vol2fsaverage -p sub-999_ses-1_task-pRF -r ident.dat sub-001 bold.nii.gz run-1_bold.func
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+if [[ $# -lt 3 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+# Check for subject & session flags
+while getopts tr:o:p: argument
+do
+  case ${argument} in
+    r)  reg_file=${OPTARG}
+          ;;
+    o)  out_dir=${OPTARG}
+          ;;
+    p)  prefix=${OPTARG}
+          ;;
+  esac
+done
+
+SUBJECT=${@:$OPTIND:1}
+INPUT=${@:$OPTIND+1:1}
+SUFFIX=${@:$OPTIND+2:1}
+
+if [[ -z ${reg_file} ]]; then
+  REG="--regheader ${SUBJECT}"
+else
+  REG="--reg ${reg_file}"
+fi
+
+if [[ -z ${out_dir} ]]; then
+  fsnative_dir=${SUBJECTS_DIR}/${SUBJECT}/mri
+  fsaverage_dir=${SUBJECTS_DIR}/fsaverage/volumes
+else
+  fsnative_dir=${out_dir}
+  fsaverage_dir=${out_dir}
+fi
+
+if [[ -z ${prefix} ]]; then
+  PREF="${SUBJECT}"
+else
+  PREF="${prefix}"
+fi
+
+if [[ "${@}" == *"-t"* ]]; then
+  set_tr=1
+  TR_float_sec=`fslval ${INPUT} pixdim4`
+
+  # convert to integer in milliseconds to be consistent with fMRIprep
+  TR_int_ms="$(printf '%d' `echo "${TR_float_sec} * 1000" | bc` 2>/dev/null)"
+  echo "Setting TR to ${TR_int_ms}"
+else
+  set_tr=0
+  TR_int_ms=""
+fi
+
+#-----------------------------------------------------------------------------
+# Run it
+for ii in "lh" "rh"; do
+
+  if [[ ${ii} == "lh" ]]; then
+    hemi="hemi-L"
+  elif [[ ${ii} == "rh" ]]; then
+    hemi="hemi-R"
+  fi
+
+  # project volume to subject-specific space
+  fsnative=${fsnative_dir}/${PREF}_${hemi}_space-fsnative_${SUFFIX}.gii
+  mri_vol2surf --src ${INPUT} --out ${fsnative} ${REG} --hemi ${ii} --projfrac 0.5
+
+  if [[ $? -ne 0 ]]; then
+    echo "ERROR in `basename ${0}`: mri_vol2surf exited with non-zero status"
+    exit 1
+  fi
+
+  # project the output to fsaverage
+  fsaverage=${fsaverage_dir}/${PREF}_${hemi}_space-fsaverage_${SUFFIX}.gii
+  if [[ ! -d ${fsaverage_dir} ]]; then
+    mkdir -p ${fsaverage_dir}
+  fi
+
+  mri_surf2surf \
+    --srcsubject ${SUBJECT} \
+    --trgsubject fsaverage \
+    --hemi ${ii} \
+    --sval ${fsnative} \
+    --tval ${fsaverage}
+
+  if [[ $? -ne 0 ]]; then
+    echo "ERROR in `basename ${0}`: mri_surf2surf exited with non-zero status"
+    exit 1
+  fi
+
+done
+
+echo "Stacking gifti's into numpy-array"
+# stacking giftis into numpy array so we can load them in with Pycortex
+for space in 'fsnative' 'fsaverage'; do
+
+  if [ ${space} == "fsaverage" ]; then
+    output_path=${fsaverage_dir}
+  else
+    output_path=${fsnative_dir}
+  fi
+
+  lh=${output_path}/${PREF}_hemi-L_space-${space}_${SUFFIX}.gii
+  rh=${output_path}/${PREF}_hemi-R_space-${space}_${SUFFIX}.gii
+  both_hemis=${output_path}/${PREF}_hemi-LR_space-${space}_${SUFFIX}.npy
+  call_stackgifti ${lh} ${rh} ${both_hemis}
+
+  if [[ $? -ne 0 ]]; then
+    echo "ERROR in `basename ${0}`: call_stackgiftis exited with non-zero status"
+    exit 1
+  fi
+
+  # add TR to metadata of gifti
+  if [[ ${set_tr} -eq 1 ]]; then
+    if [[ ! -z ${TR_int_ms} ]]; then
+      call_giftimeta ${lh} "${TR_int_ms}"
+      call_giftimeta ${rh} "${TR_int_ms}"
+
+      if [[ $? -ne 0 ]]; then
+        echo "ERROR in `basename ${0}`: call_giftimeta exited with non-zero status"
+        exit 1
+      fi
+    fi
+  fi
+
+done
+

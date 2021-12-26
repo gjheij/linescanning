@@ -1,0 +1,286 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# check if there's is a setup file containing the major paths and source it if it exists
+call_loadsetup
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+spinoza_createskullduramasks
+
+estimate the location of the skull and dura using nighres. You are to specify the path to the input
+T1w-images (e.g., pymp2rage), the input INV2 image (e.g., the bias field corrected INV2 in the ANTs
+folder, the nighres output folder, and the folder to store the masks.
+
+Usage:
+  spinoza_createskullduramasks <-s sub> <-n ses> <input anat> <input inv2> <nighres output>
+                               <mask output>
+
+Example:
+  spinoza_createskullduramasks T1wdir INV2dir nighresdir maskdir
+  spinoza_createskullduramasks -s 001 -n 1 T1wdir INV2dir nighresdir maskdir
+
+Notes:
+  - Has the '-s' and '-n' switches to specify a particular subject and session if present
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+# Check for subject & session flags
+while getopts s:n: argument
+do
+    case ${argument} in
+      s)  sub=${OPTARG}
+            ;;
+      n)  ses=${OPTARG}
+            ;;
+    esac
+done
+
+if [[ $# -lt 4 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+T1W=${@:$OPTIND:1}
+INV2=${@:$OPTIND+1:1}
+OUTPUT=${@:$OPTIND+2:1}
+MASKS=${@:$OPTIND+3:1}
+
+if [[ -z ${sub} ]]; then
+  # loop through subjects
+  search="${T1W}/sub-*"
+else
+  # do for 1 subject
+  sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
+  search="${T1W}/sub-${sub_nr}"
+fi
+
+#-----------------------------------------------------------------------------
+# Start clock
+#-----------------------------------------------------------------------------
+
+echo
+echo "==================================================================================================="
+printf "NEW SKULL & DURA ESTIMATION USING NIGHRES\n"
+start=`date +%s`
+start_date=`date`
+
+printf "Started at ${start_date}\n"
+echo "==================================================================================================="
+
+#-----------------------------------------------------------------------------
+# Run it
+
+for dir in ${search}; do
+
+  if [[ -z ${ses} ]]; then
+    base_dir=$(basename ${dir})
+    base="$(basename ${dir})"
+  else
+    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
+    base_dir=$(basename ${dir})/ses-${nr}
+    base="$(basename ${dir})_ses-${nr}"
+  fi
+
+  mask_dir=${MASKS}/${base_dir}
+  input_dir=${T1W}/${base_dir}
+  inv2_dir=${INV2}/${base_dir}
+  outdir_dura=${OUTPUT}/${base_dir}/dura
+  outdir_skull=${OUTPUT}/${base_dir}/skullstrip
+
+  # LOOK FOR THE SECOND INVERSION IMAGE; PREFERABLY THE BIAS FIELD CORRECTED ONE
+  if [[ ${DATA} == "MEMP2RAGE" ]]; then
+    inv2=`find "${inv2_dir}" -type f \( -name "$(basename ${dir})*" -and -name "*echo-1*" -and -name "*inv-2*" -and -name "*${space^^}*" -and -name "*part-mag*" -and -name "*.nii.gz" \) 2>/dev/null`
+  else
+    inv2=`find "${inv2_dir}" -type f \( -name "$(basename ${dir})*" -and -not -name "*echo-*" -and -name "*inv-2*" -and -name "*${space^^}*" -and -name "*part-mag*" -and -name "*.nii.gz" \) 2>/dev/null`
+  fi
+
+  # LOOK FOR THE T1W IMAGE
+  t1w=`find "${input_dir}" -type f \( -name "$(basename ${dir})*" -and -name "*acq-${space^^}*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
+
+  # LOOK FOR THE T1-MAP IMAGE
+  t1map=`find "${input_dir}" -type f \( -name "*acq-${space^^}*" -and -name "*T1map.nii.gz" \) 2>/dev/null`
+
+  #----------------------------------------------------------------------------------------------------------------------------------------------------------
+  # Running dura mask module with call_nighresdura
+  output_root="${base}_acq-${space^^}_desc"
+	output_dura=${outdir_dura}/${output_root}-dura_proba.nii.gz
+  output_mask=${MASKS}/$(basename ${dir})/ses-1/${output_root}-dura_orig.nii.gz
+
+  if [[ ! -f ${output_mask} ]]; then
+
+    inv2_mask=`find "${mask_dir}" -type f \( -name "*${space^^}*" -and -name "*spm_mask.nii.gz" \) 2>/dev/null`
+
+    if [[ -z ${inv2} ]]; then
+      echo "`basename ${dir}`: Missing INV2-image. Check ${inv2_dir} for:"
+      echo "  \"`basename ${dir}`\""
+      echo "  \"echo-1\""
+      echo "  \"inv-2\""
+      echo "  \"${space^^}\""
+      echo "  \"part-mag\""
+      echo
+      continue
+    fi
+
+    if [[ -z ${t1w} ]]; then
+      echo "`basename ${dir}`: Missing T1-weighted image. Check your input directory in the master script."
+      continue
+    fi
+
+    if [[ -z ${t1map} ]]; then
+      echo "  `basename ${dir}`: Missing T1map image. Check your input directory in the master script."
+      continue
+    fi
+
+    if [[ -z ${inv2_mask} ]]; then
+      echo "`basename ${dir}`: Missing INV2-mask image. Run brain extraction on INV2 first."
+      continue
+    fi
+
+    echo
+    echo "**************************************** Processing `basename ${dir}` ***************************************"
+
+    if [[ ! -d ${outdir_dura} ]]; then
+      mkdir -p ${outdir_dura}
+    fi
+
+    echo "Creating `basename ${output_mask}`"
+    echo " -inv2: ${inv2}"
+    echo " -mask: ${inv2_mask}"
+    echo " -out:  ${outdir_dura}/${output_root}_dura-proba.nii.gz"
+
+    if [[ ! -f ${output_dura} ]]; then
+
+      if [[ ! -f ${outdir_dura}/${output_root}_dura-proba.nii.gz ]]; then
+        echo "First running nighres to estimate the dura"
+
+        if [[ -f ${inv2} && -d ${outdir_dura} ]]; then
+          call_nighresdura -i "${inv2}" -m "${inv2_mask}" -o "${outdir_dura}" -b "${output_root}"
+
+          if [[ -f ${outdir_dura}/${output_root}_dura-proba.nii.gz ]]; then
+            mv ${outdir_dura}/${output_root}_dura-proba.nii.gz ${output_dura}
+          fi
+
+        else
+
+          echo "Missing input files. Check if you ran spinoza_registration.sh before this"
+          continue
+
+        fi
+
+      else
+
+        echo "Found nighres output. Renaming it"
+        mv ${outdir_dura}/${output_root}_dura-proba.nii.gz ${output_dura}
+
+      fi
+
+    fi
+
+    echo "Thresholding and binarizing `basename ${output_dura}`"
+
+    if [[ -f ${MASKS}/$(basename ${dir})/ses-1/tmp_$(basename ${output_dura}) ]]; then
+      rm ${MASKS}/$(basename ${dir})/ses-1/tmp_$(basename ${output_dura})
+    fi
+
+    # thresholding
+    if [[ -f ${output_dura} ]]; then
+      fslmaths ${output_dura} -thr 0.8 ${MASKS}/$(basename ${dir})/ses-1/tmp_$(basename ${output_dura})
+
+      # binarizing
+      fslmaths ${MASKS}/$(basename ${dir})/ses-1/tmp_$(basename ${output_dura}) -bin ${output_mask}
+      fslcpgeom ${inv2_mask} ${output_mask}
+
+    else
+      echo "Could not find nighres' dura output"
+    fi
+
+    # clearing out directory
+    if [[ -f ${MASKS}/$(basename ${dir})/ses-1/tmp_$(basename ${output_dura}) ]]; then
+      rm ${MASKS}/$(basename ${dir})/ses-1/tmp_$(basename ${output_dura})
+    fi
+
+  else
+
+    echo "`basename ${output_mask}` already exists"
+
+  fi
+
+  #----------------------------------------------------------------------------------------------------------------------------------------------------------
+  # Running skullstrip module with call_nighresskullstrip.py
+
+	output_skullstrip=${outdir_skull}/${output_root}-strip_mask.nii.gz
+
+  if [[ ! -f ${output_skullstrip} ]]; then
+
+    echo
+    echo "Creating `basename ${output_skullstrip}`"
+
+    if [[ -f ${t1w} && -f ${t1map} && -f ${inv2} ]]; then
+
+      if [[ ! -d ${outdir_skull} ]]; then
+        mkdir -p ${outdir_skull}
+      fi
+
+      output_skullnighres=${outdir_skull}/${output_root}_strip_mask.nii.gz
+      if [[ ! -f ${output_skullnighres} ]]; then
+        call_nighresskullstrip -i ${inv2} -t ${t1w} -m ${t1map} -o ${outdir_skull} -b ${output_root}
+      else
+        echo "Found nighres output for skullstripping module"
+      fi
+
+    else
+      printf "Missing following file(s): "
+			if [[ ! -f ${t1w} ]]; then
+				echo "t1-weighted image "
+			elif [[ ! -f ${t1map} ]]; then
+				echo "t1map image"
+			elif [[ ! -f ${inv2} ]]; then
+				echo "2nd inversion image"
+			else
+				echo "multiple images not found"
+			fi
+			continue
+    fi
+
+    declare -a NIGH_OUT=(mask inv2 t1w t1map)
+    for f in ${NIGH_OUT[@]}; do
+      out=`find "${outdir_skull}" -type f \( -name "*${f}*" -and -name "*${space^^}*" \) 2>/dev/null`
+
+      if [[ ! -f ${outdir_skull}/${output_root}-strip_${f}.nii.gz ]]; then
+        if [[ ! -z ${out} ]]; then
+          mv ${out} ${outdir_skull}/${output_root}-strip_${f}.nii.gz
+          fslcpgeom ${inv2} ${outdir_skull}/${output_root}-strip_${f}.nii.gz
+        else
+          echo "Could not find file for mgdm output: ${f}"
+        fi
+      fi
+
+    done
+
+  fi
+
+done
+
+#-----------------------------------------------------------------------------
+# Calculate time spent using 'let'
+echo
+echo "---------------------------------------------------------------------------------------------------"
+end=`date +%s`
+end_date=`date`
+printf "Done at ${end_date}\n"
+
+let deltatime=end-start
+let hours=deltatime/3600
+let minutes=(deltatime/60)%60
+let seconds=deltatime%60
+printf "Time spent: %d:%02d:%02d\n" ${hours} ${minutes} ${seconds}
+echo "---------------------------------------------------------------------------------------------------"

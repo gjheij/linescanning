@@ -1,0 +1,73 @@
+#!/usr/bin/env python
+
+import os
+import numpy as np
+import warnings
+from nilearn import image
+import nibabel as nb
+import sys, getopt
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_fixbrainmask
+
+Sometimes the brainmask.mgz image contains remnants of the skull around the mouth/eye area. I am not
+entirely sure where this comes from and to what extent this affects the surface reconstruction, but 
+this script can be used to get rid of that by using a binary mask to mask that stuff out.
+
+Args:
+    <FreeSurfer>  directory containing segmentations from FreeSurfer
+    <Man seg>     directory containing manual segmentation edits or the path to a mask image
+
+Example:
+    call_fixbrainmask /path/to/fs /path/to/man_masks
+
+Example:
+    call_fixbrainmask /path/to/fs /path/to/man_masks
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    fsdir   = None
+    manseg  = None
+
+    if len(argv) < 2:
+        print("\nNEED AT LEAST A SUBJECT ID")
+        print(main.__doc__)
+        sys.exit()
+
+    fsdir   = argv[0]
+    manseg  = argv[1]
+
+    if not os.path.exists(fsdir):
+        raise ValueError(f"Could not find FreeSurfer folder; specify SUBJECTS_DIR/<subject>")
+    
+    # if we got a directory, look for file with 'spm_mask'
+    spm_mask = None
+    if not os.path.isfile(manseg):
+        for ii in os.listdir(manseg):
+            if "spm_mask" in ii:
+                spm_mask = opj(manseg, ii)
+        
+        if not spm_mask:
+            raise ValueError(f"Could find file with 'spm_mask' in '{manseg}'")
+    else:
+        spm_mask = manseg
+            
+    brainmask = opj(fsdir, 'mri', 'brainmask.mgz')
+
+    mask_img = image.resample_to_img(spm_mask, brainmask, interpolation='nearest')
+    mask_img = nb.freesurfer.MGHImage(mask_img.get_fdata().astype(np.float32), affine=mask_img.affine)
+
+    new_brainmask = image.math_img('brain * (mask > 0)',
+                                brain=brainmask,
+                                mask=mask_img)
+
+    new_brainmask.to_filename(opj(fsdir, 'mri', 'brainmask.mgz'))
+    new_brainmask.to_filename(opj(fsdir, 'mri', 'brain.finalsurfs.manedit.mgz'))
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

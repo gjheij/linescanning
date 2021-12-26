@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_createident
+
+Creates an identity transformation file in the style of FreeSurfer (lta/dat), ITK (mat/txt). Depen-
+ding on the extension specified in the output name the correct format will be inserted. If you want
+an FSL-matrix, use the '-f' flag
+
+Args:
+  -f        Make FSL-type identity matrix (kind of redundant as you can use the file shipped with 
+            FSL in $FSLDIR/src/flirt/flirtsch/ident.mat)
+  -s <sub>  Subject ID as used in FreeSurfer directory for FreeSurfer transformation file
+  <fname>   Output name of transformation file
+  <image>   If you specified a FreeSurfer file, we can insert the voxel dimensions in the transfor-
+            mation file, though this does not seem to be mandatory: 
+            see https://surfer.nmr.mgh.harvard.edu/fswiki/RegisterDat
+
+Usage:
+  call_createident <-f> <fname> <moving image>
+
+Example:
+  call_createident sub-001_from-anat_to-9slice_desc-genaff.mat (ITK)
+  call_createident sub-001_from-anat_to-9slice_desc-genaff.txt (ITK)
+  call_createident sub-001_from-anat_to-9slice_desc-genaff.lta moving.nii.gz (FreeSurfer)
+  call_createident sub-001_from-anat_to-9slice_desc-genaff.dat moving.nii.gz (FreeSurfer)
+
+Notes:
+  Can be used in combination with call_antsapplytransforms, by registering a full FOV to a par-
+  tial FOV like the 9-slice/1-slice images. You can do the following:
+
+  call_antsapplytransforms <ref> <mov> <out> <aff>
+  call_antsapplytransforms 9slice.nii.gz anat_ses-1.nii.gz layers-in-9slice.nii.gz this_affine.txt
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+if [[ $# -le 1 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+# Check for subject & session flags
+while getopts fs: argument
+do
+  case ${argument} in
+    s)  sub=${OPTARG}
+          ;;         
+  esac
+done
+
+fname=${@:$OPTIND:1}
+image=${@:$OPTIND+1:1}
+
+if [[ "${@}" == *"-f"* ]]; then
+  FSL=1
+else
+  FSL=0
+fi
+
+function fetch_extension {
+  fname=$(basename -- "$1")
+  ext="${fname##*.}"
+  filename="${fname%.*}"
+  echo "$ext"
+}
+
+ext=`fetch_extension ${fname}`
+
+if [[ ${FSL} -eq 1 ]]; then
+  (
+  echo "1 0 0 0"
+  echo "0 1 0 0"
+  echo "0 0 1 0"
+  echo "0 0 0 1"
+  ) >> ${fname}
+
+else
+
+  if [[ ${ext} == "mat" ]]; then
+
+    (
+    echo "#Insight Transform File V1.0"
+    echo "#Transform 0"
+    echo "Transform: MatrixOffsetTransformBase_double_3_3"
+    echo "Parameters: 1 0 0 0 1 0 0 0 1 0 0 0"
+    echo "FixedParameters: 0 0 0"
+    ) >> $(dirname ${fname})/$(basename ${fname} .mat).txt
+
+    ConvertTransformFile 3 $(dirname ${fname})/$(basename ${fname} .mat).txt ${fname} --convertToAffineType
+    rm -r $(dirname ${fname})/$(basename ${fname} .mat).txt 2>/dev/null
+
+  elif [[ ${ext} == "txt" ]]; then
+
+    (
+    echo "#Insight Transform File V1.0"
+    echo "#Transform 0"
+    echo "Transform: MatrixOffsetTransformBase_double_3_3"
+    echo "Parameters: 1 0 0 0 1 0 0 0 1 0 0 0"
+    echo "FixedParameters: 0 0 0"
+    ) >> ${fname}
+
+  elif [[ ${ext} == "dat" ]]; then
+
+    if [[ -z ${sub} ]]; then
+      echo "ERROR: this option requires the subject ID"
+      Usage >&2
+      exit 1
+    fi
+
+    if [[ -z ${image} ]]; then
+      in_plane=1
+      between_slice=1
+    else
+      in_plane=`fslval ${image} pixdim2`
+      between_slice=`fslval ${image} pixdim3`
+    fi
+    
+    # from https://surfer.nmr.mgh.harvard.edu/fswiki/RegisterDat
+    # 1. Subject - name of subject as found in $SUBJECTS_DIR/subject (not always necessary) 
+    # 2. In-plane voxel resolution in mm -- ignored 
+    # 3. Between-plane voxel resolution in mm -- ignored 
+    # 4. Intensity - used by tkregister2
+    # The footer line should always be "round".
+
+    (
+    echo "${sub}"
+    echo "${in_plane}"
+    echo "${between_slice}"
+    echo "0.150000"
+    echo "1 0 0 0"
+    echo "0 1 0 0"
+    echo "0 0 1 0"
+    echo "0 0 0 1"
+    echo "round"
+    ) >> ${fname}
+
+  elif [[ ${ext} == "lta" ]]; then
+
+    echo "ERROR: to-be implemented.. Choose .dat and use lta_convert"
+
+  else
+    echo "INVALID EXTENSION \"${ext^^}\" FOR OUTPUT FILE"
+    Usage >&2
+    exit 1
+  fi
+
+fi

@@ -1,0 +1,86 @@
+#!/usr/bin/env python
+
+from nighres.laminar import profile_sampling
+import sys, getopt
+import os
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_nighresprofsamp
+
+The Profile Sampling module of CBS Tools was used to transform the 2-dimensional level-sets to 3D
+representations of any input data
+
+Args:
+    -l (--layerimg=)    4D image containing levelset representations of different intracortical 
+                        surfaces on which data should be sampled (the 4D output from call_nighres-
+                        layering; "-layering_boundaries")
+    -s (--samplefrom=)  Image from which data should be sampled
+    -d (--outputdir=)   output directory
+    -n (--name=)        basename for output
+
+Outputs:
+    (taken from https://nighres.readthedocs.io/en/latest/laminar/profile_sampling.html)
+    Dictionary collecting outputs under the following keys (suffix of output files in brackets)
+
+    result (niimg): 4D profile image , where the 4th dimension represents the profile for each 
+                    voxel (-lps_data)
+
+Example:
+    call_nighresprofsamp -l sub-001_ses-1_acq-MP2RAGE_desc-layering_boundaries.nii.gz
+                         -s sub-001_ses-1_acq-MP2RAGE_T1map.nii.gz
+                         -d derivatives/nighres/sub-001/profiling
+                         -n sub-001_ses-1_acq-MP2RAGE_desc-profile_T1map
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    layers_lvls     = None
+    sample_from     = None
+    output_dir      = os.path.join(os.environ['NIGHRES'], 'sub-xxx', 'profiling')
+    output_base     = "sub-xxx-acq-MP2RAGE_desc"
+
+    try:
+        opts = getopt.getopt(argv,"hl:s:d:n:",["layerimg=", "samplefrom=", "outputdir=", "name="])[0]
+    except getopt.GetoptError:
+        print(main.__doc__)
+        print("ERROR IN ARGUMENTS")
+        sys.exit(2)
+
+    for opt, arg in opts:
+        if opt == '-h':
+            print(main.__doc__)
+            sys.exit()
+        elif opt in ("-l", "--layerimg"):
+            layers_lvls = arg
+        elif opt in ("-s", "--samplefrom"):
+            sample_from = arg
+        elif opt in ("-d", "--outputdir"):
+            output_dir = arg
+        elif opt in ("-n", "--name"):
+            output_base = arg
+
+    if len(argv) < 4:
+            print("\nNOT ENOUGH ARGUMENTS SPECIFIED")
+            print(main.__doc__)
+            sys.exit()
+
+    # Just plop everything in dir of segmentation
+    profile_sampling(layers_lvls,
+                     sample_from,
+                     save_data=True,
+                     output_dir=output_dir,
+                     file_name=output_base)
+
+    fn_old = opj(output_dir, output_base + "_lps-data.nii.gz")
+    fn_new = opj(output_dir, output_base + ".nii.gz")
+
+    if os.path.exists(fn_old):
+        # print("moving {fo} to {fn}".format(fo=os.path.basename(fn_old), fn=os.path.basename(fn_new)))
+        os.rename(fn_old, fn_new)
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

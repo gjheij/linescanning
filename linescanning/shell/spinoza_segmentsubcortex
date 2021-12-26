@@ -1,0 +1,198 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+spinoza_segmentsubcortex
+
+Subcortex segmentation using Nighres' MASSP-algorithm. Calls on call_nighresmassp; see that file
+for more information on the required inputs.
+
+Usage:
+  spinoza_segmentsubcortex <project root dir> <prob seg dir> <region> <overwrite>
+
+Arguments:
+  <-s sub>    digit subject number following 'sub-'
+  <-n ses>    integer session number following 'ses-'
+  <qsm dir>   parent directory containing the files required for MASSP. Files should end with:
+                - "*_R1.nii.gz"   > 1/T1map file
+                - "*_R2s.nii.gz"  > 1/T2* file
+                - "*_QSM.nii.gz"  > QSM file
+  <output>    root output directory (<subject>/[<ses->] will be appended!)
+
+Example:
+  spinoza_segmentsubcortex $DIR_DATA_HOME $DIR_DATA_DERIV/nighres
+  spinoza_segmentsubcortex -s sub-001 -n 1 $DIR_DATA_HOME $DIR_DATA_DERIV/nighres
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+if [[ $# -lt 2 ]] ; then
+  echo NOT ENOUGH ARGUMENTS SPECIFIED
+  Usage >&2
+  exit 1
+fi
+
+# Check for subject & session flags
+while getopts s:n: argument
+do
+    case ${argument} in
+      s)  sub=${OPTARG}
+            ;;
+      n)  ses=${OPTARG}
+            ;;
+    esac
+done
+
+if [[ $# -lt 3 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+INPUT=${@:$OPTIND:1}
+SKULL=${@:$OPTIND+1:1}
+OUTPUT=${@:$OPTIND+2:1}
+
+if [[ -z ${sub} ]]; then
+  # loop through subjects
+  search="${INPUT}/sub-*"
+else
+  # do for 1 subject
+  sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
+  search="${INPUT}/sub-${sub_nr}"
+fi
+
+#-----------------------------------------------------------------------------
+# Start clock
+#-----------------------------------------------------------------------------
+
+echo
+echo "==================================================================================================="
+printf "NEW SUBCORTEX PARCELLATION WITH NIGHRES\n"
+start=`date +%s`
+start_date=`date`
+
+printf "Started at ${start_date}\n"
+echo "==================================================================================================="
+
+#-----------------------------------------------------------------------------
+# Run it
+for dir in ${search}; do
+
+  if [[ -z ${ses} ]]; then
+    subdir=$(basename ${dir})
+    base="$(basename ${dir})"
+    nr=""
+  else
+    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
+    subdir=$(basename ${dir})/ses-${nr}
+    base="$(basename ${dir})_ses-${nr}"
+  fi
+
+  input_dir=${INPUT}/${subdir}
+  skull_dir=${SKULL}/${subdir}
+  output_dir=${OUTPUT}/${subdir}/massp
+
+  #----------------------------------------------------------------------------------------------------------------------------------------------------------
+  # Running MASSP with Nighres
+
+  massp=${output_dir}/${base}_acq-${space^^}_desc-massp_label.nii.gz
+
+  if [[ ! -f ${massp} ]]; then
+
+    echo
+    echo "**************************************** Processing `basename ${dir}` ***************************************"
+
+    #-----------------------------------------------------------------------------
+    # Check if we can mask inputs
+    mask=`find ${DIR_DATA_DERIV}/manual_masks/${subdir} -type f \( -name "*acq-${space^^}*" -and -name "*brainmask.nii.gz" \) 2>/dev/null`
+    declare -a INPUTS=()
+
+    echo "Should we mask inputs?"
+    for i in "R1" "R2s" "QSM"; do
+      fn=`find ${input_dir} -type f \( -name "*${i}.nii.gz" \) 2>/dev/null`
+
+      j=0; for k in ${fn[@]}; do ((j++)); done; if [[ ${j} -ne 1 ]]; then echo "`basename ${dir}`: Found more than 1 file for ${r}"; continue 2; fi
+
+      if [[ -z ${fn} ]]; then
+        echo "Could not find ${i}-file.."
+        continue
+      else
+        # check if we can mask inputs; otherwise continue as usual
+        if [[ ! -z ${mask} ]]; then
+          printf " applying mask to ${i}-image; "
+          out=${skull_dir}/$(basename ${fn} "_${i}.nii.gz")_desc-skullstrip_${i}.nii.gz
+          fslmaths ${fn} -mas ${mask} ${out}
+          use_dir=${skull_dir}
+          printf "[`fslstats ${out} -R`]\n"
+        else
+          use_dir=${input_dir}
+        fi
+      fi
+    done
+    echo "Done"
+    echo "Create `basename ${massp}`"
+
+    if [[ ${PLACE} == "SPINOZA" ]]; then
+
+      # Registration takes ages, so submit job to SGE
+      qsub -N massp_$(basename ${dir} | cut -d'-' -f2) -wd ${DIR_LOGS} \
+      ${DIR_SCRIPTS}/bin/call_nighresmassp \
+        -s $(basename ${dir}) \
+        -n ${nr} \
+        -i ${use_dir} \
+        -o ${output_dir} \
+        -b ${base}_acq-${space^^}_desc
+
+      if [[ $? != 0 ]]; then
+        echo
+        echo "---------------------------------------------------------------------------------------------------"
+        echo "ERROR in `basename ${0}`: job submission of MASSP was unsuccessful"
+        exit 1
+      fi
+
+    else
+      call_nighresmassp \
+        -s $(basename ${dir}) \
+        -n ${nr} \
+        -i ${use_dir} \
+        -o ${output_dir} \
+        -b ${base}_acq-${space^^}_desc
+
+    fi
+
+    if [[ $? != 0 ]]; then
+      echo
+      echo "---------------------------------------------------------------------------------------------------"
+      echo "ERROR in `basename ${0}`: call_nighresmassp exited with non-zero status"
+      exit 1
+    fi
+
+  else
+
+    echo "`basename ${dir}`: MASSP-label image already exists"
+
+  fi
+
+done
+
+#-----------------------------------------------------------------------------
+# Calculate time spent using 'let'
+echo
+echo "---------------------------------------------------------------------------------------------------"
+end=`date +%s`
+end_date=`date`
+printf "Done at ${end_date}\n"
+
+let deltatime=end-start
+let hours=deltatime/3600
+let minutes=(deltatime/60)%60
+let seconds=deltatime%60
+printf "Time spent: %d:%02d:%02d\n" ${hours} ${minutes} ${seconds}
+echo "---------------------------------------------------------------------------------------------------"

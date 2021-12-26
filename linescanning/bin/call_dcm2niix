@@ -1,0 +1,159 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_dcm2niix
+
+Wrapper for the dcm2niix to make life a little easier. In theory, it'll only require and input di-
+rectory containing the files to be converted. If not output directory is specified, the script will
+create a directory called INPUT/nifti and store the output there. Settings are default, but you can
+edit the actual call to dcm2niix as you wish.
+
+By default, the output name will be a combination of the "patient name" '%n' flag, and the "protocol
+name" '%p'. So, if you register you subjects in the MR console as 'sub-xxx' or 'sub-xxx_ses-x' and
+your sequence (e.g., MP2RAGE) as 'acq-MP2RAGE_T1w', then your output files will already have BIDS-
+names.
+
+You can specify some other options though:
+
+Arguments:
+  -i <input folder>   folder containing the files to be processed. Always needed!
+  -o <output folder>  output folder. If empty, it will use <input folder>/nifti
+  -c <compress>       create nii's ("n") or nii.gz's ("o"; default)
+  -v <version>        2019|2020 (2020 fails sometimes when dealing with fMRI phase data)
+
+Example:
+  call_dcm2niix -i /path/to/PARRECs
+  call_dcm2niix -i /path/to/PARRECs -c n
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+# Allocate input arguments to variables
+#
+while getopts i:o:c:v: argument
+do
+    case ${argument} in
+      i)  pathInput=${OPTARG}
+            ;;
+      o)  pathOutput=${OPTARG}
+            ;;
+      c)  compress=${OPTARG}
+            ;;
+      v)  version=${OPTARG}
+            ;;
+    esac
+done
+
+if [[ $# -lt 1 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+#-----------------------------------------------------------------------------
+# Check if we have dcm2niix installed
+
+fn_exists()
+{
+    FN=`type -t $1`
+
+    if [[ -z ${FN} ]]; then
+      echo "Didn't find dcm2niix, please install (have a look at https://github.com/rordenlab/dcm2niix)"
+      echo "or specify the path to the function"
+      exit 1
+    fi
+}
+
+fn_exists dcm2niix
+
+# overwrite version?
+if [[ ${version} == "2019" ]]; then
+  cmd="/packages/mricrogl/20190902/Resources/dcm2niix"
+else
+  cmd="dcm2niix"
+fi
+
+#-----------------------------------------------------------------------------
+# Set default inputs/outputs
+if [[ -z ${pathInput} ]]; then
+  echo "ALWAYS NEED AT LEAST AN INPUT FOLDER"
+  Usage >&2
+  exit 1
+fi
+
+if [[ -z ${pathOutput} ]]; then
+  pathOutput=${pathInput}/nifti
+fi
+
+# -z : gz compress images (y/o/i/n/3, default n) [y=pigz, o=optimal pigz, i=internal:zlib, n=no, 3=no,3D]
+if [[ -z ${compress} ]]; then
+  NIIGZ="o"
+else
+  if [[ ${compress} == "n" ]] || [[ ${compress} == "y" ]] || [[ ${compress} == "i" ]] || [[ ${compress} == "3" ]] || [[ ${compress} == "o" ]]; then
+    NIIGZ=${compress}
+  else
+    dcm2niix -h
+    echo
+    echo "---------------------------------------------------------------------------------------------------"
+    echo "You specified option \"${compress}\", acceptable values are: \"n\", \"y\", \"i\", \"3\", \"o\""
+    echo "Or leave empty for the default \"o\" (= optimized compression)"
+    exit 1
+  fi
+fi
+
+#-----------------------------------------------------------------------------
+# Run it
+
+if [[ ! -d ${pathOutput} ]]; then
+  mkdir -p ${pathOutput}
+fi
+
+${cmd} -b y -f %n_%p -z ${NIIGZ} -d 0 -o ${pathOutput} -v 1 ${pathInput}
+# OPTIONS:
+#
+# usage: dcm2niix [options] <in_folder>
+#  Options :
+#   -1..-9 : gz compression level (1=fastest..9=smallest, default 6)
+#   -a : adjacent DICOMs (images from same series always in same folder) for faster conversion (n/y, default n)
+#   -b : BIDS sidecar (y/n/o [o=only: no NIfTI], default y)
+#    -ba : anonymize BIDS (y/n, default y)
+#   -c : comment stored in NIfTI aux_file (provide up to 24 characters)
+#   -d : directory search depth. Convert DICOMs in sub-folders of in_folder? (0..9, default 5)
+#   -e : export as NRRD instead of NIfTI (y/n, default n)
+#   -f : filename (%a=antenna (coil) name, %b=basename, %c=comments, %d=description, %e=echo number, %f=folder name, %i=ID of patient, %j=seriesInstanceUID, %k=studyInstanceUID, %m=manufacturer, %n=name of patient, %p=protocol, %r=instance number, %s=series number, %t=time, %u=acquisition number, %v=vendor, %x=study ID; %z=sequence name; default '%f_%p_%t_%s')
+#   -g : generate defaults file (y/n/o/i [o=only: reset and write defaults; i=ignore: reset defaults], default n)
+#   -h : show help
+#   -i : ignore derived, localizer and 2D images (y/n, default n)
+#   -l : losslessly scale 16-bit integers to use dynamic range (y/n, default n)
+#   -m : merge 2D slices from same series regardless of echo, exposure, etc. (n/y or 0/1/2, default 2) [no, yes, auto]
+#   -n : only convert this series CRC number - can be used up to 16 times (default convert all)
+#   -o : output directory (omit to save to input folder)
+#   -p : Philips precise float (not display) scaling (y/n, default y)
+#   -r : rename instead of convert DICOMs (y/n, default n)
+#   -s : single file mode, do not convert other images in folder (y/n, default n)
+#   -t : text notes includes private patient details (y/n, default n)
+#   --progress : report progress (y/n, default n)
+#   -u : up-to-date check
+#   -v : verbose (n/y or 0/1/2 [no, yes, logorrheic], default 0)
+#   -w : write behavior for name conflicts (0,1,2, default 2: 0=skip duplicates, 1=overwrite, 2=add suffix)
+#   -x : crop 3D acquisitions (y/n/i, default n, use 'i'gnore to neither crop nor rotate 3D acquistions)
+#   -z : gz compress images (y/o/i/n/3, default n) [y=pigz, o=optimal pigz, i=internal:zlib, n=no, 3=no,3D]
+#   --big-endian : byte order (y/n/o, default o) [y=big-end, n=little-end, o=optimal/native]
+#   --progress : Slicer format progress information
+#   --version : report version
+#   --xml : Slicer format features
+#  Defaults file : /home/heij/.dcm2nii.ini
+#  Examples :
+#   dcm2niix /Users/chris/dir
+#   dcm2niix -c "my comment" /Users/chris/dir
+#   dcm2niix -o /users/cr/outdir/ -z y ~/dicomdir
+#   dcm2niix -f %p_%s -b y -ba n ~/dicomdir
+#   dcm2niix -f mystudy%s ~/dicomdir
+#   dcm2niix -o "~/dir with spaces/dir" ~/dicomdir

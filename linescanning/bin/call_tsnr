@@ -1,0 +1,48 @@
+#!/usr/bin/env python
+
+import os, sys
+import numpy as np
+import nibabel as nb
+from linescanning.image import tsnr
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_tsnr
+
+Calculate the tSNR of an input image and save the tSNR map to a given output file name
+
+Args:
+    <input file>        string-like path to file to calculate tSNR from
+    <output file>       string-like path to output tSNR map
+
+Outputs
+    output file         new volume representing the tSNR map
+
+Example:
+    call_tsnr func.nii.gz tsnr.nii.gz
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    if len(argv) < 1:
+        print("NEED AT LEAST AN INPUT IMAGE")
+        print(main.__doc__)
+        sys.exit()
+
+    in_file = argv[0]
+
+    # check if we got output file
+    if len(argv) > 1:
+        fname = argv[1]
+    else:
+        fname=None
+
+    if os.path.exists(in_file):
+        mean_tsnr = tsnr(in_file, file_name=fname)
+
+        print("tSNR of {} is {}".format(os.path.basename(in_file), round(mean_tsnr,2)))    
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

@@ -1,0 +1,275 @@
+#!/bin/bash
+#$ -S /bin/bash
+#$ -cwd
+#$ -j Y
+#$ -V
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_clusterXroi
+
+Multiplies cluster masks given a subject with a directory containing ROIs.
+
+Usage:
+  call_stats2surf -s <subj_ID> -f <featdir> -g <gfeatdir> -m <maskdir> -c 1,2,3,4 -z 1
+
+Args:
+  -s <subj ID>        subject ID as per output of FreeSurfer (e.g., 'sub-001')
+
+  -f <featdir>        path to FEAT-directory
+
+  -g <gfeatdir>       which group analysis should I use for the cluster mask?
+
+  -m <maskdir>        path to directory containing the masks. Default is /fast/project/PG_Niendorf_fmri/
+                      fmri/studies/pipeline_params/PainMatrixMasks/
+
+  -c <copes>          for which copes do we need to run this? Default is one, for H02, this should be
+                      1,2,3,4, for H01 this is 1
+
+  -z <zstat>          which zstat to process? CONTROLS = zstat1; PATIENT = zstat2, for instance
+
+Example:
+  call_clusterXroi -s sub-001 -f <featdir> -m <dir with ROI masks> -z "1,2,3"
+
+Cluster:
+for i in 002 003 004 005; do \
+  qsub -N extract_${i} \
+  call_clusterXroi \
+    -s sub-${i} \
+    -f /path/to/level1/sub-${i}.feat \
+    -g /path/to/level2/fixed_thres-3.1_space-MNI152NLin6Asym.gfeat;
+done
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+#-----------------------------------------------------------------------------
+# Deal with arguments
+while getopts s:f:g:m:c:z: arg
+do
+    case ${arg} in
+      s)  subj_ID=${OPTARG}
+            ;;
+      f)  featdir=${OPTARG}
+            ;;
+      g)  gfeatdir=${OPTARG}
+            ;;
+      m)  maskdir=${OPTARG}
+            ;;
+      c)  copes=${OPTARG}
+            ;;
+      z)  nr_zstat=${OPTARG}
+            ;;
+    esac
+
+done
+
+if [[ $# -lt 3 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+if [[ -z ${maskdir} ]]; then
+  maskdir=/fast/project/PG_Niendorf_fmri/fmri/pipeHMR/repo/toolboxes/ROIs
+fi
+
+if [[ -z ${copes} ]]; then
+  copes=1
+fi
+
+if [[ -z ${nr_zstat} ]]; then
+  nr_zstat=1
+fi
+
+echo "  General settings:"
+echo "   copes: ${copes}"
+echo "   zstat: ${nr_zstat}"
+
+export PATH=${PATH}:/fast/project/PG_Niendorf_fmri/fmri/pipeHMR/projects/H01/code
+
+# start by warping file from template to anat-space
+if [[ ! -d ${maskdir} ]] || [[ ! -d ${featdir} ]]; then
+  echo "  Could not find ROI-directory and FEAT-directory.."
+  exit 1
+fi
+
+outdir=${featdir}/cluster_x_roi/$(basename ${gfeatdir})
+if [[ ! -d ${outdir} ]]; then
+  mkdir -p ${outdir}
+fi
+
+#-----------------------------------------------------------------------------
+# Get contrasts
+design=${featdir}/design.fsf
+
+# procedure to elucidate the amount of contrasts from design.fsf file
+  # where is the line that specifies the nr of contrasts?
+howManyContrasts="$(grep -n "ncon_orig" ${design} | head -n 1 | cut -d: -f1)"
+
+  # at which line nr is this string?
+lineNrContrasts=`sed -n ''"${howManyContrasts}p"'' ${design}`
+
+  # get value at this line number
+nrContrasts=`echo "${lineNrContrasts}" | cut -d' ' -f 3`
+
+echo "   Found ${nrContrasts} contrasts"
+# Now get all the contrasts in a text file. We make a while loop that stores the
+# output in a text file as long as the nth element of the array is less than the
+# max number of contrasts
+if [[ -f ${outdir}/contrasts.txt ]]; then
+  rm ${outdir}/contrasts.txt
+fi
+
+touch ${outdir}/contrasts.txt
+
+start=1
+i=${start}
+while [[ ${i} -le ${nrContrasts} ]]; do
+
+  tmp1="$(grep -n "conname_real.${i}" ${design} | head -n 1 | cut -d: -f1)"
+  tmp2=`sed -n ''"${tmp1}p"'' ${design}`
+  tmp3=`echo "${tmp2}" | cut -d'"' -f2`
+
+  printf "${i}_${tmp3}\n" >> ${outdir}/contrasts.txt
+  printf "   ${i}_${tmp3} >> contrasts.txt\n"
+  ((i++))
+
+done
+
+listContrasts=`sed -e '' ${outdir}/contrasts.txt`
+
+#-----------------------------------------------------------------------------
+# Here we will specify which contrasts we want to have the values from the time
+# series from; again, don't do this for resting state data.
+
+# Then for each item in the contrasts.txt file (containing all contrasts), we
+# will check whether the item corresponds with the specified input. If it is,
+# we continue with the mask-making procedure.
+
+echo "  Make clusterXroi masks.."
+for i in ${listContrasts}; do
+
+  # Get nr of contrast
+  nr=`grep -oP '(?<!\d)\d{1}(?!\d)' <<< ${i}`
+
+
+  # If nr of contrast matches with the specified contrasts we want to do, then
+  # procede by binarizing all these cluster masks
+  if [[ "${copes[@]}" =~ "${nr}" ]]; then
+
+    # Get the cluster mask from the input cope feat directory and binarize it
+    clusterMask=${gfeatdir}/cope${nr}.feat/cluster_mask_zstat${nr_zstat}.nii.gz
+    out=${outdir}/bin_group_zstat${nr_zstat}.con${i}.nii.gz
+
+    if [[ ! -f ${out} ]]; then
+
+      fslmaths ${clusterMask} -bin ${out}
+      printf "   Created `basename ${out}`\n"
+
+    else
+
+      printf "   $(basename ${out}) already present\n"
+
+    fi
+
+  fi
+
+done
+
+#-----------------------------------------------------------------------------
+# Multiplying all cluster masks with ROI masks
+printf "\n  Multiplying all cluster masks with ROI masks\n"
+
+# For all masks of the ROI regions, we want to multiply it with the specified
+# contrast cluster masks, so we have two for-loops nested within each other.
+
+# So: for all ROI masks, multiply them with all cluster masks; for resting state data: get whole ROI
+for mask in ${maskdir}/bin.thr*.nii.gz; do
+
+  for i in ${outdir}/bin_group_zstat${nr}*; do
+
+    roi=$(basename ${mask} | cut -d "." -f3)
+    out=${outdir}/${subj_ID}_space-MNI152NLin6Asym_desc-${roi}_mask.nii.gz
+
+    if [[ ! -f ${out} ]]; then
+      printf "   `basename ${i}`  x  `basename ${mask}`\n"
+      fslmaths ${i} -mul ${mask} ${out}
+    else
+      printf "   $(basename ${mask}): multiplied mask already present\n"
+    fi
+
+  done
+
+done
+
+#-----------------------------------------------------------------------------
+# Extract mean time series from func data with created masks
+if [[ -f ${featdir}/filtered_func_data_clean.nii.gz ]]; then
+  in=${featdir}/filtered_func_data_clean.nii.gz
+else
+  in=${featdir}/filtered_func_data.nii.gz
+fi
+
+printf "\n  Extracting timeseries from `basename ${in}`\n"
+
+for file in ${outdir}/${subj_ID}*.nii.gz; do
+
+  pathTextFiles=${outdir}/timecourses
+
+  if [[ ! -d ${pathTextFiles} ]]; then
+    mkdir -p ${pathTextFiles}
+  fi
+
+  out=${pathTextFiles}/$(basename ${file} _mask.nii.gz)_timecourse.txt
+
+  if [[ ! -f ${out} ]]; then
+
+    fslmeants \
+      -i ${in} \
+      -o ${out} \
+      -m ${file}
+
+    printf "   Wrote `basename ${out}`\n"
+
+  else
+
+    printf "   `basename ${out}` already present\n"
+
+  fi
+
+done
+
+# plop everthing in subject specific ROI files
+all_rois=${pathTextFiles}/${subj_ID}_desc-all_rois.txt
+
+if [[ ! -f ${all_rois} ]]; then
+
+  declare -a ROI=()
+  f=`find ${pathTextFiles} -type f \( -name "*_timecourse.txt" \) 2>/dev/null`
+  for k in ${f[@]}; do
+
+    q=desc
+    w=_timecourse
+
+    start=`awk -F${q} '{print length($1)+1}' <<< "$(basename ${k})"`
+    end=`awk -F${w} '{print length($1)+1}' <<< "$(basename ${k})"`
+
+    region=$(basename ${k} | cut -c ${start}-$(( ${end} - 1)) | cut -d'-' -f2)
+
+    ROI+=("${region}")
+
+  done
+
+  # echo "${ROI[@]}"
+
+  paste ${f} >> ${all_rois}
+  echo -e "${ROI[@]}" > $(dirname ${all_rois})/$(basename ${all_rois} .txt)_hd.txt
+
+fi

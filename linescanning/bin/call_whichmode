@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# check if there's is a setup file containing the major paths and source it if it exists
+call_loadsetup
+
+if [[ ! -f ${DIR_SCRIPTS}/bin/utils/acq.txt ]]; then
+  echo "WARNING: Could not find acq.txt file"
+  exit 1
+fi
+
+echo "Project     : ${PROJECT}"
+echo "Acquisitions: `wc -l ${DIR_SCRIPTS}/bin/utils/acq.txt | awk '{print $1}'`"
+echo "Output type : ${DATA}"
+echo "Space-tag   : ${space}"

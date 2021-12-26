@@ -1,0 +1,60 @@
+#!/usr/bin/env python
+
+import os, sys
+import numpy as np
+import nibabel as nb
+from linescanning.utils import decode
+import subprocess
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_createbeamfs
+
+This script will create a template beam in orig.mgz space that can be used to delineate the approxi-
+mate location of the line using call_createlinefs.
+
+Args:
+    <subject ID>      subject ID as named in the SUBJECTS_DIR (e.g., sub-001)
+
+Outputs
+    output file       new volume with the same dimensions as reference image
+
+Usage:
+    call_createbeamfs <subject>
+
+Example:
+    call_createbeamfs sub-001
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    sub = None
+
+    if len(argv) < 1:
+        print("NEED A SUBJECT ID")
+        print(main.__doc__)
+        sys.exit()
+
+    sub = argv[0]
+
+    orig = opj(os.environ['SUBJECTS_DIR'], sub, 'mri', 'orig.nii.gz')
+
+    if not os.path.exists(orig):
+        cmd = ('call_mriconvert', orig.split('.')[0]+'.mgz')
+        L = decode(subprocess.check_output(cmd))
+
+    img = nb.load(orig)
+    data = img.get_fdata()
+    center = data.shape[0]//2
+    new = np.zeros_like(data)
+    new[:,center-2:center+1,center-2:center+2] = 1
+
+    fnew = opj(os.path.dirname(orig), 'space-fs_desc-template_beam.nii.gz')
+    nb.Nifti1Image(new, affine=img.affine, header=img.header).to_filename(fnew)
+
+    return fnew
+if __name__ == "__main__":
+    main(sys.argv[1:])

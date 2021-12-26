@@ -1,0 +1,116 @@
+#!/usr/bin/env python
+from linescanning import scanner,optimal
+import os
+import sys
+import getopt
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_mrconsole
+
+This script is the new version of call_getscannercoordinates. It utilizes the classes defined in the
+repository to combine the structural and functional information. I like this a lot better because
+it basically encompasses call_pycortex and call_getscannercoordinates in one script. The command is
+also a lot easier.
+
+Args:
+    -s <subject>    subject ID as defined in the FreeSurfer/pycortex/other derivatives directories
+    -f <fs_dir>     FreeSurfer directory (will default to SUBJECTS_DIR)
+    -n <new_ses>    Session number for the line-scanning experiments (generally >1)
+    -q <prf_ses>    Session from which to use the pRF-estimates to base the planning on. Generally
+                    this will be 1. Also see linescanning/shell/spinoza_lineplanning line 189
+    -p <prf_dir>    pRF-directory
+    -c <ctx dir>    pycortex directory
+    -d <deriv>      derivatives directory containing FreeSurfer/Pycortex/pRF directories
+    --ses1          First session anatomy (will default to rawavg.mgz and convert this one to nifti)
+    --ses2          Second session anatomy
+    -a <affine>     matrix mapping session 1 to session 2 (ANTs file)
+    -h <hemi>       hemisphere of interest (e.g., "left", or "right")
+
+Usage:
+    call_mrconsole -s sub-001 -d /path/to/derivatives -h left -a /path/to/genaff.mat --ses1 anat_
+                   ses1.nii.gz --ses2 anat_ses2.nii.gz
+    call_mrconsole -s sub-001 --ses1 <ses1> --ses2 <ses2> -d <DIR_DATA_DERIV> -a <aff> -h left
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    # ses1=/mnt/d/FSL/shared/spinoza/projects/ANAT_SEG-Raw/sub-001/ses-1/anat/sub-001_ses-1_acq-MP2RAGE_T1w.nii.gz
+    # ses2=/mnt/d/FSL/shared/spinoza/projects/ANAT_SEG-Raw/sub-001/ses-2/anat/sub-001_ses-2_acq-MP2RAGE_T1w.nii.gz
+    # aff=/mnt/d/FSL/shared/spinoza/projects/ANAT_SEG-Raw/sourcedata/sub-001/ses-2/planning/nifti/sub-001_from-ses1_to-ses2_desc-genaff.mat
+
+    subject     = None
+    fs_dir      = os.environ['SUBJECTS_DIR']
+    cx_dir      = os.environ['CTX']
+    prf_dir     = os.environ['PRF']
+    deriv       = os.environ['DIR_DATA_DERIV']
+    anat2       = None
+    hemi        = "left"
+    affine      = None
+    prf_ses     = 1
+    new_ses     = 2
+    line_fn   = None
+
+    try:
+        opts = getopt.getopt(argv,"is:n:f:p:c:d:a:h:l:q:",["subject=", "new_ses=", "prf_ses=","fsdir=", "cxdir=", "prfdir=", "deriv=", "affine=", "hemi=", "ses2=", "line="])[0]
+    except getopt.GetoptError:
+        print(main.__doc__)
+        print("ERROR IN ARGUMENT HANDLING")
+        sys.exit(2)
+
+    for opt, arg in opts:
+        if opt == '-i':
+            print(main.__doc__)
+            sys.exit()
+        elif opt in ("-s", "--subject"):
+            subject = arg
+        elif opt in ("-q", "--new_ses"):
+            prf_ses = arg                  
+        elif opt in ("-n", "--new_ses"):
+            new_ses = arg            
+        elif opt in ("-f", "--fsdir"):
+            fs_dir = arg
+        elif opt in ("-c", "--cxdir"):
+            cx_dir = arg
+        elif opt in ("-p", "--prfdir"):
+            prf_dir = arg
+        elif opt in ("-d", "--deriv"):
+            deriv = arg
+        elif opt in ("--ses2"):
+            anat2 = arg
+        elif opt in ("-h", "--hemi"):
+            hemi = arg
+        elif opt in ("-a", "--affine"):
+            affine = arg
+        elif opt in ("-l", "--line"):
+            line_fn = arg            
+
+    if len(argv) < 3:
+        print("NOT ENOUGH ARGUMENTS SPECIFIED")
+        print(main.__doc__)
+        sys.exit(1)
+
+    if not anat2:
+        raise ValueError(f"Need session {new_ses} anatomy")
+
+    if not affine:
+        raise ValueError(f"Need matrix-file mapping session 1 to session {new_ses}")
+
+    if deriv:
+        fs_dir = opj(deriv, 'freesurfer')
+        cx_dir = opj(deriv, 'pycortex')
+        prf_dir = opj(deriv, 'prf', subject, f'ses-{prf_ses}')
+
+    # this scan object will do everyting
+    scanner.Scanner(optimal.call_pycortex2(subject,
+                                           fsdir=fs_dir,
+                                           cxdir=cx_dir,
+                                           prfdir=prf_dir,
+                                           out=line_fn),
+                    fs_dir=fs_dir, new_anat=anat2, fs2ses=affine, hemi=hemi,ses=new_ses)
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

@@ -1,0 +1,168 @@
+#!/usr/bin/env python
+import numpy as np
+import os
+import sys
+import scipy.io as io
+import nibabel as nb
+import getopt
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_func2nifti
+
+This script stores the timecourses from the reconstruction (.mat) files in a nifti image created ba-
+sed on the slice (see call_createline). Here you need to specify both the .mat file and the nifti
+file so we can combine it. Also support multi-echo data, assuming the input array from the .mat 
+file is a 4D-array with the last dimension representing the echoes. If multi-echo data is used as
+input, '_echo-x' will be appended right before the "*.nii.gz"
+
+Args:
+    -i <mat file>          matrix containing reconstructed data (see call_linerecon)
+    -r <empty nifti>       nifti image with correct dimensions for line (see call_createline)
+    -o <output name>       custom output name; leave empty to overwrite <empty nifti>
+    -c <complex>           specify '-c' if you want complex data; otherwise absolute values will
+                           used 
+
+Outputs:
+    4D nibabel.Nifti1Image image
+
+Example:
+    call_func2nifti -i sub-001_task-LR_bold.mat -r sub-001_task-LR_bold.nii.gz -o bold.nii.gz
+    call_func2nifti -i sub-001_task-LR_bold.mat -r sub-001_task-LR_bold.nii.gz -o bold.nii.gz -c
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    raw     = None
+    nii     = None
+    out     = None
+    complex = False
+
+    try:
+        opts = getopt.getopt(argv,"hi:r:o:c",["raw", "nii=", "out=", "complex"])[0]
+    except getopt.GetoptError:
+        print("ERROR IN ARGUMENT HANDLING!")
+        print(main.__doc__)
+        sys.exit(2)
+
+    for opt, arg in opts:
+        if opt == '-h':
+            print(main.__doc__)
+            sys.exit()
+        elif opt in ("-i", "--raw"):
+            raw = arg
+        elif opt in ("-r", "--nii"):
+            nii = arg
+        elif opt in ("-o", "--out"):
+            out = arg
+        elif opt in ("-c", "--complex"):
+            complex = True
+
+    if len(argv) < 2:
+        print("\nNOT ENOUGH ARGUMENTS SPECIFIED")
+        print(main.__doc__)
+        sys.exit()
+
+    print("Processing {}".format(os.path.basename(raw)))
+
+    # overwrite if left empty
+    if out:
+        out = out
+    else:
+        out = nii
+
+    # load in matrix
+    print("Loading in reconstructed data")
+    raw = io.loadmat(raw)
+    tag = list(raw.keys())[-1]
+
+    print(f"Fetching data with tag '{tag}'")
+    raw = raw[tag]
+
+    if complex:
+        print("Using complex data")
+    else:
+        print("Using absolute values")
+        raw = np.abs(raw)
+
+    if isinstance(nii, str):
+        img = nb.load(nii)
+    elif isinstance(nii, nb.Nifti1Image):
+        img = nii
+
+    img_data = img.get_fdata()
+
+    if len(raw.shape) > 2:
+        print("Dealing with multi-echo data")
+        # got multi-echo data
+        for k in np.arange(0,raw.shape[-1]):
+            print(f" Processing echo-{k+1}")
+            data = np.squeeze(raw[:,:,:,k])
+
+            full_array = []
+            for i in range(0,data.shape[-1]):
+                
+                if complex:
+                    c = np.zeros_like(img_data, dtype=np.complex64)     # copy dimensions of input image
+                else:
+                    c = np.zeros_like(img_data)     # copy dimensions of input image
+
+                # find in which direction all the values have the same value > that must be the line
+                if np.all(np.around(img_data[:,360],3)==np.round(np.amax(img_data),3)):
+                    c[:,360] = data[:,i][...,None]   # left-to-right  + add 3rd axis
+                elif np.all(np.around(img_data[360,:],3)==np.round(np.amax(img_data),3)):
+                    c[360,:] = data[i,:][...,None]   # up-to-bottom line + add 3rd axis
+
+                c = c[...,None]                 # add a 4th axis to concatenate over time
+                full_array.append(c)            # stack all arrays
+
+            # concatenate over time dimension
+            full_array = np.concatenate(full_array, axis=3)
+
+            # print("Writing 4D-nifti image")
+            # create header; we can copy the input header, but need to change a few things
+            hdr = img.header
+            hdr['dim'] = np.array([4,720,720,1,full_array.shape[-1],1,1,1])
+
+            if complex:
+                hdr['datatype'] = np.array(32)
+            
+            nb.Nifti1Image(full_array, affine=img.affine, header=hdr).to_filename(out.split('.')[0]+f'_echo-{k+1}.nii.gz')
+
+    else:
+        
+        print("Dealing with single-echo data")
+        # we have 720x2800 acquisitions. The latter = time domain; former = spatial domain
+        # loop through time domain and create 720x720x1x1 array for each volume and eventually
+        # concatenate that into a 720x720x1x2800 4D nifti file
+
+        full_array = []
+        print("Creating 4D-array")
+        for i in range(0,raw.shape[-1]):
+
+            c = np.zeros_like(img_data)     # copy dimensions of input image
+
+            # find in which direction all the values have the same value > that must be the line
+            if np.all(np.around(img_data[:,360],3)==np.round(np.amax(img_data),3)):
+                c[:,360] = raw[:,i][...,None]   # left-to-right  + add 3rd axis
+            elif np.all(np.around(img_data[360,:],3)==np.round(np.amax(img_data),3)):
+                c[360,:] = raw[i,:][...,None]   # up-to-bottom line + add 3rd axis
+
+            c = c[...,None]                 # add a 4th axis to concatenate over time
+            full_array.append(c)            # stack all arrays
+
+        # concatenate over time dimension
+        full_array = np.concatenate(full_array, axis=3)
+
+        print("Writing array to nifti-file")
+        # create header; we can copy the input header, but need to change a few things
+        hdr = img.header
+        hdr['dim'] = np.array([4,720,720,1,full_array.shape[-1],1,1,1])
+        nb.Nifti1Image(full_array, affine=img.affine, header=hdr).to_filename(out)
+
+    print("Done")
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

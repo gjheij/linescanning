@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_editwm
+
+Script to create a manual edit of white matter segmentation based on wm.mgz from FreeSurfer. The 
+script will open ITK-Snap to create a manual edit file.
+
+Args:
+  -s <subject>  subject ID
+  -n <session>  session number
+  <fs_dir>      path to FreeSurfer-directory, including subject ID
+  <man seg fn>  output file name of manual segmentation
+
+Specify only '-s' and/or 'n' if you've run the pipeline as it is without changing directories or 
+filenames; this option will look for all the default directories and files. If you want to edit
+your own things, specify the FreeSurfer directory and output name for segmentation and leave the 
+'-s' and '-n' flag empty.
+
+Usage:
+  call_editwm <fs_dir> <segmentation file name>
+
+Example:
+  call_editwm $SUBJECTS_DIR/sub-001 sub-001_desc-manualsegwm.nii.gz
+  call_editwm -s sub-001 -n 1
+  
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+if [[ $# -lt 1 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+# Check for subject & session flags
+while getopts s:n: argument
+do
+  case ${argument} in
+    s)  sub=${OPTARG}
+          ;;
+    n)  ses=${OPTARG}
+          ;;
+  esac
+done
+
+#-----------------------------------------------------------------------------
+# Run it
+
+if [[ ! -z ${sub} ]]; then
+
+  if [[ -z ${ses} ]]; then
+    base_dir=${sub}
+    base="${sub}"
+  else
+    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
+    base="${sub}_ses-${nr}"
+    base_dir=${sub}/ses-${nr}
+  fi
+
+  FS_DIR=${SUBJECTS_DIR}/${sub}
+  MAN=${DIR_DATA_DERIV}/manual_masks/${base_dir}/${base}_acq-${space^^}_desc-manualsegwm.nii.gz
+
+else
+
+  FS_DIR=${@:$OPTIND:1}
+  MAN=${@:$OPTIND+1:1}
+
+fi
+
+# create ref from rawavg.mgz
+if [[ -d ${FS_DIR} ]]; then
+  call_mriconvert ${FS_DIR}/mri/rawavg.mgz
+  call_mriconvert ${FS_DIR}/mri/wm.mgz
+else
+  echo "ERROR in `basename ${0}`: could not find subject in FreeSurfer directory"
+  exit 1
+fi
+
+if [[ ! -f ${MAN} ]]; then
+  if [[ ! -d $(dirname ${MAN}) ]]; then
+    mkdir -p $(dirname ${MAN})
+  fi
+  echo "Creating `basename ${man}` with call_createimg"    
+  call_createimg ${FS_DIR}/mri/rawavg.nii.gz ${MAN}
+fi
+
+echo "Opening ITK-Snap"
+itksnap -g ${FS_DIR}/mri/rawavg.nii.gz -o ${FS_DIR}/mri/wm.nii.gz -s ${MAN} 2>/dev/null
+
+if [[ ! -f ${MAN} ]]; then
+  echo "ERROR in `basename ${0}`: manual edit file was not saved.."
+  exit 1
+else
+  fslorient -copyqform2sform ${MAN}
+fi
+

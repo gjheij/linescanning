@@ -1,0 +1,109 @@
+#!/usr/bin/env python
+
+import pickle
+import os
+import gzip
+import sys
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_pickleops
+
+This short script allows you to manipulate or view *pklz file as per the output of fMRIprep. The
+simplest operation is just to 'print' the content of the file, while more complex operations involve 
+inserting or replacing strings in path names. This script mainly exists because I moved fMRIprep's
+working directories, which will mess with subsequent running of fMRIprep.. 
+
+Args:
+    <pickle file>       str :
+                        always required, a string representing the path name to the file
+
+    <operation>         str :
+                        can be one of 'print' (prints content to terminal), 'replace' where you need 
+                        to specify the 3rd argument to look and replace strings, or 'insert', where 
+                        you also need the 3rd argument to specify what to insert where in a path name
+
+    <old,new>           list :
+                        comma separated list of strings. For 'insert', the first argument represents 
+                        the insertion site, the second is what to insert (will be inserted before 1st 
+                        string). For 'replace', the first argument is what to replace, and the second 
+                        is what to replace is with (can be entire path names)
+
+Usage:
+    call_pickleops <file> <operation> <strings>
+
+Example:
+    call_pickleops file.pklz print
+    call_pickleops file.pklz insert "string1,string2"
+    call_pickleops file.pklz replace "/path/to/file.nii.gz,/new/path/to/file.nii.gz"
+
+Notes:
+    This script assumes your pickle file is compressed and will return a compressed file with the 
+    same name back. It also assumes your file contains a dictionary we can loop over
+---------------------------------------------------------------------------------------------------
+    """
+
+    if len(argv) < 1:
+        print("NEED AT LEAST AN INPUT FILE")
+        print(main.__doc__)
+        sys.exit(1)
+        
+    try:
+        input_file = argv[0]
+        opt        = argv[1]
+        sed        = argv[2]
+    except:
+        input_file = argv[0]
+        opt        = "print"
+
+    with open(input_file, 'rb') as pf:
+        con = gzip.GzipFile(fileobj=pf)
+        data = pickle.load(con)
+
+        print("before: \n", data)
+
+        if opt == "print":
+            # print(data)
+            pass
+        elif opt == "insert":
+            # print(sed.split(','))
+            ll = sed.split(',')
+            for i in data:
+                if ll[0] in str(data[i]):
+                    if isinstance(data[i], list):
+                        new = []
+                        for q in data[i]:
+                            spl = q.split(os.sep)
+                            idx = spl.index(ll[0])
+                            spl.insert(idx, ll[1])
+                            new.append(os.sep.join(spl))
+
+                        data[i] = new
+
+                    else:
+                        spl = data[i].split(os.sep)
+                        idx = spl.index(ll[0])
+                        spl.insert(idx, ll[1])
+                        data[i] = os.sep.join(spl)
+
+            print('after: \n',data)
+            file = gzip.GzipFile(input_file, 'wb')
+            file.write(pickle.dumps(data,0))
+            file.close()      
+
+        elif opt == "replace":
+            ll = sed.split(',')
+            for i in data:
+                if ll[0] in str(data[i]):
+                    data[i] = ll[1]
+                    print('after: \n',data)
+
+            # file = gzip.GzipFile("test.pklz", 'wb')
+            # file.write(pickle.dumps(data,0))
+            # file.close()                   
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
+

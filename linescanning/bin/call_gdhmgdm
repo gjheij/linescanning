@@ -1,0 +1,285 @@
+#!/usr/bin/env python
+
+import nibabel as nb
+from nighres import brain
+from nighres.brain import mgdm_segmentation
+import sys, getopt
+import os
+from nilearn import image
+from nilearn.image.resampling import resample_to_img
+from scipy import ndimage
+from linescanning.utils import get_file_from_substring, decode
+from linescanning.image import reorient_img
+import warnings
+import subprocess
+import glob
+import numpy as np
+warnings.filterwarnings('ignore')
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_gdhmgdm
+
+This script runs MGDM in the GdH-pipeline, using the brain_mask derived from fmriprep (which
+is a really nice brain mask). It then applies this mask to the T1-weighted image and the T1-
+map as input for mgdm.
+
+Args:
+    -s (--subj)         subject number
+    -n (--ses)          session number
+    -a (--anat)         directory containing the T1w/T1map images that will be masked. The files
+                        should end with "skullstrip_<T1w|T1map>.nii.gz"
+    -b (--brainmask=)   brain mask
+    -d (--duramask=)    dura mask
+    -o (--output=)      output directory (<subject>/(<session>/mgdm will be appended!))
+                        default = os.environ[NIGHRES]
+
+Outputs
+    - MGDM-output
+    - Skullstripped T1-weighted/T1map images
+
+Example:
+    call_gdhmgdm -s sub-001
+                 -n 1
+                 -a /dir/to/anat
+                 -b /path/to/brainmask.nii.gz
+                 -d /path/to/duramask.nii.gz
+                 -o derivatives/nighres
+
+Notes:
+    Need at least the subject number!
+
+    if left to empty, it will look by default for the following files:
+     anat   > derivatives/pymp2rage/<subject>/ses-1
+     mask   > derivatives/fmriprep/<subject>/ses-1/anat/*brain_mask.nii.gz
+     output > derivatives/nighres/<subject>/(<session>)/mgdm/sub-001_ses-1_acq-MP2RAGE_desc
+
+---------------------------------------------------------------------------------------------------
+
+    """
+
+    subject     = None
+    session     = None
+    anats       = None
+    brainmask   = None
+    duramask    = None
+    outputdir   = None
+    outputbase  = None
+
+    try:
+        opts = getopt.getopt(argv,"hs:n:a:b:d:o:b:",["subj=", "ses=", "anats=", "brainmask=", "duramask=", "output=", "base="])[0]
+    except getopt.GetoptError:
+        print(main.__doc__)
+        sys.exit(2)
+
+    for opt, arg in opts:
+        if opt == '-h':
+            print(main.__doc__)
+            sys.exit()
+        elif opt in ("-s", "--subj"):
+            subject = arg
+        elif opt in ("-n", "--ses"):
+            session = arg
+        elif opt in ("-a", "--anats"):
+            anats = arg
+        elif opt in ("-b", "--brainmask"):
+            brainmask = arg
+        elif opt in ("-d", "--duramask"):
+            duramask = arg
+        elif opt in ("-o", "--output"):
+            outputdir = arg
+        elif opt in ("-b", "--base"):
+            outputbase = arg
+
+    if len(argv) < 1:
+            print("\nNOT ENOUGH ARGUMENTS SPECIFIED")
+            print(main.__doc__)
+            sys.exit()
+
+    if subject == None:
+        print("Need at the bare minimum at subject ID")
+        sys.exit(1)
+
+    if session == None:
+        sub = subject
+        base = "{}_acq-{}_desc".format(subject, os.environ['DATA'].upper())
+    else:
+        sub = os.path.join(subject, f'ses-{session}')
+        base = "{}_ses-{}_acq-{}_desc".format(subject, session, os.environ['DATA'].upper())
+
+    if outputbase == None:
+        outputbase = base
+
+    if outputdir == None:
+        outputdir = opj(os.environ['NIGHRES'], sub, 'mgdm')
+
+    # This stuff will create some default options if they are left empty. It assumes that you have the variables
+    # from spinoza_setup available in your environment. If not, it will throw a key-error
+    if anats == None:
+        anats = opj(opj(os.environ['DIR_DATA_DERIV'], 'pymp2rage', sub))
+
+    if brainmask == None:
+        brainmask = get_file_from_substring("brain_mask.nii.gz", opj(os.environ['DIR_DATA_DERIV'], 'fmriprep', sub, 'anat'))
+
+    if duramask == None:
+        duramask = get_file_from_substring("-outside.nii.gz", opj(os.environ['DIR_DATA_DERIV'], 'manual_masks', sub))
+
+    # load in anatomical images
+    print("Loading in anatomical files")
+    # print(anats)
+
+    try:
+        t1w     = get_file_from_substring("skullstrip_T1w.nii.gz", anats); print(" {}".format(os.path.basename(t1w)))
+        t1map   = get_file_from_substring("skullstrip_T1map.nii.gz", anats); print(" {}".format(os.path.basename(t1map)))
+    except:
+        raise ValueError("Could not find T1w-image and T1map")
+
+    # dilate brain mask
+    if brainmask == "fs":
+        try:
+            print("Creating binary mask from brainmask.mgz")
+            # Make a mask from brainmask.mgz after further manual edits to brainmask.mgz following FreeSurfer instructions
+            brain_fn = opj(os.environ['SUBJECTS_DIR'], subject, 'mri', 'brainmask.nii.gz')
+            cmd = ('call_mriconvert', brain_fn.split('.')[0]+'.mgz')
+            L = decode(subprocess.check_output(cmd))
+
+            # resample to outside-mask
+            resampled_brain = image.resample_to_img(brain_fn, duramask, interpolation='nearest')
+
+            # binarize
+            brainmask = opj(os.path.dirname(duramask), f'{base}-mask_gdh.nii.gz')
+            brain_mask = image.math_img('(brain_mask > 0)', brain_mask=resampled_brain)
+
+            if brain_mask.header['qform_code'] == 0:
+                brain_mask.header['qform_code'] = np.array([1])
+
+            brain_mask.to_filename(brainmask)
+        except:
+            print("ERROR in call_gdhmgdm: Could not create mask from brainmask.mgz; did you run FreeSurfer?")
+            sys.exit(1)
+
+    else:
+        # We got another mask, prepare that for masking of anatomical images.
+        print("Dilating {}".format(os.path.basename(brainmask)))
+        brain_mask_dil = ndimage.binary_dilation(nb.load(brainmask).get_fdata(), iterations=3)
+        brain_mask = image.new_img_like(brainmask, brain_mask_dil)
+
+        print("Resampling brain mask to T1-weighted image")
+        # Resample images to match affines
+        brain_mask = image.resample_to_img(brain_mask, t1w)
+        # print("   {}".format(opj(os.path.dirname(duramask), 'gdh_mgdm_prep.nii.gz')))
+
+        # # refine with duramask
+        print("Refine mask with dura mask")
+        brain_mask = image.math_img('brain_mask - dura_mask',
+                                     brain_mask=brain_mask,
+                                     dura_mask=duramask)
+        brain_mask.to_filename(opj(os.path.dirname(duramask), f'{base}-gdh_mask.nii.gz'))
+
+    print("Masking anatomical images")
+    brain_mask = image.resample_to_img(brain_mask, t1w, interpolation='nearest')
+    t1w_masked = image.math_img('brain_mask * t1w',
+                                 brain_mask=brain_mask,
+                                 t1w=t1w)
+
+
+    brain_mask = image.resample_to_img(brain_mask, t1map, interpolation='nearest')
+    t1map_masked = image.math_img('brain_mask * t1map',
+                                  brain_mask=brain_mask,
+                                  t1map=t1map)
+
+    print("Saving new skullstripped images")
+    t1w_masked_fn = opj(os.environ['SKULLSTRIP'], sub, base + '-skull_gdh_T1w.nii.gz')
+    t1w_masked.to_filename(t1w_masked_fn)
+    print(" {}".format(os.path.basename(t1w_masked_fn)))
+
+    t1map_masked_fn = opj(os.environ['SKULLSTRIP'], sub, base + '-skull_gdh_T1map.nii.gz')
+    t1map_masked.to_filename(t1map_masked_fn)
+    print(" {}".format(os.path.basename(t1map_masked_fn)))
+
+    print("Removing old files from mgdm-directory")
+    old_files = glob.glob(outputdir+os.sep+'*')
+    for f in old_files:
+        if "acq-{}".format(os.environ['DATA']) in f:
+            os.remove(f)
+
+
+    files = {"T1w": t1w_masked_fn, "T1map": t1map_masked_fn, "dura": duramask}
+
+    #---------------------------------------------------------------------------------------------------
+    # temporarily reorient to RAS
+    print("Checking orientation..")
+
+    orig = {}
+    ras_files = {}
+    for i in files:
+
+        ax  = nb.aff2axcodes(nb.load(files[i]).affine, labels=(('R', 'L'), ('A', 'P'), ('S', 'I')))
+        orig[i] = ax[0]+ax[1]+ax[2]
+        ras = ('R','A','S')#temp_code
+        lpi = ('L','P','I')#nb.as_closest_canonical (= RAS+, also seems to work with MGDM)
+        code = ras[0].lower()+ras[1].lower()+ras[2].lower()
+
+        if not ax == ras and not ax == lpi:
+            orient = True
+            print(" {f}: Reorient {ax} to {ras}".format(f=os.path.basename(files[i]), ax=orig[i], ras=code.upper()))
+            reorient_img(files[i], code=code, out=files[i].split('.')[0]+f"_{code}-valid.nii.gz")
+            ras_files[i] = files[i].split('.')[0]+f"_{code}-valid.nii.gz"
+        else:
+            orient = False
+            print(" {f}: orientation = {ax}".format(f=os.path.basename(files[i]), ax=orig[i]))
+            ras_files[i] = files[i]
+
+    print("Initialization (i.e., orienting) done. Starting procedure..")
+
+    #---------------------------------------------------------------------------------------------------
+    # Start
+    results = mgdm_segmentation(contrast_image1=ras_files['T1w'],
+                                contrast_type1='Mp2rage7T',
+                                contrast_image2=ras_files['T1map'],
+                                contrast_type2='T1map7T',
+                                contrast_image3=ras_files['dura'],
+                                contrast_type3='Filters',
+                                save_data=True,
+                                output_dir=outputdir,
+                                file_name=base,
+                                overwrite=True)
+
+    #---------------------------------------------------------------------------------------------------
+    # reorient back to original orientation
+    if orient == True:
+        try:
+            print("Reorient results to input orientation")
+            for i in results:
+                print(" {f}: Reorient {ax} to {ras}".format(f=os.path.basename(results[i]), ax=code.upper(), ras=orig[list(orig.keys())[0]]))
+                reorient_img(results[i], code=orig[list(orig.keys())[0]])
+        except:
+            print("Could not reorient results to input orientation")
+
+        try:
+            print("Cleaning directory")
+            for i in ras_files:
+                if ras_files[i].endswith(f"{code}-valid.nii.gz"):
+                    print(" removing {}".format(ras_files[i]))
+                    os.remove(ras_files[i])
+        except:
+            pass
+
+
+    #---------------------------------------------------------------------------------------------------
+    # Nicer formatting
+    for i in ["seg", "dist", "lbls", "mems"]:
+
+        fn_old = opj(outputdir, base + "_mgdm-" + i + ".nii.gz")
+        fn_new = opj(outputdir, base + "-mgdm_" + i + ".nii.gz")
+
+        if os.path.exists(fn_old):
+            # print("moving {fo} to {fn}".format(fo=os.path.basename(fn_old), fn=os.path.basename(fn_new)))
+            os.rename(fn_old, fn_new)
+    print("Done")
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

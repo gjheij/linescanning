@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+
+function Usage {
+  cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_fs_to_ses2
+
+This script warps the orig.mgz image from FreeSurfer to the anatomy of session 1 as per output of py-
+mp2rage. It uses predefined paths only so unless you changed something in previous steps you can use 
+it with just the subject ID. If you want to use a session other than ses-2, you can use the -n flag 
+to specify which session
+
+It will look for the following files:
+  - orig.mgz: $FS/<subject>/mri
+  - ses-2 anat: $DIR_DATA_HOME/<subject>/ses-2/anat
+
+And output a transformation matrix as:
+  $CTX/transforms/<subject>_from-fs_to-ses1_desc-genaff.mat
+
+Arguments:
+  <subject>    subject ID, e.g., sub-001
+
+Usage:
+  call_fs_to_ses2 <-n session> <subject> 
+
+Example:
+  call_fs_to_ses2 -n 3 sub-001
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+  exit 1
+}
+
+#-----------------------------------------------------------------------------
+# Deal with arguments
+while getopts n: arg
+do
+    case ${arg} in
+      n)  SESSION=${OPTARG}
+            ;;      
+    esac
+done
+
+if [[ $# -lt 1 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+if [[ -z ${SESSION} ]]; then
+  SESSION="1"
+else
+  SESSION=${SESSION}
+fi
+
+SUBJECT=${@:$OPTIND:1}
+
+#-----------------------------------------------------------------------------
+# Check some directories/files
+if [[ ! -d $CTX/${SUBJECT} ]]; then
+  call_ctximport -s ${SUBJECT}
+fi
+
+orig=${FS}/${SUBJECT}/mri/orig.nii.gz
+ses2=`find ${DIR_DATA_HOME}/${SUBJECT}/ses-${SESSION}/anat -type f -name "${SUBJECT}*" -and -name "*acq-MP2RAGE_T1w.nii.gz" 2>/dev/null`
+
+# convert mgz to nifti
+if [[ ! -f ${orig} ]]; then
+  call_mriconvert $(dirname ${orig})/$(basename ${orig} .nii.gz).mgz
+fi
+
+if [[ -z ${ses2} ]]; then
+  echo "ERROR in `basename ${0}`: could not find ses-${SESSION} anatomy"
+  exit 1
+fi
+
+aff=${CTX}/${SUBJECT}/transforms/${SUBJECT}_from-fs_to-ses${SESSION}_desc-genaff.mat
+if [[ ! -d $(dirname ${aff}) ]]; then
+  mkdir -p $(dirname ${aff})
+fi
+
+if [[ ! -f ${aff} ]]; then
+  cmd="call_antsregistration ${ses2} ${orig} $(dirname ${aff})/$(basename ${aff} genaff.mat) rigid"
+  echo ${cmd}
+  exec ${cmd}
+else
+  echo "Found outdated file; remove and run again to overwrite"
+fi

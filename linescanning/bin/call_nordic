@@ -1,0 +1,144 @@
+#!/bin/bash
+#$ -S /bin/bash
+#$ -cwd
+#$ -j Y
+#$ -q short.q@jupiter
+#$ -V
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+		cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_nordic
+
+Applies the NORDIC algorithm to whole-brain data. Requires the magnitude image, the phase image, and 
+an output name
+
+Args:
+	<mag>		magnitude image
+	<phase>		phase image
+	<output>	nordic'ed output
+
+Usage:
+	call_nordic func_mag.nii.gz func_phase.nii.gz func_nordic.nii.gz
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+		exit 1
+}
+
+if [[ $# -lt 3 ]] ; then
+	Usage >&2
+	exit 1
+fi
+
+#-----------------------------------------------------------------------------
+# Define function to create SPM-compatible script with
+function make_script {
+
+	(
+	echo "%-----------------------------------------------------------------------------"
+	echo "% Created on `date`. Nordic on $(basename ${1})"
+	echo ""
+	echo "clear;"
+	echo "addpath(genpath('${DIR_SCRIPTS}/data'));"
+	echo "ARG.DIROUT = '$(dirname ${3})/';"
+	echo "ARG.temporal_phase = 1;"
+	echo "ARG.phase_filter_width = 10;"
+	echo ""
+	echo "nordic_template('${1}', '${2}', '$(basename ${3})', ARG);"
+	echo ""
+	echo "exit;"
+	) >> ${4}
+
+}
+
+#-----------------------------------------------------------------------------
+# Add entire path if just filename is specified
+
+# magnitude
+if [[ ${1} != *"/"* ]]; then
+	fn_mag=${PWD}/$(basename ${1})
+else
+	fn_mag=${1}
+fi
+
+# phase
+if [[ ${2} != *"/"* ]]; then
+	fn_phase=${PWD}/$(basename ${2})
+else
+	fn_phase=${2}
+fi
+
+# nordic output
+if [[ ${3} != *"/"* ]]; then
+	nordic_path=${PWD}/$(basename ${3})
+else
+	nordic_path=${3}
+fi
+
+#-----------------------------------------------------------------------------
+# Get extension from input file
+function fetch_extension {
+	fname=$(basename -- "${1}")
+	ext="${fname##*.}"
+	filename="${fname%.*}"
+	echo $ext
+}
+ext_nordic=`fetch_extension ${nordic_path}`
+
+# nordic output
+if [[ ${ext_nordic} == "gz" ]]; then
+	fn_nordic=$(dirname ${nordic_path})/$(basename ${nordic_path} .nii.gz)
+elif [[ ${ext_nordic} == "nii" ]]; then
+	fn_nordic=$(dirname ${nordic_path})/$(basename ${nordic_path} .nii)
+else
+	echo "ERROR in `basename ${0}`: unrecognized extension \"${ext_nordic}\" for NORDIC output"
+	exit 1
+fi
+
+#-----------------------------------------------------------------------------
+# Create new script
+new_script=$(dirname ${fn_mag})/nordic.m
+if [[ -f ${new_script} ]]; then
+	rm -r ${new_script}
+fi
+
+#-----------------------------------------------------------------------------
+# Run new script
+if [[ -f ${fn_mag} && -f ${fn_phase} ]]; then
+
+	make_script ${fn_mag} ${fn_phase} ${fn_nordic} ${new_script}
+
+	cd $(dirname ${new_script})
+
+	if [[ ${PLACE} == "SPINOZA" ]]; then
+		skip_lines=65
+	else
+		skip_lines=0
+	fi
+
+	cd $(dirname ${new_script})
+	matlab -nodesktop -nosplash -nodisplay -r "$(basename ${new_script} .m); quit" | tail -n +${skip_lines} # suppress intro text
+
+	if [[ $? -ne 0 ]]; then
+		echo "ERROR: matlab exited with non-zero status"
+		exit 1
+	fi
+
+	cd ${OLDPWD}
+
+else
+
+	echo "Missing files for NORDIC; need a magnitude & phase image, got \"${1}\" and \"${2}\""
+
+fi
+
+#-----------------------------------------------------------------------------
+# Reset extension 
+if [[ ${ext_nordic} == "gz" ]]; then
+	gzip ${fn_nordic}.nii
+fi

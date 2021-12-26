@@ -1,0 +1,269 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# check if there's is a setup file containing the major paths and source it if it exists
+call_loadsetup
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+spinoza_fmriprep
+
+preprocess structural and functional data with fMRIprep. It uses the singularity container in pro-
+grams/packages/fmriprep/containers_bids-fmriprep--20.2.0.simg (which is symlink'ed to /packages/sin-
+gularity_containers/containers_bids-fmriprep--20.2.0.simg). You can also specify your own singu-
+larity image.
+
+If you have a T2-weighted image as well, you can specify the root directory to that image. If it
+exists, we will copy it to the directory where the T1-weighted is located (<input directory>) so
+that it is included by fMRIprep.
+
+Arguments:
+  <-s subject>    subject ID (optional)
+  <-n session>    session ID (optional)
+  <-c config>     configuration file as specified in /data/fmriprep_config?.json
+  <-f func dir>   directory containing functional data; used after running FreeSurfer outside of
+                  fMRIprep <optional>
+  <-r>            remove surface_recon_wf to project functional data to new surface; used after
+                  repeatedly enhancing the anatomical segmentation before injecting the functio-
+                  nal data <optional>
+
+  <anat dir>      directory containing the anatomical data. Can also be the regular project root
+                  folder if you want fMRIprep do the surface reconstruction
+
+  <derivatives>   output folder for fMRIprep; generally this will be <project>/derivatives
+
+  <mode>          run anatomical workflow only with 'anat', or everything with 'func'
+
+  <T2 dir>        if you have a T2w-file, but that is not in <anat dir> (because you preprocessed
+                  the T1w-file, but not the T2w-file), you can specify the directory where it lives
+                  here. Generally this will be the same as <func dir>
+
+Usage:
+  spinoza_fmriprep <-s sub> <-n ses> <-f func dir> <anat dir> <derivaties folder> <mode> <T2 dir>
+
+Example:
+  spinoza_fmriprep <project>/derivatives/masked_mp2rage <project>/derivatives anat
+  spinoza_fmriprep -s 001 -n 1 -f <project> <project>/derivatives/masked_mp2rage <project>/deri-
+                   vatives anat
+
+Notes:
+  - Has the '-s' and '-n' switches to specify a particular subject and session if present
+  - Has an '-f' flag to spcify a directory containing functional data. If your functional data is
+    stored in the same directory as the anatomical data, you can leave the flag empty
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+if [[ $# -lt 2 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+# Check for subject & session flags
+while getopts rs:n:f:m:c: argument
+do
+    case ${argument} in
+      s)  sub=${OPTARG}
+            ;;
+      n)  ses=${OPTARG}
+            ;;
+      f)  func_dir=${OPTARG}
+            ;;
+      m)  mode=${OPTARG}
+            ;;
+      c)  conf=${OPTARG}
+            ;;
+    esac
+done
+
+if [[ $# -lt 3 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+INPUT=${@:$OPTIND:1}
+OUTPUT=${@:$OPTIND+1:1}
+T2=${@:$OPTIND+2:1}
+
+if [[ -z ${sub} ]]; then
+  # loop through subjects
+  search="${INPUT}/sub-*"
+else
+  # do for 1 subject
+  sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
+  search="${INPUT}/sub-${sub_nr}"
+fi
+
+if [[ -z ${mode} ]]; then
+  MODE="anat"
+else
+  MODE=${mode}
+fi
+
+if [[ "${@}" == *"-r"* ]]; then
+  REMOVE_WF=1
+else
+  REMOVE_WF=0
+fi
+
+#-----------------------------------------------------------------------------
+# Start clock
+#-----------------------------------------------------------------------------
+
+echo
+echo "==================================================================================================="
+printf "NEW PREPROCESSING WITH FMRIPREP\n"
+start=`date +%s`
+start_date=`date`
+
+printf "Started at ${start_date}\n"
+echo "==================================================================================================="
+
+#-----------------------------------------------------------------------------
+# Run it
+
+for dir in ${search}; do
+
+  if [[ -z ${ses} ]]; then
+    base=$(basename ${dir})
+  else
+    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
+    base=$(basename ${dir})/ses-${nr}
+  fi
+
+  input_dir=${INPUT}/${base}
+
+  # if [[ ! -z ${T2} ]]; then
+  #   t2w=`find "${T2}/${base}/anat" -type f \( -name "*T2w.nii.gz" \) 2>/dev/null`
+  #   if [[ ! -z ${t2w} ]]; then
+  #     # echo "Including `basename ${t2w}` in fMRIprep"
+  #     if [[ ! -f ${input_dir}/anat/$(basename ${t2w}) ]]; then
+  #       cp ${t2w} ${input_dir}/anat
+  #     fi
+  #   fi
+  # fi
+
+  # echo $input_dir
+  if [[ ${MODE} == "anat" ]]; then
+    anat=`find "${input_dir}/anat" -type f \( -name "*T1w*" -and -name "*acq-${space^^}*" -and -name "*.nii.gz" \) 2>/dev/null`
+    if [[ -z ${anat} ]]; then
+      echo " `basename ${dir}`; missing anatomical data"
+      continue
+    fi
+    func_txt="Only including anatomical data"
+  else
+    func_txt="Including functional data"
+    if [[ ! -z ${func_dir} ]]; then
+      # separate directory with functional data
+      func=`find "${func_dir}/${base}/func" -type f \( -name "*bold.nii.gz" \) 2>/dev/null`
+      INPUT=${func_dir}
+
+      # check if there's a T1w in the 'anat' folder; even though you've already ran it, fMRIprep requires T1w-files
+      anat=`find "${func_dir}/${base}/anat" -type f \( -name "*T1w.nii.gz" \) 2>/dev/null`
+      if [[ -z ${anat} ]]; then
+        diff_anat=`find "${input_dir}/anat" -type f \( -name "*T1w.nii.gz" \) 2>/dev/null`
+        if [ ! -z ${diff_anat} ]; then
+          cp ${diff_anat} ${func_dir}/${base}/anat
+        else
+          echo "Could not find T1w-file. fMRIprep might complain.."
+        fi
+      fi
+    else
+      # same directory for functional and anatomical data
+      func=`find "${input_dir}/func" -type f \( -name "*bold.nii.gz" \) 2>/dev/null`
+      anat=`find "${input_dir}/anat" -type f \( -name "*T1w*" -and -name "*acq-${space^^}*" -and -name "*.nii.gz" \) 2>/dev/null`
+    fi
+
+    if [[ -z ${func} ]]; then
+      echo " `basename ${dir}`; missing functional data"
+      continue
+    fi
+  fi
+
+  echo
+  echo "**************************************** Processing `basename ${dir}` ***************************************"
+  echo ${func_txt}
+  
+  # if [[ ! -z ${t2w} ]]; then
+  #   if [[ -f ${input_dir}/anat/$(basename ${t2w}) ]]; then
+  #     echo "Including T2w: `basename ${t2w}` in FreeSurfer reconstruction"
+  #   fi
+  # fi
+
+  if [[ ${PLACE} == "SPINOZA" ]]; then
+
+    # qsub wants full paths, also for exectuble scripts
+    workdir=${PATH_HOME}/programs/packages/fmriprep/${PROJECT}
+    if [[ ! -d ${workdir} ]]; then
+      mkdir -p ${workdir}
+    fi
+
+    if [[ ${REMOVE_WF} -eq 1 ]]; then
+      wf_dir=${workdir}/fmriprep_wf/single_subject_$(basename ${dir} | cut -d'-' -f2)_wf/anat_preproc_wf/surface_recon_wf
+      if [ -d ${wf_dir} ]; then
+        echo "Removing surface_recon_wf folder"
+        rm -r ${wf_dir}
+      fi
+    fi
+
+    if [[ -z ${conf} ]]; then
+      confFile=""
+    else
+      echo "Using config file: ${conf}"
+      confFile=${conf}
+    fi
+    
+    qsub -N fprep_$(basename ${dir} | cut -d'-' -f2) -o ${workdir} \
+      ${DIR_SCRIPTS}/bin/call_fmriprep \
+      -s $(basename ${dir} | cut -d'-' -f2) \
+      -m ${MODE} \
+      -c "SGE" \
+      -b "/data1/projects" \
+      -r ${INPUT} \
+      -d ${OUTPUT} \
+      -w ${workdir} \
+      -x ${confFile}
+
+    if [[ $? != 0 ]]; then
+      echo
+      echo "---------------------------------------------------------------------------------------------------"
+      echo "ERROR in `basename ${0}`: job submission was unsuccessful"
+      exit 1
+    fi
+
+    # call_fmriprep -s $(basename ${dir} | cut -d'-' -f2) -m ${MODE} -c "SGE" -r ${INPUT}
+
+  elif [[ ${PLACE} == "HOME" ]]; then
+
+    call_fmriprep -s $(basename ${dir} | cut -d'-' -f2) -m ${MODE} -c "local" -r ${INPUT}
+
+  else
+
+    echo " Unrecognized location specified."
+    exit 1
+
+  fi
+
+done
+
+#-----------------------------------------------------------------------------
+# Calculate time spent using 'let'
+echo
+echo "---------------------------------------------------------------------------------------------------"
+end=`date +%s`
+end_date=`date`
+printf "Done at ${end_date}\n"
+
+let deltatime=end-start
+let hours=deltatime/3600
+let minutes=(deltatime/60)%60
+let seconds=deltatime%60
+printf "Time spent: %d:%02d:%02d\n" ${hours} ${minutes} ${seconds}
+echo "---------------------------------------------------------------------------------------------------"

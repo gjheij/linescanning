@@ -1,0 +1,79 @@
+#!/usr/bin/env python
+
+import nibabel as nb
+import numpy as np
+import sys, getopt
+import os
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_setmasktozero
+
+This script is a wrapper that sets the values in a given mask to zero in a given image, kind of like
+the opposite of regular 'making', where values in the mask are retained in the input image. Now they
+are set to zero!
+
+Args:
+    -i (--input=)         input image
+    -m (--mask=)          mask image
+    -o (--output=)        output image (optional)
+
+Outputs
+    same as input image but with values from mask image set to zero
+
+Example:
+    call_setmasktozero -i t1w_image.nii.gz -m mask.nii.gz -o zeroed_t1w.nii.gz
+
+---------------------------------------------------------------------------------------------------
+
+    """
+
+    anat_image      = ''
+    mask_image      = ''
+    outp_image      = ''
+
+    try:
+        opts = getopt.getopt(argv,"hi:m:o:",["input=", "mask=", "output="])[0]
+    except getopt.GetoptError:
+        print(main.__doc__)
+        sys.exit(2)
+
+    for opt, arg in opts:
+        if opt == '-h':
+            print(main.__doc__)
+            sys.exit()
+        elif opt in ("-i", "--input"):
+            anat_image = arg
+        elif opt in ("-m", "--mask"):
+            mask_image = arg
+        elif opt in ("-o", "--output"):
+            outp_image = arg
+
+    if len(argv) < 4:
+            print("\nNOT ENOUGH ARGUMENTS SPECIFIED")
+            print(main.__doc__)
+            sys.exit()
+
+    # load files in with nibabel
+    anat = nb.load(anat_image)
+    mask = nb.load(mask_image)
+
+    # get the data in numpy arrays
+    anat_data = anat.get_fdata()
+    mask_data = mask.get_fdata()
+
+    # set corresponding voxels from mask in input to zero and save new image
+    anat_data[mask_data.astype(bool)] = 0
+
+    if outp_image != "":
+        out = outp_image
+    else:
+        os.remove(anat_image)
+        out = anat_image
+
+    nb.Nifti1Image(anat_data, header=anat.header, affine=anat.affine).to_filename(out)
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

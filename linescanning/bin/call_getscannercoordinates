@@ -1,0 +1,274 @@
+#!/usr/bin/env python
+import numpy as np
+import pandas as pd
+import os
+import sys, getopt
+from math import radians
+from datetime import datetime
+from linescanning.bin.utils.utils import get_rotation_values, color, reverse_sign, get_matrixfromants, get_composite, get_coordinate, correct_angle, get_foldover, string2float, get_file_from_substring, normal2angle, rotate_normal, convert2unit
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_getscannercoordinates
+
+This script calculates the values you need to enter in the MR-scanner console after registering
+the second session anatomy to the first session anatomy. It assumes you have a affine matrix file
+as outputted by ANTs and a file containing the information about the orientation in the line.
+These information from these two files will be combined to give the line orientation int the 2nd
+session anatomy.
+
+This script is called by spinoza_lineplanning or via the command ./master -m 00
+
+Args:
+    -a (--ants_file=)       file containing the affine matrix mapping session 1 to session 2
+    -p (--pycortex_file=)   file containing information about the orientation of the line in
+                            session 1 anatomy; a text file created in the pycortex notebook
+                            that calculates the optimal vertex
+    -f (--fs2ses)           matrix mapping files from FreeSurfer to Session 1
+    -s (--ses2fs)           matrix mapping files from session 1 to FreeSurfer
+                            you only need to specify fs2ses or ses2fs, if ses2fs is specified
+                            it will be inverted if it can't find the inverted file. If you
+                            have it, specify it. If you don't you can create it with:
+
+                            convert_xfm -omat sub-xxx_from-fs_to-ses1.mat -inverse sub-xxx_
+                            from-ses1_to-fs.mat
+
+                            It should be created along the way during spinoza_line2surface.sh
+
+    -x (--anat1)            session 1 anatomy
+    -y (--anat2)            session 2 anatomy
+    -h (--hemi=)            which hemi (left | right)
+    -o (--overwrite=)       overwrite warped point-files (default=yes) > used for debugging
+
+Outputs:
+    gives values you need to enter in the MR-scanner console like this:
+    set the orientation to sagittal and foldover to FH
+    set the rotation values to:
+     - AP: 0.2 deg
+     - RL: 21 deg
+     - FH: -9 deg
+
+    set the translation values to:
+     - AP: 56 mm
+     - RL: 2 mm
+     - FH: -9 mm
+
+Example:
+    call_getscannercoordinates  -a /path/to/affine.txt -o /path/to/orient.csv -h left
+    call_getscannercoordinates  -a "$DIR_DATA_SOURCE/sub-001/ses-4/nifti/line_ants.txt"
+                                -o "$DIR_DATA_DERIV/pycortex/sub-001/line_pycortex.csv" right
+
+---------------------------------------------------------------------------------------------------
+
+    """
+
+    ants_file       = ''
+    pycortex_file   = ''
+    fs2ses          = ''
+    ses2fs          = ''
+    anat1           = ''
+    anat2           = ''
+    hemi            = ''
+    overwrite       = True
+
+    try:
+        opts = getopt.getopt(argv,"is:a:p:f:s:x:y:h:o:",["subject=", "ants_file=", "pycortex_file=", "fs2ses=", "ses2fs=", "anat1=", "anat2=", "hemi=", "overwrite="])[0]
+    except getopt.GetoptError:
+        print(main.__doc__)
+        sys.exit(2)
+
+    for opt, arg in opts:
+        if opt == '-i':
+            print(main.__doc__)
+            sys.exit()
+        elif opt in ("-s", "--subject"):
+            subject = arg
+        elif opt in ("-a", "--ants_file"):
+            ants_file = arg
+        elif opt in ("-f", "--fs2ses"):
+            fs2ses = arg
+        elif opt in ("-s", "--ses2fs"):
+            ses2fs = arg
+        elif opt in ("-p", "--pycortex_file"):
+            pycortex_file = arg
+        elif opt in ("-x", "--anat1"):
+            anat1 = arg
+        elif opt in ("-y", "--anat2"):
+            anat2 = arg
+        elif opt in ("-h", "--hemi"):
+            hemi = arg
+        elif opt in ("-o", "--overwrite"):
+            overwrite = arg
+
+    if len(argv) < 3:
+        print("NOT ENOUGH ARGUMENTS SPECIFIED")
+        print(main.__doc__)
+        sys.exit(1)
+
+    if ants_file != "" and pycortex_file != "" and hemi != "":
+
+        #----------------------------------------------------------------------------------------------------------------
+        # OUTPUT ANTs MAPPING SESSION 1 TO SESSION 2
+        #
+
+        ants                = get_matrixfromants(ants_file)
+        ants_rotation       = get_rotation_values(ants[:3,:3])
+        ants_translation    = pd.DataFrame(data=reverse_sign(ants[:3,3]), columns=['translation'])
+
+        soft = pd.DataFrame.from_dict({"software": ["ANTs", "ANTs", "ANTs"]})
+        ants_values = pd.concat([ants_rotation, ants_translation, soft], axis=1)
+
+        #----------------------------------------------------------------------------------------------------------------
+        # OUTPUT PYCORTEX NOTEBOOK CONTAINING THE ORIENTATION OF THE LINE IN SESSION 1 ANATOMY
+        pycortex    = get_composite(pycortex_file)
+        coord_file  = opj(os.path.dirname(pycortex_file), "coordinates.csv")
+        if hemi == "left":
+            idx = 0
+            tag = "L"
+        elif hemi == "right":
+            idx = 1
+            tag = "R"
+        # Retrieve vertex from pycortex_file
+        vert = int(pycortex['value']['vertex'][idx])
+
+        if overwrite == True:
+            if os.path.isfile(coord_file):
+                os.remove(coord_file)
+
+            if fs2ses == "" and ses2fs == "":
+                raise ValueError("no FreeSurfer to session 1 file or session 1 to FreeSurfer file was specified. Need one..")
+            elif fs2ses == "" and ses2fs != "":
+                raise NotImplementedError("still need to add the inversion of ses2fs in here. Kind of redundant as it should happen in spinoza_lineplanning.sh, which calls on this script..")
+            elif fs2ses != "" and ses2fs != "":
+                raise ValueError("don't need both files, just specify FreeSurfer to session 1 matrix")
+            else:
+                pass
+
+            hemi_dfs = []
+            for h in ['left', 'right']:
+
+                if h == "left":
+                    vert_idx = 0
+                elif h == "right":
+                    vert_idx = 1
+
+                targ  = int(pycortex['value']['vertex'][vert_idx])
+                df    = get_coordinate(targ, subject, anat1=anat1, anat2=anat2, matrix=[fs2ses,ants_file], hemi=h)
+                hemi_dfs.append(df)
+
+            coord_df = pd.concat(hemi_dfs)
+            coord_df.to_csv(coord_file)
+
+            df = coord_df.set_index(['hemi'])
+            ctx_coord = df.loc[hemi]['ras'][0]
+            ras_coord = df.loc[hemi]['ras'][2]
+
+        else:
+
+            coord_df = get_composite(coord_file)
+
+            print(" Coordinate file present            = ['{file}']".format(file=os.path.basename(coord_file)))
+            coord_df = get_composite(coord_file)
+            df = coord_df.set_index(['hemi'])
+            ctx_coord   = string2float(df.loc[hemi]['ras'][0])
+            ras_coord   = string2float(df.loc[hemi]['ras'][2])
+
+        print(f" Done. RAS point                    = {ras_coord}")
+
+        pycortex_values = pd.DataFrame({"world axis": ["x", "y", "z"],
+                                        "scanner axis": ["LR", "AP", "FH"],
+                                        "degrees": [float(pycortex['value']['LR_rot'][idx]), float(pycortex['value']['AP_rot'][idx]), float(pycortex['value']['FH_rot'][idx])],
+                                        "radians": [radians(float(pycortex['value']['LR_rot'][idx])), radians(float(pycortex['value']['AP_rot'][idx])), radians(float(pycortex['value']['FH_rot'][idx]))],
+                                        "translation": [float(ctx_coord[0]), float(ctx_coord[1]), float(ctx_coord[2])],
+                                        "software": "pycortex"})
+
+        # combine dataframes from ANTs and pycortex
+        all_values = pd.concat([ants_values, pycortex_values]).set_index(['software', 'world axis'])
+        all_values.to_csv(opj(os.path.dirname(pycortex_file),'composite_transformation.csv'))
+
+        # extract normal vector from dataframe and convert to array
+        norm = string2float(pycortex['value']['normal'][idx])
+
+        # apply rotation part of ANTs-matrix to normal vector
+        rot_norm = rotate_normal(norm, ants)
+
+        print(f" Warped normal vector               = {rot_norm}")
+        # print(f" Warped unit vector                 = {unit_norm}")
+
+        # convert normal vector to angles
+        raw_angles = normal2angle(rot_norm)
+        print(f" Raw angles                         = {raw_angles}")
+
+        # Convert angles to scanner appropriate values
+        correct_angles = np.array([correct_angle(i) for i in raw_angles])
+
+        info = get_foldover(correct_angles, hemi, vert)
+
+        info_file = opj(os.path.dirname(pycortex_file), f'{subject}_hemi-{tag}_desc-info.csv')
+        if os.path.exists(info_file):
+            os.remove(info_file)
+        info.to_csv(info_file)
+
+        # offset = round(info['value'].iloc[-2],2)
+        # offset_dir = info['value'].iloc[-1]
+        #
+        # print(f" Account for offset_dir             = [{offset} in {offset_dir} direction]")
+
+        # Coordinate = RAS; scanner = LPS
+        if hemi == "left":
+            scan_coord  = np.array([abs(ras_coord[0]), abs(ras_coord[1]), ras_coord[2]])
+        elif hemi == "right":
+            scan_coord  = np.array([-abs(ras_coord[0]), abs(ras_coord[1]), ras_coord[2]])
+
+        # if offset_dir == "FH":
+        #     # slice needs to be higher (more positive value > add)
+        #     offset_coord = np.copy(scan_coord); offset_coord[2] = round(offset_coord[2]+offset,2)
+        # elif offset_dir == "AP":
+        #     # slice needs to be more posterior (is less positive value > subtract)
+        #     offset_coord = np.copy(scan_coord); offset_coord[1] = round(offset_coord[1]-offset,2)
+        # elif offset_dir == "LR":
+        #     # slice needs to be more left (more positive value > add)
+        #     offset_coord = np.copy(scan_coord); offset_coord[0] = round(offset_coord[0]+offset,2)
+
+        # print(info)
+        # Create log file so we know what values we have used..
+        textList = ["# Created on {date}\n\n".format(date=datetime.now().strftime("%d/%m/%Y %H:%M:%S")),
+                    "---------------------------------------------------------------------------------------------------\n",
+                    " ENTER THE FOLLOWING VALUES IN THE MR-CONSOLE\n",
+                    " set orientation to " + color.BOLD + color.RED + info['value'][0] + color.END + " and foldover to " + color.BOLD + color.RED + info['value'][1] + color.END + "\n",
+                    "  FH: {angle} deg\n".format(angle=round(info['value'][5],2)),
+                    "  AP: {angle} deg\n".format(angle=round(info['value'][4],2)),
+                    "  RL: {angle} deg\n".format(angle=round(info['value'][3],2)),
+                    "\n set translation to:\n",
+                    "  AP: {angle} mm\n".format(angle=scan_coord[1]),
+                    "  RL: {angle} mm\n".format(angle=scan_coord[0]),
+                    "  FH: {angle} mm".format(angle=scan_coord[2]),
+                    "\n",
+                    f"Targeted hemisphere: {hemi}\n",
+                    f"Vertex number:       {vert}\n",
+                    f"Isocenter RAS:       {ras_coord}\n",
+                    f"Isocenter LPS:       {scan_coord}"
+                    ]
+
+        log_file = opj(os.path.dirname(pycortex_file), "console.o{ext}".format(ext=os.getpid()))
+        outF = open(log_file, "w")
+        outF.writelines(textList)
+        outF.close()
+
+        # Print values to the terminal
+        print("")
+        for l in textList[1:]:
+            print(l.split("\n")[0])
+
+    else:
+
+        print(" Please specify required files for call_getscannercoordinates.py")
+        sys.exit(1)
+
+    print("")
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

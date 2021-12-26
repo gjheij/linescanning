@@ -1,0 +1,363 @@
+#!/usr/bin/env python
+
+"""
+-----------------------------------------------------------------------------------------
+FromScannerToBIDS.py
+-----------------------------------------------------------------------------------------
+Goal of the script:
+Convert PAR/REC to nifti (nii.gz) format, and bidsify. Relevant for Dumoulinlab standard sequences
+-----------------------------------------------------------------------------------------
+Input(s):
+sys.argv[1]: input data path. Must be of the form ".../ProjectName-Raw/sub-xxx/ses-x/rawdata"
+sys.argv[2]: convert to nifti True/False (sometimes might wanna run the script on previously converted data)
+sys.argv[3]: grab event data True/False (note that if event data are not BIDS-formatted, they will make the BIDS validator fail)
+sys.argv[4]: specify dcm2niix version (2020 can fail with phase data required for NORDIC)
+-----------------------------------------------------------------------------------------
+Output(s):
+nifti and JSON files in a BIDS structure
+-----------------------------------------------------------------------------------------
+To run:
+python FromScannerToBIDS.py [input data path] [convertTonifti True/False] [grab events True/False]
+[input data path] must be of the form ".../Projectname-Raw/sub-xxx/ses-x/rawdata/", otherwise IOError is raised.
+example:
+python FromScannerToBIDS.py /data1/projects/dumoulinlab/marco/PRFMapping-Raw/sub-199/ses-5/rawdata/ True False
+-----------------------------------------------------------------------------------------
+Written by Marco Aqil
+
+Edits Jurjen 16-10-2020:
+ - Made the path specification more flexible. It will now look for the items "projects",
+   "project-name", "subject", and "session" based on the specified input folder and out-
+   put to the project-name/sub-xxx/ses-x. The "rawdata" requirement is no more and it won't
+   output to "project-name-BIDS" anymore.
+
+ - Fixed a problem with the "epi_params". The function locals() didn't work properly so
+   now it just checks if the variable is not empty.
+
+ - Also made sure it's not repeating the conversion to nifti if the folder already exists.
+-----------------------------------------------------------------------------------------
+"""
+
+# imports modules
+import sys
+import os
+import json
+from shutil import copyfile
+import numpy as np
+import glob
+import nibabel as nib
+
+opj = os.path.join
+
+# define subject folder
+input_folder = sys.argv[1]
+nifti = sys.argv[2]
+events = sys.argv[3]
+version = sys.argv[4]
+
+if not os.path.isdir(input_folder):
+    raise IOError("Input data path does not exist.")
+
+split_input = [elem for elem in input_folder.split("/") if elem != ""]
+
+# if split_input[-1] != "rawdata" or "ses-" not in split_input[-2] or "sub-" not in split_input[-3] or not split_input[-4].endswith("-Raw"):
+#     raise IOError("Unsuitable input data path. Make sure that the folder structure is: .../Projectname-Raw/sub-xxx/ses-x/rawdata/")
+# else:
+#     ses_string = split_input[-2]
+#     subj_string = split_input[-3]
+#     project_string = split_input[-4][:-4]
+#
+# output_folder = opj(os.sep, *split_input[:-4], project_string) + "-BIDS"
+
+# Find projects base index, but exlucde the "projects" directory from the spinoza cluster
+idx_proj = split_input.index('projects', 2,-1)
+project_string = split_input[idx_proj+1]
+
+idx_subj = [(i, split_input.index('sub-')) for i, split_input in enumerate(split_input) if 'sub-' in split_input][0][0]
+subj_string = split_input[idx_subj]# do we have sessions?
+
+idx_ses = [(i, split_input.index('ses-')) for i, split_input in enumerate(split_input) if 'ses-' in split_input][0][0]
+if idx_ses != 0:
+    ses_string = split_input[idx_ses]# do we have sessions?
+else:
+    ses_string = ""
+
+output_folder = opj(os.sep, *split_input[:-4], project_string)
+
+# create BIDS folders
+for bids_folder in ["anat", "fmap", "func"]:
+    try: os.makedirs(opj(output_folder, subj_string, ses_string, bids_folder))
+    except: pass
+
+bids_anat = opj(output_folder, subj_string, ses_string, "anat")
+bids_func = opj(output_folder, subj_string, ses_string, "func")
+bids_fmap = opj(output_folder, subj_string, ses_string, "fmap")
+
+# print("\n Initiating procedure. If there is an h5py warning above, please ignore it \n")
+
+# print("Raw data folder: "+input_folder)
+# print("BIDS output folder: "+output_folder)
+
+nifti_output_folder = opj(input_folder, "nifti")
+
+if nifti == "True":
+    # using dcm2niix for PAR/REC to nii.gz conversion
+    if os.path.isdir(nifti_output_folder):
+        print("Directory exists, skipping conversion. Proceeding to BIDSifiy data")
+    else:
+        # create output folder
+        try: os.makedirs(nifti_output_folder)
+        except: pass
+
+        # overwrite version?
+        if version == "2019":
+            cmd="/packages/mricrogl/20190902/Resources/dcm2niix"
+        else:
+            cmd="dcm2niix"
+
+        cmd_txt = "{cmd} -d 0 -b y -f %n_%p -o {out} -z y {in_folder} ".format(cmd=cmd, out=nifti_output_folder, in_folder=input_folder)
+        
+        # convert files
+        print("Converting files to nifti-format")
+        os.system(cmd_txt)
+
+        print("Conversion to nifti completed. BIDSifying data...")
+else:
+    print("Skipping nifti conversion...")
+
+#correcting filenames and distributing in BIDS folders
+for filename in os.listdir(nifti_output_folder):
+    #eliminating blanks and digits-only parts of filename
+
+    split_name = [elem for elem in filename.split("_") if (elem != "" and not elem.isdigit())]
+    # print(split_name)
+    #substitute scanner name with sub if needed
+    split_name[0] = subj_string
+
+    #making sure session is in the filename
+    if "ses-" not in filename:
+        split_name.insert(1, ses_string)
+    else:
+        split_name[1]=ses_string
+
+    #handling a specific, different naming case
+    if "pRFNorm" in split_name[2]:
+        del split_name[2]
+
+    if "task-PRF" in split_name[2]:
+        split_name[2] = split_name[2].replace("task-PRF", "task-")
+
+    #handling mp2rage anatomies
+    if "mp2rage" in filename.lower():
+        #simple mp2prage preprocessing
+        split_name[2] = "acq-MP2RAGE"
+
+        if split_name[3] == "real":
+
+            if "t10" in split_name[4]:
+                split_name[3] = "T1w" + split_name[4][5:]
+            elif "t29" in split_name[4]:
+                split_name[3] = "T1map" + split_name[4][5:]
+            else:
+                print("Warning: cant find correct mp2rage files. Has something been changed in the sequence?")
+
+            del(split_name[4])
+
+        if len(split_name) >= 5 and split_name[4] == "ph":
+            bids_output_folder = bids_fmap
+            if "t10" in split_name[5]:
+                split_name[3] = "inv-1_part-phase" + split_name[5][5:]
+            elif "t29" in split_name[5]:
+                split_name[3] = "inv-2_part-phase" + split_name[5][5:]
+            else:
+                print("Warning: cant find correct mp2rage files. Has something been changed in the sequence?")
+
+            del(split_name[-2:])
+
+        elif len(split_name) >= 5 and "t10" in split_name[4]:
+            bids_output_folder = bids_fmap
+            split_name[3] = "inv-1_part-mag" + split_name[4][5:]
+            del(split_name[-1:])
+        elif len(split_name) >= 5 and "t29" in split_name[4]:
+            bids_output_folder = bids_fmap
+            split_name[3] = "inv-2_part-mag" + split_name[4][5:]
+            del(split_name[-1:])
+
+        #only copy t1w and t1map
+        new_filename = "_".join(split_name)
+        # print(new_filename)
+        copyfile(opj(nifti_output_folder,filename), opj(bids_anat,new_filename))
+
+    #handling functional data
+    if "bold" in filename.lower():
+        new_filename = "_".join(split_name)
+        copyfile(opj(nifti_output_folder,filename), opj(bids_func, new_filename))
+
+    #handling topups
+    if "epi" in filename.lower():
+        if "dir" not in split_name[2]:
+            split_name[2] = split_name[2].replace("task", "dir")
+        new_filename = "_".join(split_name)
+        copyfile(opj(nifti_output_folder,filename), opj(bids_fmap,new_filename))
+
+    #handling current TSE/FLAIR
+    if "3dtse" in filename.lower():
+        if not "acq-3DTSE" in filename:
+            split_name.insert(-1, "acq-3DTSE")
+        split_name[-1] = split_name[-1].replace("3DTSECHECKCOILSANTPOST", "T2w")
+        split_name[-1] = split_name[-1].replace("3DTSEnonSmart", "T2w")
+        new_filename = "_".join(split_name)
+        copyfile(opj(nifti_output_folder,filename), opj(bids_anat,new_filename))
+
+
+    if "3dflair" in filename.lower():
+        split_name[-1] = split_name[-1].replace("3DFLAIR0.8mmultraFAST", "FLAIR")
+        new_filename = "_".join(split_name)
+        copyfile(opj(nifti_output_folder,filename), opj(bids_anat,new_filename))
+
+#get event files
+if events == "True":
+    print("Grabbing event files. Note that if event .tsv files are not already in BIDS format, the BIDS validator will throw errors.")
+    event_files = glob.glob(opj(input_folder, "**", "*events.tsv"), recursive=True)
+
+    if event_files == []:
+        print("Warning: no event files found.")
+    else:
+        for event_file in event_files:
+            copyfile(event_file, opj(bids_func, event_file.split("/")[-1]))
+
+
+
+
+#simple masking of t1w using thresholded t1map, to avoid non-zero values outside brain
+#the original t1w, t1map, phase and inversions can still be found in raw data folder if needed
+#the t1map is removed because currently unused by BIDS/fmriprep. could be reintroduced later
+mp2rage_images=0
+for filename in os.listdir(bids_anat):
+    if 'MP2RAGE_T1map.nii.gz' in filename:
+        mp2rage_images+=1
+        t1map = nib.load(opj(bids_anat,filename))
+        t1map_filename = filename
+
+    elif 'MP2RAGE_T1w.nii.gz' in filename:
+        mp2rage_images+=1
+        t1w_raw = nib.load(opj(bids_anat,filename))
+        t1w_filename=filename
+
+    elif 'MP2RAGE_T1map.json' in filename:
+        pass
+        # os.remove(opj(bids_anat,filename))
+
+if mp2rage_images==2:
+    print("Masking mp2rage t1w background with t1map...")
+    t1map_mask=t1map.dataobj.get_unscaled()
+    t1map_mask[np.where(t1map_mask>0)]=1
+    # os.remove(opj(bids_anat,t1map_filename))
+
+    t1w_masked = t1w_raw.dataobj.get_unscaled() * t1map_mask
+    nib.Nifti1Image(t1w_masked, t1w_raw.affine, t1w_raw.header).to_filename(opj(bids_anat,t1w_filename))
+else:
+    print("Warning: cant find correct mp2rage files. Has something been changed in the sequence?")
+
+
+
+
+#adding/removing information to JSON files
+print("Adding parameters to JSON files...")
+
+#removing philips scaling from mp2rage jsons to avoid confusion
+for filename in os.listdir(bids_anat):
+    if "MP2RAGE_T1w.json" in filename:
+
+        with open(opj(bids_anat, filename)) as f:
+            data = json.load(f)
+
+        data_new = dict(data)
+
+        for key in data:
+            if "Philips" in key:
+                del data_new[key]
+
+
+        with open(opj(bids_anat, filename), 'w') as f:
+            json.dump(data_new, f, indent=4)
+
+
+
+#epi params
+for filename in os.listdir(bids_fmap):
+
+    if "epi.json" in filename:
+
+        #BIDS wants TRT to be specified for epi files. long story short, we MUST to put that AND EES in
+        WFS = 38.445
+        #magnetic field strength * water fat difference in ppm * gyromagnetic hydrogen ratio
+        WFS_hz = 7 * 3.35 * 42.576
+        TRT = WFS/WFS_hz
+        #trt/(epi factor +1)
+        EES = TRT / 54
+
+        bold_file = opj(ses_string, "func", filename.replace("dir", "task").replace("epi.json", "bold.nii.gz"))
+
+        epi_params = {"IntendedFor" : bold_file,
+                      "TotalReadoutTime" : TRT,
+                      "EffectiveEchoSpacing" : EES,
+                      "PhaseEncodingDirection" : "j",
+                      "SliceEncodingDirection" : "k",
+                      "WaterFatShift" : 38.445,
+                      "MultiBandAccelerationFactor" : 3,
+                      "MagneticFieldStrength" : 7,
+                      "ParallelReductionFactorInPlane" : 2.37,
+                      "FlipAngle" : 65,
+                      "SliceTiming" : list(np.tile(np.linspace(0, 1.5, int(57/3), endpoint=False), 3))
+                      }
+
+        with open(opj(bids_fmap, filename)) as f:
+            data = json.load(f)
+
+        data.update(epi_params)
+
+        with open(opj(bids_fmap, filename), 'w') as f:
+            json.dump(data, f, indent=4)
+    else:
+        epi_params = ""
+
+#copying and updating for bold params
+try:
+    if epi_params != "":
+        bold_params=dict(epi_params)
+
+        del bold_params["IntendedFor"]
+        bold_params["PhaseEncodingDirection"] = "j-"
+except:
+    pass
+
+try:
+    for filename in os.listdir(bids_func):
+        if "bold.json" in filename:
+
+            task_name = [elem[5:] for elem in filename.split("_") if "task" in elem]
+
+            bold_params["TaskName"] = task_name[0]
+
+            with open(opj(bids_func, filename)) as f:
+                data = json.load(f)
+
+            data.update(bold_params)
+
+            with open(opj(bids_func, filename), 'w') as f:
+                json.dump(data, f, indent=4)
+
+except:
+    pass
+
+if not os.path.isfile(opj(output_folder, 'dataset_description.json')):
+    with open(opj(output_folder, 'dataset_description.json'), 'w+') as f:
+        data = {"Name": project_string,
+                "BIDSVersion":  "1.2.0",
+                "Authors": ["Author 1", "Author 2", "Author 3"]
+                }
+        json.dump(data, f, indent=4)
+
+        print("IMPORTANT: Remember to edit the author names in "+opj(output_folder, 'dataset_description.json'))
+
+print("Done! Run BIDS validator (https://bids-standard.github.io/bids-validator/) to make sure everything worked correctly.\n")

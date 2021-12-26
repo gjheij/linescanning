@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# check if there's is a setup file containing the major paths and source it if it exists
+call_loadsetup
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+spinoza_noiselevelestimation
+
+wrapper for noise level estimation with AFNI. Currently I'm not really using the output from this,
+so the script is muted in the master script. The idea is to get a clean brain mask, but I feel I
+already get one by brain extracting the second inversion (INV2) image.
+
+Usage:
+  spinoza_noiselevelestimation <directory with subjects> <derivaties folder> <clfrac [0-1]>
+
+Example:
+  spinoza_noiselevelestimation $DIR_DATA_HOME $DIR_DATA_DERIV 0.5
+
+Notes:
+  - Assumes your input file ends on _bfc.nii.gz, as outputted by spinoza_biascorrection
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+if [[ $# -lt 2 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+#-----------------------------------------------------------------------------
+# Start clock
+#-----------------------------------------------------------------------------
+
+echo "==================================================================================================="
+printf "NOISE LEVEL ESTIMATION WITH AFNI'S AUTOMASK\n"
+start=`date +%s`
+start_date=`date`
+
+printf "Started at ${start_date}\n"
+echo "==================================================================================================="
+
+#-----------------------------------------------------------------------------
+# Run it
+
+for dir in $1/sub-*; do
+
+  echo
+  echo "**************************************** Processing `basename ${dir}` ***************************************"
+
+  input=`find "${SKULLSTRIP}/$(basename ${dir})/anat" -type f \( -name "*inv-2*" -and -name "*${space}*" -and -name "*bet_brain.nii.gz" \) 2>/dev/null`
+  output=${MASKS}/$(basename ${dir})/anat/$(basename ${dir})_ses-1_space-${space}_desc-nle.nii.gz
+
+  if [[ -f ${input} && ! -f ${output} ]]; then
+
+    printf "Running 3dAutomask on `basename ${input}`\n"
+
+    call_afniautomask ${input} ${output} $3
+
+  else
+    if [[ ! -f ${input} ]]; then
+      echo "  No input file found"
+      continue
+    elif [[ -f ${output} ]]; then
+      echo "  `basename ${output}` already present"
+    fi
+  fi
+
+done
+
+#-----------------------------------------------------------------------------
+# Calculate time spent using 'let'
+echo
+echo "---------------------------------------------------------------------------------------------------"
+end=`date +%s`
+end_date=`date`
+printf "Done at ${end_date}\n"
+
+let deltatime=end-start
+let hours=deltatime/3600
+let minutes=(deltatime/60)%60
+let seconds=deltatime%60
+printf "Time spent: %d:%02d:%02d\n" ${hours} ${minutes} ${seconds}
+echo "---------------------------------------------------------------------------------------------------"

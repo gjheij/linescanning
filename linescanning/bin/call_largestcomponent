@@ -1,0 +1,45 @@
+#!/usr/bin/env python
+
+import os, sys
+import numpy as np
+import nibabel as nb
+from nilearn import image
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_largestcomponent
+
+Keep the largest component of an image to remove weird small clusters/voxels.
+
+Args:
+    <input file>  input file (.nii.gz)
+    <output>      output file (.nii.gz) [if empty, <input file> will be overwritten]
+
+Outputs
+    output        new volume containing the largest connected component
+
+Example:
+    call_largestcomponent input.nii.gz output.nii.gz
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    if len(argv) < 1:
+        print("NEED AT LEAST AN INPUT IMAGE")
+        print(main.__doc__)
+        sys.exit()
+
+    try:
+        in_file     = argv[0]
+        out_file    = argv[1]
+    except:
+        in_file     = argv[0]
+        out_file    = in_file
+
+    new_img = image.largest_connected_component_img(in_file)
+    new_img.to_filename(out_file)
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

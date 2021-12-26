@@ -1,0 +1,327 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_freeview
+
+Quickly open and view the surfaces on top of the orig.mgz in freeview. You'll need to specify a sub-
+ject number, which modalities you'd like to view, and whether you want to have the point of the best
+vertex in there as well (only pertains to linescanning purposes!)
+
+Usage:
+  call_freeview <-d viewport 3D> <-v points> <subj nr> <type>
+
+Args:
+  -d            open FreeView3D, to view overlays and stuff. This ignores all other arguments, such 
+                that only thickness files are loaded in
+  -v            can be used in combination with <type> to also load in the point of the best vertex
+                should be 0 for 'no' or 1 for 'yes' (default = yes)
+  subj_nr       subject ID as defined in SUBJECTS_DIR
+  type          we can load in multiple instances of FreeView:
+                  - 'anat'; loads orig, T2 (if present), brainmask
+                  - 'surf'; loads brainmask, white matter/pial/fiducial (if present) surfaces
+                  - 'layers'; loads the output from surface_tools
+
+Example:
+  call_freeview sub-001 surf
+  call_freeview -d sub-001
+  call_freeview -v sub-001 layers
+  call_freeview sub-001 (will by default load your surfaces)
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+if [[ $# -le 0 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+# Check for subject & session flags
+while getopts dv argument
+do
+  case ${argument} in
+    s)  sub=${OPTARG}
+          ;;
+    n)  ses=${OPTARG}
+          ;;
+    f)  func_dir=${OPTARG}
+          ;;
+    m)  mode=${OPTARG}
+          ;;            
+  esac
+done
+
+
+SUBJECT=${@:$OPTIND:1}
+TYPE=${@:$OPTIND+1:1}
+
+if [[ "${@}" == *"-d"* ]]; then
+  VIEWPORT=1
+else
+  VIEWPORT=0
+fi
+
+if [[ "${@}" == *"-v"* ]]; then
+  point=1
+else
+  point=0
+fi
+
+#-----------------------------------------------------------------------------
+# Start loop
+
+if [[ -z ${TYPE} ]]; then
+  type="surf"
+else
+  if [[ ${TYPE} == "layers" ]]; then
+    type="layers"
+  elif [[ ${TYPE} == "anat" ]]; then
+    type="anat"
+  elif [[ ${TYPE} == "surf" ]]; then
+    type="surf"
+  else
+    echo "Invalid option for <type>"
+    Usage
+    exit 1
+  fi
+fi
+
+# pycortex also creates fiducial; load that in if it exists
+lh_point=`find ${FS}/${SUBJECT}/mri -type f \( -name "*space-fs*" -and -name "*hemi-L*" \) 2>/dev/null`
+rh_point=`find ${FS}/${SUBJECT}/mri -type f \( -name "*space-fs*" -and -name "*hemi-R*" \) 2>/dev/null`
+
+if [[ ${VIEWPORT} -eq 1 ]]; then
+
+  echo "Opening FreeView3D"
+  freeview -f ${SUBJECTS_DIR}/${SUBJECT}/surf/lh.inflated ${SUBJECTS_DIR}/${SUBJECT}/surf/rh.inflated -viewport 3d
+
+else
+  if [[ ${type} == "surf" ]]; then
+
+    if [[ ${point} -eq 1 ]]; then
+
+      echo "Loading surfaces with vertex-points"
+
+      if [[ -f ${lh_point} && -f ${rh_point} ]]; then
+
+        if [[ -f ${SUBJECTS_DIR}/${SUBJECT}/surf/rh.fiducial ]] && [[ -f ${SUBJECTS_DIR}/${SUBJECT}/surf/lh.fiducial ]]; then
+          freeview \
+            -v ${SUBJECTS_DIR}/${SUBJECT}/mri/orig.mgz \
+            ${SUBJECTS_DIR}/${SUBJECT}/mri/brainmask.mgz \
+            ${SUBJECTS_DIR}/${SUBJECT}/mri/rawavg.mgz \
+            ${lh_point}:colormap=binary \
+            ${rh_point}:colormap=binary \
+            -f ${SUBJECTS_DIR}/${SUBJECT}/surf/lh.white:edgecolor=yellow \
+            ${SUBJECTS_DIR}/${SUBJECT}/surf/lh.pial:edgecolor=blue \
+            ${SUBJECTS_DIR}/${SUBJECT}/surf/rh.white:edgecolor=yellow \
+            ${SUBJECTS_DIR}/${SUBJECT}/surf/rh.pial:edgecolor=blue \
+            ${SUBJECTS_DIR}/${SUBJECT}/surf/lh.fiducial:edgecolor=green \
+            ${SUBJECTS_DIR}/${SUBJECT}/surf/rh.fiducial:edgecolor=green
+        else
+          freeview \
+            -v ${SUBJECTS_DIR}/${SUBJECT}/mri/orig.mgz \
+            ${SUBJECTS_DIR}/${SUBJECT}/mri/brainmask.mgz \
+            ${SUBJECTS_DIR}/${SUBJECT}/mri/rawavg.mgz \
+            ${lh_point}:colormap=binary \
+            ${rh_point}:colormap=binary \
+            -f ${SUBJECTS_DIR}/${SUBJECT}/surf/lh.white:edgecolor=yellow \
+            ${SUBJECTS_DIR}/${SUBJECT}/surf/lh.pial:edgecolor=blue \
+            ${SUBJECTS_DIR}/${SUBJECT}/surf/rh.white:edgecolor=yellow \
+            ${SUBJECTS_DIR}/${SUBJECT}/surf/rh.pial:edgecolor=blue
+        fi
+      fi
+
+    else
+
+      echo "Loading surfaces without vertex-points"
+
+      if [[ -f ${SUBJECTS_DIR}/${SUBJECT}/surf/rh.fiducial ]] && [[ -f ${SUBJECTS_DIR}/${SUBJECT}/surf/lh.fiducial ]]; then
+        freeview \
+          -v ${SUBJECTS_DIR}/${SUBJECT}/mri/orig.mgz \
+          ${SUBJECTS_DIR}/${SUBJECT}/mri/brainmask.mgz \
+          ${SUBJECTS_DIR}/${SUBJECT}/mri/rawavg.mgz \
+          -f ${SUBJECTS_DIR}/${SUBJECT}/surf/lh.white:edgecolor=yellow \
+          ${SUBJECTS_DIR}/${SUBJECT}/surf/lh.pial:edgecolor=blue \
+          ${SUBJECTS_DIR}/${SUBJECT}/surf/rh.white:edgecolor=yellow \
+          ${SUBJECTS_DIR}/${SUBJECT}/surf/rh.pial:edgecolor=blue \
+          ${SUBJECTS_DIR}/${SUBJECT}/surf/lh.fiducial:edgecolor=green \
+          ${SUBJECTS_DIR}/${SUBJECT}/surf/rh.fiducial:edgecolor=green
+      else
+        freeview \
+          -v ${SUBJECTS_DIR}/${SUBJECT}/mri/orig.mgz \
+          ${SUBJECTS_DIR}/${SUBJECT}/mri/brainmask.mgz \
+          ${SUBJECTS_DIR}/${SUBJECT}/mri/rawavg.mgz \
+          -f ${SUBJECTS_DIR}/${SUBJECT}/surf/lh.white:edgecolor=yellow \
+          ${SUBJECTS_DIR}/${SUBJECT}/surf/lh.pial:edgecolor=blue \
+          ${SUBJECTS_DIR}/${SUBJECT}/surf/rh.white:edgecolor=yellow \
+          ${SUBJECTS_DIR}/${SUBJECT}/surf/rh.pial:edgecolor=blue
+      fi
+    fi
+
+  elif [[ ${type} == "layers" ]]; then
+
+    if [[ ${point} -eq 1 ]]; then
+
+      if [[ -f ${lh_point} && -f ${rh_point} ]]; then
+
+        echo "Loading layers with vertex-points. Assumes you've ran spinoza_layering with 'surface'-option!"
+        if [[ -f ${SUBJECTS_DIR}/${SUBJECT}/surf/rh.fiducial ]] && [[ -f ${SUBJECTS_DIR}/${SUBJECT}/surf/lh.fiducial ]]; then
+
+          freeview \
+            -v ${SUBJECTS_DIR}/${SUBJECT}/mri/orig.mgz \
+            ${SUBJECTS_DIR}/${SUBJECT}/mri/brainmask.mgz \
+            ${SUBJECTS_DIR}/${SUBJECT}/mri/rawavg.mgz \
+            ${lh_point}:colormap=binary \
+            ${rh_point}:colormap=binary \
+            -f ${SUBJECTS_DIR}/${SUBJECT}/surf/lh.fiducial:edgecolor=green \
+            ${SUBJECTS_DIR}/${SUBJECT}/surf/rh.fiducial:edgecolor=green \
+            ${SUBJECTS_DIR}/${SUBJECT}/surf/lh.equi1.0.pial:edgecolor='#0082c8' \
+            ${SUBJECTS_DIR}/${SUBJECT}/surf/lh.equi0.75.pial:edgecolor='#46f0f0' \
+            ${SUBJECTS_DIR}/${SUBJECT}/surf/lh.equi0.5.pial:edgecolor='#d2f53c' \
+            ${SUBJECTS_DIR}/${SUBJECT}/surf/lh.equi0.25.pial:edgecolor='#f58231' \
+            ${SUBJECTS_DIR}/${SUBJECT}/surf/lh.equi0.0.pial:edgecolor='#e6194b' \
+            ${SUBJECTS_DIR}/${SUBJECT}/surf/rh.equi1.0.pial:edgecolor='#0082c8' \
+            ${SUBJECTS_DIR}/${SUBJECT}/surf/rh.equi0.75.pial:edgecolor='#46f0f0' \
+            ${SUBJECTS_DIR}/${SUBJECT}/surf/rh.equi0.5.pial:edgecolor='#d2f53c' \
+            ${SUBJECTS_DIR}/${SUBJECT}/surf/rh.equi0.25.pial:edgecolor='#f58231' \
+            ${SUBJECTS_DIR}/${SUBJECT}/surf/rh.equi0.0.pial:edgecolor='#e6194b'
+
+        else
+
+          freeview \
+              -v ${SUBJECTS_DIR}/${SUBJECT}/mri/orig.mgz \
+              ${SUBJECTS_DIR}/${SUBJECT}/mri/brainmask.mgz \
+              ${SUBJECTS_DIR}/${SUBJECT}/mri/rawavg.mgz \
+              ${lh_point}:colormap=binary \
+              ${rh_point}:colormap=binary \
+              -f \
+              ${SUBJECTS_DIR}/${SUBJECT}/surf/lh.equi1.0.pial:edgecolor='#0082c8' \
+              ${SUBJECTS_DIR}/${SUBJECT}/surf/lh.equi0.75.pial:edgecolor='#46f0f0' \
+              ${SUBJECTS_DIR}/${SUBJECT}/surf/lh.equi0.5.pial:edgecolor='#d2f53c' \
+              ${SUBJECTS_DIR}/${SUBJECT}/surf/lh.equi0.25.pial:edgecolor='#f58231' \
+              ${SUBJECTS_DIR}/${SUBJECT}/surf/lh.equi0.0.pial:edgecolor='#e6194b' \
+              ${SUBJECTS_DIR}/${SUBJECT}/surf/rh.equi1.0.pial:edgecolor='#0082c8' \
+              ${SUBJECTS_DIR}/${SUBJECT}/surf/rh.equi0.75.pial:edgecolor='#46f0f0' \
+              ${SUBJECTS_DIR}/${SUBJECT}/surf/rh.equi0.5.pial:edgecolor='#d2f53c' \
+              ${SUBJECTS_DIR}/${SUBJECT}/surf/rh.equi0.25.pial:edgecolor='#f58231' \
+              ${SUBJECTS_DIR}/${SUBJECT}/surf/rh.equi0.0.pial:edgecolor='#e6194b'
+
+        fi
+
+      fi
+
+    else
+
+      echo "Loading layers without vertex-points. Assumes you've ran spinoza_layering with 'surface'-option!"
+      
+      if [[ -f ${SUBJECTS_DIR}/${SUBJECT}/surf/rh.fiducial ]] && [[ -f ${SUBJECTS_DIR}/${SUBJECT}/surf/lh.fiducial ]]; then
+
+        freeview \
+          -v ${SUBJECTS_DIR}/${SUBJECT}/mri/orig.mgz \
+          ${SUBJECTS_DIR}/${SUBJECT}/mri/brainmask.mgz \
+          ${SUBJECTS_DIR}/${SUBJECT}/mri/rawavg.mgz \
+          -f \
+          ${SUBJECTS_DIR}/${SUBJECT}/surf/lh.fiducial:edgecolor=green \
+          ${SUBJECTS_DIR}/${SUBJECT}/surf/rh.fiducial:edgecolor=green \
+          ${SUBJECTS_DIR}/${SUBJECT}/surf/lh.equi1.0.pial:edgecolor='#0082c8' \
+          ${SUBJECTS_DIR}/${SUBJECT}/surf/lh.equi0.75.pial:edgecolor='#46f0f0' \
+          ${SUBJECTS_DIR}/${SUBJECT}/surf/lh.equi0.5.pial:edgecolor='#d2f53c' \
+          ${SUBJECTS_DIR}/${SUBJECT}/surf/lh.equi0.25.pial:edgecolor='#f58231' \
+          ${SUBJECTS_DIR}/${SUBJECT}/surf/lh.equi0.0.pial:edgecolor='#e6194b' \
+          ${SUBJECTS_DIR}/${SUBJECT}/surf/rh.equi1.0.pial:edgecolor='#0082c8' \
+          ${SUBJECTS_DIR}/${SUBJECT}/surf/rh.equi0.75.pial:edgecolor='#46f0f0' \
+          ${SUBJECTS_DIR}/${SUBJECT}/surf/rh.equi0.5.pial:edgecolor='#d2f53c' \
+          ${SUBJECTS_DIR}/${SUBJECT}/surf/rh.equi0.25.pial:edgecolor='#f58231' \
+          ${SUBJECTS_DIR}/${SUBJECT}/surf/rh.equi0.0.pial:edgecolor='#e6194b'
+
+      else
+
+        freeview \
+          -v ${SUBJECTS_DIR}/${SUBJECT}/mri/orig.mgz \
+          ${SUBJECTS_DIR}/${SUBJECT}/mri/brainmask.mgz \
+          ${SUBJECTS_DIR}/${SUBJECT}/mri/rawavg.mgz \
+          -f \
+          ${SUBJECTS_DIR}/${SUBJECT}/surf/lh.equi1.0.pial:edgecolor='#0082c8' \
+          ${SUBJECTS_DIR}/${SUBJECT}/surf/lh.equi0.75.pial:edgecolor='#46f0f0' \
+          ${SUBJECTS_DIR}/${SUBJECT}/surf/lh.equi0.5.pial:edgecolor='#d2f53c' \
+          ${SUBJECTS_DIR}/${SUBJECT}/surf/lh.equi0.25.pial:edgecolor='#f58231' \
+          ${SUBJECTS_DIR}/${SUBJECT}/surf/lh.equi0.0.pial:edgecolor='#e6194b' \
+          ${SUBJECTS_DIR}/${SUBJECT}/surf/rh.equi1.0.pial:edgecolor='#0082c8' \
+          ${SUBJECTS_DIR}/${SUBJECT}/surf/rh.equi0.75.pial:edgecolor='#46f0f0' \
+          ${SUBJECTS_DIR}/${SUBJECT}/surf/rh.equi0.5.pial:edgecolor='#d2f53c' \
+          ${SUBJECTS_DIR}/${SUBJECT}/surf/rh.equi0.25.pial:edgecolor='#f58231' \
+          ${SUBJECTS_DIR}/${SUBJECT}/surf/rh.equi0.0.pial:edgecolor='#e6194b'
+      
+      fi
+
+    fi
+
+  elif [[ ${type} == "anat" ]]; then
+
+    T2=`find ${FS}/${SUBJECT}/mri -type f \( -name "*T2.mgz" \) 2>/dev/null`
+
+    if [[ ${point} == "yes" ]]; then
+
+      if [[ -f ${lh_point} && -f ${rh_point} ]]; then
+
+        if [[ ! -z ${T2} ]]; then
+
+          echo "Loading anatomies with vertex-points and with T2-image"
+
+          freeview \
+            -v ${SUBJECTS_DIR}/${SUBJECT}/mri/orig.mgz \
+            ${SUBJECTS_DIR}/${SUBJECT}/mri/brainmask.mgz \
+            ${SUBJECTS_DIR}/${SUBJECT}/mri/rawavg.mgz \
+            ${T2} \
+            ${lh_point}:colormap=binary \
+            ${rh_point}:colormap=binary
+
+        else
+
+          echo "  Loading anatomies with vertex-points but without T2-image"
+
+          freeview \
+            -v ${SUBJECTS_DIR}/${SUBJECT}/mri/orig.mgz \
+            ${SUBJECTS_DIR}/${SUBJECT}/mri/brainmask.mgz \
+            ${SUBJECTS_DIR}/${SUBJECT}/mri/rawavg.mgz \
+            ${lh_point}:colormap=binary \
+            ${rh_point}:colormap=binary
+
+        fi
+
+      fi
+
+    else
+
+      if [[ ! -z ${T2} ]]; then
+
+        echo "Loading anatomies without vertex-points but with T2-image"
+
+        freeview \
+            -v ${SUBJECTS_DIR}/${SUBJECT}/mri/orig.mgz \
+            ${SUBJECTS_DIR}/${SUBJECT}/mri/brainmask.mgz \
+            ${SUBJECTS_DIR}/${SUBJECT}/mri/rawavg.mgz \
+          ${T2}
+
+      else
+
+        echo "Loading anatomies without vertex-points and without T2-image"
+
+        freeview \
+          -v ${SUBJECTS_DIR}/${SUBJECT}/mri/rawavg.mgz \
+          ${SUBJECTS_DIR}/${SUBJECT}/mri/brainmask.mgz \
+          ${SUBJECTS_DIR}/${SUBJECT}/mri/orig.mgz \
+
+      fi
+
+    fi
+
+  fi
+fi

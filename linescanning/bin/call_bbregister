@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_bbregister
+
+wrapper for boundary-based registration (BBR) with FreeSurfer. It will register the input moving
+image to orig.mgz (original image in FreeSurfer space) and output FSL and LTA formatted registra-
+tation matrices. Sneakily assumes the image you're transforming to FreeSurfer space is T1-weigh-
+ted. If not, change the bbregister --t1 flag in this script.
+
+Usage:
+  call_bbregister.sh <subject number> <moving> <header | init> <FSL (0=no|1=yes)> <output>
+
+Arguments:
+  -i <header|init>  if you want to register based on header, type "header" here
+                    if you want to register based on initialization matrix, specify the path to
+                    the initialization matrix (either FSL .mat or ITK .txt file)
+  -f <FSL format>   no input required, but if flag is specified both LTA and FSL matrix will be
+                    outputted.
+  -c <contrast>     contrast to assume. Default = t1, but can be t2 to work with fMRI data                    
+  <sub number>      number of subject's FreeSurfer directory from which you can omit "sub-" (e.g.,
+                    for "sub-001", enter "001").
+  <moving>          string-like path to moving object (either .mgz or .nii.gz)                    
+  <output>          string-like basename for output. Extensions ".mat" and ".lta" will be added
+
+Example:
+  call_bbregister 001 moving.nii.gz native2fs > use header init, no FSL output
+  call_bbregister -f -i /path/to/init.txt 01 moving.nii.gz native2fs > use init.txt for initiali-
+                                                                       zation & output FSL matrix
+  call_bbregister -c t2 001 func.nii.gz func2fs > use header init, no FSL output, t2 contrast
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+#-----------------------------------------------------------------------------
+# Deal with arguments
+while getopts fi:c: arg
+do
+    case ${arg} in
+      i)  INIT=${OPTARG}
+            ;;
+      c)  CONTRAST=${OPTARG}
+            ;;        
+    esac
+done
+
+if [[ $# -lt 3 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+SUBJECT=${@:$OPTIND:1}
+MOVING=${@:$OPTIND+1:1}
+OUTPUT=${@:$OPTIND+2:1}
+
+# check if we have to output FSL matrix
+if [[ "${@}" == *"-f"* ]]; then
+  FSL=1
+else
+  FSL=0
+fi
+
+if [[ -z ${CONTRAST} ]]; then
+  CONTRAST="--t1"
+else
+  CONTRAST="--${CONTRAST,,}"
+fi
+
+if [[ -z ${INIT} ]]; then
+  INIT="hdr"
+fi
+
+#-----------------------------------------------------------------------------
+# Start loop
+
+if [[ ! -f ${MOVING} ]]; then
+  echo "ERROR: could not find input image"
+  exit 1
+fi
+
+filename=$(basename -- "${INIT}")
+extension="${filename##*.}"
+filename="${filename%.*}"
+
+# echo $filename
+# echo $extension
+
+if [[ ${extension} == "txt" ]] || [[ ${extension} == "mat" ]] || [[ ${extension} == "lta" ]]; then
+  # we have an initialization matrix
+  init="--init-reg ${INIT}"
+elif [[ ${INIT,,} == "header" ]] || [[ ${INIT,,} == "hdr" ]]; then
+  # using header for initialization
+  init="--init-header"
+else
+  echo "Unknown option specified for registration initialization"
+  Usage
+  exit 1
+fi
+
+if [[ ${FSL} -eq 0 ]]; then
+  # don't output FSL-formatted matrix
+  format="--reg ${OUTPUT}.dat"
+elif [[ ${FSL} -eq 1 ]]; then
+  format="--fslmat ${OUTPUT}.mat --reg ${OUTPUT}.dat"
+else
+  echo "Unknown option specified for FSL/FS-matrix format"
+  Usage
+  exit 1
+fi
+
+cmd="bbregister --s ${SUBJECT} --mov ${MOVING} ${CONTRAST} ${init} ${format}"
+echo ${cmd} && exec ${cmd}

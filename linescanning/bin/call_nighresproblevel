@@ -1,0 +1,77 @@
+#!/usr/bin/env python
+
+from nighres.surface import probability_to_levelset
+import sys, getopt
+import os
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_nighresproblevel
+
+Creates a levelset surface representations from a probabilistic map or a mask. The levelset indicates 
+each voxel’s distance to the closest boundary. It takes negative values inside and positive values 
+outside of the object.
+
+Args:
+    -p (--probability=) probability image
+    -d (--outputdir=)   output directory
+    -n (--name=)        basename for output
+
+Outputs:
+    (taken from https://nighres.readthedocs.io/en/latest/surface/probability_to_levelset.html)
+    Dictionary collecting outputs under the following keys (suffix of output files in brackets)
+
+    result (niimg): Levelset representation of surface (_p2l-surf)
+
+Example:
+    call_nighresproblevel -p sub-001_ses-1_acq-MP2RAGE_desc-l2p_proba.nii.gz -d $PWD -n sub-001_
+                          desc
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    probability  = None
+    output_dir   = None
+    output_base  = "sample_desc"
+
+    try:
+        opts = getopt.getopt(argv,"hp:d:n:",["probability=", "outputdir=", "name="])[0]
+    except getopt.GetoptError:
+        print(main.__doc__)
+        print("ERROR IN ARGUMENTS")
+        sys.exit(2)
+
+    for opt, arg in opts:
+        if opt == '-h':
+            print(main.__doc__)
+            sys.exit()
+        elif opt in ("-p", "--probability"):
+            probability = arg
+        elif opt in ("-d", "--outputdir"):
+            output_dir = arg
+        elif opt in ("-n", "--name"):
+            output_base = arg
+
+    if len(argv) < 4:
+            print("\nNOT ENOUGH ARGUMENTS SPECIFIED")
+            print(main.__doc__)
+            sys.exit()
+
+    # Just plop everything in dir of segmentation
+    probability_to_levelset(probability,
+                            save_data=True,
+                            output_dir=output_dir,
+                            file_name=output_base)
+
+    fn_old = opj(output_dir, output_base + "_p2l-surf.nii.gz")
+    fn_new = opj(output_dir, output_base + "-p2l_surf.nii.gz")
+
+    if os.path.exists(fn_old):
+        # print("moving {fo} to {fn}".format(fo=os.path.basename(fn_old), fn=os.path.basename(fn_new)))
+        os.rename(fn_old, fn_new)
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

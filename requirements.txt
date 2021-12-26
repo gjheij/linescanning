@@ -1,0 +1,19 @@
+# shells
+#zsh=>5.0.2
+#bash>4.2.46
+
+# python packages
+python>3.6
+pycortex>1.2.0
+numpy>1.19.1
+pandas>1.1.5
+nibabel>3.1.1
+scipy
+sklearn
+pickle
+fmriprep
+
+# other software
+#ANTs>3.0.0
+#FreeSurfer>7
+#ITKSnap>3.0.8

@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_fslflirt
+
+Wrapper for rigid registration with flirt instead of ants
+
+Usage:
+  call_fslflirt <fixed> <moving> <output> <matrix>
+
+Example:
+  call_fslflirt fixed.nii.gz moving.nii.gz mov2fix.nii.gz matrix.mat
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+if [[ $# -lt 4 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+#-----------------------------------------------------------------------------
+# Run it
+if [[ -f $1 && -f $2 ]]; then
+  if [[ ! -f $4 ]]; then
+    flirt -in $2 -ref $1 -out $3 -omat $4 -dof 6
+  fi
+else
+  echo " ERROR: could not find required files"
+  exit 1
+fi

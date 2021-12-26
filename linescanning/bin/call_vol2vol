@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_vol2vol
+
+this thing calls FreeSurfer's vol2vol function to convert the RAS FreeSurfer anatomy to the native
+space. We mainly use this for the planning of the line between session 1 and 2. We can estimate the
+position of where the line should be in the RAS space, but we need to know the position in the native
+space, so we can warp the line into the anatomy of the second session using the matrix earlier obtained.
+
+Generates a warped image which we can load in with FreeView and a transform matrix file, from which
+we will extract the matrix and apply it to the coordinates obtained earlier.
+
+Usage:
+  call_vol2vol <moving file> <target file> <output file>
+
+Example:
+  call_vol2vol moving.nii.gz target.nii.gz output.nii.gz
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+if [[ $# -lt 3 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+#-----------------------------------------------------------------------------
+# Run it
+if [[ -f $1 && -f $2 ]]; then
+
+  if [[ ! -f $3 ]]; then
+
+    CMD=`command -v mri_vol2vol`
+    if [[ ! -z $CMD ]]; then
+      $CMD --mov $1 --targ $2 --regheader --o $3 --save-reg
+    else
+      echo "mri_vol2vol is not on your path.. Make sure FreeSurfer is added to your path"
+      exit 1
+    fi
+  fi
+
+else
+
+  echo "Output exists, won't overwrite"
+
+fi

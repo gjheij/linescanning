@@ -1,0 +1,308 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# check if there's is a setup file containing the major paths and source it if it exists
+call_loadsetup
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+spinoza_extractregions
+
+region extraction using nighres. Calls on call_nighresextractregions; see that file for more info-
+rmation on the required inputs. This script is by default in overwrite mode, meaning that the files
+created earlier will be overwritten when re-ran. To disable, run this module as master -m <module>
+-o n. The second arguments points to the root directory of where the level set probabilities are
+stored. Normally, for region extraction, you use the output from MGDM. You can, however, create a
+custom levelset (see call_gdhcombine).
+
+For this, you will need four directories: the REGION directory (with tissue classification from
+MGDM), the FreeSurfer directory (read from you SUBJECTS_DIR), the fMRIprep-directory with tissue
+classification from FAST, and the MASK-directory containing manual edits. The REGION directory is
+the directory that will be created first, the FreeSurfer directory will be read from the SUBJECTS_DIR
+variable, the fMRIprep-directory you'll need to specify with the -f flag BEFORE (!!) the positional
+arguments, and the MASK-directory you will already specify.
+
+Usage:
+  spinoza_extractregions <-s sub> <-n ses> <-f fprep> <nighres root> <custom comb> <region to
+                         extract> <ow>
+
+
+Example:
+  spinoza_extractregions $DIR_DATA_DERIV/nighres $DIR_DATA_DERIV/manual_masks cerebrum n
+  spinoza_extractregions -s -001 -n 1 $DIR_DATA_DERIV/nighres $DIR_DATA_DERIV/manual_masks cerebrum n
+  spinoza_extractregions -s -001 -n 1 -f $DIR_DATA_DERIV/fmriprep $DIR_DATA_DERIV/nighres
+                        $DIR_DATA_DERIV/manual_masks cerebrum n
+
+Notes:
+  - If you want a custom levelset, specify the '-f' flag pointing to the fMRIprep-directory
+  - Has the '-s' and '-n' switches to specify a particular subject and session if present
+  - Region to be extracted can be one of:
+    > left_cerebrum
+    > right_cerebrum
+    > cerebrum,
+    > cerebellum
+    > cerebellum_brainstem
+    > subcortex
+    > tissues(anat)
+    > tissues(func)
+    > brain_mask
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+if [[ $# -lt 4 ]] ; then
+  echo NOT ENOUGH ARGUMENTS SPECIFIED
+  Usage >&2
+  exit 1
+fi
+
+# Check for subject & session flags
+while getopts os:n:f: argument
+do
+    case ${argument} in
+      s)  sub=${OPTARG}
+            ;;
+      n)  ses=${OPTARG}
+            ;;
+      f)  fprep=${OPTARG}
+            ;;         
+    esac
+done
+
+if [[ $# -lt 4 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+if [[ "${@}" == *"-o"* ]]; then
+  OW=1
+else
+  OW=0
+fi
+
+INPUT=${@:$OPTIND:1}
+LEVELSET=${@:$OPTIND+1:1}
+REGION=${@:$OPTIND+2:1}
+
+if [[ -z ${sub} ]]; then
+  # loop through subjects
+  search="${INPUT}/sub-*"
+else
+  # do for 1 subject
+  sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
+  search="${INPUT}/sub-${sub_nr}"
+fi
+
+#-----------------------------------------------------------------------------
+# Run it
+
+declare -a ROI=("left_cerebrum" "right_cerebrum" "cerebrum" "cerebellum" "cerebellum_brainstem" "subcortex" "tissues(anat)" "tissues(func)" "brain_mask")
+if [[ "${ROI[@]}" =~ "${REGION}" ]]; then
+  if [[ ${REGION} == "left_cerebrum" ]]; then
+    suff="lcr"
+  elif [[ ${REGION} == "right_cerebrum" ]]; then
+    suff="rcr"
+  elif [[ ${REGION} == "cerebrum" ]]; then
+    suff="cr"
+  elif [[ ${REGION} == "cerebellum" ]]; then
+    suff="cb"
+  elif [[ ${REGION} == "cerebellum_brainstem" ]]; then
+    suff="cbs"
+  elif [[ ${REGION} == "subcortex" ]]; then
+    suff="sub"
+  elif [[ ${REGION} == "tissues(anat)" ]]; then
+    suff="an"
+  elif [[ ${REGION} == "tissues(func)" ]]; then
+    suff="fn"
+  fi
+elif [[ -z ${REGION} ]]; then
+  echo "Please specify a region to extract. Type ./spinoza_extractregions for more help"
+  continue
+else
+  echo "Specified region does not match possible inputs. Type ./spinoza_extractregions for more help"
+  exit 1
+fi
+
+#-----------------------------------------------------------------------------
+# Start clock
+#-----------------------------------------------------------------------------
+
+echo
+echo "==================================================================================================="
+printf "NEW REGION EXTRACTION WITH NIGHRES: `echo ${REGION^^}`\n"
+start=`date +%s`
+start_date=`date`
+
+printf "Started at ${start_date}\n"
+echo "==================================================================================================="
+
+
+for dir in ${search}; do
+
+  if [[ -z ${ses} ]]; then
+    base_dir=$(basename ${dir})
+    base="$(basename ${dir})"
+  else
+    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
+    base_dir=$(basename ${dir})/ses-${nr}
+    base="$(basename ${dir})_ses-${nr}"
+  fi
+
+  mgdm_dir=${INPUT}/${base_dir}/mgdm
+  fprep_dir=${fprep}/${base_dir}/anat
+  mask_dir=${LEVELSET}/${base_dir}
+  cat12_dir=${DIR_DATA_DERIV}/cat12/${base_dir}
+  region_dir=$(dirname ${mgdm_dir})/region
+
+  # #----------------------------------------------------------------------------------------------------------------------------------------------------------
+  # Running region extraction with nighres
+
+  if [[ ! -d ${mgdm_dir} ]]; then
+    echo "`basename ${dir}`: Could not find MGDM directory. Make sure you run it with module 20"
+    continue
+  fi
+
+  declare -a MGDM=(seg dist mems lbls)
+  declare -a INPUTS=()
+
+  for r in ${MGDM[@]}; do
+    file=`find "${mgdm_dir}" -type f \( -name "*acq-${space^^}*" -and -name "*${r}*" -and -name "*.nii.gz" \) 2>/dev/null`
+
+    # check for multiple files..
+    j=0; for i in ${file[@]}; do ((j++)); done
+    if [[ ${j} -eq 0 ]]; then
+      echo "`basename ${dir}`: Could not find any file for ${r}. DATA-variable is probably set incorrectly: ${DATA}"
+      continue 2
+    elif [[ ${j} -gt 1 ]]; then
+      echo "`basename ${dir}`: Found more than 1 file for ${r}"
+      continue 2
+    fi
+
+    if [[ -f ${file} ]]; then
+      INPUTS+=(${file})
+    else
+      echo "`basename ${dir}`: Could not find \"${r}\" image in nighres directory"
+      continue
+    fi
+  done
+
+  if [[ -z "${INPUTS}" ]]; then
+    echo "Did not find required inputs"
+    continue
+  fi
+
+  output_root=${region_dir}/${base}_acq-${space^^}_desc
+  output=${output_root}-xproba_${suff}-gm.nii.gz
+
+  if [[ ! -d ${region_dir} ]]; then
+    mkdir -p ${region_dir}
+  fi
+
+  # OVERWRITE ALL CREATED FILES; SHOULD BE DEFAULT AND CAN BE DISABLE BY SPECIFYING MASTER -M <MODULE> -O N
+  if [[ ${OW} -eq 1 ]]; then
+    if [[ -d ${output_dir}/cruise ]]; then
+      INTRO="Overwrite mode: deleting files with \"${base}_acq-${space^^}_desc\" and \"${suff}\""
+      rm -r ${output_root}*${suff}* 2>/dev/null
+    fi
+  else
+    INTRO="Overwrite mode disabled"
+  fi
+
+  if [[ ! -f ${output} ]]; then
+
+    echo
+    echo "**************************************** Processing `basename ${dir}` ***************************************"
+    echo ${INTRO}
+
+    if [[ ! -f ${output_root}_xproba-${suff}gm.nii.gz ]]; then
+
+      echo "Creating `basename ${output}` with suffix: ${suff}"
+      call_nighresextractregions \
+        -s "${INPUTS[0]}" \
+        -b "${INPUTS[1]}" \
+        -p "${INPUTS[2]}" \
+        -l "${INPUTS[3]}" \
+        -r "${REGION}" \
+        -o "${region_dir}" \
+        -n "$(basename ${INPUTS[0]} -mgdm_seg.nii.gz)"
+
+      if [[ $? -ne 0 ]]; then
+        echo
+        echo "ERROR in spinoza_extractregions: call_nighresextractregions exited with non-zero status"
+        continue
+      fi
+
+		else
+			echo "Skipping nighres. Found something that looks like output"
+    fi
+
+  else
+
+		echo "`basename ${output}` is already present"
+
+  fi
+
+  if [[ ${mask_dir} == *"nighres"* ]]; then
+    :
+  else
+    fs=${SUBJECTS_DIR}/$(basename ${dir})
+
+    for i in ${fprep_dir} ${fs} ${mask_dir} ${region_dir}; do
+      if [[ ! -d ${i} ]]; then
+        echo "You want a custom levelset, but you're missing directories:"
+        echo " ${i}"
+        # continue 2
+        exit 1
+      fi
+    done
+
+    if [[ -d ${cat12_dir} ]]; then
+      echo "Creating custom levelset from fmriprep+FS+MGDM+CAT12"
+      cat12=${cat12_dir}
+    else
+      echo "Creating custom levelset from fmriprep+FS+MGDM"
+      cat12=""
+    fi
+
+    # combine segmentations
+    call_gdhcombine \
+      -s $(basename ${dir}) -q ${cat12} \
+      -a ${fprep_dir} \
+      -f ${fs} \
+      -c ${region_dir} \
+      -d ${mask_dir} \
+      -o ${mask_dir} \
+      -b ${base}_acq-${space^^}
+
+    if [[ $? != 0 ]]; then
+      echo "WARNING: Could not create combined segmentations, continuing.."
+      # echo "---------------------------------------------------------------------------------------------------"
+      # echo "ERROR in `basename ${0}`: call_gdhcombine exited with non-zero status"
+      # exit 1
+    fi
+
+  fi
+
+done
+
+#-----------------------------------------------------------------------------
+# Calculate time spent using 'let'
+echo
+echo "---------------------------------------------------------------------------------------------------"
+end=`date +%s`
+end_date=`date`
+printf "Done at ${end_date}\n"
+
+let deltatime=end-start
+let hours=deltatime/3600
+let minutes=(deltatime/60)%60
+let seconds=deltatime%60
+printf "Time spent: %d:%02d:%02d\n" ${hours} ${minutes} ${seconds}
+echo "---------------------------------------------------------------------------------------------------"

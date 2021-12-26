@@ -1,0 +1,483 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# check if there's is a setup file containing the major paths and source it if it exists
+call_loadsetup
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_freesurfer
+
+wrapper for surface parcellation with FreeSurfer. Called in spinoza_freesurfer. You can also run
+this script after editing your volumes/surfaces. Read below what the possible options and defaults
+are. The idea is to let fMRIprep run FreeSurfer 6.0.0 first, and then re-run FreeSurfer 7.1.0 with
+this script to include a proper T2-based pial surface reconstruction (FS v6.0.0 is not well suited 
+for this task). For this, FreeSurfer needs 'autodet.gw.stats.?h.dat'-files, which are created in 
+step 20: 'Automatic Topology Fixer', right before -autorecon3. So in order to include T2 here we 
+need to run autorecon2 and 3.
+
+Usage:
+  call_freesurfer -s <subj_ID> -t <t1 input> -p <t2 input> -r <recon stage (all | 1 | 2 | 3)>
+                  -e <edit type> -o <other editing options> -f <open FreeView (0=no|1=yes)>
+                  -c <SGE|LOCAL>
+
+Args:
+  -s <subj ID>        subject ID as per output of FreeSurfer (e.g., 'sub-001')
+
+  -t <t1 input>       T1-weighted image (not necessary if you're running debugging mode)
+
+  -p <t2 input>       T2-weighted image (not necessary, but recommended for better pial-surface
+                      segmentation
+
+  -r <recon stage>    Which stage of recon-all should be run; combinations are possible!
+                      Possible options are:
+                        'all' = all stages (Perform all reconstruction steps, including
+                                subcortical segmentation)
+                        '1'   = autorecon1 (Motion correction through skull strip)
+                        '2'   = autorecon2 (Subcortical segmentation through make final
+                                surfaces)
+                        '3'   = autorecon3 (Cortical parcellation)
+                        '12'  = autorecon1 and autorecon2 (do your edits after this step)
+                        '23'  = autorecon2 and autorecon3 (perform any edits and re-run with
+                                '-e flag')
+
+  -e <edit type>      What type of edit did you perform after autorecon2?
+                      Possible options are:
+                        'cp'  = you made normalization edits  > runs -autorecon2-cp
+                        'wm'  = you made white matter edits   > runs -autorecon2-wm
+                        'pial'= you made pial edits           > runs -autorecon-pial
+
+  -o <other editing>  Here you can specify the gcut-option to remove latched on pial surface
+
+  -f <freeview>       Open FreeView automatically (default is YES!) [0=no|1=yes]
+
+  -c <SGE|LOCAL>      What system are we running the script on? Can either be 'SGE', where
+                      we'll submit the script to a Sun-of-Grid-Engine using a template script,
+                      or 'LOCAL'. Will by default read out your 'PLACE' variable, as per the
+                      spinoza_setup file.
+
+  -v <version>        FreeSurfer version if multiple are available. Note that fMRIprep only 
+                      uses 6.0.0, which is a bit worse at dealing with T2-images.
+
+  -x <force exec>     Force execution even though directory exists already
+
+Instructions for editing (from Andrew Jahn's YouTube series):
+  - Control points (intensity normalization errors):
+    White matter is incorrectly labeled as gray matter, which happens mostly in the ventral-
+    temporal lobes and the orbito-frontal cortex. You can fix this with 'control points', which
+    boost the intensity surrounding the control point
+
+    1.) Open freeview with 'call_freeview <subj ID> surf 0'
+    2.) Find slices where the problems begins and starts (easiest in axial view)
+    3.) To add control points, click 'File'>'New point set'>name it 'control.dat'>select 'brainmask.mgz'
+        as tempalte
+    4.) Left-click voxels that are white matter but not included in the WM-boundary. Space out control
+        points by a few mm
+    5.) When you're done, click on 'File'>'Save Point Set as'>'control.dat' in the 'tmp'-folder
+    6.) Re-run with call_freesurfer -s sub-001 -r 23 -e cp
+
+  - Skullstripping: the GCUT-option
+    When the skull has been mostly removed, but excessive dura remain, you can use the GCUT-option.
+
+    1.) Make a back-up of the directory
+    2.) Run call_freesurfer -s <subj ID> -o gcut
+    3.) This outputs a file called brainmask.gcut.mgz
+    4.) If this has fixed the problem, run call_freesurfer -s <subj ID> -r 23 (leave '-e' empty so we
+        know you did gcut)
+
+  - Pial edits:
+    If the above strategy was not successful, you can try more aggressive skullstripping, but this u
+    sually does more harm than good. In that case, pial-edits are recommended.
+
+    1.) Open freeview with 'call_freeview <subj ID> surf 0'
+    2.) Make sure 'brainmask.mgz' is highlighted, and press 'recon-edit' icon (head with 'R' and pencil)
+    3.) To remove voxels, pressing 'shift'+left mouse
+    4.) Find slices where the problems begins and starts (easiest in axial view). Be conservative though!
+    5.) When you're done, press 'File'>'Save Volume'
+    6.) Re-run with call_freesurfer -s sub-001 -r 23 -e pial
+
+Example (TL;DR):
+  Regular recon-all:      call_freesurfer -s <subj ID> -t <T1 image> -p <T2 image> -r all
+  Run gcut:               call_freesurfer -s <subj ID> -o gcut
+  After gcut:             call_freesurfer -s <subj ID> -r 23
+  After control points:   call_freesurfer -s <subj ID> -r 23 -e cp
+  After call_gdhinject:   call_freesurfer -s <subj ID> -r 23 -e wm
+  After pial edits:       call_freesurfer -s <subj ID> -r 23 -e pial
+  Include T2 after FS v6: call_freesurfer -s <subj ID> -r 23 -e wm -p <T2 image>
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+#-----------------------------------------------------------------------------
+# Deal with arguments
+while getopts xs:t:p:r:e:o:f:c:v: arg
+do
+    case ${arg} in
+      s)  subj_ID=${OPTARG}
+            ;;
+      t)  T1=${OPTARG}
+            ;;
+      p)  T2=${OPTARG}
+            ;;
+      r)  stage=${OPTARG}
+            ;;
+      e)  edit=${OPTARG}
+            ;;
+      o)  option=${OPTARG}
+            ;;
+      f)  FV=${OPTARG}
+            ;;
+      c)  SGE=${OPTARG}
+            ;;
+      v)  VERSION=${OPTARG}
+            ;;            
+    esac
+done
+
+if [[ $# -lt 2 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+if [[ -z ${SUBJECTS_DIR} ]]; then
+  echo "  SUBJECTS_DIR is not set"
+  exit 1
+fi
+
+if [[ -z ${subj_ID} ]]; then
+  echo "Whatever you want to do, I'll always need a subject ID"
+  exit 1
+fi
+
+if [[ -z ${SGE} ]]; then
+  # read from spinoza_setup
+  if [[ ${PLACE} == SPINOZA ]]; then
+    RUN=SGE
+  else
+    RUN=LOCAL
+  fi
+else
+  if [[ ${SGE} == "SGE" ]]; then
+    RUN=SGE
+  elif [[ ${SGE} == "LOCAL" ]]; then
+    RUN=LOCAL
+  else
+    echo "Unknown option specified: ${SGE}. Can either be \"SGE\" or \"LOCAL\". Leave empty if we should read this from spinoza_setup"
+  fi
+fi
+
+# check if we have to force execution
+if [[ "${@}" == *"-x"* ]]; then
+  FORCE_EXEC=1
+else
+  FORCE_EXEC=0
+fi
+
+#-----------------------------------------------------------------------------
+# Create function that submits or runs stuff locally
+CMD(){
+
+  # $1 = subject ID (subj_ID)
+  # $2 = stage nr
+  # $3 = stage flag (stage)
+  # $4 = T1_flag
+  # $5 = T2_flag
+
+  if [[ ${RUN} == SGE ]]; then
+    echo "Submitting job to cluster"
+
+    # delete previously existing file
+    fs_script=${PATH_HOME}/programs/packages/freesurfer/${1}_${2}.sh
+    if [[ -f ${fs_script} ]]; then
+      rm -r ${fs_script}
+    fi
+
+    # bash will complain if you want to create a file but the directory doesn't exist
+    if [[ ! -d $(dirname ${fs_script}) ]]; then
+      mkdir -p $(dirname ${fs_script})
+    fi
+
+    # remove old log file
+    if [ -f $(dirname ${fs_script})/$(basename ${fs_script} .sh).log ]; then
+      rm $(dirname ${fs_script})/$(basename ${fs_script} .sh).log
+    fi 
+
+    # If you have ran FreeSurfer in fMRIprep, fsaverage will miss a few labels that
+    # FreeSurfer v7 has. Hence, we need to specify that we want to use version 6,
+    # otherwise it will throw errors
+
+    if [[ ! -z ${VERSION} ]]; then
+      version=${VERSION}
+    else
+      version="6.0.0"
+    fi
+
+    echo "Using FreeSurfer version: ${version}"
+
+    # echo "${SUBJECTS_DIR}"
+    (
+    echo "#!/bin/bash"
+    echo "#$ -S /bin/bash"
+    echo "#$ -N $(basename ${fs_script} .sh)"
+    echo "#$ -wd ${SUBJECTS_DIR}"
+    echo "#$ -o $(dirname ${fs_script})/$(basename ${fs_script} .sh).log"
+    echo "#$ -j Y"
+    echo "#$ -q long.q"
+    echo "#$ -V"
+    echo "#$ -pe smp 5"
+    echo ""
+    echo "module load freesurfer/${version}"
+    echo "export FREESURFER=/packages/freesurfer/${version}"
+    echo "export SUBJECTS_DIR=${SUBJECTS_DIR}"
+    echo "recon-all -subjid ${1} ${4} -hires -parallel -openmp 12 ${3} ${5}"
+    ) > ${fs_script}
+    
+    qsub ${fs_script}
+
+    echo "Now wait until the program has finished and do some editing in FreeView if required."
+    echo "Waiting to qstat.."
+    sleep 5
+    qstat
+
+  elif [[ ${RUN} == LOCAL ]]; then
+
+    echo "Running FreeSurfer locally"
+    recon-all -subjid ${1} ${4} -hires ${3} ${5}
+    echo "Now do some editing in FreeView if required."
+
+  fi
+
+}
+
+CHECK_INPUTS(){
+
+  if [ -z ${T1} ]; then
+
+    if [[ ${1} != "all" || ${1} != *"1"* ]]; then
+      echo "Could not find T1-weighted image"
+      exit 1
+    fi
+  else
+    # make sure full path is specified by checking if the first character of the 
+    # string is separator
+    if [[ `echo ${T1:0:1}` != "/" ]]; then
+      T1=${PWD}/${T1}
+    fi
+
+    T1_flag="-i ${T1}"
+  fi
+
+  if [[ ! -z ${T2} ]]; then
+    # also got a T2 weighted image
+    if [[ `echo ${T2:0:1}` != "/" ]]; then
+      T2=${PWD}/${T2}
+    fi
+
+    T2_flag="-T2 ${T2} -T2pial"
+  else
+    T2_flag=""
+  fi
+
+}
+
+ISRUNNING(){
+  is_running=${SUBJECTS_DIR}/${subj_ID}/scripts/IsRunning.lh+rh
+  if [[ -f ${is_running} ]]; then
+    rm -r ${is_running}
+  fi
+}
+
+#-----------------------------------------------------------------------------
+# Run it
+
+if [[ ! -d ${SUBJECTS_DIR} ]]; then
+  mkdir -p ${SUBJECTS_DIR}
+fi
+
+if [[ -z ${FV} ]]; then
+  FV="no"
+else
+  if [[ ! -z ${FV} ]]; then
+    if [[ ${FV} == "0" ]]; then
+      FV="no"
+    elif [[ ${FV} == "1" ]]; then
+      FV="yes"
+    else
+      echo "Unknown option specified for ${FV}. Leave empty to open FreeView automatically or specify \"-f 0\" to turn it off"
+    fi
+  fi
+fi
+
+# start with the simplest option: check if there's gcut
+if [[ ! -z ${option} ]]; then
+
+  if [ ! -d ${SUBJECTS_DIR}/${subj_ID} ]; then
+    echo "You're trying to run gcut (i presume) before running recon-all..?"
+    exit 1
+  else
+    if [[ ${option} != "gcut" ]]; then
+      echo "Have not implemented ${option}, yet. Please specify \"gcut\" if this is what you wanted"
+      exit 1
+    fi
+  fi
+
+  if [ ! -d ${SUBJECTS_DIR}/${subj_ID}_backup ]; then
+    echo "  Backing up FS-directory"
+    cp -r ${SUBJECTS_DIR}/${subj_ID} ${SUBJECTS_DIR}/${subj_ID}_backup
+  fi
+
+  if [[ -z ${edit} ]]; then
+    echo "  Running gcut .."
+    recon-all -skullstrip -clean-bm -gcut -s ${subj_ID}
+  else
+    echo "You specifed \"-e\" for the gcut option.. This is not necessary"
+    exit 1
+  fi
+
+  if [[ ${FV} == "yes" ]]; then
+
+    # check if we have a function called call_freeview
+    call_checkfunction call_freeview
+
+    if [[ $? == 0 ]]; then
+      echo "  Opening Freeview .."
+      call_freeview ${subj_ID}
+    else
+      echo "you do not have the call_freeview script where it's supposed to be"
+      echo "place it in \"${DIR_SCRIPTS}/bin\""
+      exit 1
+    fi
+
+    echo "  Run recon-all again or not [n] = no, [y] = yes"
+    while : ; do
+      read -n 1 k <&1
+      if [[ ${k} = n ]]; then
+        echo "  Quitting from the program"
+        break
+      elif [[ ${k} = y ]]; then
+        echo "  Running recon stage 2+3 with gcut option"
+        CMD "${subj_ID}" "23" "-autorecon2 -autorecon3"
+
+      else
+        echo "Unknown option. Something weird happened.."
+        exit 1
+      fi
+    done
+
+  fi
+
+# do all other things when -o is not specified
+else
+
+  if [[ -z ${stage} ]]; then
+    echo "What stage do you want to run? Please specify the \"-r\"-flag"
+    exit 1
+  fi
+
+  if [[ ${stage} == "all" ]]; then
+
+    # check for T1 and T2
+    CHECK_INPUTS ${stage}
+
+    if [[ ! -z ${edit} ]]; then
+      echo "  You want to run all stages of recon-all but specified the \"edit\" flag. This is not necessary"
+    fi
+
+    if [[ -d ${SUBJECTS_DIR}/${subj_ID} ]]; then
+      if [ ${FORCE_EXEC} -eq 0 ]; then
+        echo "This step is already complete"
+      else
+        CMD "${subj_ID}" "${stage}" "-all"
+      fi
+    else
+      CMD "${subj_ID}" "${stage}" "-all" "${T1_flag}" "${T2_flag}"
+    fi
+
+  elif [[ ${stage} == "12" ]]; then
+
+    # check for T1 and T2
+    CHECK_INPUTS ${stage}
+
+    # remove running job
+    ISRUNNING
+
+    if [[ ! -z ${edit} ]]; then
+      echo "  You want to run all stages of recon-all but specified the \"edit\" flag. This is not necessary"
+    fi
+
+    CMD "${subj_ID}" "${stage}" "-autorecon1 -autorecon2" "${T1_flag}" "${T2_flag}"
+
+  elif [ ${stage} == "23" ]; then
+
+    # remove running job
+    ISRUNNING
+
+    # You did some editing, let's find out what you did and what you want to re-run
+    #   'cp'  = you made normalization edits  > runs -autorecon2-cp
+    #   'wm'  = you made white matter edits   > runs -autorecon2-wm
+    #   'pial'= you made pial edits           > runs -autorecon2-pial
+
+    # recon-all -subjid ${1} ${4} -hires -parallel openmp 12 ${3} ${5}
+
+    if [[ ! -z ${edit} ]]; then
+
+      if [[ "${edit}" == "cp" ]] || [[ "${edit}" == "wm" ]] || [[ "${edit}" == "pial" ]]; then
+        :
+      else
+        Usage >&2
+        echo
+        echo "ERROR: To run this mode, you need to specify \"cp\", \"wm\", \"pial\" to let me know your type of edit.."
+        exit 1
+      fi
+
+      if [[ ${edit} == "pial" ]]; then
+        edit_flag="-autorecon-pial -autorecon3"
+      else
+        edit_flag="-autorecon2-${edit} -autorecon3"
+      fi
+    else
+      edit_flag="-autorecon2 -autorecon3"
+    fi
+
+    CMD "${subj_ID}" "${stage}" "${edit_flag}" "${T1_flag}" "${T2_flag}"
+
+  elif [[ ${stage} == "1" ]]; then
+
+    # recon-all -subjid ${1} ${4} -hires -parallel openmp 12 ${3} ${5}
+
+    # check for T1 and T2
+    CHECK_INPUTS ${stage}
+
+    if [[ -d ${SUBJECTS_DIR}/${subj_ID} ]]; then
+      echo "This step is already complete"
+    else
+      CMD "${subj_ID}" "${stage}" "-autorecon1" "${T1_flag}" "${T2_flag}"
+    fi
+
+  elif [[ ${stage} == "2" ]]; then
+
+    # remove running job
+    ISRUNNING
+
+    CMD "${subj_ID}" "${stage}" "-autorecon2"
+
+  elif [[ ${stage} == "3" ]]; then
+
+      # remove running job
+    ISRUNNING
+
+    # check for T1 and T2
+    CHECK_INPUTS ${stage}
+
+    CMD "${subj_ID}" "${stage}" "-autorecon3" "${T1_flag}" "${T2_flag}"
+
+  fi
+
+fi

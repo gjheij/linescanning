@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_ants2lta
+
+Quick conversion between ANTs and FreeSurfer matrix files. Inputs can be either .mat or .txt files.
+
+Usage:
+  call_ants2lta <input file> <output file> <source file> <target file>
+
+Example:
+  call_ants2lta /path/to/genaff.mat /path/to/genaff.lta source.nii.gz target.nii.gz
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+if [[ $# -lt 2 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+#-----------------------------------------------------------------------------
+# Run it
+if [[ ${1} == *".mat"* ]]; then
+    in_file=$(dirname ${1})/$(basename ${1} .mat).txt
+    ConvertTransformFile 3 ${1} ${in_file}
+else
+    in_file=${1}
+fi
+
+out_file=${2}
+lta_convert --initk ${in_file} --outlta ${out_file} --src ${3} --trg ${4}

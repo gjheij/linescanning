@@ -1,0 +1,316 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# check if there's is a setup file containing the major paths and source it if it exists
+call_loadsetup
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+spinoza_registration
+
+wrapper for registration with ANTs. This script should be preceded by spinoza_memp2rage & spinoza-
+mp2rage to create the UNI T1w images that we're registering here. It utilizes the variable ACQ in
+the setup script to derive what should be registered to what. In theory, the first element of ACQ
+is taken as reference, and the second element will be registered to that. If ACQ has only one ele-
+ment and 'MNI' is specified, this first element is registered to the MNI template. This step is
+relatively obsolete given that we don't really need it in MNI space + we can do that step with fMRI-
+prep.
+
+By default, the data type is set to the first element of the ACQ-variable as specified in the setup
+script and is no initial transformation file required.
+
+Usage:
+spinoza_registration <-s sub> <-n ses> <root input> <root output> <session> <data type> <initial
+                     trafo>
+
+Example:
+  spinoza_registration <project>/derivatives/pymp2rage <project>/derivatives/ants <session> 
+                       mp2rage n
+  spinoza_registration -s 001 -n 1 <project>/derivatives/pymp2rage <project>/derivatives/ants <ses-
+                       sion> 
+
+Notes:
+  Has the '-s' and '-n' switches to specify a particular subject and session if present
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+if [[ $# -lt 2 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+# Check for subject flag
+while getopts s:n: argument
+do
+    case ${argument} in
+      s)  sub=${OPTARG}
+            ;;
+      n)  ses=${OPTARG}
+            ;;
+    esac
+done
+
+if [[ $# -lt 2 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+INPUT=${@:$OPTIND:1}
+OUTPUT=${@:$OPTIND+1:1}
+TYPE=${@:$OPTIND+2:1}
+INIT=${@:$OPTIND+3:1}
+
+if [[ -z ${sub} ]]; then
+  # loop through subjects
+  search="${INPUT}/sub-*"
+else
+  # do for 1 subject
+  search="${INPUT}/sub-${sub}"
+fi
+
+if [[ -z ${TYPE} ]]; then
+  TYPE="${ACQ1,,}"
+fi
+
+if [[ -z ${INIT} ]]; then
+  INIT="n"
+fi
+
+#-----------------------------------------------------------------------------
+# Get bash helper functions
+source call_bashhelper
+
+#-----------------------------------------------------------------------------
+# Start clock
+#-----------------------------------------------------------------------------
+echo
+echo "==================================================================================================="
+printf "ME-MP2RAGE to MP2RAGE REGISTRATION\n"
+start=`date +%s`
+start_date=`date`
+
+printf "Started at ${start_date}\n"
+echo "==================================================================================================="
+
+#-----------------------------------------------------------------------------
+# Run it
+for dir in ${search}; do
+
+  echo
+  echo "**************************************** Processing `basename ${dir}` ***************************************"
+
+  # THE ACQ VARIABLE SHOULD BE IN THE SPINOZA_SETUP SCRIPT AND EXPORTED TO THE ENVIRONMENT. SHOULD CONTAIN TWO ELEMENTS
+  # THAT ARE BEING REGISTERED AND AVERAGED LATER
+  if [[ -z ${ses} ]]; then
+    base="$(basename ${dir})"
+    base_dir=${base}
+  else
+    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
+    base="$(basename ${dir})_ses-${nr}"
+    base_dir=$(basename ${dir})/ses-${nr}
+  fi
+
+  sub_id=`echo ${dir} | cut -d'-' -f2`
+  OUTPUTDIR=${OUTPUT}/${base_dir}
+  INPUTDIR=${INPUT}/${base_dir}
+
+  if [[ ${TYPE,,} == ${ACQ1,,} ]]; then
+    txt="Registering ${ACQ2,,}-T1w to ${ACQ1,,}"
+    suffix=MP2RAGE
+    output=${OUTPUTDIR}/${base}_acq-${ACQ2^^}_space-${ACQ1^^}_T1w.nii.gz
+    initial=${OUTPUTDIR}/${base}_acq-${ACQ2^^}-${ACQ1^^}_desc-init.txt
+    ext="from-MEMP2RAGE_to-MP2RAGE_desc-"
+    fixed=`find "${INPUTDIR}" -type f \( -iname "*${ACQ1^^}*" -and -not -iname "*${ACQ2^^}*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
+    moving=`find "${INPUTDIR}" -type f \( -iname "*${ACQ1^^}*" -and -name "*_T1w.nii.gz" \) 2>/dev/null`
+  elif [[ ${TYPE,,} == "mni" ]]; then
+    txt="Registering ${ACQ1^^}-T1w to MNI152 template"
+    suffix=MNI152NLin6Asym
+    fixed=${FSLDIR}/data/standard/MNI152_T1_1mm.nii.gz
+    moving=`find "${INPUTDIR}" -type f \( -iname "*${space^^}*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
+    ext="from-MNI152Nlin6Asym_to-subject_desc-"
+    output=${OUTPUTDIR}/$(basename ${moving} _T1w.nii.gz)_space-${suffix}_T1w.nii.gz
+  else
+    echo "Incorrect usage. Please specify mp2rage or mni"
+    Usage >&2
+    exit 1
+  fi
+
+  outWarp=${OUTPUTDIR}/$(basename ${dir})_${ext}warp.nii.gz
+  outInvWarp=${OUTPUTDIR}/$(basename ${dir})_${ext}invwarp.nii.gz
+  outGenAff=${OUTPUTDIR}/$(basename ${dir})_${ext}genaff.mat
+
+  if [[ ! -d ${OUTPUTDIR} ]]; then
+    echo "Creating output directory"
+    mkdir -p ${OUTPUTDIR}
+  fi
+
+  if [[ ! -f ${output} ]]; then
+    echo "Registering $(basename ${moving}) to $(basename ${fixed})"
+
+    if [[ -f ${fixed} && -f ${moving} ]]; then
+
+      if [[ ! -z ${INIT} ]]; then
+        if [[ ${INIT} == y ]]; then
+          if [[ ! -f ${initial} ]]; then
+            echo "Please create this first using ITKsnap and name it:"
+            echo "\"${initial}\""
+            echo
+            echo "Initiating ITKsnap"
+            itksnap -g ${fixed} -o ${moving}
+
+            if [[ ! -f ${initial} ]]; then
+              echo "Lil' bitch, you didnt do the initial transform.."
+              exit 1
+            fi
+
+          fi
+
+        else
+          echo "No initial transformation will be used"
+        fi
+      fi
+
+      if [[ ! -f ${outGenAff} ]]; then
+
+        echo "Creating warp and matrix files"
+
+        if [[ ${TYPE,,} == "mni" ]]; then
+          type_reg="syn"
+        else
+          type_reg="rigid"
+        fi
+
+        if [[ ${PLACE} == SPINOZA ]]; then
+          job="qsub -wd ${DIR_LOGS} -N reg_${sub_id} ${DIR_SCRIPTS}/bin/call_antsregistration"
+          wait_for=1
+        else
+          job="call_antsregistration"
+          wait_for=0
+        fi
+
+        ${job} ${fixed} ${moving} ${OUTPUTDIR}/$(basename ${dir})_${ext} ${type_reg} ${initial}
+
+        if [[ ${wait_for} -eq 1 ]]; then
+          echo "Waiting to check qstat.."
+          sleep 10
+
+          wait_for_qsub "reg_${sub_id}"
+
+          if [[ $? -ne 0 ]]; then
+            echo "ERROR in `basename ${0}`: wait_for_qsub exited with non-zero status"
+            exit 1
+          fi
+        fi
+
+        if [[ $? != 0 ]]; then
+          echo
+          echo "---------------------------------------------------------------------------------------------------"
+          echo "ERROR in `basename ${0}`: call_antsregistration exited with non-zero status"
+          exit 1
+        fi
+
+        if [[ ${type_reg} != "rigid" ]]; then
+          if [[ -f ${OUTPUTDIR}/$(basename ${dir})_${ext}1Warp.nii.gz ]]; then
+            mv ${OUTPUTDIR}/$(basename ${dir})_${ext}1Warp.nii.gz ${outWarp}
+          else
+            echo "Couldn't find `basename ${outWarp}`"
+          fi
+
+          if [[ -f ${OUTPUTDIR}/$(basename ${dir})_${ext}1InverseWarp.nii.gz ]]; then
+            mv ${OUTPUTDIR}/$(basename ${dir})_${ext}1InverseWarp.nii.gz ${outInvWarp}
+          else
+            echo "Couldn't find `basename ${outInvWarp}`"
+          fi
+        fi
+
+      else
+
+        echo "Warp and matrix files are present. Skipping antsRegistration."
+
+      fi
+
+    else
+
+      if [[ ! -f ${fixed} ]]; then
+        echo "Missing fixed image"
+      elif [[ ! -f ${moving} ]]; then
+        echo "Missing moving image"
+      fi
+
+    fi
+
+  fi
+
+  # # Check if we can warp the other outputs of pymp2rage as well.
+  # if [[ `echo ${#ACQ[@]}` == 2 ]]; then
+
+  #   if [[ -f ${outGenAff} ]]; then
+
+  #     if [[ ${TYPE,,} == "${ACQ1,,}" ]]; then
+
+  #       declare -a MPM=(T2starmap T1map R2starmap S0 T2starw T1w)
+
+  #       for i in ${MPM[@]}; do
+
+  #         input=`find "${INPUTDIR}/$(basename ${dir})" -type f \( -name "*${i}*" -and -not -iname "*${ACQ2}*" \) 2>/dev/null`
+  #         output=${OUTPUTDIR}/${base}_acq-${ACQ2^^}-${TYPE^^}_${i}.nii.gz
+
+  #         if [[ -f ${fixed} ]]; then
+  #           if [[ -f ${input} ]]; then
+  #             if [[ ! -f ${output} ]]; then
+
+  #               echo "Warping ${i} to mp2rage"
+  #               call_antsapplytransforms ${fixed} ${input} ${output} ${outGenAff}
+
+  #               # Orient the output according to fixed image
+  #               sFormCode=`fslorient -getsformcode ${output}`
+  #               if [ ${sFormCode} == "0" ]; then
+  #                 fslcpgeom ${fixed} ${output}
+  #               fi
+
+  #             else
+  #               echo "`basename ${output}` already present"
+  #             fi
+  #           else
+  #             echo "Could not find image corresponding to ${i} >> run pymp2rage for these maps"
+  #           fi
+  #         else
+  #           echo "No fixed image found. This shouldn't happen..."
+  #         fi
+
+  #       done
+
+  #     fi
+
+  #   else
+
+  #     echo "Missing warp or matrix files"
+
+  #   fi
+
+  # fi
+
+done
+
+#-----------------------------------------------------------------------------
+# Calculate time spent using 'let'
+echo
+echo "---------------------------------------------------------------------------------------------------"
+end=`date +%s`
+end_date=`date`
+printf "Done at ${end_date}\n"
+
+let deltatime=end-start
+let hours=deltatime/3600
+let minutes=(deltatime/60)%60
+let seconds=deltatime%60
+printf "Time spent: %d:%02d:%02d\n" ${hours} ${minutes} ${seconds}
+echo "---------------------------------------------------------------------------------------------------"

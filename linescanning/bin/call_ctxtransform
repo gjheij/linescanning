@@ -1,0 +1,81 @@
+#!/usr/bin/env python
+
+import os, sys, getopt
+from linescanning.pycortex import create_ctx_transform
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_ctxtransform
+
+This script takes an input volume, creates a warp directory, and uses this to get the volume in the
+surface space of pycortex
+
+Args:
+    -s (--subj=)           subject name (e.g., sub-xxx)
+    -c (--cxdir=)          path to pycortex dir (e.g., derivatives/pycortex)
+    -i (--infile=)         path to file to create warp directory for
+    -w (--warp=)           name of warp directory
+    -b (--bin=)            binarize infile with bin_fov function (binarized FOV) [0=no|1=yes]
+    -t (--cxtype=)         output either a vertex or volume for pycortex ['Vertex'|'Volume']
+    -m (--cmap=)           color map for cxtype (default is 'magma')
+
+Outputs:
+    A directory name containing the transformation from FreeSurfer space to pycortex space and, if
+    selected a vertex/volume of the (binarized) infile.
+
+Example:
+    call_ctxtransform -s sub-xxx -c ${CTX} -i infile.nii.gz -w 1slice2ctx -b 0
+    call_ctxtransform -s sub-xxx -c ${CTX} -i infile.nii.gz -w 1slice2ctx -b 0 -t Vertex -m BuDu
+
+Notes:
+    -
+
+---------------------------------------------------------------------------------------------------
+
+    """
+
+    subject         = ''
+    ctx_dir         = ''
+    in_file         = ''
+    warp_name       = ''
+    binarize        = ''
+    ctx_type        = ''
+    cmap            = ''
+
+    try:
+        opts = getopt.getopt(argv,"hs:c:i:w:b:t:m:",["help=", "subj=", "cxdir=", "infile=", "warp=", "bin=", "cxtype=", "cmap="])[0]
+    except getopt.GetoptError:
+        print(main.__doc__)
+        sys.exit(2)
+
+    for opt, arg in opts:
+        if opt == '-h':
+            print(main.__doc__)
+            sys.exit()
+        elif opt in ("-s", "--subj"):
+            subject = arg
+        elif opt in ("-c", "--cxdir"):
+            ctx_dir = arg
+        elif opt in ("-i", "--infile"):
+            in_file = arg
+        elif opt in ("-w", "--warp"):
+            warp_name = arg
+        elif opt in ("-b", "--bin"):
+            binarize = arg
+        elif opt in ("-t", "--cxtype"):
+            ctx_type = arg
+        elif opt in ("-m", "--cmap"):
+            cmap = arg
+
+    if len(argv) < 4:
+        print("NOT ENOUGH ARGUMENTS SPECIFIED")
+        print(main.__doc__)
+        sys.exit()
+
+
+    tname, f = create_ctx_transform(subject, ctx_dir, in_file, warp_name, binarize, ctx_type, cmap)
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

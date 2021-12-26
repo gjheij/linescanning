@@ -1,0 +1,46 @@
+#!/usr/bin/env python
+
+import os, sys
+from linescanning.transform import native_to_scanner
+import numpy as np
+import ast
+
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_ras2vox
+
+Convert a voxel coordinate to RAS-coordinate
+
+Args:
+    <coord>     coordinate in the format [C,R,S] (comma-separated & no spaces!)
+    <ref>       reference image to base the ras2vox affine on
+
+Example:
+    call_ras2vox [-15,-98,-2] orig.mgz
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    if len(argv) < 2:
+        print("NOT ENOUGH ARGUMENTS SPECIFIED")
+        print(main.__doc__)
+        sys.exit()
+
+    coord = argv[0]
+    ref   = argv[1]
+
+    try:
+      coord = np.array(ast.literal_eval(coord))
+    except:
+      raise ValueError(f"You used '{coord}'. Make sure to use '[x,y,z]' (comma-separated and no spaces)")
+    
+    vox = native_to_scanner(ref, coord=coord, inv=True)
+
+    print(vox[:3])
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

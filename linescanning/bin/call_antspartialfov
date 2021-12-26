@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_antspartialpov
+
+This script registers a partial FOV images to a whole-brain image via a few stages. First, a mask
+is created of the partial FOV, which is then injected in call_antsregistration. The resulting ma-
+trix is then applied to the input image.
+
+Arguments:
+    <-s>        convert <output> to INT16
+    <-f>        convert <output> to FLOAT32
+    <-d>        convert <output> to FLOAT64
+    <reference> reference image (generally whole brain)
+    <moving>    moving image (partial FOV image)
+    <output>    output file name
+
+Usage:
+  call_antspartialpov <reference> <partial> <output file>
+
+Example:
+  call_antspartialpov reference.nii.gz partial.nii.gz partial_in_reference.nii.gz
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+if [[ $# -lt 3 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+#-----------------------------------------------------------------------------
+# Deal with arguments
+while getopts sfdi:c: arg
+do
+    case ${arg} in
+      i)  INIT=${OPTARG}
+            ;;
+      c)  CONTRAST=${OPTARG}
+            ;;        
+    esac
+done
+
+REF=${@:$OPTIND:1}
+MOV=${@:$OPTIND+1:1}
+OUT=${@:$OPTIND+2:1}
+
+echo "Partial FOV > Whole brain"
+
+#-----------------------------------------------------------------------------
+# 1) mask binary FOV
+echo " Creating binary mask of partial FOV"
+MASK=$(dirname ${MOV})/$(basename ${MOV} .nii.gz)_mask.nii.gz
+fslmaths ${MOV} -bin ${MASK}
+
+if [[ `fslval ${MASK} dim0` -eq 4 ]]; then
+  fslroi ${MASK} ${MASK} 0 1
+fi
+
+if [[ $? -ne 0 ]]; then
+  echo "ERROR in `basename ${0}`: fslmaths exited with non-zero status"
+  exit 1
+fi
+
+#-----------------------------------------------------------------------------
+# 2) register partial FOV to whole-brain with mask
+echo " Register partial FOV to whole-brain with mask"
+XFM=$(dirname ${OUT})/$(basename ${OUT} .nii.gz)_desc-
+call_antsregistration -t lin -x ${MASK} ${REF} ${MOV} ${XFM} rigid
+
+if [[ $? -ne 0 ]]; then
+  echo "ERROR in `basename ${0}`: call_antsregistration exited with non-zero status"
+  exit 1
+fi
+
+#-----------------------------------------------------------------------------
+# 3) apply registration
+echo " Apply transformation to moving image"
+call_antsapplytransforms ${REF} ${MOV} ${OUT} ${XFM}genaff.mat
+
+if [[ $? -ne 0 ]]; then
+  echo "ERROR in `basename ${0}`: call_antsapplytransforms exited with non-zero status"
+  exit 1
+fi
+
+#-----------------------------------------------------------------------------
+# 4) convert back to specified data format
+if [[ "${@}" == *"-f"* ]]; then
+  echo " Convert back to FLOAT32"
+  fslmaths ${OUT} ${OUT} -odt float
+elif [[ "${@}" == *"-s"* ]]; then
+  echo " Convert back to INT16"
+  fslmaths ${OUT} ${OUT} -odt short
+elif [[ "${@}" == *"-d"* ]]; then
+  echo " Convert back to FLOAT64"
+  fslmaths ${OUT} ${OUT} -odt double
+fi
+
+echo "Done"

@@ -1,0 +1,275 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# check if there's is a setup file containing the major paths and source it if it exists
+call_loadsetup
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+spinoza_createsagsinusmask
+
+This script creates the sagittal sinus mask based on the R2*-map from pymp2rage. It requires the user
+to refine the mask a bit, because the R2*-map is imperfect especially around the putamen and other
+iron-rich regions inside the brain. It will start ITKsnap for the user to do the editing.
+
+It can be run on a cluster, but then we need to have X-forwarding. If you're on a different SGE than
+the Spinoza Centre cluster, change the 'if [[ hostname != *"login-01"* ]]; then' line to your SGE's
+login node (where you can't open GUIs). It will try to open a GUI for everything other than that spe-
+cified node-name. For instance, if you're running this on your local system, your hostname will be
+that of your system, and will therefore attempt to open the specified GUI (default = ITKsnap, it will
+check if that exists. Other options are 'FSL' or 'FV' for freeview).
+
+If you have MEMP2RAGE-data, then the script will look for the R2*-file in the specified ANAT folder.
+If this is somewhere else, just copy it into that directory.
+
+Usage:
+  spinoza_createsagsinusmask <-s sub> <-n ses> <dir anat> <dir masks> <itk | fv>
+
+Example:
+  spinoza_createsagsinusmask DIR_ANAT DIR_MASKS SOFTWARE
+  spinoza_createsagsinusmask $DIR_DATA_DERIV/pymp2rage $DIR_DATA_DERIV/manual_masks itk
+  spinoza_createsagsinusmask -s 001 -n 1 $DIR_DATA_DERIV/pymp2rage $DIR_DATA_DERIV/manual_masks itk
+
+Notes:
+  - Has the '-s' and '-n' switches to specify a particular subject and session if present
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+# Check for subject & session flags
+while getopts s:n: argument
+do
+    case ${argument} in
+      s)  sub=${OPTARG}
+            ;;
+      n)  ses=${OPTARG}
+            ;;
+    esac
+done
+
+if [[ $# -lt 3 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+ANAT=${@:$OPTIND:1}
+MASKS=${@:$OPTIND+1:1}
+SOFTWARE=${@:$OPTIND+2:1}
+
+if [[ -z ${sub} ]]; then
+  # loop through subjects
+  search="${ANAT}/sub-*"
+else
+  # do for 1 subject
+  sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
+  search="${ANAT}/sub-${sub_nr}"
+fi
+
+#-----------------------------------------------------------------------------
+# Start clock
+#-----------------------------------------------------------------------------
+
+echo
+echo "==================================================================================================="
+printf "CREATE NEW SAGITTAL SINUS MASK\n"
+start=`date +%s`
+start_date=`date`
+
+printf "Started at ${start_date}\n"
+echo "==================================================================================================="
+
+#-----------------------------------------------------------------------------
+# Run it
+
+for dir in ${search}; do
+
+  if [[ -z ${ses} ]]; then
+    base="$(basename ${dir})"
+    base_dir=$(basename ${dir})
+  else
+    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
+    base="$(basename ${dir})_ses-${nr}"
+    base_dir=$(basename ${dir})/ses-${nr}
+  fi
+
+  input_dir=${ANAT}/${base_dir}
+  mask_dir=${MASKS}/${base_dir}
+
+  if [[ ! -d ${mask_dir} ]]; then
+    mkdir -p ${mask_dir}
+  fi
+
+  if [[ ${DATA} == "MP2RAGEME" ]] || [[ ${DATA} == "AVERAGE" ]]; then
+    r2star=`find "${input_dir}" -type f \( -name "*R2*" -and -name "*.nii.gz" \) 2>/dev/null`
+    if [[ ! -z ${r2star} ]]; then
+
+      r2star_mask=${mask_dir}/${base}_acq-${space^^}_desc-sagittalsinus.nii.gz
+      if [[ ! -f ${r2star_mask} ]]; then
+
+        echo
+        echo "**************************************** Processing `basename ${dir}` ***************************************"
+
+        if [[ -f $(dirname ${r2star})/tmp_$(basename ${r2star}) ]]; then
+          rm -r $(dirname ${r2star})/tmp_$(basename ${r2star})
+        fi
+
+        # threshold R2star mask and binarize mask
+        echo "Thresholding and binarizing `basename ${r2star}`"
+        fslmaths ${r2star} -thr 0.07 $(dirname ${r2star})/tmp_$(basename ${r2star})
+        fslmaths $(dirname ${r2star})/tmp_$(basename ${r2star}) -bin ${r2star_mask}
+        fslmaths ${r2star_mask} -fillh ${r2star_mask}
+
+        # now manually edit the file
+        t1w=`find "${input_dir}" -type f \( -name "*T1w*" -and -name "*${DATA}*" -and -name "*.nii.gz" \) 2>/dev/null`
+        if [[ ! -z ${t1w}  ]]; then
+
+          # install itksnap from here: http://www.itksnap.org/pmwiki/pmwiki.php?n=Documentation.TutorialSectionInstallation
+          if [[ `hostname` != *"login-01"* ]]; then
+            call_checkfunction itksnap
+            if [[ $? -eq 0 ]]; then
+              echo "Starting ITKsnap. Fill in the sagittal sinus where needed and save the image"
+              itksnap -g ${t1w} -s ${r2star_mask} 2>/dev/null
+            else
+              echo "call_checkfunction itksnap exited with non-zero status. Make sure you have ITKsnap installed!"
+              echo "see: http://www.itksnap.org/pmwiki/pmwiki.php?n=Documentation.TutorialSectionInstallation"
+              exit 1
+            fi
+          fi
+
+        else
+          echo "Could not find T1w image. Cant start ITKsnap"
+          continue
+        fi
+
+        inv2_mask=`find "${mask_dir}" -type f \( -name "*inv-2*" -and -name "*bet_mask*" \) 2>/dev/null`
+        if [[ ! -z ${inv2_mask} ]]; then
+          echo "Applying mask to `basename ${r2star_mask}`"
+          fslmaths ${r2star_mask} -mas ${inv2_mask} ${r2star_mask}
+        else
+          echo "Could not find INV2 mask. Run BET on the 2nd inversion time first."
+          echo "Otherwise you get an inaccurate segmentation of sagittal sinus"
+          continue
+        fi
+
+      else
+
+        echo "`basename ${dir}`: R2*-mask is already present"
+
+      fi
+
+    else
+
+      echo "Could not find R2star image. Please make sure you've run pymp2rage and registered the image to mp2rage space"
+      echo " - spinoza_qmrimaps"
+      echo " - spinoza_registration"
+      continue
+
+    fi
+
+  elif [[ ${DATA} == "MP2RAGE" ]]; then
+
+    r2star_mask=${mask_dir}/${base}_acq-${space^^}_desc-sagittalsinus.nii.gz
+
+    if [[ ! -f ${r2star_mask} ]]; then
+
+      t1w=`find "${input_dir}" -type f \( -name "$(basename ${dir})*" -and -name "*${space^^}*" -and -not -iname "*memp2rage*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
+
+      if [[ ! -z ${t1w} ]]; then
+
+        echo
+        echo "**************************************** Processing `basename ${dir}` ***************************************"
+
+        echo "Creating `basename ${r2star_mask} `"
+
+        if [[ `hostname` != *"login-01"* ]]; then
+
+          # install itksnap from here: http://www.itksnap.org/pmwiki/pmwiki.php?n=Documentation.TutorialSectionInstallation
+          if [[ ${SOFTWARE} == "itk" ]] || [[ -z ${SOFTWARE} ]]; then
+            call_checkfunction itksnap
+            if [[ $? -eq 0 ]]; then
+              echo "Starting ITKsnap. Press add new segmentation and draw the sagittal sinus, save it as:"
+              echo "\"${r2star_mask}\" in the \"$(dirname ${MASKS})\" directory"
+              itksnap -g ${t1w} 2>/dev/null
+            else
+              echo "call_checkfunction itksnap exited with non-zero status. Make sure you have ITKsnap installed!"
+              echo "see: http://www.itksnap.org/pmwiki/pmwiki.php?n=Documentation.TutorialSectionInstallation"
+              exit 1
+            fi
+          elif [[ ${SOFTWARE} == "fv" ]]; then
+            echo "Starting FreeView. Press add new segmentation and draw the sagittal sinus, save it as:"
+            freeview -v ${t1w} 2>/dev/null
+          elif [[ ${SOFTWARE} == "fsl" ]]; then
+            echo "Starting FSLeyes. Press add new segmentation and draw the sagittal sinus, save it as:"
+            echo "\"${r2star_mask}\" in the \"manual_masks\" directory"
+            fsleyes --scene ortho ${t1w} 2>/dev/null
+          else
+            echo "Unknown option specified: ${SOFTWARE}. I can deal with:"
+            echo " \"itk\": ITK-Snap"
+            echo " \"fv\":  FreeView"
+            echo " \"fsl\": FSLeyes"
+            continue
+          fi
+
+        else
+
+          echo "Can't run visual inspection in this node. Please edit files yourself on e.g. jupiter/minerva"
+          exit 1
+
+        fi
+
+      else
+
+        echo "`basename ${dir}`: could not find T1-weighted image"
+        continue
+
+      fi
+
+      if [[ -f ${r2star_mask} ]]; then
+        inv2_mask=`find "${mask_dir}" -type f \( -name "*inv-2*" -and -name "*${space^^}*" -and -name "*bet_mask*" \) 2>/dev/null`
+        if [[ ! -z ${inv2_mask} ]]; then
+          echo "Applying mask to `basename ${r2star_mask}`"
+          fslmaths ${r2star_mask} -mas ${inv2_mask} ${r2star_mask}
+        else
+          echo "Could not find INV2 mask. Run BET on the 2nd inversion time first."
+          echo "Otherwise you get an inaccurate segmentation of sagittal sinus"
+          continue
+        fi
+
+      else
+
+        echo "You didn't save it in the correct directory"
+        continue
+
+      fi
+
+    else
+
+      echo "`basename ${dir}`: sagittal sinus mask is already present"
+
+    fi
+
+  fi
+
+done
+
+#-----------------------------------------------------------------------------
+# Calculate time spent using 'let'
+echo
+echo "---------------------------------------------------------------------------------------------------"
+end=`date +%s`
+end_date=`date`
+printf "Done at ${end_date}\n"
+
+let deltatime=end-start
+let hours=deltatime/3600
+let minutes=(deltatime/60)%60
+let seconds=deltatime%60
+printf "Time spent: %d:%02d:%02d\n" ${hours} ${minutes} ${seconds}
+echo "---------------------------------------------------------------------------------------------------"

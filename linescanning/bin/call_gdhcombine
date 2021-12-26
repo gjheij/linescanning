@@ -1,0 +1,231 @@
+#!/usr/bin/env python
+
+import os
+from nilearn import image
+import sys, getopt
+import nibabel as nb
+import numpy as np
+from linescanning.bin.utils.utils import get_file_from_substring
+from scipy.ndimage import interpolation
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_gdhcombine
+
+Combine the outputs from FAST (fmriprep or FSL itself), FreeSurfer, and Nighres' MGDM. If possible, 
+we will also include CAT12-segmentations. These should be located in DIR_DATA_DERIV/cat12/sub-xxx/.
+Also takes in manual edits that are weighted 5-times more than the segmentations from the other
+softwares.
+
+Args:
+    -s <subject nr>  subject ID
+    -q <CAT12>       directory in DIR_DATA_DERIV containing labels from CAT12 (optional!)
+    -a <FAST>        directory containing segmentations from FAST
+    -b <FreeSurfer>  directory containing segmentations from FreeSurfer
+    -c <Nighres>     directory containing segmentations from Nighres
+    -d <Manual>      directory containing manual edits
+    -o <Output>      output directory + basename output
+
+Example:
+    call_gdhcombine -s sub-001 -a /path/to/fast -b /path/to/fs -c /path/to/mgdm -d /path/to
+                    /man_masks
+
+Notes:
+    if you only specify the subject ID, it will look for the files in the environmental variables
+    Nighres/FreeSurfer/fMRIprep are compulsory, manual edits & CAT12 are optional!
+
+---------------------------------------------------------------------------------------------------
+
+    """
+
+    subject     = None
+    fprep_prob  = None
+    fs          = None
+    nigh_prob   = None
+    nigh_prob   = None
+    cat_prob    = None
+    outputdir   = None
+    outputbase  = None
+
+    try:
+        opts = getopt.getopt(argv,"hs:q:a:f:c:d:o:b:",["subject=", "session=","cat=", "fast=", "fs=", "nighres=", "manual=", "outputdir=", "outputbase="])[0]
+    except getopt.GetoptError:
+        print(main.__doc__)
+        sys.exit(2)
+
+    for opt, arg in opts:
+        if opt == '-h':
+            print(main.__doc__)
+            sys.exit()
+        elif opt in ("-s", "--subject"):
+            subject = arg
+        elif opt in ("-q", "--cat"):
+            cat_prob = arg            
+        elif opt in ("-a", "--fast"):
+            fprep_prob = arg
+        elif opt in ("-f", "--fs"):
+            fs = arg
+        elif opt in ("-c", "--nighres"):
+            nigh_prob = arg
+        elif opt in ("-d", "--manual"):
+            man_edit = arg
+        elif opt in ("-o", "--output"):
+            outputdir = arg
+        elif opt in ("-b", "--outputbase"):
+            outputbase = arg
+
+    if len(argv) < 1:
+        print("\nNEED AT LEAST A SUBJECT ID")
+        print(main.__doc__)
+        sys.exit()
+
+    # At least CAT12/Nighres/FreeSurfer need to be specified. Manual & fMRIprep are optional
+    if not nigh_prob:
+        raise ValueError("Need a nighres-directory")
+
+    if not fs:
+        raise ValueError("Need a FreeSurfer-directory")
+
+    ## Load and resample
+    print("Load and resample segmentations to nighres-output")
+    try:
+        ## Manual edits (optional)
+        print(" manual edits..")
+        manual = {}
+        manual['wm']        = get_file_from_substring('manualsegwm', man_edit)
+        manual['gm']        = get_file_from_substring('manualseggm', man_edit)
+        manual['outside']   = get_file_from_substring('desc-outside.nii.gz', man_edit)
+    except:
+        manual = None
+    
+    ## Nighres: compulsory
+    print(" nighres..")
+    nighres = {}
+    nighres['wm']      = get_file_from_substring('proba_cr-wm.nii.gz', nigh_prob)
+    nighres['gm']      = get_file_from_substring('proba_cr-gm.nii.gz', nigh_prob)
+    nighres['csf']     = get_file_from_substring('proba_cr-csf.nii.gz', nigh_prob)
+
+    for i in nighres:
+        if nighres[i] == None:
+            print(f" Missing {i}-file from mgdm")
+            sys.exit(1)
+
+    ## CAT12: optional
+    if cat_prob:
+        try:
+            print(" CAT12..")
+            cat = {}
+            cat['wm']   = image.resample_to_img(get_file_from_substring('p2', cat_prob), nighres['gm'], interpolation='nearest')
+            cat['gm']   = image.resample_to_img(get_file_from_substring('p1', cat_prob), nighres['gm'], interpolation='nearest')
+            cat['csf']  = image.resample_to_img(get_file_from_substring('p3', cat_prob), nighres['gm'], interpolation='nearest')
+        except:
+            cat['wm'],cat['gm'],cat['csf'] = None,None,None
+
+    ## FreeSurfer: compulsory
+    print(" FreeSurfer..")
+
+    # split ribbon.mgz into wm/gm components
+    base_name= opj(man_edit, f"{subject}_ses-1_acq-{os.environ['DATA']}")
+    try:
+        cmd = f"call_splitribbon {subject} {base_name}"
+        os.system(cmd)
+    except:
+        print("Could not convert ribbon file.. Does it exist?")
+        sys.exit(1)
+
+    freesurfer = {}
+    wm_img = get_file_from_substring("ribbon_wm.nii.gz", man_edit)
+    gm_img = get_file_from_substring("ribbon_gm.nii.gz", man_edit)
+    cx_img = get_file_from_substring("ribbon_mask.nii.gz", man_edit)
+
+    # resample and save so that they are in native-space
+    image.resample_to_img(wm_img, nighres['gm'], interpolation='nearest').to_filename(wm_img)
+    image.resample_to_img(gm_img, nighres['gm'], interpolation='nearest').to_filename(gm_img)
+    image.resample_to_img(cx_img, nighres['gm'], interpolation='nearest').to_filename(cx_img)
+    
+    freesurfer['wm'] = wm_img
+    freesurfer['gm'] = gm_img
+    freesurfer['cx'] = cx_img
+
+    # do some operations to cortex img
+    print("Creating cortex-specific mask from ribbon.mgz")
+    os.system(f"call_dilate {cx_img} {cx_img} 2")
+
+    print("Combining segmentations")
+    print(" wm..")
+    if manual['wm'] != None:
+        wm = image.math_img('(cat*ctx) + manual',
+                            cat=cat['wm'],
+                            ctx=freesurfer['cx'],
+                            manual=image.resample_to_img(manual['wm'], nighres['wm'], interpolation='nearest'))
+
+        wm_data = wm.get_fdata()
+        wm_data[wm_data > 1] = 1
+        wm = nb.Nifti1Image(wm_data, affine=wm.affine, header=wm.header)                        
+    else:
+        wm = image.math_img('(cat*ctx)', cat=cat['wm'], ctx=freesurfer["cx"])
+
+    print(" gm..")
+    gm = image.math_img('(cat*ctx)', cat=cat['gm'], ctx=freesurfer["cx"])  
+
+    print(" csf..")
+    csf = image.math_img('(3 * mgdm) + (cat*ctx)', 
+                         mgdm=nighres['csf'],
+                         ctx=freesurfer['cx'],
+                         cat=cat['csf'])
+
+    csf_data = csf.get_fdata()
+    csf_data[csf_data > 1] = 1
+    csf = nb.Nifti1Image(csf_data, affine=csf.affine, header=csf.header)
+
+    print("Saving combined probabilities")
+    gm_file = opj(outputdir, outputbase + '_label-GM_probseg.nii.gz')
+    wm_file = opj(outputdir, outputbase + '_label-WM_probseg.nii.gz')
+    csf_file = opj(outputdir, outputbase + '_label-CSF_probseg.nii.gz')
+    
+    wm.to_filename(wm_file); print(" wrote new WM-probability map")
+    gm.to_filename(gm_file); print(" wrote new GM-probability map")
+    csf.to_filename(csf_file); print(" wrote new CSF-probability map")
+
+    # exclude midbrain, sinus, and CSF-stuff from GM-segmentation
+    os.system(f"call_setmasktozero -i {gm_file} -m {freesurfer['wm']}")
+    os.system(f"call_setmasktozero -i {gm_file} -m {manual['outside']}")
+    os.system(f"call_setmasktozero -i {gm_file} -m {get_file_from_substring('p3', cat_prob)}")
+
+    # exclude midbrain from CSF-segmentation
+    os.system(f"call_setmasktozero -i {csf_file} -m {freesurfer['wm']}")
+    os.system(f"call_setmasktozero -i {csf_file} -m {gm_file}")
+
+    # get rid of cerebellum
+    os.system(f"call_setmasktozero -i {gm_file} -m {csf_file}")        
+
+    # add midbrain to WM-segmentation
+    os.system(f"call_setmasktoone -i {wm_file} -m {freesurfer['wm']}")
+    os.system(f"call_setmasktozero -i {wm_file} -m {csf_file}")
+    os.system(f"cp {wm_file} {opj(outputdir, outputbase + '_desc-inside.nii.gz')}"); print(" wrote 'inside'-map")
+
+    # WM/GM-segmentations need to be binarized to be converted to levelsets properly
+    os.system(f"fslmaths {gm_file} -bin {gm_file}")
+    os.system(f"fslmaths {wm_file} -bin {wm_file}")
+
+    # set manual GM edits to 1 in GM-file and 0 in WM-file
+    if manual['gm'] != None:
+        os.system(f"call_setmasktoone -i {gm_file} -m {manual['gm']}")
+        os.system(f"call_setmasktozero -i {wm_file} -m {manual['gm']}")
+
+    print("Make a manual cruise image")
+    gm_img = nb.load(gm_file)
+    wm_img = nb.load(wm_file)
+
+    gm_data,wm_data = gm_img.get_fdata(), wm_img.get_fdata()
+    cruise_img = np.zeros_like(gm_data)
+    cruise_img[wm_data > 0] = 2
+    cruise_img[gm_data > 0] = 1
+
+    nb.Nifti1Image(cruise_img, affine=gm_img.affine, header=gm_img.header).to_filename(opj(outputdir, outputbase + '_desc-cruise_cortex.nii.gz'))
+    print("Done")
+if __name__ == "__main__":
+    main(sys.argv[1:])

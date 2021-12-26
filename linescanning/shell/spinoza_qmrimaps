@@ -1,0 +1,157 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# check if there's is a setup file containing the major paths and source it if it exists
+echo
+call_loadsetup
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+spinoza_qmrimaps
+
+wrapper for estimation of T1 and other parametric maps from the (ME)MP2RAGE sequences by throwing
+the two inversion and phase images in PYMP2RAGE (https://github.com/Gilles86/pymp2rage).
+
+Usage:
+  spinoza_qmrimaps <-s sub> <-n ses> <project root> <derivatives> <session nr>
+
+Example:
+  spinoza_qmrimaps DIR_DATA_HOME DERIVATIVES/pymp2rage 1
+  spinoza_qmrimaps $DIR_DATA_HOME $DIR_DATA_DERIV
+  spinoza_qmrimaps -s 999 -n 1 $DIR_DATA_HOME $DIR_DATA_DERIV/pymp2rage
+
+Notes:
+  Has the '-s' and '-n' switches to specify a particular subject and session if present
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+# Check for subject flag
+while getopts us:n: argument
+do
+    case ${argument} in
+      s)  sub=${OPTARG}
+            ;;
+      n)  ses=${OPTARG}
+            ;;     
+    esac
+done
+
+if [[ $# -lt 2 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+INPUT=${@:$OPTIND:1}
+OUTPUT=${@:$OPTIND+1:1}
+
+if [[ -z ${sub} ]]; then
+  # loop through subjects
+  search="${INPUT}/sub-*"
+else
+  # do for 1 subject
+  sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
+  search="${INPUT}/sub-${sub_nr}"
+fi
+
+if [[ "${@}" == *"-u"* ]]; then
+  UPs="-u"
+else
+  UPs=""
+fi
+
+#-----------------------------------------------------------------------------
+# Start clock
+#-----------------------------------------------------------------------------
+
+echo "==================================================================================================="
+printf "Calculate T1's from ${DATA}\n"
+start=`date +%s`
+start_date=`date`
+
+printf "Started at ${start_date}\n"
+echo "==================================================================================================="
+
+#-----------------------------------------------------------------------------
+# Run it
+
+for dir in ${search}; do
+
+  declare -a ACQ=("MP2RAGE")
+  # declare -a ACQ=(memp2rage mp2rage)
+
+  if [[ ! -z ${ses} ]]; then
+    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
+    base_path=$(basename ${dir})/ses-${nr}
+    base=$(basename ${dir})_ses-${nr}_acq-${space^^}
+  else
+    base_path=$(basename ${dir})
+    base=$(basename ${dir})_acq-${space^^}
+  fi
+
+  outdir=${OUTPUT}/${base_path}
+  indir=${INPUT}/${base_path}
+
+  for a in ${ACQ[@]}; do
+
+    input=`find "${outdir}" -maxdepth 1 -type f \( -name "*acq-${a^^}*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
+    NoF=`find "${indir}" -type f \( -iname "*acq-${a}*" -and -not -name "*T1w*" -and -name "*.nii.gz" \) | wc -l 2>/dev/null`
+
+    if [[ ! -f ${input} ]]; then
+
+      if [[ ${NoF} -eq 0 ]]; then
+        echo "`basename ${dir}`: ${NoF} files available for ${a^^}"
+        break
+      else
+        echo
+        echo "**************************************** Processing `basename ${dir}` ***************************************"
+
+        if [[ ! -d ${outdir} ]]; then
+          mkdir -p ${outdir}
+        fi
+
+        if [[ ${a^^} == "MP2RAGE" ]]; then
+          make_mask="-c"
+        else
+          make_mask=""
+        fi
+
+        echo "Creating ${a} derivatives with pymp2rage"
+        call_${a,,} ${UPs} -i ${indir} -o ${outdir} -b ${base} ${make_mask}
+      fi
+
+    else
+      echo "`basename ${dir}`: ${a^^} T1-weighted file already exist"
+    fi
+
+  done
+
+  # copy T2w-file to pymp2rage folder for later convenience
+  t2=`find "${indir}" -type f \( -name "*T2w.nii.gz" \) 2>/dev/null`
+  if [ ! -z ${t2} ]; then
+    cp ${t2} ${outdir} 2>/dev/null
+  fi
+
+done
+
+#-----------------------------------------------------------------------------
+# Calculate time spent using 'let'
+echo
+echo "---------------------------------------------------------------------------------------------------"
+end=`date +%s`
+end_date=`date`
+printf "Done at ${end_date}\n"
+
+let deltatime=end-start
+let hours=deltatime/3600
+let minutes=(deltatime/60)%60
+let seconds=deltatime%60
+printf "Time spent: %d:%02d:%02d\n" ${hours} ${minutes} ${seconds}
+echo "---------------------------------------------------------------------------------------------------"

@@ -1,0 +1,157 @@
+#!/bin/bash
+#$ -S /bin/bash
+#$ -cwd
+#$ -j Y
+#$ -q short.q@jupiter
+#$ -V
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+		cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_spmbias
+
+Bias field correction using SPM12. Let's see if this makes CAT12 more reliable.. Seems to be pretty 
+good and up there with ANTs' N4-biasfield correction. Apparently, John Polimeni and Laurentius Hu-
+ber use this prior to FreeSurfer and find it really helps..
+
+Args:
+ -d <delete>    don't delete intermediate files such as the bias field etc.
+ -s <SPM_PATH>  path to SPM; should contain CAT12 in toolbox directory
+ -l <LOG_PATH>	path to working directory, defaults to DIR_LOGS
+ <input image>  input image. Can either be *.nii.gz or *.nii image. In the case of the former,
+                new *.nii-file will be created alongside of the *.nii.gz file, as SPM does
+                not like *.nii.gz files.
+ <output image>	name of output image, including directory
+
+Usage:
+ call_spmmask -d inv2.nii.gz mask_inv2
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+		exit 1
+}
+
+if [[ $# -lt 1 ]] ; then
+	Usage >&2
+	exit 1
+fi
+
+# Check for subject & session flags
+while getopts dl:s: argument
+do
+  case ${argument} in
+    l)  LOG=${OPTARG}
+            ;;
+    s)  SPM=${OPTARG}
+            ;;
+  esac
+done
+
+INPUT=${@:$OPTIND:1}
+OUTPUT=${@:$OPTIND+1:1}
+
+if [[ "${@}" == *"-d"* ]]; then
+	RM=0
+else
+	RM=1
+fi
+
+#-----------------------------------------------------------------------------
+# Get bash helper functions
+source call_bashhelper
+
+#-----------------------------------------------------------------------------
+# Define default LOG-path
+if [[ -z ${LOG} ]]; then
+	if [[ -z ${DIR_LOGS} ]]; then
+		LOG_DIR=${PWD}
+	else
+		LOG_DIR=${DIR_LOGS}
+	fi
+else
+	LOG_DIR=${LOG}
+fi
+
+if [[ ! -d ${LOG_DIR} ]]; then
+	mkdir -p ${LOG_DIR}
+fi
+
+#-----------------------------------------------------------------------------
+# Define default SPM-path
+if [[ -z ${SPM} ]]; then
+	if [[ -z ${SPM_PATH} ]]; then
+		echo "ERROR: SPM_PATH-variable is empty. Either define it, or specify an SPM-path with \"-s <path/to/spm>\""
+		exit 1
+	else
+		SPM_PATH=${SPM_PATH}
+	fi
+else
+	SPM_PATH=${SPM}
+fi
+
+# if file specified is in current directory, add entire path
+INPUT=`fetch_filepath ${INPUT}`
+
+# if file specified is in current directory, add entire path
+OUTPUT=`fetch_filepath ${OUTPUT}`
+
+ext=`fetch_extension ${INPUT}`
+if [[ ${ext} == "gz" ]]; then
+	in_file=$(dirname ${INPUT})/$(basename ${INPUT} .gz)
+	gunzip -c ${INPUT} > ${in_file}
+else
+	in_file=${INPUT}
+fi
+
+# if file specified is in current directory, add entire path
+if [[ ${in_file} == *"./"* ]]; then
+	in_file=${PWD}/$(basename ${in_file})
+fi
+
+#-----------------------------------------------------------------------------
+# Create new script
+new_script=$(dirname ${in_file})/spm_bias.m
+if [[ -f ${new_script} ]]; then
+	rm -r ${new_script}
+fi
+
+if [[ ! -d $(dirname ${OUTPUT}) ]]; then
+	mkdir -p $(dirname ${OUTPUT})
+fi
+
+mask_img=`find $(dirname ${in_file}) -type f -name "m$(basename ${in_file})*" 2>/dev/null`
+if [[ -z ${mask_img} ]]; then
+
+	make_bias_script ${SPM_PATH} ${in_file} ${new_script}
+
+	# call_matlab = in call_bashhelper
+	call_matlab ${new_script}
+
+	if [[ $? -ne 0 ]]; then
+		echo "ERROR: matlab exited with non-zero status"
+		exit 1
+	fi
+
+fi
+
+if [[ ${RM} -eq 1 ]]; then
+	rm -r $(dirname ${in_file})/c*$(basename ${in_file}) *.mat 2>/dev/null
+	rm -r $(dirname ${in_file})/*seg8.mat 2>/dev/null
+  rm -r $(dirname ${in_file})/BiasField*
+fi
+
+# Convert SPM's .nii-files to .nii.gz if the input file was nii.gz
+mask_img=`find $(dirname ${in_file}) -type f -name "m$(basename ${in_file})*" 2>/dev/null`
+if [[ ! -z ${mask_img} ]]; then
+  if [[ ${ext} == "gz" ]]; then
+    gzip -c ${mask_img} > ${OUTPUT} 2>/dev/null
+    call_resample ${OUTPUT} ${in_file}
+    rm -r ${in_file} ${mask_img} ${INPUT}
+  else
+    mv ${mask_img} ${OUTPUT}
+	fi
+fi

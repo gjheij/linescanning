@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_calculatemean
+
+calculates the mean over all given input image. Important is the order: first all the image that
+need to be average, before the output image. Internally uses fslmerge and fslmaths to add all images
+together before calculating the mean over that image.
+
+Usage:
+  call_calculatemean <image_1> <image_2> <image_3> <output>
+
+Example:
+  call_calculatemean img1.nii.gz img2.nii.gz img3.nii.gz out.nii.gz
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+if [[ $# -lt 3 ]] ; then
+  echo "Need at least 2 input images and an output name"
+  echo
+  Usage >&2
+  exit 1
+fi
+
+#-----------------------------------------------------------------------------
+# Find all inputs and output (last argument)
+output=${@: -1}
+inputs=${@:1:$#-1}
+
+# Fetch the command
+COMMAND() {
+  fslmerge -a $(dirname $1)/tmp_$(basename $1) $2
+}
+
+if [[ ! -f ${output} ]]; then
+
+  if [[ ! -f $(dirname ${output})/tmp_$(basename ${output}) ]]; then
+
+    # Print which files we're concatenating
+    echo "  Merging the following files:"
+    for i in ${inputs[@]}; do echo "   `basename ${i}`"; done
+
+    # Execute command
+    COMMAND "${output}" "${inputs[@]}"
+
+  fi
+
+  echo "  Calculating mean"
+  fslmaths $(dirname ${output})/tmp_$(basename ${output}) -Tmean ${output}
+  rm $(dirname ${output})/tmp_$(basename ${output})
+
+fi

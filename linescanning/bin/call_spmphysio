@@ -1,0 +1,126 @@
+#!/bin/bash
+#$ -S /bin/bash
+#$ -cwd
+#$ -j Y
+#$ -q short.q@jupiter
+#$ -V
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+		cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_spmphysio
+
+Create a text file with physiological regressors using the PhysIO toolbox as implemented in SPM12. 
+You will need to specify the path to the SCANPHYSLOG file of interest and the base name of the out-
+put (to which several extensions such as *.txt, *.mat, and *.ps will be added). If you setup is not 
+default, you can specify the path to SPM-directory containing the PhysIO-toolbox with the '-l' flag.
+
+Args:
+ -s <SPM_PATH>  path to SPM; should contain CAT12 in toolbox directory
+ -t <TR>        set by default to 0.105; 
+ -v <VOLUMES>   nr of volumes
+ -f <FUNC FILE> functional file that contains information about the number of runs
+ <input file>   SCANPHYSLOG-file that you want to convert to text file
+ <output image>	name of output image, including directory
+
+Usage:
+ call_spmphysio -t 2 -v 315 /path/scanphyslog.log /path/to/physio_regressors
+ call_spmphysio /path/scanphyslog.log /path/to/physio_regressors
+ call_spmphysio -f /path/to/bold.mat/*.nii.gz /path/scanphyslog.log /path/to/physio_regressors
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+		exit 1
+}
+
+if [[ $# -lt 1 ]] ; then
+	Usage >&2
+	exit 1
+fi
+
+# Check for subject & session flags
+while getopts s:f:t:r: argument
+do
+  case ${argument} in
+    s)  SPM=${OPTARG}
+            ;;
+    f)  FUNC=${OPTARG}
+            ;;            
+    t)  TR=${OPTARG}
+            ;;
+    r)  VOLS=${OPTARG}
+            ;;                        
+  esac
+done
+
+INPUT=${@:$OPTIND:1}
+OUTPUT=${@:$OPTIND+1:1}
+
+#-----------------------------------------------------------------------------
+# Get bash helper functions
+source call_bashhelper
+
+#-----------------------------------------------------------------------------
+# Define default SPM-path
+if [[ -z ${SPM} ]]; then
+	if [[ -z ${SPM_PATH} ]]; then
+		echo "ERROR: SPM_PATH-variable is empty. Either define it, or specify an SPM-path with \"-s <path/to/spm>\""
+		exit 1
+	else
+		SPM_PATH=${SPM_PATH}
+	fi
+else
+	SPM_PATH=${SPM}
+fi
+
+#-----------------------------------------------------------------------------
+# Fetch number of volumes
+if [[ -z ${VOLS} ]]; then
+  if [[ ! -z ${FUNC} ]]; then
+    # check if we're dealing with nifti or mat
+    if [[ ${FUNC} == *".nii.gz"* ]]; then
+      VOLS=`fslval ${FUNC} dim4`
+    elif [[ ${FUNC} == *".mat"* ]]; then
+      VOLS=`python -c "from scipy.io import loadmat; k = loadmat('${FUNC}'); print(k['Data_wcsmtSNR'].shape[-1])"`
+    else
+      echo "ERROR in `basename ${0}`: unknown input type. Use a Nifti-image or .mat file as per Luisa's reconstruction"
+      exit 1
+    fi
+  else
+    echo "ERROR in `basename ${0}`: could not derive number of volumes. Either use the -v flag to specify it or -f file to derive the number of voxels"
+    exit 1
+  fi
+fi
+
+#-----------------------------------------------------------------------------
+# Fetch TR
+if [[ -z ${TR} ]]; then
+  TR=0.105
+else
+  TR=${TR}
+fi
+
+#-----------------------------------------------------------------------------
+# Create new script
+new_script=$(dirname ${OUTPUT})/spm_physio.m
+if [[ -f ${new_script} ]]; then
+	rm -r ${new_script}
+fi
+
+if [[ ! -d $(dirname ${OUTPUT}) ]]; then
+	mkdir -p $(dirname ${OUTPUT})
+fi
+
+make_physio_script ${SPM_PATH} ${INPUT} ${TR} ${VOLS} ${OUTPUT} ${new_script}
+
+# call_matlab = in call_bashhelper
+call_matlab ${new_script}
+
+if [[ $? -ne 0 ]]; then
+    echo "ERROR: matlab exited with non-zero status"
+    exit 1
+fi

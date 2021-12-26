@@ -1,0 +1,77 @@
+#!/usr/bin/env python
+
+import os, sys, getopt, cortex
+from linescanning.pycortex import set_ctx_path
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_ctximport
+
+Create pycortex directory for specified subject. This script exists because it creates the fiducial 
+surfaces, so you can quickly create these without having to run entire lineplanning script. The fi-
+ducial surfaces are stored in <subject>/surf/?h.fiducial!
+
+Args:
+    -s (--subj=)        subject name (e.g., sub-xxx)
+    -f (--fsdir=)       path to freesurfer dir (e.g., derivatives/freesurfer)
+    -o (--overwrite=)   force overwrite if directory already exists ('n'=no|'y'=yes) (default = no)   
+
+Example:
+    call_ctximport -s sub-001 (uses SUBJECTS_DIR)
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    subject = None
+    fs_dir  = None
+    force   = "n"
+
+    try:
+        opts = getopt.getopt(argv,"hs:f:o:",["help=", "subj=", "fsdir=", "overwrite="])[0]
+    except getopt.GetoptError:
+        print(main.__doc__)
+        sys.exit(2)
+
+    for opt, arg in opts:
+        if opt == '-h':
+            print(main.__doc__)
+            sys.exit()
+        elif opt in ("-s", "--subj"):
+            subject = arg
+        elif opt in ("-f", "--fsdir"):
+            fs_dir = arg
+        elif opt in ("-o", "--overwrite"):
+            force = arg            
+
+    if len(argv) < 1:
+        print("NOT ENOUGH ARGUMENTS SPECIFIED")
+        print(main.__doc__)
+        sys.exit()
+
+    if not fs_dir:
+        try:
+            fs_dir = os.environ['SUBJECTS_DIR']
+        except:
+            raise ValueError("SUBJECTS_DIR is empty and no other FreeSurfer-directory is specified")
+
+    ctx_dir = set_ctx_path(opt="show_fs")
+    if force.lower() == "y":
+        if os.path.exists(opj(ctx_dir, subject)):
+            os.system(f'rm -r {opj(ctx_dir, subject)}')
+            
+    if not os.path.exists(opj(ctx_dir, subject)):
+        if os.path.exists(opj(fs_dir, subject)):
+            cortex.freesurfer.import_subj(fs_subject=subject,
+                                         cx_subject=subject,
+                                         freesurfer_subject_dir=fs_dir,
+                                         whitematter_surf='smoothwm')
+        else:
+            raise ValueError(f'Could not find {subject} in {fs_dir}')
+    else:
+        print(f"{subject} already present in {ctx_dir}. Use 'call_ctximport -s {subject} -o y' to overwrite")
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

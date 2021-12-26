@@ -1,0 +1,284 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# check if there's is a setup file containing the major paths and source it if it exists
+call_loadsetup
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+spinoza_segmentmgdm
+
+Tissue segmentation using nighres' MGDM. It assumes that you've run module from this pipeline before,
+so that you're directory structure is like derivatives/<process>/sub-xxx/ses-x. For this script, you
+need to give the path to the skullstripped directory up until sub-xxx, the output mgdm directory,
+and the directory containing masks that are used to filter out stuff in the MGDM segmentation.
+
+By default, it's set to overwrite existing files in order to be able to iterate over the structural
+preprocessing pipeline for optimizing the segmentations. To disable, run this particular module with
+the overwrite switch set to 'n': master -m <module> -o n
+
+Arguments:
+  flags
+    -s <sub>    str| subject ID as specifed in DIR_DATA_HOME
+    -n <ses>    int| session number
+    -t <type>   str| run regular MGDM [empty] or GdH-pipeline version (call_gdhmgdm) ["gdh"]
+
+  positional
+    <skullstripped>   path to skullstripped data
+    <mgdm>            path to output directory
+    <masks>           path to masks
+    <overwrite>       enable ('y') or disable ('n') overwrite mode (deletes existing files)
+
+Usage:
+  spinoza_segmentmgdm <-s sub> <-n ses> <type> <skullstripped> <mgdm> <masks> <overwrite>
+
+Example:
+  spinoza_segmentmgdm $SKULLSTRIP $NIGHRES/mgdm $MASKS n
+  spinoza_segmentmgdm -s 001 -n 1 $SKULLSTRIP $NIGHRES/mgdm $MASKS n
+  spinoza_segmentmgdm -s 001 -n 1 -t gdh $SKULLSTRIP $NIGHRES/mgdm $MASKS n
+
+Notes:
+  - Has the '-s' and '-n' switches to specify a particular subject and session if present
+  - Has a '-t' flag to specify whether you want to run the GdH-version (call_gdhmgdm) or the regu-
+    lar version of MGDM segmentation (call_nighresmgdm)
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+if [[ $# -lt 2 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+# Check for subject & session flags
+while getopts os:n:t: argument
+do
+    case ${argument} in
+      s)  sub=${OPTARG}
+            ;;
+      n)  ses=${OPTARG}
+            ;;
+      t)  type=${OPTARG}
+            ;;
+    esac
+done
+
+if [[ $# -lt 4 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+if [[ "${@}" == *"-o"* ]]; then
+  OW=1
+else
+  OW=0
+fi
+
+INPUT=${@:$OPTIND:1}
+OUTPUT=${@:$OPTIND+1:1}
+MASKS=${@:$OPTIND+2:1}
+
+# echo "$OW"
+
+if [[ -z ${sub} ]]; then
+  # loop through subjects
+  search="${INPUT}/sub-*"
+else
+  # do for 1 subject
+  sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
+  search="${INPUT}/sub-${sub_nr}"
+fi
+
+#-----------------------------------------------------------------------------
+# Start clock
+#-----------------------------------------------------------------------------
+
+echo
+echo "==================================================================================================="
+printf "NEW MGDM SEGMENTATION WITH NIGHRES\n"
+start=`date +%s`
+start_date=`date`
+
+printf "Started at ${start_date}\n"
+echo "==================================================================================================="
+
+#-----------------------------------------------------------------------------
+# Run it
+
+for dir in ${search}; do
+
+  if [[ -z ${ses} ]]; then
+    base="$(basename ${dir})"
+    base_dir=${base}
+    nr=""
+  else
+    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
+    base="$(basename ${dir})_ses-${nr}"
+    base_dir=$(basename ${dir})/ses-${nr}
+  fi
+
+  input_dir=${INPUT}/${base_dir}
+  output_dir=${OUTPUT}/${base_dir}
+  mask_dir=${MASKS}/${base_dir}
+
+  #----------------------------------------------------------------------------------------------------------------------------------------------
+  # Look for files
+  bet_uni=`find "${input_dir}" -type f \( -name "*acq-${space^^}*" -and -not -name "*gdh*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
+  bet_t1m=`find "${input_dir}" -type f \( -name "*acq-${space^^}*" -and -not -name "*gdh*" -and -name "*T1map.nii.gz" \) 2>/dev/null`
+  mask_sinus=`find "${mask_dir}" -type f \( -name "*acq-${space^^}*" -and -name "*sagittalsinus*" -and -name "*.nii.gz" \) 2>/dev/null`
+  mask_dura=`find "${mask_dir}" -type f \( -name "*acq-${space^^}*" -and -name "*desc-outside*" -and -name "*.nii.gz" \) 2>/dev/null`
+  mask_skull=`find "${mask_dir}" -type f \( -name "*acq-${space^^}*" -and -name "*spm_mask*" -and -name "*.nii.gz" \) 2>/dev/null`
+  mask_outside=`find "${mask_dir}" -type f \( -name "*acq-${space^^}*" -and -name "*-outside*" -and -name "*.nii.gz" \) 2>/dev/null`
+
+  # Define nighres output names
+  output_root="${base}_acq-${space^^}_desc"
+  masked_seg=${output_dir}/mgdm
+  mgdm_seg=${masked_seg}/${output_root}-mgdm_seg.nii.gz
+
+  # OVERWRITE ALL CREATED FILES; SHOULD BE DEFAULT AND CAN BE DISABLE BY SPECIFYING MASTER -M <MODULE> -O N
+  if [[ ${OW} -eq 1 ]]; then
+    txt="Overwrite mode: deleting files with \"${output_root}\""
+    if [[ -d ${masked_seg} ]]; then
+      rm -r ${masked_seg}/${output_root}* 2>/dev/null
+    fi
+  else
+    txt="Overwrite mode disabled"
+  fi
+
+  # if we want the GdH-mgdm script, run it directly.
+  if [[ ${type} == "gdh" ]]; then
+
+    if [[ ! -f ${mgdm_seg} ]]; then
+
+      echo
+      echo "**************************************** Processing `basename ${dir}` ***************************************"
+      echo "Running GhD-version of MGDM with call_gdhmgdm"
+      echo ${txt}
+
+      if [[ ! -f ${mask_outside} ]]; then
+        echo "Could not find \"outside\" mask.."
+        continue
+      fi
+
+      fs_mask=${SUBJECTS_DIR}/$(basename ${dir})/mri/brainmask.mgz
+      brainmask=`find "${input_dir}" -type f \( -name "mask*" -and -name "*acq-${space^^}*" \) 2>/dev/null`
+      if [[ -f ${fs_mask} ]]; then
+        use_mask="fs"
+      else
+        if [[ ! -z ${brainmask} ]]; then
+          use_mask=${brainmask}
+        else
+          echo "ERROR: not sure what mask to use.."
+          exit 1
+        fi
+      fi
+
+      call_gdhmgdm \
+        -s $(basename ${dir}) \
+        -n ${nr} \
+        -a ${input_dir} \
+        -b ${use_mask} \
+        -d ${mask_outside} \
+        -o ${masked_seg}
+
+      if [[ $? != 0 ]]; then
+        echo "ERROR in `basename ${0}`: call_gdhmgdm exited with non-zero status"
+        exit 1
+      fi
+
+    else
+
+      echo "`basename ${dir}`: segmentation already present"
+
+    fi
+
+  else
+
+    # if [[ -z ${mask_skull} ]]; then
+    #   echo "`basename ${dir}`: Could not find skull mask image.. "
+    #   continue
+    # fi
+
+    # if [[ -z ${mask_sinus} ]]; then
+    #   echo "`basename ${dir}`: Could not find sagittal sinus image.. "
+    #   continue
+    # fi
+
+    # if [[ -z ${mask_dura} ]]; then
+    #   echo "`basename ${dir}`: Could not find dura mask image.. "
+    #   continue
+    # fi
+
+    if [[ -z ${bet_uni} ]]; then
+      echo "`basename ${dir}`: Could not find skullstripped T1-image.. "
+      continue
+    fi
+
+    if [[ -z ${bet_t1m} ]]; then
+      echo "`basename ${dir}`: Could not find skullstripped T1map-image.. "
+      continue
+    fi
+
+    if [[ ! -d $(dirname ${mgdm_seg}) ]]; then
+      mkdir -p $(dirname ${mgdm_seg})
+    fi
+
+    if [[ ! -f ${mgdm_seg} ]]; then
+
+      echo
+      echo "**************************************** Processing `basename ${dir}` ***************************************"
+      echo "Running regular version of MGDM with call_nighresmgdm"
+      echo "Creating `basename ${mgdm_seg}`"
+
+      # call_nighresmgdm \
+      #   -t ${bet_uni} \
+      #   -m ${bet_t1m} \
+      #   -s ${mask_skull} \
+      #   -d ${mask_dura} \
+      #   -o ${masked_seg} \
+      #   -b ${output_root}
+
+      call_nighresmgdm \
+        -t ${bet_uni} \
+        -m ${bet_t1m} \
+        -o ${masked_seg} \
+        -b ${output_root}
+
+      if [[ $? != 0 ]]; then
+        echo
+        echo "---------------------------------------------------------------------------------------------------"
+        echo "ERROR in `basename ${0}`: call_nighresmgdm exited with non-zero status"
+        exit 1
+      fi
+
+    else
+
+      echo "`basename ${dir}`: segmentation already present"
+
+    fi
+
+  fi
+
+done
+
+#-----------------------------------------------------------------------------
+# Calculate time spent using 'let'
+echo
+echo "---------------------------------------------------------------------------------------------------"
+end=`date +%s`
+end_date=`date`
+printf "Done at ${end_date}\n"
+
+let deltatime=end-start
+let hours=deltatime/3600
+let minutes=(deltatime/60)%60
+let seconds=deltatime%60
+printf "Time spent: %d:%02d:%02d\n" ${hours} ${minutes} ${seconds}
+echo "---------------------------------------------------------------------------------------------------"

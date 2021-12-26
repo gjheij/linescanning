@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_fslmcflirt
+
+MCFLIRT is an intra-modal motion correction tool designed for use on fMRI time series and based on 
+optimization and registration techniques used in FLIRT, a fully automated robust and accurate tool 
+for linear (affine) inter- and inter-modal brain image registration. MCFLIRT loads the time-series 
+in its entirity and will default to the middle volume as an initial template image. A coarse 8mm 
+search for the motion parameters is then carried out using the cost function specified followed by 
+two subsequent searches at 4mm using increasingly tighter tolerances. All optimizations use tri-
+linear interpolation.
+
+Args:
+  <input file>         path to 4D-nifti file
+
+Usage:
+  call_fslmcflirt my_bold.nii.gz
+
+Example:
+  call_fslmcflirt sub-001/ses-1/func/bold.nii.gz 
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+if [[ $# -lt 1 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+INPUT=${@:$OPTIND:1}
+
+# take first volume as reference
+ref=$(dirname ${INPUT})/$(basename ${INPUT} .nii.gz)_refvol.nii.gz
+fslroi ${INPUT} ${ref} 0 1
+
+mcflirt -in ${INPUT} -refvol ${ref} -mats -plots -report

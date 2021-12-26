@@ -1,0 +1,208 @@
+#!/bin/bash
+#$ -S /bin/bash
+#$ -cwd
+#$ -j Y
+#$ -q short.q@jupiter
+#$ -V
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+		cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_cat12
+
+Wrapper for brain extraction CAT12. You should have the toolbox installed in <path>. This script
+uses a tempate script to run CAT12 in SPM.
+
+Args:
+ -s <SPM_PATH>  path to SPM; should contain CAT12 in toolbox directory
+ -l <LOG_PATH>	path to working directory, defaults to DIR_LOGS
+ -m <MODE>'full'|'brain'; full refers to a full processing with CAT12, which is sometimes 
+		overkill (makes the brain too smooth). 'brain' refers to the fact that you're 
+		mainly interested in the brain extraction and turns off the denoising/bias cor-
+		rection in CAT12.
+ <input image>  input image. Can either be *.nii.gz or *.nii image. In the case of the former,
+                new *.nii-file will be created alongside of the *.nii.gz file, as SPM does
+                not like *.nii.gz files.
+ <output path>	path to output directory; in here, 'mri' and 'report' will be stored
+
+Usage:
+ call_cat12 -l <log_dir> -s <SPM_PATH> <input file> <output directory>
+ call_cat12 <input file> <output directory>
+
+Example:
+ call_cat12 /path/to/inputfile.nii.gz /path/to/output_dir
+ call_cat12 -l /path/to/logs -s /packages/matlab/toolbox/spm12 input.nii.gz /path/to/output
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+		exit 1
+}
+
+if [[ $# -lt 2 ]] ; then
+	Usage >&2
+	exit 1
+fi
+
+# Check for subject & session flags
+while getopts l:s:m: argument
+do
+  case ${argument} in
+    l)  LOG=${OPTARG}
+            ;;
+    s)  SPM=${OPTARG}
+            ;;
+    m)  MODE=${OPTARG}
+            ;;			
+  esac
+done
+
+INPUT=${@:$OPTIND:1}
+OUTPUT=${@:$OPTIND+1:1}
+
+#-----------------------------------------------------------------------------
+# Get bash helper functions
+source call_bashhelper
+
+#-----------------------------------------------------------------------------
+# Define default SPM-path
+if [[ -z ${SPM} ]]; then
+	if [[ -z ${SPM_PATH} ]]; then
+		echo "ERROR: SPM_PATH-variable is empty. Either define it, or specify an SPM-path with \"-s <path/to/spm>\""
+		exit 1
+	else
+		SPM_PATH=${SPM_PATH}
+	fi
+else
+	SPM_PATH=${SPM}
+fi
+
+#-----------------------------------------------------------------------------
+# Define default processing MODE
+if [[ -z ${MODE} ]]; then
+	MODE='brain'
+else
+	if [[ ${MODE,,} != 'full' && ${MODE,,} != 'brain' ]]; then
+		echo "ERROR in `basename ${0}`: MODE must be \"full\" or \"brain\", got \"${MODE}\""
+		exit 1
+	fi
+fi
+
+# if file specified is in current directory, add entire path
+INPUT=`readlink -f ${INPUT}`
+
+ext=`fetch_extension ${INPUT}`
+if [[ ${ext} == "gz" ]]; then
+	in_file=$(dirname ${INPUT})/$(basename ${INPUT} .gz)
+	gunzip -c ${INPUT} > ${in_file}
+else
+	in_file=${INPUT}
+fi
+
+#-----------------------------------------------------------------------------
+# Define default LOG-path
+if [[ -z ${LOG} ]]; then
+	LOG_DIR=$(dirname ${in_file})
+else
+	LOG_DIR=${LOG}
+fi
+
+if [[ ! -d ${LOG_DIR} ]]; then
+	mkdir -p ${LOG_DIR}
+fi
+
+#-----------------------------------------------------------------------------
+# Create new script
+new_script=${LOG_DIR}/cat12.m
+if [[ -f ${new_script} ]]; then
+	rm -r ${new_script}
+fi
+
+if [[ ! -d ${OUTPUT} ]]; then
+	mkdir -p ${OUTPUT}
+fi
+
+# Only run stuff if we can't find 'mri'-directory in the directory from the input
+# file or in the specified output-directory. Mind you, it therefore does NOT over-
+# write stuff from CAT12..
+if [[ -d ${OUTPUT}/mri ]]; then
+	if [[ `ls ${OUTPUT}/mri | wc -l` -eq 0 ]]; then
+		RUN=1
+	else
+		RUN=0
+	fi
+else
+	if [[ -d $(dirname ${in_file})/mri ]]; then
+		if [[ `ls $(dirname ${in_file})/mri | wc -l` -eq 0 ]]; then
+			RUN=1
+		else
+			RUN=0
+		fi
+	else
+		RUN=1
+	fi
+fi
+
+if [[ ${RUN} -eq 1 ]]; then
+	make_cat_script ${SPM_PATH} ${in_file} ${MODE} ${new_script}
+	
+	# call_matlab = in call_bashhelper
+	echo "Starting CAT12.."
+	call_matlab ${new_script}
+
+	if [[ $? -ne 0 ]]; then
+		echo "ERROR: matlab exited with non-zero status"
+		exit 1
+	fi
+
+	# check for error-directory
+	if [[ -d $(dirname ${in_file})/err ]]; then
+		echo "ERROR in `basename ${0}`: CAT12 encountered an error"
+		rm -r $(dirname ${in_file})/err # info is in the report-file; delete this directory
+		continue
+	fi
+	
+else
+	echo "Found CAT12-output"
+fi
+
+# Move 'mri'/'report'-directory to specified output directory
+if [[ -d $(dirname ${in_file})/mri ]]; then
+	echo "Move directories to ${OUTPUT}"
+	mv $(dirname ${in_file})/mri ${OUTPUT}
+fi
+
+if [[ -d $(dirname ${in_file})/report ]]; then
+	mv $(dirname ${in_file})/report ${OUTPUT}
+fi
+
+# Convert SPM's .nii-files to .nii.gz if the input file was nii.gz
+if [[ ${ext} == "gz" ]]; then
+	echo "Convert files back to nii.gz"
+	gzip ${OUTPUT}/mri/*.nii 2>/dev/null
+	rm -r ${in_file}
+fi
+
+# make sure header matches input image
+if [[ -d ${OUTPUT}/mri ]]; then
+	echo "Copying header from input image"
+	for i in ${OUTPUT}/mri/*; do
+		fslcpgeom ${INPUT} ${i}
+	done
+fi
+
+# create binary mask from p0-segmentation (= brain extracted image)
+bet_img=`find ${OUTPUT}/mri -type f -name "p0*" 2>/dev/null`
+if [ ! -z ${bet_img} ]; then
+	echo "Create mask from brain extracted segmentation image \"p0\""
+	fslmaths ${bet_img} -bin ${OUTPUT}/mri/mask$(basename ${bet_img})
+	# fslorient -copyqform2sform ${OUTPUT}/mri/mask$(basename ${bet_img})
+fi
+
+cp ${OUTPUT}/mri/*.nii.gz ${OUTPUT} 2>/dev/null
+cp ${OUTPUT}/report/catreport* ${OUTPUT} 2>/dev/null 
+
+rm -r ${OUTPUT}/mri ${OUTPUT}/report 2>/dev/null

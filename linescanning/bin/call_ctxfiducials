@@ -1,0 +1,61 @@
+#!/usr/bin/env python
+
+import os
+import sys
+import getopt
+import cortex
+
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_ctxfiducials
+
+Only create the fiducial surfaces (stored in <subject>/surf/?h.fiducial!), instead of importing the
+subject as pycortex-import (with call_ctximport).
+
+Args:
+    -s (--subj=)        subject name (e.g., sub-xxx)
+    -f (--fsdir=)       path to freesurfer dir (e.g., derivatives/freesurfer)
+
+Example:
+    call_ctxfiducials -s sub-001 (uses SUBJECTS_DIR)
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    subject = None
+    fs_dir  = None
+
+    try:
+        opts = getopt.getopt(argv,"hs:f:o:",["help=", "subj=", "fsdir="])[0]
+    except getopt.GetoptError:
+        print(main.__doc__)
+        sys.exit(2)
+
+    for opt, arg in opts:
+        if opt == '-h':
+            print(main.__doc__)
+            sys.exit()
+        elif opt in ("-s", "--subj"):
+            subject = arg
+        elif opt in ("-f", "--fsdir"):
+            fs_dir = arg        
+
+    if len(argv) < 1:
+        print("NOT ENOUGH ARGUMENTS SPECIFIED")
+        print(main.__doc__)
+        sys.exit()
+
+    if not fs_dir:
+        try:
+            fs_dir = os.environ['SUBJECTS_DIR']
+        except:
+            raise ValueError("SUBJECTS_DIR is empty and no other FreeSurfer-directory is specified")
+
+    cortex.freesurfer.make_fiducial(subject, freesurfer_subject_dir=fs_dir)
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

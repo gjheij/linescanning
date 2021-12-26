@@ -1,0 +1,213 @@
+#!/usr/bin/env python
+#$ -q long.q@jupiter
+#$ -j Y
+#$ -cwd
+#$ -V
+
+from nighres.parcellation import massp
+from nighres.registration import embedded_antsreg_multi
+from nighres.data import download_AHEAD_template
+import sys, getopt
+import os
+import nibabel as nb
+import pathlib
+import linescanning.utils as util
+from linescanning.image import massp_to_table
+import warnings
+warnings.filterwarnings("ignore")
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_nighresmassp
+
+Perform multi-contrast subcortical parcellation with the MASSP algorithm on MP2RAGEME data.Estima-
+tes subcortical structures based on a multi-atlas approach on shape.
+
+This script incorporates the registration to the AHEAD-template prior to parcellation with MASSP.
+You will need an R1-map, an R2*-map, and a QSM map of your anatomical data; these can be obtained
+with Matthan Caan's reconstruction pipeline or (partly) with pymp2rage (the latter doesn't output
+an actual R1-map, so you'd have to do R1=1/T1map).
+
+If you have these files, make sure you name them accordingly. The script will look for:
+*_R1.nii.gz*, *_R2s*, and *_QSM*.nii.gz in your input folder (given the subject and the session
+number)
+
+Args:
+    -s (--sub)         subject number (full name, not just 'sub' to allow for other prefixes)
+    -n (--ses)         session number (integer)
+    -i (--inputdir)    root directory of input (<sub>/<ses-> will be appended!). If you specify
+                       a directory, all required files are expected to be in there; if not, spe-
+                       cify the path to individual files
+    -o (--output)      output directory (<sub>/<ses-> will be appended!)
+    -b (--base)        basename for output files (defaults to <sub>_[<ses-x>])
+
+    Optional:
+    --r1               R1-map (= 1/T1-map)
+    --r2s              R2s-map (= 1/T2*-map)
+    --qsm              QSM map
+
+Outputs
+    Dictionary collecting outputs under the following keys (suffix of output files in brackets)
+
+    - max_proba (niimg): Maximum probability map (-massp_proba)
+    - max_label (niimg): Maximum probability labels (-massp_label)
+
+Example:
+    call_nighresmassp -s sub-001 -n 1 -i DIR_DATA_DERIV/pymp2rage -o $DIR_DATA_DERIV/nighres
+    call_nighresmassp -s sub-001 --r1 r1map.nii.gz --r2s r2smap.nii.gz --qsm qsm.nii.gz -o
+                      /path/to/nighres -b other_prefix
+
+---------------------------------------------------------------------------------------------------
+
+    """
+
+    subject     = None
+    ses         = None
+    inputdir    = None
+    base        = None
+    R1          = None
+    R2s         = None
+    QSM         = None
+
+    try:
+        opts = getopt.getopt(argv,"hs:n:i:o:b:",["sub=", "ses=", "inputdir=", "r1=", "r2s=", "qsm=", "outputdir=", "base="])[0]
+    except getopt.GetoptError:
+        print(main.__doc__)
+        sys.exit(2)
+
+    for opt, arg in opts:
+        if opt == '-h':
+            print(main.__doc__)
+            sys.exit()
+        elif opt in ("-s", "--sub"):
+            subject = arg
+        elif opt in ("-n", "--ses"):
+            ses = arg
+        elif opt in ("-i", "--inputdir"):
+            inputdir = arg
+        elif opt in ("-o", "--outputdir"):
+            outputdir = arg
+        elif opt in ("-b", "--base"):
+            base = arg
+        elif opt in ("--r1"):
+            R1 = arg
+        elif opt in ("--r2s"):
+            R2s = arg
+        elif opt in ("--qsm"):
+            QSM = arg
+
+    if len(argv) < 3:
+        print("\nNOT ENOUGH ARGUMENTS SPECIFIED")
+        print(main.__doc__)
+        sys.exit()
+
+    #---------------------------------------------------------------------------------------------------
+    # Set input/output/basename
+    if ses == None:
+        if base == None:
+            base = f"{subject}"
+    else:
+        if base == None:
+            base = f"{subject}_ses-{ses}"
+
+    pathlib.Path(opj(outputdir,'reg')).mkdir(parents=True, exist_ok=True)
+
+    print(f"Subject = {subject}")
+    print(f"Session = {ses}")
+    print(f"Base    = {base}")
+
+    #---------------------------------------------------------------------------------------------------
+    # look for all files in specified input directory
+    if inputdir != None:
+        from bids import BIDSLayout
+
+        layout = BIDSLayout(inputdir, validate=False).get(session=ses, return_type='file')
+        # Fetch files
+        files = {}
+        for q in layout:
+            for i in ["R1", "R2s", "QSM"]:
+                if q.endswith(f"_{i}.nii.gz"):
+                    files[i] = q
+
+    # check if we got separate files
+    else:
+        try:
+            files = {"R1": R1,
+                     "R2s": R2s,
+                     "QSM": QSM}
+        except:
+            print(main.__doc__)
+            raise NameError("Could not find R1,R2s,QSM files; either specify a directory containing all three or set the flags correctly")
+
+    #---------------------------------------------------------------------------------------------------
+    # Load files
+    print("Loading files..")
+    [print(f" got {f}") for f in files.values()]
+    print("Done")
+
+    #---------------------------------------------------------------------------------------------------
+    # Download template file
+    print("Download AHEAD template..")
+    template = download_AHEAD_template()
+
+    #---------------------------------------------------------------------------------------------------
+    # Register template to files
+    ants_file = util.get_file_from_substring("invmap.nii.gz", opj(outputdir, 'reg'))
+    if ants_file == None:
+        ants = embedded_antsreg_multi(source_images=[files['R1'],files['R2s'],files['QSM']],
+                                      target_images=[template['qr1'],template['qr2s'],template['qsm']],
+                                      run_rigid=True,
+                                      run_affine=True,
+                                      run_syn=True,
+                                      rigid_iterations=10000,
+                                      affine_iterations=2000,
+                                      coarse_iterations=180,
+                                      medium_iterations=60,
+                                      fine_iterations=30,
+                                      cost_function='MutualInformation',
+                                      interpolation='NearestNeighbor',
+                                      regularization='High',
+                                      ignore_affine=True,
+                                      save_data=True,
+                                      file_name=base,
+                                      output_dir=opj(outputdir, 'reg'))
+
+        ants_file = ants['inverse']
+
+    else:
+        print("\nFound ANTs-inverse mapping file. Skipping registration")
+
+    #---------------------------------------------------------------------------------------------------
+    # Do the actual parcellation
+    print("Running subcortex parcellation")
+    massp_results = massp(target_images=[files['R1'],files['R2s'],files['QSM']],
+                          map_to_target=ants_file,
+                          max_iterations=120,
+                          max_difference=0.1,
+                          save_data=True,
+                          file_name=base,
+                          output_dir=outputdir,
+                          overwrite=False)
+
+    #---------------------------------------------------------------------------------------------------
+    # Convert label to volume table
+    vol_file = massp_to_table(massp_results['max_label'], out=opj(outputdir, f'{base}_desc-volume_table.json'), unit="mm")
+    print(f"\nWrote {vol_file}")
+
+    #---------------------------------------------------------------------------------------------------
+    # Nicer formatting
+    for i in ["proba", "label"]:
+
+        fn_old = opj(outputdir,base + "_massp-" + i + ".nii.gz")
+        fn_new = opj(outputdir,base + "-massp_" + i + ".nii.gz")
+
+        if os.path.exists(fn_old):
+            os.rename(fn_old, fn_new)
+
+    print("Done")
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

@@ -1,0 +1,51 @@
+#!/usr/bin/env python
+
+import os, sys
+import numpy as np
+import nibabel as nb
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_makecruise
+
+This script converts the ribbon.mgz file as created by FreeSurfer to the MrVista compatible segmen-
+tation file
+
+Args:
+    <wm file>       path to white matter segmentation
+    <gm file>       path to gray matter segmentation
+    <output>        path to output name
+Example:
+    call_makecruise wm.nii.gz gm.nii.gz cruise.nii.gz
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    wm_file     = None
+    gm_file     = None
+    output      = None
+
+    if len(argv) < 3:
+        print("NOT ENOUGH ARGUMENTS SPECIFIED")
+        print(main.__doc__)
+        sys.exit()
+
+    wm_file = argv[0]
+    gm_file = argv[1]
+    output  = argv[2]
+
+    gm_img = nb.load(gm_file)
+    wm_img = nb.load(wm_file)
+
+    gm_data,wm_data = gm_img.get_fdata(), wm_img.get_fdata()
+    cruise_img = np.zeros_like(gm_data)
+    cruise_img[gm_data > 0] = 1
+    cruise_img[wm_data > 0] = 2
+
+    nb.Nifti1Image(cruise_img, affine=gm_img.affine, header=gm_img.header).to_filename(output)
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_slicer
+
+This script produces the images like slicesdir would do but without the website around it. This al-
+lows us to create our own fMRIprep-like output file.
+
+Args:
+  <-o overlay>    overlay file for red edges around input file
+  <-d output dir> output directory to store the figure(s)
+  <-b basename>   output basename, otherwise input filename is used
+  <input file>    file to create the image from
+
+Usage:
+  call_slicer -o <overlay> -d <output dir> <input file> 
+
+Example:
+  call_slicer input.nii.gz /path/to/output
+  call_slicer -o overlay.nii.gz input.nii.gz
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+if [[ $# -lt 3 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+# Check for subject & session flags
+while getopts o:d:b: argument
+do
+  case ${argument} in
+    o)  OVERLAY=${OPTARG}
+            ;;
+    d)  OUTDIR=${OPTARG}
+            ;;
+    b)  BASENAME=${OPTARG}
+            ;;            
+  esac
+done
+
+# if [[ "${@}" == *"-d"* ]]; then
+#   RM=0
+# else
+#   RM=1
+# fi
+
+INPUT=${@:$OPTIND:1}
+
+#-----------------------------------------------------------------------------
+# Run it
+edgeopts="";
+if [ ! -z ${OVERLAY} ] ; then
+  edgeopts="-e ${OVERLAY}"
+  B=${OVERLAY}
+else
+  B=""
+fi
+
+if [ ! -z ${OUTDIR} ]; then
+  outdir=${OUTDIR}
+else
+  outdir=${PWD}
+fi
+
+if [ ! -z ${BASENAME} ]; then
+  fname=${BASENAME}
+else
+  fname=$(basename ${INPUT} .nii.gz).png
+fi
+
+sliceropts="${edgeopts} -x 0.4 ${outdir}/grota.png -x 0.5 ${outdir}/grotb.png -x 0.6 ${outdir}/grotc.png -y 0.4 ${outdir}/grotd.png -y 0.5 ${outdir}/grote.png -y 0.6 ${outdir}/grotf.png -z 0.4 ${outdir}/grotg.png -z 0.5 ${outdir}/groth.png -z 0.6 ${outdir}/groti.png"
+convertopts="${outdir}/grota.png + ${outdir}/grotb.png + ${outdir}/grotc.png + ${outdir}/grotd.png + ${outdir}/grote.png + ${outdir}/grotf.png + ${outdir}/grotg.png + ${outdir}/groth.png + ${outdir}/groti.png"
+
+A=`${FSLDIR}/bin/remove_ext ${INPUT}`
+${FSLDIR}/bin/slicer ${A} ${B} -s 1 ${sliceropts}
+
+${FSLDIR}/bin/pngappend ${convertopts} ${outdir}/${fname}
+rm -f ${outdir}/grot?.png

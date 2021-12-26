@@ -1,0 +1,157 @@
+#!/usr/bin/env python
+
+from linescanning.utils import color, get_file_from_substring
+from linescanning.utils import color
+from linescanning import scanner,optimal
+import sys, getopt
+import os
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_createlinefs
+
+This script allows you to get an idea of where the line will be positioned in the second session. You 
+have to manually fill in the RAS-coordinate and angles in the transform-window, resulting in a tem-
+plate slice being warped to the orientation it needs to get. It does so based on the line_pycortex
+file created with linecanning.optimal.CalcBestVertex. If you're using the left hemisphere, you'll 
+only need to specify a subject name, the rest will be taken care of, assuming a line_pycortex file
+exists.
+
+Utilizes the same strategy as in spinoza_lineplanning, but instead of using a registration matrix
+between two sessions, orig.nii.gz and an identity matrix are used to "warp" the coordinate.
+
+Args:
+    -s <subj name>      str:
+                        name of the directory as specified in the pycortex filestore directory
+
+    -f <fs_dir>         str (optional):
+                        if left empty, SUBJECTS_DIR will be used 
+
+    -l <ctx_file>       str (optional):
+                        file containing the information about placement of the line. If left empty
+                        we'll look for <project>/derivatives/pycortex/<subject>/line_pycortex.csv.
+
+    -h <hemisphere>     str (optional):
+                        which hemisphere should we do? Use 'lh' for left, 'rh' for right (default =
+                        left)
+
+    -o <output file>    str (optional):
+                        new nifti-image containing the beam with the correct orientation and dimensions
+                        of FreeSurfer
+
+    -q                  (optional):
+                        prevent FreeView from opening. This is used if you just want to see how the
+                        angles are calculated without the hassle of waiting for FreeView.
+
+Outputs
+    a new nifti image with the line at the specified location 
+
+Example:
+    call_createlinefs -s sub-001
+    call_createlinefs -s sub-001 -h rh
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    subject     = None
+    line_ctx    = None
+    fs_dir      = os.environ['SUBJECTS_DIR']
+    output      = None
+    hemi        = 'lh'
+    freeview    = True
+
+    try:
+        opts = getopt.getopt(argv,"qs:f:h:l:o:",["subject=", "line_ctx=", "fsdir=", "hemi=", "output="])[0]
+    except getopt.GetoptError:
+        print(main.__doc__)
+        sys.exit(2)
+
+    for opt, arg in opts:
+        if opt == '-q':
+            freeview = False
+        elif opt in ("-s", "--subject"):
+            subject = arg
+        elif opt in ("-f", "--fsdir"):
+            fs_dir = arg  
+        elif opt in ("-h", "--hemi"):
+            hemi = arg   
+        elif opt in ("-l", "--line_ctx"):
+            line_ctx = arg               
+        elif opt in ("-o", "--output"):
+            output = arg
+
+    if len(argv) < 1:
+        print("\nNEED AT LEAST A SUBJECT ID")
+        print(main.__doc__)
+        sys.exit()
+
+    if not output:
+        if hemi.lower() == "lh":
+            tag = "hemi-L"
+        elif hemi.lower() == "rh":
+            tag = "hemi-R"
+        else:
+            raise ValueError(f"Invalid hemisphere {hemi} specified. Please use 'lh' or 'rh'")
+        output = opj(fs_dir, subject, 'mri', f'space-fs_{tag}_desc-beam.nii.gz')        
+
+    orig = opj(fs_dir, subject, 'mri', 'orig.mgz')
+    os.system(f'call_createbeamfs {subject}')
+    beam = get_file_from_substring("space-fs_desc-template_beam", os.path.dirname(orig))
+
+    # apply similar strategy as in spinoza_lineplanning, but then with an identity matrix
+    anat2 = opj(os.environ['FS'], subject, 'mri', 'orig.nii.gz')
+    if not os.path.exists(anat2):
+        os.system(f"call_mriconvert {orig} 2>/dev/null")
+
+    if line_ctx == None:
+        line_ctx = opj(os.environ['CTX'], subject, 'line_pycortex.csv')
+
+    # this scan object will do everyting
+    scan = scanner.Scanner(optimal.call_pycortex2(subject,
+                                                  fsdir=os.environ['FS'],
+                                                  cxdir=os.environ['CTX'],
+                                                  prfdir=os.environ['PRF'],
+                                                  out=line_ctx),
+                           fs_dir=os.environ['FS'], new_anat=anat2, fs2ses='identity', hemi=hemi,ses='fs', print_to_console=False)
+
+    tkr_coords = scan.tkr_coords[hemi]
+    fold = scan.foldover[hemi]
+
+    # if orientation is sagittal, we need to first get the beam into sagittal plane, then use the
+    # rotation angles from there. E.g., if FH-angle = -2.67, we first enter 90, then subtract
+    # 2.67 from that, giving an angle of 87.33 in FH/SI direction
+    if fold['value'][0].lower() == "sagittal":
+        txt = "Orientation is {sag}; first enter 90 in FH/SI-direction".format(sag=color.BOLD + color.RED + fold['value'][0] + color.END)
+    else:
+        txt = "Orientation is {sag}".format(sag=color.BOLD + color.RED + fold['value'][0] + color.END)
+    
+    print("\n---------------------------------------------------------------------------------------------------")
+    print("Enter the following angles (in this order!!):")
+    print(txt)
+    print(f" FH: {round(fold['value'][5],2)}")
+    print(f" AP: {round(fold['value'][4],2)}")
+    print(f" LR: {round(fold['value'][3],2)}")
+    print("\nEnter the following translation:")
+    print(f" LR: {round(tkr_coords[0],2)}")
+    print(f" AP: {round(tkr_coords[1],2)}")
+    print(f" FH: {round(tkr_coords[2],2)}")
+
+    if freeview:
+        print(f"\nOpening Freeview; make sure to highlight 'space-fs_desc-template_beam'!")
+        print(f"Save image as: '{output}'")        
+        os.system("freeview -v {orig} {beam}:colormap=Heat -f {fid}:edgecolor=green --ras {x} {y} {z} tkreg --transform-volume 2>/dev/null".format(orig=orig, 
+                                                                                                                                                beam=beam, 
+                                                                                                                                                fid=opj(fs_dir, subject, 'surf', f"{hemi}.fiducial"),
+                                                                                                                                                x=round(tkr_coords[0],2),
+                                                                                                                                                y=round(tkr_coords[1],2),
+                                                                                                                                                z=round(tkr_coords[2],2)))
+    else:
+        print("Not opening FreeView..")
+        
+    print("Done")
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

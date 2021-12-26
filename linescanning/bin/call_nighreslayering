@@ -1,0 +1,103 @@
+#!/usr/bin/env python
+
+from nighres.laminar import volumetric_layering
+import sys, getopt
+import os
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_nighreslayering
+
+Equivolumetric layering of the cortical sheet using output of CRUISE. You will need to specify the
+path to the GM/WM boundary, the CSF/GM boundary, the number of layers to extract, the output direc-
+tory, and the base output name (e.g., "sub-001_desc")
+
+Args:
+    -i (--inner=)       inner boundary (GM/WM boundary [GWB])
+    -o (--outer=)       outer boundary (CSF/GM boundary [CGB])
+    -l (--layers=)      number of layers to extract (default = 10)
+    -d (--outputdir=)   output directory
+    -n (--name=)        basename for output
+
+Outputs:
+    (taken from https://nighres.readthedocs.io/en/latest/laminar/volumetric_layering.html)
+    Dictionary collecting outputs under the following keys (suffix of output files in brackets)
+
+    depth (niimg):      Continuous depth from 0 (inner surface) to 1 (outer surface) (-layering_
+                        depth)
+    layers (niimg):     Discrete layers from 1 (bordering inner surface) to n_layers (bordering
+                        outer surface)
+                        (-layering_layers)
+    boundaries (niimg): Levelset representations of boundaries between all layers in 4D (-layer-
+                        ing_boundaries)
+
+Example:
+    call_nighreslayering -i sub-001_ses-1_acq-MP2RAGE_desc-cruise_gwb.nii.gz
+                         -o sub-001_ses-1_acq-MP2RAGE_desc-cruise_cgb.nii.gz
+                         -l 4
+                         -d derivatives/nighres/sub-001/layering
+                         -n sub-001_ses-1_acq-MP2RAGE_desc
+
+---------------------------------------------------------------------------------------------------
+
+    """
+
+    inner           = ''
+    outer           = ''
+    nr_layers       = 10
+    output_dir      = os.path.join(os.environ['NIGHRES'], 'sub-xxx', 'layering')
+    output_base     = "sub-xxx-acq-MP2RAGE_desc"
+
+    try:
+        opts = getopt.getopt(argv,"hi:o:l:d:n:",["inner=", "outer=", "layers=", "outputdir=", "name="])[0]
+    except getopt.GetoptError:
+        print(main.__doc__)
+        print("ERROR IN ARGUMENTS")
+        sys.exit(2)
+
+    for opt, arg in opts:
+        if opt == '-h':
+            print(main.__doc__)
+            sys.exit()
+        elif opt in ("-i", "--inner"):
+            inner = arg
+        elif opt in ("-o", "--outer"):
+            outer = arg
+        elif opt in ("-l", "--layers"):
+            nr_layers = arg
+        elif opt in ("-d", "--outputdir"):
+            output_dir = arg
+        elif opt in ("-n", "--name"):
+            output_base = arg
+
+    if len(argv) < 8:
+            print("\nNOT ENOUGH ARGUMENTS SPECIFIED")
+            print(main.__doc__)
+            sys.exit()
+
+
+    # Just plop everything in dir of segmentation
+    volumetric_layering(inner_levelset=inner,
+                        outer_levelset=outer,
+                        n_layers=int(nr_layers),
+                        save_data=True,
+                        file_name=output_base,
+                        output_dir=output_dir)
+
+    #---------------------------------------------------------------------------------------------------
+    # Nicer formatting
+    for i in ["depth", "layers", "boundaries"]:
+
+        fn_old = opj(output_dir, output_base + "_layering-" + i + ".nii.gz")
+        fn_new = opj(output_dir, output_base + "-layering_" + i + ".nii.gz")
+
+        if os.path.exists(fn_old):
+            # print("moving {fo} to {fn}".format(fo=os.path.basename(fn_old), fn=os.path.basename(fn_new)))
+            os.rename(fn_old, fn_new)
+    print("Done")
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

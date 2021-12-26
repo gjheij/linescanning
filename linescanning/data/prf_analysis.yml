@@ -1,0 +1,52 @@
+#fitting tolerance
+xtol: 0.00001
+ftol: 0.00001
+
+#grid fit will only allow positive prfs
+pos_prfs_only: False
+
+# space our pRF lives in
+vf_extent: [-5, 5]
+
+#perform bounded iterative fit? (L-BFGS-B if True, powell if False) (all models)
+param_bounds: True
+
+filter_predictions: False
+# screen settings
+screen_size_cm: 70
+screen_distance_cm: 225
+
+#set bold baseline to 100 for all models, norm to value below
+fix_bold_baseline: True
+norm_bold_baseline: 0
+
+#constraints on surround models (positive center, large surround) (trust-constr minimizer)
+param_constraints: True
+positive_centre_only: False
+surround_sigma_larger_than_centre: False
+
+#unit volume RFs
+normalize_RFs: False
+
+#whether to fit hrf or not
+fit_hrf: False
+#explicit hrf or spm hrf params. see prfpy for details
+hrf: [1,4.6,0]
+
+#DM size in pixels (n_pix x n_pix) (has to be divisor of 1080)
+n_pix: 270
+eps: 1e-1
+
+# grids for normalization model (not used if model != norm)
+norm:
+  surround_amplitude_grid: [0.01, 0.1, 1, 10]
+  surround_size_grid: [5,8,12,18]
+  neural_baseline_grid: [0,1,10,100]
+  surround_baseline_grid: [0.1,1.0,10.0,100.0]
+
+grid_nr: 20
+max_ecc_size: 15
+rsq_threshold: 0.1
+TR: 1.111508
+filter_window_length: 300
+filter_polyorder: 1

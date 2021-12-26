@@ -1,0 +1,122 @@
+#!/usr/bin/env python
+
+import sys, getopt
+import os
+import ast
+from nibabel import freesurfer
+import numpy as np
+import nibabel as nb
+from nilearn import image
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_fs2mask
+
+This script converts an ROI given a FreeSurfer atlas into a nifti image based on the value given. 
+For instance, if we want the ACC from the DKT-atlas, we can specify the aparc.DKTatlas+aseg.mgz 
+image, the corresponding values of the ACC (hemi-L = 1002; hemi-R = 2002), and an output image. The
+output image can be 1 hemisphere (specify one of the values) or both (specify both values like in 
+the format [<value1>,<value2>])
+
+Args:
+    <atlas img>         : str
+                        path to either an mgz-file or a nifti-file. The mgz-file will be converted
+                        to nifti
+    
+    <values>            : int|list
+                        specify an integer for one hemisphere or a list in the format [<value1>,
+                        <value2>] for both hemispheres. You can look up the values by opening Free-
+                        view and load in the atlas of your choice and look for your ROI. Note down 
+                        the corresponding in the image (NOT THE LABELS IN THE LOOKUP TABLE ON THE 
+                        LEFT!). You can combine as many labels as you want.
+    
+    <output img>        : str
+                        path to the output image
+    
+    [OPTIOINAL]
+    <resample img>      image to resample freesurfer segmentation to if you don't want the output 
+                        in FS-space, but in native space - for instance
+
+Outputs:
+    new image with the selected values set to 1
+
+Example:
+    call_fs2mask mri/aparc.DKTatlas+aseg.mgz 1002 example_hemi-L_roi-acc.nii.gz
+    call_fs2mask mri/aparc.DKTatlas+aseg.mgz 2002 example_hemi-R_roi-acc.nii.gz    
+    call_fs2mask mri/aparc.DKTatlas+aseg.mgz [1002,2002] example_roi-acc.nii.gz
+---------------------------------------------------------------------------------------------------
+    """
+
+    atlas       = None
+    roi_values  = None
+    out_img     = None
+    resamp_img  = None
+
+    if len(argv) < 3:
+        print("\nNOT ENOUGH ARGUMENTS SPECIFIED")
+        print(main.__doc__)
+        sys.exit()
+
+    # print(argv)
+
+    try:
+        atlas       = argv[0]
+        roi_values  = argv[1]
+        out_img     = argv[2]
+        resamp_img  = argv[3]
+    except:
+        atlas       = argv[0]
+        roi_values  = argv[1]
+        out_img     = argv[2]
+
+    if not isinstance(atlas, str):
+        raise ValueError("Please specify a string pointing to the desired atlas")
+    
+    # convert mgz image to nifti
+    if atlas.endswith('.mgz'):
+        atlas_nii = '.'.join(atlas.split('.')[:-1])+'.nii.gz'
+        try:
+            os.system(f'call_mriconvert {atlas}')
+        except:
+            try:
+                os.system("mri_convert --in_type mgz --out_type nii {mgz} {nii}".format(mgz=atlas, nii=atlas_nii))
+            except:
+                raise OSError('Could not find function mri_convert')
+    else:
+        atlas_nii = atlas
+    
+    # resample to tmpl image if specified
+    if resamp_img:
+        print(f"Resampling segmentation to {resamp_img}")
+        freesurfer_seg = image.resample_to_img(atlas_nii,resamp_img, interpolation='nearest')
+    else:
+        freesurfer_seg = nb.load(atlas_nii)
+
+    # get roi-values
+    if not isinstance(roi_values, int):
+        # we got two values
+        roi_values = np.array(ast.literal_eval(roi_values))
+    else:
+        roi_values = np.array(roi_values)
+
+    print(f"Extracting {roi_values}")
+    empty_img = np.zeros_like(freesurfer_seg.get_fdata())
+    # extract from freesurfer_seg
+    if len(roi_values) == 1:
+        empty_img[freesurfer_seg.get_fdata() == roi_values] = 1
+    else:
+        # loop through roi_values and make them 1
+        for i in roi_values:
+            empty_img[freesurfer_seg.get_fdata() == i] = 1
+
+    # write file
+    print(f"Writing to {out_img}")
+    nb.Nifti1Image(empty_img, affine=freesurfer_seg.affine, header=freesurfer_seg.header).to_filename(out_img)
+
+    print("Done\n")    
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

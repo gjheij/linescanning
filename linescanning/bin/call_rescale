@@ -1,0 +1,70 @@
+#!/usr/bin/env python
+
+import nibabel as nb
+import numpy as np
+import sys, getopt
+import os
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_rescale
+
+This script is a wrapper for ANTs' ImageMath to rescale the intensity range of a given input
+image by the given min/max intensity range. If output is left empty, the input image will be
+overwritten
+
+Args:
+    input image (str)   image to be rescaled
+    lower border (int)  value of new lower border
+    upper border (int)  value of new upper border
+    output image (str)  output image; optional > default is to overwrite input image
+
+Outputs
+    rescaled image
+
+Example:
+    call_rescale t1w_image.nii.gz 0 4095
+    call_rescale t1w_image.nii.gz 0 4095 t1w_rescaled.nii.gz
+
+---------------------------------------------------------------------------------------------------
+
+    """
+
+    if len(argv) < 3:
+        print("\nNOT ENOUGH ARGUMENTS SPECIFIED")
+        print(main.__doc__)
+        sys.exit()
+    elif len(argv) == 3:
+        input_image   = argv[0]
+        min_range     = argv[1]
+        max_range     = argv[2]
+        output        = None
+    else:
+        input_image   = argv[0]
+        min_range     = argv[1]
+        max_range     = argv[2]
+        output        = argv[3]
+
+    if output != None:
+        out = output
+    else:
+        out = input_image
+
+    cmd_txt = f"ImageMath 3 {out} RescaleImage {input_image} {min_range} {max_range}"
+
+    try:
+        os.system(cmd_txt)
+    except:
+        print("Something went wrong")
+        sys.exit(1)
+    # rescl.to_filename(out)
+
+    try:
+        os.system(f"fslorient -copyqform2sform {out}")
+    except:
+        print("WARNING: could not copy qform to sform. Check with e.g., 'fslhd' if your affines are correct")
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

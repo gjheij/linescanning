@@ -1,0 +1,484 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# check if there's is a setup file containing the major paths and source it if it exists
+call_loadsetup
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<EOF
+
+---------------------------------------------------------------------------------------------------
+spinoza_scanner2bids
+
+convert raw data from the scanner to nifti format. Depending on which session we're analyzing, we'll
+use either call_dcm2niix.py (session 1 - which is FromScannerToBIDS.py from M. Aquil) which can deal
+nicely with the anatomical and functional stuff or call_dcm2niix.sh, which is more specific for the
+line scanning stuff.
+
+Input options:
+  <project root>    directory to output BIDSified data to
+  <sourcedata>      directory containing to be converted data
+  <session number>  session number to be converted (ses-1 and ses-${SES_NR} require different types of con-
+                    version, whereas session 1 can be converted with call_dcm2niix.py, we need to
+                    use a custom conversion for session 2 to get it somewhat in BIDS-format)
+
+Example:
+  spinoza_scanner2bids /path/to/project_root /path/to/your/project/sourcedata 1
+  spinoza_scanner2bids (shows this help text)
+  spinoza_scanner2bids $DIR_DATA_HOME $DIR_DATA_SOURCE 1
+
+Notes:
+  Assumes that you ran spinoza_newBIDSsession with the following data structure:
+  > PROJECT
+    > sourcedata
+      > sub-001
+        > ses-1
+          > .PAR
+          > .REC
+
+  Converts to:
+  > PROJECT
+    > sub-001
+      > ses-x
+        > anat
+        > func
+        > fmap
+
+---------------------------------------------------------------------------------------------------------
+
+EOF
+    exit 1
+}
+
+#---------------------------------------------------------------------------------------------------------
+# Deal with arguments
+
+# Check for subject & session flags
+while getopts os:n: argument
+do
+    case ${argument} in
+      s)  sub=${OPTARG}
+            ;;
+      n)  prf_ses=${OPTARG}
+            ;;                  
+    esac
+done
+
+if [[ $# -lt 2 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+PROJECT_ROOT=${@:$OPTIND:1}
+SOURCEDATA=${@:$OPTIND+1:1}
+SES_NR=${@:$OPTIND+2:1}
+
+if [[ -z ${sub} ]]; then
+  # loop through subjects
+  search="${SOURCEDATA}/sub-*"
+else
+  # do for 1 subject
+  search="${SOURCEDATA}/sub-${sub}"
+fi
+
+# if we're dealing with a pRF session, we can specify the number with the -n flag (-x flag in master command)
+if [[ ${SES_NR,,} == "prf" ]]; then
+  if [[ -z ${prf_ses} ]]; then
+    txt="pRF-session was selected, but no session ID was provided; assuming \"ses-1\""
+    ses_id=1
+  else
+    ses_id=${prf_ses}
+    txt="pRF-session was selected with ses-ID: \"ses-${ses_id}\""
+  fi
+else
+  ses_id=${SES_NR}
+fi
+
+if [[ "${@}" == *"-o"* ]]; then
+  OW=1
+else
+  OW=0
+fi
+
+# 'import' some bash functions
+source call_bashhelper
+
+#-----------------------------------------------------------------------------
+# Start clock
+#-----------------------------------------------------------------------------
+echo
+echo "==================================================================================================="
+printf "Convert raw data to nifti using dcm2niix\n"
+start=`date +%s`
+start_date=`date`
+
+printf "Started at ${start_date}\n"
+echo "==================================================================================================="
+
+
+#-----------------------------------------------------------------------------
+# Run it
+for dir in ${search}; do
+
+  inputdir=${SOURCEDATA}/$(basename ${dir})/ses-${ses_id}
+  outputdir=${inputdir}/nifti
+  bidsdir=${PROJECT_ROOT}/$(basename ${dir})/ses-${ses_id}
+
+  if [[ ${OW} -eq 1 ]]; then
+    rm -r ${bidsdir}/anat ${bidsdir}/func 2>/dev/null
+  fi
+
+  if [[ ${SES_NR} == "prf" ]]; then
+
+    if [[ -d ${bidsdir}/anat && -d ${bidsdir}/func ]]; then
+
+      echo "`basename ${dir}` ses-${ses_id}: already processed; use \"master -m 02 -o\" to overwrite"
+
+    else
+
+      if [[ ! -d ${inputdir} ]]; then
+
+        echo "Could not find input directory containing PARREC-files.."
+        continue
+
+      else
+
+        echo
+        echo "**************************************** Processing `basename ${dir}` ***************************************"
+        echo ${txt}
+        
+        # We're dealing with session-1, the anatomical and pRF-mapping part, so we'll use FromScannerToBIDS.py/call_dcm2niix.py
+        echo "Processing session ${SES_NR} - anatomical and PRF-session; using call_dcm2niix.py"
+        call_pydcm2niix ${inputdir} True False 2019
+
+        # for convenience, reorient all files to RAS+ (used by nibabel & fMRIprep)
+        files=`find ${bidsdir} -type f -name "*.nii.gz"`
+        for f in ${files[@]}; do
+          val=`fslval ${f} qform_xorient`
+          if [ ${val} != "Left-to-Right" ]; then
+            call_reorient -i ${f} -c nb
+          fi
+        done
+
+      fi
+
+    fi
+
+  elif [[ ${SES_NR} != "prf" ]]; then
+
+    # echo $inputdir
+    # echo $outputdir
+
+    # We're dealing with session-2, the line scanning part, so we'll use call_dcm2niix.sh
+    if [[ ! -d ${inputdir} ]]; then
+
+      echo "`basename ${dir}` ses-${ses_id}: not yet performed"
+      continue
+
+    else
+
+      if [[ ! -d ${bidsdir}/anat && ! -d ${bidsdir}/func ]]; then
+
+        echo
+        echo "**************************************** Processing `basename ${dir}` ***************************************"
+        echo "Processing session ${ses_id} - line-scanning session; using call_dcm2niix"
+
+        if [[ ! -d ${bidsdir}/anat ]]; then
+          mkdir -p ${bidsdir}/anat
+        fi
+
+        if [[ ! -d ${bidsdir}/func ]]; then
+          mkdir -p ${bidsdir}/func
+        fi
+
+        #-------------------------------------------------------------------------------------------------------------------------------
+        # PARREC TO NIFTI
+        if [[ -d ${outputdir} ]]; then
+          echo "Directory exists, skipping conversion."
+        else
+          echo "Converting files to nifti-format"
+          call_dcm2niix -i ${inputdir} -o ${outputdir}
+        fi
+
+        echo "BIDSifying data .."
+
+        #-------------------------------------------------------------------------------------------------------------------------------
+        # NIFTI TO BIDS
+
+        if [[ ! -d ${bidsdir}/anat ]]; then
+          mkdir -p ${bidsdir}/anat
+        fi
+
+        if [[ ! -d ${bidsdir}/func ]]; then
+          mkdir -p ${bidsdir}/func
+        fi
+
+        ## Low resolution anatomical scan
+        anat_lowres=`find "${inputdir}/planning/nifti" -type f \( -name "*real*" -and -name "*t10*" -and -name "*.nii.gz" \) 2>/dev/null`
+        anat_t1map=`find "${inputdir}/planning/nifti" -type f \( -name "*real*" -and -name "*t29*" -and -name "*.nii.gz" \) 2>/dev/null`
+
+        if [[ ! -f ${bidsdir}/anat/$(basename ${dir})_ses-${SES_NR}_acq-MP2RAGE_T1w.nii.gz ]]; then
+
+          if [[ -f ${anat_lowres} && -f ${anat_t1map} ]]; then
+
+            min=`fslstats ${anat_lowres} -R | awk '{print $1}'`
+            if [[ ${min} != "0.000000" ]]; then
+              echo " Rescaling lowres MP2RAGE-file"
+              call_maskmp2rage ${anat_lowres} ${anat_t1map} ${anat_lowres}
+            fi
+
+            echo " Relocating lowres MP2RAGE-file as $(basename ${dir})_ses-${ses_id}_acq-MP2RAGE_T1w.nii.gz"
+            cp ${anat_lowres} ${bidsdir}/anat/$(basename ${dir})_ses-${ses_id}_acq-MP2RAGE_T1w.nii.gz
+            cp $(dirname ${anat_lowres})/$(basename ${anat_lowres} .nii.gz).json ${bidsdir}/anat/$(basename ${dir})_ses-${ses_id}_acq-MP2RAGE_T1w.json
+
+          fi
+
+        else
+
+          echo " low resolution MP2RAGE exists"
+
+        fi
+
+        nr_runs=`echo ${outputdir}/*bold_*.nii.gz | wc -w`
+
+        ## Multi-slice files
+        echo " Relocating multi-slice file"
+        for i in `seq 1 ${nr_runs}`; do
+
+          anat_9slice=`find "${outputdir}" -type f \( -name "*9slice*" -and -not -name "*space*" -and -name "*run-${i}*" -and -name "*.nii.gz" \) 2>/dev/null`
+
+          if [[ ! -f ${bidsdir}/anat/$(basename ${dir})_ses-${ses_id}_acq-9slice_run-${i}_T1w.nii.gz ]]; then
+
+            if [[ -f ${anat_9slice} ]]; then
+
+              echo "  renaming to $(basename ${dir})_ses-${ses_id}_acq-9slice_run-${i}_T1w.nii.gz"
+              cp ${anat_9slice} ${bidsdir}/anat/$(basename ${dir})_ses-${ses_id}_acq-9slice_run-${i}_T1w.nii.gz
+              cp $(dirname ${anat_9slice})/$(basename ${anat_9slice} .nii.gz).json ${bidsdir}/anat/$(basename ${dir})_ses-${ses_id}_acq-9slice_run-${i}_T1w.json
+
+            fi
+
+          else
+
+            echo "  $(basename ${dir})_ses-${ses_id}_acq-9slice_run-${i}_T1w.nii.gz exists"
+
+          fi
+
+        done
+
+        ## Single-slice files
+        echo " Relocating single-slice file"
+        for i in `seq 1 ${nr_runs}`; do
+
+          anat_1slice=`find "${outputdir}" -type f \( -name "*1slice*" -and -not -name "*space*" -and -name "*run-${i}*" -and -name "*anat*" -and -name "*.nii.gz" \) 2>/dev/null`
+
+          if [[ ! -f ${bidsdir}/anat/$(basename ${dir})_ses-${ses_id}_acq-1slice_run-${i}_T1w.nii.gz ]]; then
+
+            if [[ -f ${anat_1slice} ]]; then
+
+              echo "  renaming to $(basename ${dir})_ses-${ses_id}_acq-1slice_run-${i}_T1w.nii.gz"
+              cp ${anat_1slice} ${bidsdir}/anat/$(basename ${dir})_ses-${ses_id}_acq-1slice_run-${i}_T1w.nii.gz
+              cp $(dirname ${anat_1slice})/$(basename ${anat_1slice} .nii.gz).json ${bidsdir}/anat/$(basename ${dir})_ses-${ses_id}_acq-1slice_run-${i}_T1w.json
+
+            fi
+
+          else
+
+            echo "  $(basename ${dir})_ses-${ses_id}_acq-1slice_run-${i}_T1w.nii.gz exists"
+
+          fi
+
+        done
+
+        ## line files
+        if [[ ! -z ${nr_runs} ]]; then
+          echo " Creating line files for ${nr_runs} runs"
+        else
+          echo
+          echo "---------------------------------------------------------------------------------------------------"
+          echo "ERROR: session 2 was selected but the number of BOLD runs were not specified"
+          echo
+          continue
+        fi
+
+        if [[ ! -d ${bidsdir}/func ]]; then
+          mkdir ${bidsdir}/func
+        fi
+
+        info_file=`find "${DIR_DATA_DERIV}/pycortex/$(basename ${dir})" -type f \( -name "*desc-info*" -and -name "*.csv" \) 2>/dev/null`
+        if [[ -f ${info_file} ]]; then
+          fold=`grep -A0 "foldover" ${info_file} | cut -d',' -f3`
+        else
+          # default to FH foldover
+          fold="FH"
+        fi
+
+        task_zipped=`find "${inputdir}" -type f \( -name "*.zip" \) 2>/dev/null`
+        if [[ ! -d ${inputdir}/task ]]; then
+        # echo " ${task_zipped}"
+          if [[ ! -z ${task_zipped} ]]; then
+            unzip -q ${task_zipped} -d ${inputdir}/task # && rm ${task_zipped}
+          fi
+        fi
+
+        echo "  foldover is set to: ${fold}"
+
+        for i in `seq 1 ${nr_runs}`; do
+
+          anat_1slice=`find "${bidsdir}/anat" -type f \( -name "*1slice*" -and -name "*run-1*" -and -name "*.nii.gz" -and -not -name "*desc-bin*" \) 2>/dev/null`
+          bold_file=`find "${outputdir}" -type f \( -name "*bold_*" -and -name "*run-${i}*" -and -name "*.nii.gz" \) 2>/dev/null`
+          
+          # fetch task ID with function task_id
+          task=`task_id ${bold_file}`
+          out_line=${bidsdir}/func/$(basename ${dir})_ses-${ses_id}_task-${task}_run-${i}_bold.nii.gz
+          if [[ -f ${anat_1slice} ]]; then
+
+            if [[ ! -f ${out_line} ]]; then
+
+              call_createline "${anat_1slice}" "${out_line}" "16" "${fold}"
+
+              if [[ $? != 0 ]]; then
+                echo
+                echo "---------------------------------------------------------------------------------------------------"
+                echo "ERROR in `basename ${0}`: call_createline exited with non-zero status"
+                exit 1
+              fi
+
+              echo "  wrote `basename ${out_line}`"
+            else
+              echo "  `basename ${out_line}` exists"
+            fi
+
+          fi
+
+          task_run=`find "${inputdir}/task" -type f \( -name "*run-${i}*" -and -name "*events.tsv" \) 2>/dev/null`
+          if [[ ! -z ${task_run} ]]; then
+            cp ${task_run} ${bidsdir}/func/$(basename ${dir})_ses-${ses_id}_task-${task}_run-${i}_events.tsv 
+          fi
+
+          eye_run=`find "${inputdir}/task" -type f \( -name "*run-${i}*" -and -name "*.edf" \) 2>/dev/null`
+          if [[ ! -z ${eye_run} ]]; then
+
+            if [[ ! -d ${bidsdir}/eye ]]; then
+              mkdir -p ${bidsdir}/eye
+            fi
+            cp ${eye_run} ${bidsdir}/eye/$(basename ${dir})_ses-${ses_id}_task-${task}_run-${i}_events.edf
+          fi
+
+        done
+
+        # check if we also did partial 3DEPI stuff
+        nr_epis=`echo ${outputdir}/*bold.nii.gz | wc -w`
+        if [[ ${nr_epis} -gt 0 ]]; then
+          echo " Found ${nr_epis} EPI file(s)"
+
+          for i in `seq 1 ${nr_epis}`; do
+
+            func=`find "${outputdir}" -type f \( -name "*acq-3DEPI*" -and -name "*run-${i}*" -and -name "*bold.nii.gz" \) 2>/dev/null`
+            fmap=`find "${outputdir}" -type f \( -name "*acq-3DEPI*" -and -name "*run-${i}*" -and -name "*epi.nii.gz" \) 2>/dev/null`
+            task=`task_id ${func}`
+
+            # -acq needs to be after task to be compatible with fMRIprep
+            bids_func=${bidsdir}/func/$(basename ${dir})_ses-${ses_id}_task-${task}_acq-3DEPI_run-${i}_bold.nii.gz
+            if [[ ! -f ${bids_func} ]]; then
+
+              if [[ -f ${func} ]]; then
+
+                echo "  renaming func-file to `basename ${bids_func}`"
+                cp ${func} ${bids_func}
+                cp $(dirname ${func})/$(basename ${func} .nii.gz).json $(dirname ${bids_func})/$(basename ${bids_func} .nii.gz).json
+
+              fi
+
+            fi
+
+            bids_epi=${bidsdir}/fmap/$(basename ${dir})_ses-${ses_id}_acq-3DEPI_task-${task}_run-${i}_epi.nii.gz
+            if [[ ! -f ${bids_epi} ]]; then
+
+              if [[ ! -d ${bidsdir}/fmap ]]; then
+                mkdir -p ${bidsdir}/fmap
+              fi
+
+              if [[ -f ${fmap} ]]; then
+                echo "  renaming epi-file to `basename ${bids_epi}`"
+                cp ${fmap} ${bids_epi}
+                cp $(dirname ${fmap})/$(basename ${fmap} .nii.gz).json $(dirname ${bids_epi})/$(basename ${bids_epi} .nii.gz).json
+
+              fi
+
+            fi            
+
+          done
+
+          echo " Done"
+
+        fi
+
+        echo "Done"
+
+      else
+
+        echo "ses-${ses_id} of `basename ${dir}` already processed; use \"master -m 02 -o\" to overwrite"
+
+      fi
+
+    fi
+
+  else
+
+    echo "Session number is ${SES_NR}; not sure what to do with this.."
+    continue
+
+  fi
+
+done
+
+#---------------------------------------------------------------------------------------------------------
+# make dataset_description file if it doesn't exist. User enters a line for the description
+
+if [[ ! -f ${DIR_DATA_HOME}/dataset_description.json ]]; then
+
+  cd ${DIR_DATA_HOME}
+  echo "enter the name of the project and press [ENTER]: " && read DESCRIPTION
+
+  (
+  echo "{"
+  echo "    \"Name\": \"${DESCRIPTION}\","
+  echo "    \"BIDSVersion\": \"1.2.2\","
+  echo "    \"License\": \"RECOMMENDED. What license is this dataset distributed under?. The use of license name abbreviations is suggested for specifying a license\","
+  echo "    \"Authors\": ["
+  echo "        \"G.J. Heij\""
+  echo "    ],"
+  echo "    \"Acknowledgements\": \"OPTIONAL. List of individuals who contributed to the creation/curation of the dataset\","
+  echo "    \"HowToAcknowledge\": \"OPTIONAL. Instructions how researchers using this dataset should acknowledge the original authors. This field can also be used to define a publication that should be cited in publications that use the dataset\","
+  echo "    \"Funding\": ["
+  echo "        \"OPTIONAL. List of sources of funding (grant numbers)\""
+  echo "    ],"
+  echo "    \"ReferencesAndLinks\": ["
+  echo "        \"OPTIONAL. List of references to publication that contain information on the dataset, or links\","
+  echo "        \"https://github.com/Donders-Institute/bidscoin\""
+  echo "    ],"
+  echo "    \"DatasetDOI\": \"OPTIONAL. The Document Object Identifier of the dataset (not the corresponding paper)\""
+  echo "}"
+  ) > dataset_description.json
+
+  cd -
+
+fi
+
+#-----------------------------------------------------------------------------
+# Calculate time spent using 'let'
+echo
+echo "---------------------------------------------------------------------------------------------------"
+end=`date +%s`
+end_date=`date`
+printf "Done at ${end_date}\n"
+
+let deltatime=end-start
+let hours=deltatime/3600
+let minutes=(deltatime/60)%60
+let seconds=deltatime%60
+printf "Time spent: %d:%02d:%02d\n" ${hours} ${minutes} ${seconds}
+echo "---------------------------------------------------------------------------------------------------"
+echo

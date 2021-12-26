@@ -1,0 +1,473 @@
+#!/usr/bin/env python
+
+import os, json, pickle
+import nibabel as nb
+from sklearn.preprocessing import normalize
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+import seaborn as sns
+
+# import hrf_estimation
+import scipy.signal as signal
+import scipy.stats as ss
+import scipy.ndimage as ndimage
+
+from joblib import Parallel, delayed
+
+import nideconv as nd
+import scipy.io as io
+
+################################################################################################################################################################
+# Parameters and settings
+################################################################################################################################################################
+
+# We need to find something similar in python:
+#
+# Get end of functional run:
+#   size_red = int(np.round(stim_times[i][-1] * fs))
+#
+# Get corresponding lines in physio file:
+#
+# sed -n 1,4390p multiple_regressors_run1.txt >> preproc_physio1.txt
+# sed -n 1,4383p multiple_regressors_run2.txt >> preproc_physio2.txt
+# sed -n 1,4297p multiple_regressors_run3.txt >> preproc_physio3.txt
+# sed -n 1,[size_red]p multiple_regressors_run4.txt >> preproc_physio4.txt
+
+# base_dir = "/Users/raimondo/Documents/Python Scripts/20190402/"
+loc = "lin" # or lin
+if loc == "win":
+    base_dir = "D:/FSL/shared/spinoza/data/2020_03_06/"
+elif loc == "lin":
+    base_dir = "/mnt/hgfs/shared/spinoza/data/2020_03_06/"
+
+
+# "runs_nodrift20200214.mat"
+TR = 0.105
+deleted_first_timepoints = 38
+initial_deleted_time = TR * deleted_first_timepoints
+
+# Sample rate and desired cutoff frequencies (in Hz).
+fs = 1/TR
+
+hp=0.01
+lp=8.0
+butter_order = 3
+
+################################################################################################################################################################
+# Behavioral
+################################################################################################################################################################
+
+print("load the data from pickles as an event Array")
+pckl_list = [os.path.join(base_dir, 'task', 'LS_SC_1_2020-03-06_09.58.13_outputDict.pickle'),
+             os.path.join(base_dir, 'task', 'LS_SC_2_2020-03-06_10.09.35_outputDict.pickle'),
+             os.path.join(base_dir, 'task', 'LS_SC_3_2020-03-06_10.19.22_outputDict.pickle'),
+            ]
+
+# load the data from pickles as an event Array
+pckl_events = []
+for p in pckl_list:
+    with open(p, 'rb') as f:
+        pckl_data = pickle.load(f, encoding='latin1')
+        pckl_events.append(pckl_data['eventArray'])
+
+# just printing an example to make sure it worked
+print(pckl_events[0][0]) #primo numero e' il file (0,1,2,3), secondo numero e' l'n-esimo blocco nelle parentesi quadre, e terzo numero e' l-elemento in quel blocco
+#print(pckl_events[2][0][1]) #file 3, blocco 1, elemento 2
+
+def relevant_times(pcl_events, opfn=None):
+    start_time = float(pcl_events[0][2].split('trial 0 phase 1 started at ')[-1])
+
+    ops = np.array([[],[],[]])
+    for tr in pcl_events:
+      # select only those with 't'rial start, i.e. type string
+      sel_tr = [t for t in tr if type(t)==str]
+      # select only those with 'phase' in there
+      sel_tr = [t for t in sel_tr if 'phase' in t]
+      tr_nrs = [int(t.split(' ')[1]) for t in sel_tr]
+      tr_ph_nrs = [int(t.split(' ')[3]) for t in sel_tr]
+      tr_times = [float(t.split(' ')[-1])-start_time for t in sel_tr]
+      ops = np.hstack((ops, np.array([tr_nrs, tr_ph_nrs, tr_times])))
+
+    opd_df = pd.DataFrame(ops.T,
+                columns=['trial', 'trial_phase', 'time'])
+    if opfn != None:
+      opd_df.to_csv(opfn, sep='\t')
+
+    return opd_df
+
+print("get times per run, and save them out to .tsv file for future reference.")
+#  get times per run, and save them out to .tsv file for future reference.
+run_times = [relevant_times(pcl_events=p, opfn=os.path.join(base_dir, 'run_%i.txt'%i)) for i, p in enumerate(pckl_events)]
+# the second trial phase time is the stimulus onset times.
+stim_times = [np.array(rt[rt.trial_phase==2].time) - initial_deleted_time for rt in run_times]
+
+################################################################################################################################################################
+# Timeseries "Preprocessing"
+################################################################################################################################################################
+
+def _butter_lowpass(data, highcut, fs, order=5):
+    nyq = 0.5 * fs
+    high = highcut / nyq
+    b, a = signal.butter(order, high, btype='lowpass')
+    y = signal.filtfilt(b, a, data)
+    return y
+
+def _butter_highpass(data, lowcut, fs, order=5):
+    nyq = 0.5 * fs
+    low = lowcut / nyq
+    b, a = signal.butter(order, low, btype='highpass')
+    y = signal.filtfilt(b, a, data)
+    return y
+
+def _butter_bandpass(data, lowcut, highcut, fs, order=5):
+    nyq = 0.5 * fs
+    low = lowcut / nyq
+    high = highcut / nyq
+    data_hp = _butter_highpass(data, lowcut, fs, order)
+    b, a = signal.butter(order, high, btype='lowpass')
+    y = signal.filtfilt(b, a, data_hp)
+    return y
+
+print("Load in dataset")
+ts_mat = io.loadmat(os.path.join(base_dir, 'runs_nodrift20200306.mat'))
+run_data_complex = [ts_mat[f'run{i}'] for i in range(1,4)]
+run_data_magnitude = [np.abs(ts_mat[f'run{i}']) for i in range(1,4)]
+
+print("cut off nothingness at the end")
+# cut off nothingness at the end
+corrected_run_data = []
+for i, rd in enumerate(run_data_magnitude):
+    size_red = int(np.round(stim_times[i][-1] * fs))
+    corrected_run_data.append(rd[:,:size_red])
+    print(" run " + str(i+1) + " now has " + str(size_red) + " volumes")
+
+    # corrected_run_data.append(rd[:,:int(np.round(stim_times[i][-1] * fs))])
+
+print("Calculating percentage signal change")
+# just doing z-scoring now.
+z_run_data = [(rd-rd.mean(-1)[:,np.newaxis]) / rd.std(1)[:,np.newaxis] for rd in corrected_run_data]
+
+# or percent signal change?
+z_run_data = [100*(rd-rd.mean(-1)[:,np.newaxis]) / rd.mean(1)[:,np.newaxis] for rd in corrected_run_data]
+
+vox_cols = [f'vox {x}' for x in range(z_run_data[i].shape[0])]
+
+print("Calculating percentage signal change")
+mixed_data = pd.concat([pd.DataFrame(z_run_data[i].T,
+                    index=pd.MultiIndex.from_product(
+                        [[i+1],
+                        list(TR*np.arange(z_run_data[i].shape[-1]))], names=['run', 't']),
+                    columns=vox_cols) for i in range(len(z_run_data))])
+mixed_data.head()
+
+mixed_onsets = pd.concat([pd.DataFrame(stim_times[i], columns=['onset']) for i in np.arange(len(stim_times))], keys=np.arange(len(stim_times))+1, names=['run'])
+mixed_onsets.head()
+
+################################################################################################################################################################
+# MAKE PHYSIO REGRESSORS
+################################################################################################################################################################
+###
+print("Prepare physiology files for later processing")
+physio_cols = [f'c_{i}' for i in range(1,7)] + [f'r_{i}' for i in range(1,9)] + [f'cr_{i}' for i in range(1,5)]
+
+# Comments:
+# - We need to turn of headers, otherwise the first line is read as header
+# - We need to specify the python engine, otherwise C-error
+# - Because these regressor files have an extra empty column, we need to select the first 18 columns
+physio_data_list = [pd.read_csv(os.path.join(base_dir, f'preproc_physio{f+1}.txt'),
+                                            header=None,
+                                            sep='\t',
+                                            engine='python',
+                                            usecols=list(range(0, len(physio_cols)))) for f in range(len(z_run_data))]
+
+# Here, we need to pass the "values" from the physio_data_list
+mixed_physio_data = pd.concat([pd.DataFrame(physio_data_list[i].values,
+                    index=pd.MultiIndex.from_product(
+                        [[i+1],
+                        list(TR*np.arange(z_run_data[i].shape[-1]))], names=['run', 't']
+                    ),
+                    columns=physio_cols) for i in range(len(z_run_data))])
+mixed_physio_data.head()
+
+################################################################################################################################################################
+# RUN THE MODEL
+################################################################################################################################################################
+## Turn off physiology regressors
+print("Running model without physio regressors")
+g_model = nd.GroupResponseFitter(mixed_data,
+                                    mixed_onsets,
+                                    input_sample_rate=1.0/TR,
+                                    concatenate_runs=True,
+                                    oversample_design_matrix=1,
+                                    confounds=None, add_intercept=False)
+
+g_model.add_event(basis_set='fourier',
+                  n_regressors=13,
+                  interval=[0, 120*TR])
+
+g_model.fit()
+
+## Use physiology regressors
+print("Running model with physio regressors")
+phys_model = nd.GroupResponseFitter(mixed_data,
+                                    mixed_onsets,
+                                    input_sample_rate=1.0/TR,
+                                    concatenate_runs=True,
+                                    oversample_design_matrix=1,
+                                    confounds=mixed_physio_data, add_intercept=False)
+
+phys_model.add_event(basis_set='fourier',
+                     n_regressors=13,
+                     interval=[0, 120*TR])
+
+phys_model.fit()
+
+################################################################################################################################################################
+# Calculate sum of squares (https://github.com/tknapen/linescanning/blob/master/notebooks/Test%20F-test%20op%20data.ipynb)
+#   Reduced model
+print("Calculate SSquares for both models")
+ss_red = g_model.get_sse()
+
+# Full model with regressors
+ss_full = phys_model.get_sse()
+
+# Number of regressors
+#   Reduced model = 13
+n_pars0 = g_model.response_fitters.iloc[0].X.shape[1]
+#   Full model = 31
+n_pars_phys = phys_model.response_fitters.iloc[0].X.shape[1]
+
+# Length non-concatenated run (= 1st run)
+n = g_model.response_fitters.iloc[0].X.shape[0]
+
+# dof0 = g_model.response_fitters.iloc[0].X.shape[0] - g_model.response_fitters.iloc[0].X.shape[1] -1
+# dof_phys = phys_model.response_fitters.iloc[0].X.shape[0] - phys_model.response_fitters.iloc[0].X.shape[1] -1
+
+# Degrees of freedom (def)
+#   Reduced model (length of run - (length of run - 1))
+dof0 = g_model.concat_response_fitters.iloc[0].X.shape[0] - g_model.concat_response_fitters.iloc[0].X.shape[1] - 1
+#   Full model (length of run - (length of run - 1))
+dof_phys = phys_model.concat_response_fitters.iloc[0].X.shape[0] - phys_model.concat_response_fitters.iloc[0].X.shape[1] - 1
+
+################################################################################################################################################################
+# PLOT RESULTS
+################################################################################################################################################################
+
+## Before plotting, make function to remove stuff and add labels:
+def format_graph(X,Y,axis,title,leg,box,out):
+
+    """
+    Function that formats the graphs. Takes the following arguments:
+        - Label for X axis (str) > give name for x-axis
+        - Label for Y axis (str) > give name for y-axis
+        - Axis (False/True)      > draw axis lines or not
+        - Title (if yes, str)    > title of figure
+        - Legend (False/True)    > show legend or not
+        - Box (False/True)       > draw box around legend or not
+        - Out (str)              > save as str()
+    """
+
+    # Define axis names
+    if X != None:
+        plt.gca().set_xlabel(X)
+    if Y != None:
+        plt.gca().set_ylabel(Y)
+
+    # Only draw x/y axis (not the full box)
+    if axis == False:
+        plt.gca().spines['top'].set_visible(False)
+        plt.gca().spines['right'].set_visible(False)
+
+    if title == None:
+        pass
+    elif title != "":
+        plt.title(title)
+
+    # Draw legend
+    if leg == True:
+        plt.legend()
+
+        if box == False:
+            plt.legend(frameon=False)
+
+    # Save or not
+    if out != None:
+        plt.savefig(out)
+
+#---------------------------------------------------------------------------------------------------------------------------------------------------------------
+# Distribution of r-squared
+plt.figure(figsize=(7,5))
+sns.distplot(g_model.get_rsq(),
+            label='0 model',
+            bins=80)
+sns.distplot(phys_model.get_rsq(),
+            label='Physiological noise model',
+            bins=80)
+
+format_graph('r^2',
+            'nr of voxels',
+            axis=False,
+            leg=True,
+            box=False,
+            title='R-squared distributions',
+            out=None)
+
+# Calculate p values and get probability density curve (PDF)
+############################################################
+s = dof0 - dof_phys
+
+## The formula for F-test
+F = ((ss_red - ss_full) / s) / (ss_full / dof_phys)
+
+## Get x-axis (1-10 in steps of 100)
+Fs = np.linspace(0, 10, 100)
+
+## CDF (cumulative density function)
+cdf = ss.f.cdf(Fs, dof_phys, s)
+
+## PDF (probability density function)
+pdf = ss.f.pdf(Fs, dof0, s)
+
+#---------------------------------------------------------------------------------------------------------------------------------------------------------------
+# Cumulative and probability density curves
+#
+# Python normal distribution is a function that distributes random variables in a
+# graph that is shaped as a symmetrical bell. It does so by arranging the probability
+# distribution for each value
+plt.figure(figsize=(7,5))
+plt.plot(Fs, pdf, label='PDF')
+plt.fill_between(Fs, pdf, alpha=0.2)
+plt.plot(Fs, cdf, label='CDF')
+plt.fill_between(Fs, cdf, alpha=0.2)
+
+format_graph('F-stat', 'Density', axis=False, leg=True, box=False, title='Density curves', out=None)
+
+#---------------------------------------------------------------------------------------------------------------------------------------------------------------
+# Plot theoretical and real F-distribution with regressors
+plt.figure(figsize=(7,5))
+sns.distplot(F, label='Real distribution')
+plt.plot(Fs, pdf, label='Theoretical distribution')
+format_graph('F-stat', 'Density', axis=False, leg=True, box=False, title=None, out=None)
+
+#---------------------------------------------------------------------------------------------------------------------------------------------------------------
+# Plot F values with significant p-value
+# plt.figure(figsize=(7,5))
+p = 1. - ss.f.cdf(F, s, dof_phys)
+F_ = F.copy().values
+F_[p > 0.05] = np.nan
+o = F.T.plot(legend=None, label='All F-values')
+plt.plot(F_.T, label='Significant p-values')
+format_graph('Voxel', 'F-stat', axis=False, leg=True, box=False, title='F-values with significant p-value', out=None)
+
+#---------------------------------------------------------------------------------------------------------------------------------------------------------------
+# P-value distribution
+## Get p-values
+p = 1. - ss.f.cdf(F, s, dof_phys)
+plt.figure(figsize=(7,5))
+sns.distplot(p, bins=50)
+format_graph('p-value distribution', 'F-stat', axis=False, leg=False, box=False, title=None, out=None)
+
+#---------------------------------------------------------------------------------------------------------------------------------------------------------------
+# Plot r-squared distributions
+plt.figure(figsize=(7,5))
+plt.plot(g_model.get_rsq().T.values, label='Null model')
+plt.plot(phys_model.get_rsq().T.values, label='Physio model')
+format_graph('Voxel', 'r^2', axis=False, leg=True, box=False, title='Observed responses vs Fitted responses in 2 models', out=None)
+
+#---------------------------------------------------------------------------------------------------------------------------------------------------------------
+# Figure showing the voxels against time
+fig = plt.figure()
+gs1 = gridspec.GridSpec(1, 2)
+gs1.update(wspace=-.50, hspace=0) # set the spacing between axes.
+
+ax1 = fig.add_subplot(gs1[0])
+plt.imshow(g_model.get_conditionwise_timecourses().T, aspect=1/5) # , clim=[-0.01,0.01]
+ax1.autoscale(False)
+ax1.set_xlabel('time (s)')
+ax1.set_ylabel('voxels')
+ax2 = fig.add_subplot(gs1[1])
+plt.imshow(phys_model.get_conditionwise_timecourses().T, aspect=1/5) # , clim=[-0.01,0.01]
+ax2.autoscale(False)
+ax2.set_xlabel('time (s)')
+ax2.set_ylabel('voxels')
+plt.show()
+
+# Physio OFF
+plt.figure(figsize=(7,5))
+plt.imshow(g_model.get_conditionwise_timecourses().T, aspect=1/5) # , clim=[-0.01,0.01]
+plt.gca().set_xlabel('time (s)')
+plt.gca().set_ylabel('voxels')
+plt.title('Timecourses without physio')
+
+# Physio ON
+plt.imshow(phys_model.get_conditionwise_timecourses().T, aspect=1/5) # , clim=[-0.01,0.01]
+plt.gca().set_xlabel('time (s)')
+plt.gca().set_ylabel('voxels')
+plt.title('Timecourses with physio')
+
+#---------------------------------------------------------------------------------------------------------------------------------------------------------------
+# Figure showing the HRFs
+
+fig = plt.figure(figsize=(7,10))
+gs1 = gridspec.GridSpec(1, 2)
+gs1.update(wspace=.50, hspace=0) # set the spacing between axes.
+
+g = fig.add_subplot(gs1[0])
+step = 0
+for x in np.arange(290,320,1):
+    g_model.get_conditionwise_timecourses().iloc[:, x].droplevel([0, 1]).plot(fig=g)
+
+p = fig.add_subplot(gs1[1])
+for x in np.arange(290,320,1):
+    phys_model.get_conditionwise_timecourses().iloc[:, x].droplevel([0, 1]).plot(fig=p)
+
+format_graph('time', 'Delta BOLD SI (%)', axis=False, leg=False, box=False, title='HRFs', out=None)
+
+#---------------------------------------------------------------------------------------------------------------------------------------------------------------
+# Figure showing the heat maps
+fig = plt.figure(figsize=(7,5))
+gs1 = gridspec.GridSpec(1, 2)
+gs1.update(wspace=.50, hspace=0) # set the spacing between axes.
+
+f = fig.add_subplot(gs1[0])
+sns.heatmap(ndimage.filters.gaussian_filter(g_model.get_conditionwise_timecourses().iloc[:,304:325].T, 2.5), cmap='coolwarm')
+f = fig.add_subplot(gs1[1])
+sns.heatmap(ndimage.filters.gaussian_filter(g_model.get_conditionwise_timecourses().iloc[:,322:338].T, 2.5), cmap='coolwarm')
+
+#---------------------------------------------------------------------------------------------------------------------------------------------------------------
+# Attempt stuff with PVE label:
+anat_img = nb.load(os.path.join(base_dir, 'nifti', 'reg_syn1CC_anat2ms_fast.nii.gz'))
+
+
+# Because we're working with 1D data, we need to add dimensions with "expand dims"
+anat_img_data = np.expand_dims(anat_img.get_fdata(), axis=0)
+
+# Fill bar of line, and transpose array
+anat_full = np.tile(anat_img_data, (40, 1)).transpose()
+
+# Then plot data
+# plt.figure(figsize=(7,5))
+# plt.imshow(anat_full, cmap='gray')
+# plt.axis('off')
+# plt.show()
+
+# Plot voxel*time plot and anat image side by side
+## This thing makes sure we can move the images closer
+fig = plt.figure()
+gs1 = gridspec.GridSpec(1, 2)
+gs1.update(wspace=-.50, hspace=0) # set the spacing between axes.
+
+ax1 = fig.add_subplot(gs1[0])
+ax1.imshow(phys_model.get_conditionwise_timecourses().T, aspect=1/4)
+ax1.autoscale(False)
+ax1.set_xlabel('time (s)')
+ax1.set_ylabel('voxels')
+ax2 = fig.add_subplot(gs1[1])
+ax2.set_frame_on(False)
+ax2.imshow(anat_full, cmap='gray')
+ax2.axis('off')
+plt.show()
+# plt.savefig(os.path.join(base_dir, 'line_with_segm.png'))

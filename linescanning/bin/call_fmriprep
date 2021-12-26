@@ -1,0 +1,265 @@
+#!/bin/bash
+#$ -S /bin/bash
+#$ -cwd
+#$ -j Y
+#$ -q long.q@jupiter
+#$ -V
+#$ -pe smp 5
+#Template provided by Daniel Levitas of Indiana University
+#Edits by Andrew Jahn, University of Michigan, 07.22.2020
+
+call_loadsetup
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_fmriprep
+
+Wrapper for the fmriprep which is either run locally or submitted to a SGE-cluster by specifying the
+last argument as 'SGE' or 'local'. Default is SGE, so if you're on the cluster you can leave it emp-
+ty. Do you want to run it locally, make sure you have all dependencies installed and specify the flag
+'local'.
+
+There's also a bunch of other things you can customize, but to keep it as simple as possible without
+making it similar to the fmriprep call itself, see arguments for customizable options
+
+Arguments:
+  -s <sub number>   number of subject's directory from which you can omit "sub-" (e.g., for "sub-001",
+                    enter "001")
+  -m <mode>         run anatomical workflow only ('anat') or run everything (leave empty). Default is
+                    'anat' to get the segmentations right
+  -r <root>         project root directory from which to run fmriprep. Default is DIR_DATA_HOME
+  -d <derivatives>  derivatives directory. Default is DIR_DATA_DERIV
+  -c <SGE|local>    if 'SGE', the script is submitted, while if 'local' is specified, the script is
+                    run locally. Takes ages, therefore 'SGE' is default
+  -i <simg>         singularity image that can be specified if -c flag is set to SGE
+  -b <binding>      binding point that can be specified if -c flag is set to SGE
+  -w <work>         working directory to store intermediate files. Default is PATH_HOME/programs/
+                    packages/fmriprep
+  -l <license>      path to freesurfer license. Make sure license is after the path specified with the
+                    -b flag (binding point) if SGE is specified!
+  -x <config>       specify config file to guide fMRIprep                    
+
+Example:
+  call_fmriprep -s 001 (simplest form, runs the entire pipeline)
+  call_fmriprep -s 001 -m anat (runs anatomical workflows only)
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+#-----------------------------------------------------------------------------
+# Deal with arguments
+while getopts s:m:r:d:c:i:b:w:l:x: arg
+do
+    case ${arg} in
+      s)  subj_ID=${OPTARG}
+            ;;
+      m)  MODE=${OPTARG}
+            ;;
+      r)  ROOT=${OPTARG}
+            ;;
+      d)  DERIV=${OPTARG}
+            ;;
+      c)  SGE=${OPTARG}
+            ;;
+      i)  IMG=${OPTARG}
+            ;;
+      b)  BIND=${OPTARG}
+            ;;
+      w)  WORK=${OPTARG}
+            ;;
+      l)  LIC=${OPTARG}
+            ;;
+      x)  CONFIG=${OPTARG}
+            ;;            
+    esac
+done
+
+if [[ $# -lt 1 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+#-----------------------------------------------------------------------------
+if [[ -z ${subj_ID} ]]; then
+  echo "Need at least a subject ID!"
+  Usage >&2
+  exit 1
+fi
+
+#-----------------------------------------------------------------------------
+# Set default mode if none specified
+if [[ -z ${MODE} ]]; then
+  mode="anat"
+else
+  mode=${MODE}
+fi
+
+#-----------------------------------------------------------------------------
+# Set default project root directory if none specified
+if [[ -z ${ROOT} ]]; then
+  project=${DIR_DATA_HOME}
+else
+  project=${ROOT}
+fi
+
+if [[ ! -d ${project} ]]; then
+  mkdir -p ${project}
+fi
+
+#-----------------------------------------------------------------------------
+# Set default derivatives directory if none specified
+if [[ -z ${DERIV} ]]; then
+  derivatives=${DIR_DATA_DERIV}
+else
+  derivatives=${DERIV}
+fi
+
+if [[ ! -d ${derivatives} ]]; then
+  mkdir -p ${derivatives}
+fi
+
+#-----------------------------------------------------------------------------
+# Set default working directory if none specified
+if [[ -z ${WORK} ]]; then
+  work=${PATH_HOME}/programs/packages/fmriprep/${PROJECT}
+else
+  work=${WORK}
+fi
+
+if [[ ! -d ${work} ]]; then
+  mkdir -p ${work}
+fi
+
+#-----------------------------------------------------------------------------
+# Set default FS-license if none specified
+if [[ -z ${LIC} ]]; then
+  license=${DIR_SCRIPTS}/data/license.txt
+else
+  license=${LIC}
+fi
+
+#-----------------------------------------------------------------------------
+# Set default system if none specified
+if [[ -z ${SGE} ]]; then
+  system="SGE"
+else
+  system=${SGE}
+fi
+
+#-----------------------------------------------------------------------------
+# Set default config file if none specified
+if [[ -z ${CONFIG} ]]; then
+  cfile=${DIR_SCRIPTS}/data/fmriprep_config.json
+else
+  cfile=${CONFIG}
+fi
+
+
+#Run fmriprep
+if [ ${system} == "SGE" ]; then
+
+  nthreads=15
+  #-----------------------------------------------------------------------------
+  # Set default binding point if none specified
+  if [[ -z ${BIND} ]]; then
+    binding=${PATH_HOME}
+  else
+    binding=${BIND}
+  fi
+
+  #-----------------------------------------------------------------------------
+  # Set default container if none specified
+  if [[ -z ${IMG} ]]; then
+    fprep_container=${PATH_HOME}/programs/packages/fmriprep/containers_bids-fmriprep--20.2.5.simg
+  else
+    fprep_container=${IMG}
+  fi
+
+  if [[ ! -f ${fprep_container} ]]; then
+    echo "Could not find singularity image for fmriprep.."
+    exit 1
+  fi
+
+  if [[ ${mode} == "anat" ]]; then
+
+    # echo "derivatives = ${derivatives}"
+    # echo "binding     = ${binding}"
+    unset PYTHONPATH; singularity run --cleanenv -B ${binding}:${binding} ${fprep_container} \
+      ${project} ${derivatives} \
+      participant \
+      --participant-label ${subj_ID} \
+      --skip-bids-validation \
+      --md-only-boilerplate \
+      --fs-license-file ${license} \
+      --output-spaces fsnative fsaverage MNI152NLin6Asym:res-1 \
+      --cifti-output 170k \
+      --anat-only \
+      --nthreads ${nthreads} \
+      --bids-filter-file ${cfile} \
+      --stop-on-first-crash \
+      -w ${work}
+
+  else
+
+    unset PYTHONPATH; singularity run --cleanenv -B ${binding}:${binding} ${fprep_container} \
+      ${project} ${derivatives} \
+      participant \
+      --participant-label ${subj_ID} \
+      --skip-bids-validation \
+      --md-only-boilerplate \
+      --fs-license-file ${license} \
+      --output-spaces fsnative fsaverage MNI152NLin6Asym:res-1 \
+      --cifti-output 170k \
+      --use-syn-sdc \
+      --bids-filter-file ${cfile} \
+      --nthreads ${nthreads} \
+      --stop-on-first-crash \
+      -w ${work}
+
+  fi
+
+elif [[ ${system} == "local" ]]; then
+
+  if [[ ${mode} == "anat" ]]; then
+
+    echo "  Running fMRIprep with --anat-only option locally"
+    export PYTHONPATH=${FREESURFER_HOME}/python
+    fmriprep ${project} ${derivatives}/derivatives \
+      participant \
+      --participant-label ${subj_ID} \
+      --skip-bids-validation \
+      --md-only-boilerplate \
+      --fs-license-file ${license} \
+      --output-spaces fsnative \
+      --stop-on-first-crash \
+      --anat-only \
+      -w ${work}
+
+  else
+
+    echo "  Running full fMRIprep pipeline locally"
+    export PYTHONPATH=${FREESURFER_HOME}/python
+    fmriprep ${project} ${derivatives}/derivatives \
+      participant \
+      --participant-label ${subj_ID} \
+      --skip-bids-validation \
+      --md-only-boilerplate \
+      --fs-license-file ${license} \
+      --output-spaces fsnative \
+      --stop-on-first-crash \
+      -w ${work}
+
+  fi
+
+else
+
+  echo "Unknown option ${system}. Please specify \"anat\" or leave empty for anat+func"
+
+fi

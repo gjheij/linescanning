@@ -1,0 +1,54 @@
+#!/usr/bin/env python
+
+import os
+import numpy as np
+import warnings
+from nilearn import image
+import nibabel as nb
+from linescanning import utils
+import sys, getopt
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_splitcruise
+
+Split the CRUISE segmentation into its gray/white matter parts.
+
+Args:
+    <CRUISE seg>    path to CRUISE cortical segmentation
+    <output>        basename output for CRUISE's segmentations + FULL path! (_desc-cruise_?.nii.gz)
+                    will be appended
+
+Example:
+    call_splitcruise  /path/to/cruise.nii.gz /derivatives/sub-999/ses-1/sub-999_desc-cruise_?.nii.gz
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    gmseg   = None
+    output  = None
+
+    if len(argv) < 2:
+        print("\nNEED AT LEAST A SUBJECT ID")
+        print(main.__doc__)
+        sys.exit()
+
+    cruise  = argv[0]
+    output  = argv[1]
+
+    if not os.path.exists(os.path.dirname(output)):
+        os.makedirs(os.path.dirname(output), exist_ok=True)
+
+    cruise_img = nb.load(cruise)
+    cruise_data = cruise_img.get_fdata()
+    
+    for ix,ii in enumerate(['gm', 'wm']):
+        empty_data = np.zeros_like(cruise_data)
+        empty_data[cruise_data == (ix+1)] = 1
+        nb.Nifti1Image(empty_data, affine=cruise_img.affine).to_filename(output+f"_desc-cruise_{ii}.nii.gz")
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

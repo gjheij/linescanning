@@ -1,0 +1,64 @@
+#!/usr/bin/env python
+
+import os, sys
+import numpy as np
+import ast
+from linescanning.utils import make_chicken_csv
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_antsmakechicken
+
+Command-line script to create a chicken-file as per input of antsApplyTransformsToPoints. You'll only
+need to specify a coordinate, an output file name ending with .csv and whether the coordinate is 
+in RAS or LPS convention (I assume by default it is in LPS). The difference between RAS and LPS is 
+that the first two dimensions are flipped. 
+
+Args:
+    <coord>         coordinate in the format [C,R,S] (comma-separated & no spaces!)
+    <output file>   string-like representation to a .csv-file
+    <input conv>    convention the input coordinate uses; ("lps" (default)|"ras")
+
+Outputs
+    output file     csv-file containing the input coordinate
+
+Usage:
+    call_antsmakechicken <coord> <output file> <convention>
+
+Example:
+    call_antsmakechicken [-15,-89,56] test.csv ras
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    coord       = None
+    out_file    = None
+    in_type     = "lps"
+
+    if len(argv) < 2:
+        print("NOT ENOUGH ARGUMENTS SPECIFIED")
+        print(main.__doc__)
+        sys.exit()
+
+    try:
+        coord       = argv[0]
+        out_file    = argv[1]
+        in_type     = argv[2]
+    except:
+        coord       = argv[0]
+        out_file    = argv[1]     
+
+    try:
+      coord = np.array(ast.literal_eval(coord))
+    except:
+      raise ValueError(f"You used '{coord}'. Make sure to use '[x,y,z]' (comma-separated and no spaces)")
+
+    if in_type.lower() != "lps" and in_type.lower() != "ras":
+        raise ValueError(f"in_type is {in_type}; please use 'lps' or 'ras'")
+
+    make_chicken_csv(coord, input=in_type, output_file=out_file, vol=0.343)
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+#$ -S /bin/bash
+#$ -N recon
+#$ -cwd
+#$ -o /data1/projects/MicroFunc/Jurjen/projects/ANAT_SEG-Raw/code
+#$ -j y
+#$ -q all.q@minerva
+#$ -V
+#$ -pe smp 6
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_antsresample
+
+This scripts makes the call to ImageMath Resample a little easier, as you'll only have to provide
+the input image, the new matrix size, and the output image.
+
+Usage:
+  call_antsresample <input> <new matrix> <output>
+
+Arguments:
+  <input>       input image to be resample
+  <new matrix>  matrix that <input> need to have
+  <output>      output name of resampled image
+
+Example:
+  call_antsresample input.nii.gz "283x353x353" output.nii.gz
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+if [[ $# -lt 2 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+if [[ -z $3 ]]; then
+  output=$(dirname ${1})/$(basename ${1} .nii.gz)_resampled.nii.gz
+else
+  output=$3
+fi
+
+if [[ ! -f ${output} ]]; then
+
+ #  Usage: ResampleImage imageDimension inputImage outputImage MxNxO [size=1,spacing=0] [interpolate type] [pixeltype]
+ #  Interpolation type:
+ #    0. linear (default)
+ #    1. nn
+ #    2. gaussian [sigma=imageSpacing] [alpha=1.0]
+ #    3. windowedSinc [type = 'c'osine, 'w'elch, 'b'lackman, 'l'anczos, 'h'amming]
+ #    4. B-Spline [order=3]
+ # pixeltype  :  TYPE
+ #  0  :  char
+ #  1  :  unsigned char
+ #  2  :  short
+ #  3  :  unsigned short
+ #  4  :  int
+ #  5  :  unsigned int
+ #  6  :  float (default)
+ #  7  :  double
+ #
+  ResampleImage 3 ${1} ${output} ${2} 3 2
+
+fi

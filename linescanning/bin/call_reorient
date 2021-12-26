@@ -1,0 +1,85 @@
+#!/usr/bin/env python
+
+import linescanning.bin.utils.utils as line
+import sys, getopt
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_reorient
+
+Very short script to reorient input files to a certain orientation using the reorient_img function
+in the linescanning repo. Just specify an input file and an orientation code. Nearly all conventio-
+nal orientation codes can be specified, in addition to 'nb' which specifically uses Nibabel's RAS+
+definition (which corresponds to LPI in FSL terms)
+
+Args:
+    -i <input file>         str:
+                            path to nifti image
+
+    -c <orientation code>   str:
+                            orientation code (e.g., 'RAS', 'LPI', 'nb') [default = "nb"]
+
+    -q <qform code>         int:
+                            qform code; leave empty if we should use the same code as the input file
+
+    -o <output file>        str:
+                            optional; input image is overwritten if left empty
+
+Outputs
+    a new nifti image with specified orientation
+
+
+Example:
+    call_reorient -i t1w.nii.gz -c nb                           (reorient to Nibabel's RAS+ [LPI])
+    call_reorient -i t1w.nii.gz -c lpi -o t1w_new.nii.gz        (reorient to LPI with FSL)
+    call_reorient -i t1w.nii.gz -c nb -q 1 -o t1w_new.nii.gz    (reorient to Nibabel's RAS+ and use
+                                                                qform = 1)
+
+---------------------------------------------------------------------------------------------------
+
+    """
+
+    infile   = None
+    code     = "nb"
+    qform    = 1
+    outfile  = None
+
+    try:
+        opts, args = getopt.getopt(argv,"hi:c:q:o:",["infile=", "code=", "qform=", "outfile="])
+    except getopt.GetoptError:
+        print(main.__doc__)
+        sys.exit(2)
+
+    for opt, arg in opts:
+        if opt == '-h':
+            print(main.__doc__)
+            sys.exit(1)
+        elif opt in ("-i", "--sub"):
+            infile = arg
+        elif opt in ("-c", "--ses"):
+            code = arg
+        elif opt in ("-q", "--inputdir"):
+            qform = arg
+        elif opt in ("-o", "--outputdir"):
+            outfile = arg
+
+    if len(argv) < 1 or infile == None:
+        print("\nNEED AT LEAST AN INPUT IMAGE")
+        print(main.__doc__)
+        sys.exit(1)
+
+    if outfile == None:
+        outfile = infile
+
+    line.reorient_img(infile, code=code, qform=qform, out=outfile)
+
+    # try:
+    #     line.reorient_img(infile, code=code, qform=qform, out=outfile)
+    # except:
+    #     print("ERROR: Could not run reorient_img. Do you have the linescanning-repo installed?")
+    #     sys.exit(1)
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

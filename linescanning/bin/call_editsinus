@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_editsinus
+
+Script to create or edit the sagittal sinus segmentation. The script will open ITK-Snap to create a 
+manual edit file.
+
+Args:
+  -s <subject>  subject ID
+  -n <session>  session number
+  <t1w-image>   base image to use as reference
+  <output name> output name for sinus image, automatically appends _desc-sagittalsinus.nii.gz
+
+Specify only '-s' and/or 'n' if you've run the pipeline as it is without changing directories or 
+filenames; this option will look for all the default directories and files. If you want to edit
+your own things, specify the FreeSurfer directory and output name for segmentation and leave the 
+'-s' and '-n' flag empty.
+
+Usage:
+  call_editsinus <fs_dir> <segmentation file name>
+
+Example:
+  call_editsinus sub-001_T1w.nii.gz sub-001_desc-sagittalsinus.nii.gz
+  call_editsinus -s sub-001 -n 1
+  
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+if [[ $# -lt 1 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+# Check for subject & session flags
+while getopts s:n: argument
+do
+  case ${argument} in
+    s)  sub=${OPTARG}
+          ;;
+    n)  ses=${OPTARG}
+          ;;
+  esac
+done
+
+#-----------------------------------------------------------------------------
+# Run it
+
+if [[ ! -z ${sub} ]]; then
+
+  if [[ -z ${ses} ]]; then
+    base_dir=${sub}
+    base="${sub}"
+  else
+    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
+    base="${sub}_ses-${nr}"
+    base_dir=${sub}/ses-${nr}
+  fi
+
+  REF=`find ${DIR_DATA_DERIV}/cat12/${base_dir} -type f -name "${sub}*" -and -name "*T1w.nii.gz" 2>/dev/null`
+  MAN=${DIR_DATA_DERIV}/manual_masks/${base_dir}/${base}_acq-${space^^}_desc-sagittalsinus.nii.gz
+  
+else
+
+  REF=${@:$OPTIND:1}
+  MAN=${@:$OPTIND+1:1}
+
+fi
+  
+if [[ ! -f ${MAN} ]]; then
+  if [[ ! -d $(dirname ${MAN}) ]]; then
+    mkdir -p $(dirname ${MAN})
+  fi
+  echo "Creating `basename ${man}` with call_createimg"    
+  call_createimg ${REF} ${MAN}
+fi
+
+echo "Opening ITK-Snap"
+itksnap -g ${REF} -s ${MAN} 2>/dev/null
+
+if [[ ! -f ${MAN} ]]; then
+  echo "ERROR in `basename ${0}`: manual edit file was not saved.."
+  exit 1
+else
+  fslorient -copyqform2sform ${MAN}
+fi
+  
+

@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_ras2fsl
+
+wrapper for reorientating a given warp file from RAS to FSL, i.e., to MNI space (= RPI) or vice ver-
+sa. The default for the script is to use 'ras2fsl', but we can also do 'fsl2ras' by specifying the 
+'-i' flag. A specified output name will be used, otherwise the input file will be overwritten.
+
+Args:
+  <-i>      use fsl2ras, instead of ras2fsl
+  <fixed>   reference image used to create the transformation file
+  <moving>  moving image used to create the transformation file
+  <affine>  transformation file
+  <output>  converted transformation file
+
+Usage:
+  call_ras2fsl <-i fsl2ras> <fixed> <moving> <affine matrix> <output>
+
+Example:
+  call_ras2fsl fixed.nii.gz moving.nii.gz ants_affine.mat fsl_affine.mat
+  call_ras2fsl -i fixed.nii.gz moving.nii.gz fsl_affine.mat ants_affine.mat
+  
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+# Check for subject flag
+while getopts it: argument
+do
+    case ${argument} in
+      t)  interp=${OPTARG}
+            ;;
+    esac
+done
+
+if [[ $# -lt 4 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+REF=${@:$OPTIND:1}
+MOV=${@:$OPTIND+1:1}
+AFF=${@:$OPTIND+2:1}
+OUT=${@:$OPTIND+3:1}
+
+if [[ "${@}" == *"-i"* ]]; then
+  to_fsl=1
+else
+  to_fsl=0
+fi
+
+#-----------------------------------------------------------------------------
+# How to convert fsl transform matrix to itk:
+if [[ ${to_fsl} -eq 0 ]]; then
+  c3d_affine_tool -itk ${AFF} -ref ${REF} -src ${MOV} -ras2fsl -o ${OUT}
+else
+  c3d_affine_tool -ref ${REF} -src ${MOV} ${AFF} -fsl2ras -oitk ${OUT}
+fi

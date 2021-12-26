@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_mrivol2vol
+
+Wrapper for FreeSurfer's mri_vol2vol. You will need to specify a moving image (image to be moved),
+a target image (image to move <moving> image to), an output name, and whether the moving image is a
+segmentation ('seg') and volume ('vol') image. There's a separation here because the procedure is
+sligthly different for segmentation and volume images.
+
+Usage:
+  call_mrivol2vol <-t transform name> <moving> <target> <output> <seg/vol>
+
+Arguments:
+  -t <transform>  output name for transform (optional)
+  <moving>        image to be moved
+  <target>        image to move to
+  <output>        output name
+  <vol/seg>       type input image
+
+Example:
+  call_mrivol2vol seg.mgz raw.mgz seg
+  call_mrivol2vol -t register.dat vol.mgz raw.mgz vol
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+while getopts t: arg; do
+  case $arg in
+    t)  tname=${OPTARG}
+          ;;
+  esac
+done
+
+if [[ $# -lt 4 ]]; then
+  Usage >&2
+  exit 1
+fi
+
+TAR=${@:$OPTIND:1}
+MOV=${@:$OPTIND+1:1}
+OUT=${@:$OPTIND+2:1}
+IN_TYPE=${@:$OPTIND+3:1}
+
+#-----------------------------------------------------------------------------
+# Start loop
+
+if [[ ! -f ${MOV} ]]; then
+  echo " ERROR: could not find moving image"
+  exit 1
+fi
+
+if [[ ! -f ${TAR} ]]; then
+  echo " ERROR: could not find target image"
+  exit 1
+fi
+
+if [[ -z ${OUT} ]]; then
+  echo " ERROR: please specify an output name"
+  exit 1
+fi
+
+if [[ -z ${IN_TYPE} ]]; then
+  echo " ERROR: could not find moving image type: \"seg\"or \"vol\""
+  exit 1
+fi
+
+if [[ ! -z ${tname} ]]; then
+  reg_flag="--save-reg ${tname}"
+else
+  reg_flag="--no-save-reg"
+fi
+
+if [[ ${IN_TYPE} == "vol" ]]; then
+  cmd="mri_vol2vol --mov ${MOV} --targ ${TAR} --regheader --o ${OUT} ${reg_flag}"
+  echo ${cmd} && exec ${cmd}
+
+elif [[ ${IN_TYPE} == "seg" ]]; then
+  cmd"mri_label2vol --seg ${MOV} --temp ${TAR} --o ${OUT} --regheader ${MOV}"
+  echo ${cmd} && exec ${cmd}
+else
+  echo "invalid option ${IN_TYPE}"
+  Usage >&2
+  exit 1
+fi

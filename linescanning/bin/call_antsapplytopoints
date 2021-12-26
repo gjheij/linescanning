@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_antsapplytopoints
+
+This script is a wrapper that makes the call to antsApplyTransformsToPoints a little easier. The 
+idea of antsApplyTransformsToPoints is to provide a .csv file containing at least x,y,z,t header
+and the coordinates in LPS-convention and convert it to a coordinate in a new space given a trans-
+formation matrix. Very handy if you just want to warp coordinates instead of images.
+
+Steps to perform:
+Let's say you have a coordinate in space 1 and would like to get the coordinate in space 2:
+  1.) Create a warp-file with call_antsregistration with space 2 as <ref> and space 1 as <mov> (e.g.,
+      from-ses1_to-ses2.mat)
+  2.) Create a chicken-file with call_antsmakechicken coord point_in_space1.csv (if your point is 
+      in LPS already, specify 'lps' after 'point_in_space1.csv')
+  3.) Run call_antsapplytopoints point_in_space1.csv point_in_space2.csv from-ses1_to-ses2.mat
+  4.) "point_in_space2.csv" will now contain the LPS-coordinate in space 2. 
+
+Note: there's functions in play to do this with python only as well. Below the functions associa-
+ted with each step:
+  1.) linescanning.transform.ants_registration()
+  2.) linescanning.utils.make_chicken_csv()
+  3.) linescanning.transform.ants_applytopoints
+  4.) linescanning.utils.read_chicken_csv()
+
+Args:
+  <-i>            invert selected <warp file> (no argument required)
+  <-d dimension>  image dimensions (default = 3)
+  <input csv>     file containing coordinate that we need to warp (NEEDS TO BE LPS!!). If your coor-
+                  dinate comes straight from FreeSurfer/Pycortex, it's in RAS convention. If that's
+                  the case, make sure to use 'call_antsmakechicken <coord> <filename> RAS'!
+  <output csv>    file containing the coordinate in the new space
+  <warp files>    all warp files in order of application; if multiple warp files
+
+Usage:
+  call_antsapplytopoints <-i> <input csv> <output csv> <warp file>
+
+Example:
+  call_antsapplytopoints point_in_space1.csv point_in_space2.csv genaff.mat
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+#-----------------------------------------------------------------------------
+# Deal with arguments
+while getopts id: arg
+do
+    case ${arg} in
+      i)  INVERT=${OPTARG}
+            ;;
+      d)  DIMENSION=${OPTARG}
+            ;;              
+    esac
+done
+
+if [[ $# -lt 3 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+IN_CSV=${@:$OPTIND:1}
+OUT_CSV=${@:$OPTIND+1:1}
+WARP=${@:$OPTIND+2:1}
+
+# check if we have to invert our matrix
+if [[ "${@}" == *"-i"* ]]; then
+  APPLY="[${WARP},0]"
+else
+  APPLY="[${WARP},1]"
+fi
+
+if [ ! -z ${DIMENSION} ]; then
+  DIMS=${DIMENSION}
+else
+  DIMS=3
+fi
+
+antsApplyTransformsToPoints -d ${DIMS} -i ${IN_CSV} -o ${OUT_CSV} -t ${APPLY}

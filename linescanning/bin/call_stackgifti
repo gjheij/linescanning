@@ -1,0 +1,53 @@
+#!/usr/bin/env python
+
+import sys
+import numpy as np
+import warnings
+warnings.simplefilter('ignore')
+from nilearn import surface
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_stackgifti
+
+Stack two gifti's vertically into a numpy array so we can load it in with Pycortex. This function
+is especially used in combination with call_vol2fsaverage.
+
+Args:
+    <gifti 1>       first gifti-image   (ideally left-hemisphere data)
+    <gifti 2>       second gifti image  (ideally right-hemisphere data)
+    <output file>   output name for the numpy array, no extension needed
+
+Outputs
+    output file     numpy array with the combined gifti-data
+
+Example:
+    call_stackgifti lh.gii rh.gii lh+rh.npy
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    in1 = None
+    in2 = None
+    out = None
+
+    if len(argv) < 3:
+        print("NOT ENOUGH ARGUMENTS SPECIFIED")
+        print(main.__doc__)
+        sys.exit()
+
+    in1 = argv[0]
+    in2 = argv[1]
+    out = argv[2]
+
+    in1_mesh = surface.load_surf_data(in1)
+    in2_mesh = surface.load_surf_data(in2)
+    out_mesh = np.squeeze(np.vstack((in1_mesh[...,np.newaxis],in2_mesh[...,np.newaxis])),axis=-1)
+    np.save(out, out_mesh)
+    np.save(in1.split('.')[0]+'.npy', in1_mesh)
+    np.save(in2.split('.')[0]+'.npy', in2_mesh)
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

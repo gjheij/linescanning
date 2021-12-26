@@ -1,0 +1,57 @@
+#!/usr/bin/env python
+
+import os
+import numpy as np
+import nibabel as nb
+import cortex
+import sys, getopt
+import random
+from pathlib import Path
+from linescanning.utils import get_base_dir, get_file_from_substring
+
+import warnings
+warnings.filterwarnings('ignore')
+
+base, place = get_base_dir()
+opj = os.path.join
+
+hemi = None
+# define subject folder
+
+if len(sys.argv) != 3:
+    print("ERROR: more arguments required")
+else:
+    subject = sys.argv[1]
+    hemi    = sys.argv[2]
+
+cxdir = opj(os.environ['CTX'])
+prfdir = opj(os.environ['PRF'])
+
+if hemi == "left":
+    vert = get_file_from_substring("hemi-L", opj(prfdir, f'sub-{subject}'))
+elif hemi == "right":
+    vert = get_file_from_substring("hemi-R", opj(prfdir, f'sub-{subject}'))
+elif hemi == "both":
+    vert = get_file_from_substring("hemi-LR", opj(prfdir, f'sub-{subject}'))
+else:
+    raise NameError(f"Unknown option for hemisphere: {hemi}. Need 'left', 'right', or 'both'")
+
+if vert != None:
+    print(f"  Loading in vertex array: {vert}")
+else:
+    raise ValueError(f"Could not find array: {vert}")
+
+print(f"  Converting to vertex map")
+if Path(vert).suffix == ".npy":
+    # numpy array
+    vert = np.load(vert)
+
+vert_map = cortex.Vertex(vert, subject=f'sub-{subject}', cmap='magma', vmin=-0.5, vmax=1)
+
+port = random.randint(1024,65536)
+if place == "spin":
+    cortex.webshow({'best vertex': vert_map}, open_browser=False, port=port)
+    print("  Now run {script} {port} in your local terminal".format(script=os.path.join(os.environ['DIR_SCRIPTS'], 'bin', 'call_webviewer.sh', port=port)))
+else:
+    cortex.webshow({'best vertex': vert_map}, open_browser=True, port=port)
+    os.wait()

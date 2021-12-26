@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_antsapplytransforms
+
+This script is a wrapper that makes the call to antsApplyTransforms a little easier. You'll only
+need to specify the <fixed>/<moving> image, and output name, whether or not to invert the specified
+warp files (0=no; 1=yes), and the list of the warp files in order of application! It is important
+that the warp files are specified in the last argument, as that's what the script will create a list
+of warps from.
+
+Args:
+  -v            turn on verbose
+  -i <invert>   invert given warp files (0=no|1=yes; leave empty for 'no'). If you have multiple
+                warp files, specify a space-separated list between quotes as inversion tag; if not
+                everything will be set to 'do not invert'
+  -t <interp>   interpolation type: 'lin' (linear), 'nn' (NearestNeighbor), mul (MultiLabel), gau 
+                (Gaussian), bspl<order>, cws (CosineWindowedSinc), wws (WelchWindowedSinc), hws 
+                (HammingWindowedSinc), lws (LanczosWindowedSinc), gen (GenericLabel); default = 'nn'
+  <ref>         space to warp file to
+  <moving>      file to warp
+  <output>      moving-in-ref output name
+  <warp files>  all warp files in order of application; if multiple warp files, they should be
+                surrounded by double brackets
+
+Usage:
+  call_antsapplytransforms -i <invert 0=no|1=yes> -t <interp> <ref> <moving> <output> <warp files>
+
+Example:
+  call_antsapplytransforms ref.nii.gz mov.nii.gz out.nii.gz genaff.mat
+  call_antsapplytransforms -i 1 -t lin ref.nii.gz mov.nii.gz out.nii.gz genaff.mat
+  call_antsapplytransforms -i "0 1" ref.nii.gz mov.nii.gz out.nii.gz "genaff1.mat genaff2.mat"
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+source call_bashhelper
+
+# Check for subject flag
+while getopts vi:t: argument
+do
+    case ${argument} in
+      i)  invert=${OPTARG}
+            ;;
+      t)  interp=${OPTARG}
+            ;;
+    esac
+done
+
+if [[ $# -lt 4 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+REF=${@:$OPTIND:1}
+MOV=${@:$OPTIND+1:1}
+OUT=${@:$OPTIND+2:1}
+
+if [[ -z ${invert} ]]; then
+  INV=0
+else
+  INV=${invert}
+  # for i in ${INV[@]}; do echo $i; done
+fi
+
+if [[ "${@}" == *"-v"* ]]; then
+  VERBOSE="--verbose 1"
+  VERB=1
+else
+  VERBOSE=""
+  VERB=0
+fi
+
+if [[ -z ${interp} ]]; then
+  INT="NearestNeighbor"
+else
+  if [[ ${interp} == "lin" ]]; then
+    INT="Linear"
+  elif [[ ${interp} == "nn" ]]; then
+    INT="NearestNeighbor"
+  elif [[ ${interp} == "mul" ]]; then
+    INT="MultiLabel"    
+  elif [[ ${interp} == "gau" ]]; then
+    INT="Gaussian"
+  elif [[ ${interp} == *"bspl"* ]]; then
+    INT="BSpline[$(basename ${interp} | cut -c 5)]"
+  elif [[ ${interp} == "cws" ]]; then
+    INT="CosineWindowedSinc"
+  elif [[ ${interp} == "wws" ]]; then
+    INT="WelchWindowedSinc"
+  elif [[ ${interp} == "hws" ]]; then
+    INT="HammingWindowedSinc"
+  elif [[ ${interp} == "lws" ]]; then
+    INT="LanczosWindowedSinc"
+  elif [[ ${interp} == "gen" ]]; then
+    INT="GenericLabel"    
+  else
+    echo "Invalid interpolation type specified:"
+    Usage
+    exit 1
+  fi
+fi
+
+IFS=' ' read -ra LIST <<< ${INV[@]}
+WARP=`echo "${@: $#}"`
+
+ARRAY=()
+if [[ ${WARP} == "identity" ]] || [[ ${WARP} == "ident" ]] || [[ ${WARP} == "identty" ]]; then
+  call_makeitkident $(dirname ${OUT})/ident.mat
+  INITIAL=$(echo "-t [$(dirname ${OUT})/ident.mat,0]")
+  ARRAY+=("${INITIAL}")
+else
+  j=0
+  for i in ${WARP[@]}; do
+    INITIAL=$(echo "-t [${i},${LIST[${j}]}]")
+    ARRAY+=("${INITIAL}")
+    ((j++))
+  done
+fi
+
+# check if we have mgz file
+REF_ext=`fetch_extension ${REF}`
+MOV_ext=`fetch_extension ${MOV}`
+
+if [[ ${REF_ext} == "mgz" ]]; then
+  call_mriconvert ${REF}
+  REF=$(dirname ${REF})/$(basename ${REF} .mgz).nii.gz
+fi
+
+if [[ ${MOV_ext} == "mgz" ]]; then
+  call_mriconvert ${MOV}
+  MOV=$(dirname ${MOV})/$(basename ${MOV} .mgz).nii.gz
+fi
+
+cmd="antsApplyTransforms -d 3 --float 1 ${VERBOSE} -n ${INT} -e 3 -r ${REF} -i ${MOV} ${ARRAY[@]} -o ${OUT}"
+
+if [ ${VERB} -eq 1 ]; then
+  echo ${cmd}
+fi 
+
+exec ${cmd}
+
+# # apply genaff + invwarp;
+# call_antsapplytransforms -v -i "1 0" -t gen \
+#   /data1/projects/MicroFunc/Jurjen/projects/hemifield/derivatives/pymp2rage/sub-005/ses-1/sub-005_ses-1_acq-MP2RAGE_T1w.nii.gz \
+#   /data1/projects/MicroFunc/Jurjen/programs/linescanning/linescanning/bin/utils/MNI152_T1_1mm_Dil3_sagsinus_mask.nii.gz \
+#   sub-005_ses-1_space-T1w_desc-MNI152_sinus.nii.gz \
+#   "sub-005_genaff.mat sub-005_1InverseWarp.nii.gz"

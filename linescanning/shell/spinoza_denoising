@@ -1,0 +1,177 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# check if there's is a setup file containing the major paths and source it if it exists
+echo
+call_loadsetup
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+spinoza_denoising
+
+wrapper for call_pybest that does the denoising of fMRI-data based on the confound file created
+during the preprocessing with fmriprep.
+
+Usage:
+  spinoza_denoising <-s sub> <-n ses> <fmriprep directory> <pybest output directory>
+
+Arguments:
+  <-s sub>            digit subject number following 'sub-'
+  <-n ses>            integer session number following 'ses-'
+  <project root>      base directory containing the derivatives and the subject's folders.
+  <derivatives>       path to the derivatives folder
+
+Eample:
+  spinoza_denoising ${DIR_DATA_HOME} ${DIR_DATA_DERIV}
+  spinoza_denoising -s 001 -n 1 ${DIR_DATA_HOME} ${DIR_DATA_DERIV}
+
+Notes:
+  - Has the '-s' and '-n' switches to specify a particular subject and session if present
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+# Check for subject & session flags
+while getopts os:n: argument
+do
+    case ${argument} in
+      s)  sub=${OPTARG}
+            ;;
+      n)  ses=${OPTARG}
+            ;;
+    esac
+done
+
+if [[ $# -lt 2 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+if [[ "${@}" == *"-o"* ]]; then
+  OW=1
+else
+  OW=0
+fi
+
+FPREP=${@:$OPTIND:1}
+DENOISE=${@:$OPTIND+1:1}
+
+if [[ -z ${sub} ]]; then
+  # loop through subjects
+  search="${FPREP}/sub-*"
+else
+  # do for 1 subject
+  sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
+  search="${FPREP}/sub-${sub_nr}"
+fi
+
+#-----------------------------------------------------------------------------
+# Start clock
+#-----------------------------------------------------------------------------
+
+echo "==================================================================================================="
+printf "DENOISING DATA WITH FMRIPREP-CONFOUNDS\n"
+start=`date +%s`
+start_date=`date`
+
+printf "Started at ${start_date}\n"
+echo "==================================================================================================="
+
+#-----------------------------------------------------------------------------
+# Run it
+
+for dir in ${search}; do
+
+  # check if we got a session number
+  if [[ -z ${ses} ]]; then
+    nr=""
+    base=$(basename ${dir})/ses-${nr}
+  else
+    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
+    base=$(basename ${dir})
+  fi
+
+  if [[ ${OW} -eq 1 ]]; then
+    # overwrite mode enabled
+    if [[ -d ${DENOISE}/${base} ]]; then
+      rm -r ${DENOISE}/${base}
+    fi
+  fi
+
+  if [[ ! -d ${DENOISE} ]]; then
+    mkdir -p ${DENOISE}
+  fi
+
+  if [[ -d ${FPREP}/${base} ]]; then
+
+    if [[ ! -d ${DENOISE}/${base} ]]; then
+
+      echo
+      echo "**************************************** Processing `basename ${dir}` ***************************************"
+
+      # We need to specify a setup script with the variables if we want to qsub this job
+      if [[ ${PLACE} == "SPINOZA" ]]; then
+        job="qsub -pe smp 10"
+        job="bash"
+        in_setup="-v ${DIR_SCRIPTS}/shell/spinoza_setup"
+        cpu=10
+      else
+        job="bash"
+        cpu=1
+      fi
+
+      echo "Running pybest denoising"
+
+      # full path is needed for qsub
+      ${job} ${DIR_SCRIPTS}/bin/call_pybest \
+        -r $(basename ${dir} | cut -d'-' -f2) \
+        -n "${nr}" \
+        -o ${DENOISE} \
+        -s "fsnative" \
+        -f ${FPREP} ${in_setup} \
+        -c ${cpu} \
+        -z "zscore"
+
+      if [[ $? != 0 ]]; then
+        echo
+        echo "---------------------------------------------------------------------------------------------------"
+        echo "ERROR in `basename ${0}`: call_pybest exited with non-zero status"
+        exit 1
+      fi        
+
+    else
+
+      echo "`basename ${dir}`: data already denoised"
+
+    fi
+
+  else
+
+    echo "`basename ${dir}`: might want to run fMRIprep first.."
+    continue
+
+  fi
+
+done
+
+#-----------------------------------------------------------------------------
+# Calculate time spent using 'let'
+echo
+echo "---------------------------------------------------------------------------------------------------"
+end=`date +%s`
+end_date=`date`
+printf "Done at ${end_date}\n"
+
+let deltatime=end-start
+let hours=deltatime/3600
+let minutes=(deltatime/60)%60
+let seconds=deltatime%60
+printf "Time spent: %d:%02d:%02d\n" ${hours} ${minutes} ${seconds}
+echo "---------------------------------------------------------------------------------------------------"

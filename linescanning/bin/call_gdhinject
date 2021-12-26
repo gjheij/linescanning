@@ -1,0 +1,180 @@
+#!/usr/bin/env python
+
+import os
+import numpy as np
+import warnings
+from nilearn import image
+from scipy import ndimage
+import nibabel as nb
+from scipy import ndimage
+import sys, getopt
+from linescanning.utils import get_file_from_substring
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_gdhinject
+
+Patch up the FreeSurfer brainmask with manual segmentation edits based on FreeSurfer recon-
+struction and MGDM segmentaion (or the output from call_gdhcombine). For this scipt, we will
+need the path to the FreeSurfer directory and the path to the directory containing the man-
+ual masks (incl. sagittal sinus mask).
+
+This step is equivalent to call_freesurfer 'pial edits', where the brainmask.mgz is edited. To make
+FreeSurfer (and later fmriprep) use these edits, you need to run call_freesurfer -s <sub_ID> -r 23
+-e pial first, check the new surfaces, and re-run fmriprep to incorporate changes into the segmen-
+tations that are then being used to create levelsets for Nighres cortex reconstruction.
+
+Args:
+    -f | --fsdir <FreeSurfer>  directory containing segmentations from FreeSurfer
+    -m | --masks <Man seg>     directory containing manual segmentation edits
+    -o           <outside>     use only 'outside'-mask to generate new brainmask
+
+Example:
+    call_gdhinject -f /path/to/fs -m /path/to/man_masks
+    call_gdhinject -f /path/to/fs -m /path/to/man_masks -o
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    fsdir   = None
+    manseg  = None
+    outside_only = False
+
+    try:
+        opts = getopt.getopt(argv,"oh:f:m:",["fsdir=", "masks="])[0]
+    except getopt.GetoptError:
+        print(main.__doc__)
+        sys.exit(2)
+
+    for opt, arg in opts:
+        if opt == '-h':
+            print(main.__doc__)
+            sys.exit()
+        elif opt in ("-f", "--fsdir"):
+            fsdir = arg
+        elif opt in ("-m", "--masks"):
+            manseg = arg
+        elif opt in ("-o"):
+            outside_only = True
+
+    if len(argv) < 2:
+        print("\nNEED AT LEAST THE PATH TO FREESURFER AND MASK-DIRECTORIES")
+        print(main.__doc__)
+        sys.exit()
+
+    for i in [fsdir, manseg]:
+        if not os.path.exists(i):
+            print(f'could not find directory {i}')
+            sys.exit(1)
+
+    if not outside_only:
+        print("Loading in masks..")
+        manual_outside_mask         = get_file_from_substring("-outside", manseg)
+        manual_inside_mask          = get_file_from_substring("manualseggm", manseg)
+        manual_wm_mask              = get_file_from_substring("manualsegwm", manseg)
+    else:
+        print("Loading outside-mask only..")
+        manual_outside_mask         = get_file_from_substring("-outside", manseg)
+
+    freesurfer_brainmask_auto   = opj(fsdir, 'mri', 'brainmask.auto.mgz')
+    freesurfer_brainmask        = opj(fsdir, 'mri', 'brainmask.mgz')
+    freesurfer_t1w              = opj(fsdir, 'mri', 'T1.mgz')
+    freesurfer_noCC             = opj(fsdir, 'mri', 'aseg.auto_noCCseg.mgz')
+
+    print("Resampling..")
+    if not outside_only:
+        manual_outside_mask = image.resample_to_img(manual_outside_mask, freesurfer_brainmask_auto, interpolation='nearest')
+        manual_outside_mask = nb.freesurfer.MGHImage(manual_outside_mask.get_fdata().astype(np.float32), affine=manual_outside_mask.affine)
+        manual_inside_mask  = image.resample_to_img(manual_inside_mask, freesurfer_brainmask_auto, interpolation='nearest')
+        manual_inside_mask = nb.freesurfer.MGHImage(manual_inside_mask.get_fdata().astype(np.float32), affine=manual_inside_mask.affine)
+    else:
+        manual_outside_mask = image.resample_to_img(manual_outside_mask, freesurfer_brainmask_auto, interpolation='nearest')
+        manual_outside_mask = nb.freesurfer.MGHImage(manual_outside_mask.get_fdata().astype(np.float32), affine=manual_outside_mask.affine)
+
+    if not outside_only:
+        if manual_wm_mask:
+            print("Creating new wm.mgz")
+
+            manual_wm_mask = image.resample_to_img(manual_wm_mask, freesurfer_brainmask_auto,
+                                                        interpolation='nearest')
+
+
+            manual_wm_mask = nb.freesurfer.MGHImage(manual_wm_mask.get_data().astype(np.float32),
+                                                        affine=manual_wm_mask.affine)
+
+            noCC_seg = nb.load(freesurfer_noCC)
+            noCC_seg_data = noCC_seg.get_fdata()
+
+            noCC_wm = np.zeros_like(noCC_seg_data)
+            noCC_wm[(noCC_seg_data == 2) | (noCC_seg_data == 41)] = 1
+            noCC_wm_img = nb.freesurfer.MGHImage(noCC_wm.astype(np.float32), affine=noCC_seg.affine)
+
+            noCC_wm_img.to_filename(opj(fsdir, 'mri', 'aseg.auto_noCCwm.mgz'))
+
+            manual_wm_mask = image.math_img('(manual + asegwm) > 0',
+                                            manual=manual_wm_mask,
+                                            asegwm=noCC_wm_img)
+
+            manual_inside_mask = image.math_img('(manual_inside_mask + manual_wm_mask) > 0',
+                                                manual_inside_mask=manual_inside_mask,
+                                                manual_wm_mask=manual_wm_mask)
+
+            freesurfer_wm = opj(fsdir, 'mri', 'wm.mgz')
+
+            freesurfer_wm_new = image.math_img('freesurfer_wm * (1-manual_inside_mask) '
+                                            '* (1 - manual_outside_mask)'
+                                            '+ manual_wm_mask * 255',
+                                            manual_inside_mask=manual_inside_mask,
+                                            manual_wm_mask=manual_wm_mask,
+                                            manual_outside_mask=manual_outside_mask,
+                                            freesurfer_wm=freesurfer_wm)
+
+            # Get rid of any weird small components
+            freesurfer_wm_new_ =  nb.Nifti1Image(freesurfer_wm_new.get_data(), freesurfer_wm_new.affine)
+            largest_component = image.largest_connected_component_img(freesurfer_wm_new_)
+            largest_component = nb.MGHImage(largest_component.get_data(), freesurfer_wm_new.affine, freesurfer_wm_new.header)
+
+            freesurfer_wm_new = image.math_img('freesurfer_wm * largest_component',
+                                            freesurfer_wm=freesurfer_wm_new,
+                                            largest_component=largest_component)
+
+            freesurfer_wm_new.to_filename(opj(fsdir, 'mri', 'wm.mgz'))
+            freesurfer_wm_new.to_filename(opj(fsdir, 'mri', 'wm.asegedit.mgz'))
+        
+        else:
+            print("No WM-edits were made; re-using old WM.mgz")
+
+        try:
+            print("Creating new brainmask.mgz")
+            new_brainmask = image.math_img('(((brain_mask > 0) + inside - outside ) > 0) * t1w',
+                                        brain_mask=freesurfer_brainmask_auto,
+                                        outside=manual_outside_mask,
+                                        t1w=freesurfer_t1w,
+                                        inside=manual_inside_mask)
+
+            new_brainmask.to_filename(freesurfer_brainmask)
+            new_brainmask.to_filename(opj(fsdir, 'mri', 'brain.finalsurfs.manedit.mgz'))
+
+            print("Done")
+        except:
+            print("Cannot perform this operation. Make sure all files are present")
+            sys.exit(1)
+
+    else:
+
+        print("Creating new brainmask.mgz with outside-mask only")
+        new_brainmask = image.math_img('(((brain_mask > 0) - outside ) > 0) * t1w',
+                                    brain_mask=freesurfer_brainmask_auto,
+                                    outside=manual_outside_mask,
+                                    t1w=freesurfer_t1w)
+
+        new_brainmask.to_filename(freesurfer_brainmask)
+        new_brainmask.to_filename(opj(fsdir, 'mri', 'brain.finalsurfs.manedit.mgz'))
+
+        print("Done")
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

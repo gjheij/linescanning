@@ -1,0 +1,144 @@
+#!/usr/bin/env python
+
+import numpy as np
+import nibabel as nb
+import os
+import sys, getopt
+import math
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_matrix2nifti
+
+This is a short script that outputs the scanner coordinates given an affine matrix from an input file.
+
+Args:
+    -i (--inputfile=)           input file
+    -m (--rotmat=)              rotation matrix (we need to obtain this from the generic affine file)
+
+Outputs:
+    gives the scanner coordinates from the affine matrix
+
+
+Example:
+    call_getscannercoordinates -i /path/to/inputfile
+    call_getscannercoordinates -i "$DIR_DATA_SOURCE/sub-001/ses-2/nifti/8_14slices.nii.gz"
+    call_getscannercoordinates -i "$DIR_DATA_SOURCE/sub-001/ses-2/nifti/8_14slices.nii.gz"
+                               -m "$VALUES"
+
+---------------------------------------------------------------------------------------------------
+
+    """
+
+    inputfile   = ''
+    rotmat      = ''
+
+
+    try:
+        opts, args = getopt.getopt(argv,"hi:m:",["inputfile=", "rotmat="])
+    except getopt.GetoptError:
+        print(main.__doc__)
+        sys.exit(2)
+
+    for opt, arg in opts:
+        if opt == '-h':
+            print(main.__doc__)
+            sys.exit()
+        elif opt in ("-i", "--inputdir"):
+            inputfile = arg
+        elif opt in ("-m", "--rotmat"):
+            rotmat = arg
+    if len(argv) < 2:
+        print("NOT ENOUGH ARGUMENTS SPECIFIED")
+        print(main.__doc__)
+        sys.exit()
+
+    ms_img      = nb.load(inputfile)
+    ms_img_data = ms_img.get_fdata()
+
+    np.set_printoptions(precision=3, suppress=True)
+    M           = ms_img.affine[:3, :3]
+    abc         = ms_img.affine[:3, 3]
+
+    def f(i, j, k):
+        """ Return X, Y, Z coordinates for i, j, k """
+        return M.dot([i, j, k]) + abc
+
+    epi_vox_center = (np.array(ms_img_data.shape) - 1) / 2
+    scanner_coord = f(epi_vox_center[0], epi_vox_center[1], epi_vox_center[2])
+
+    if rotmat != "":
+        a = [rotmat]
+        arr = a[0].split(", ")
+        b = [float(s) for s in arr]
+        # print(b)
+
+        rot_array   = np.array(b)
+        rot_matrix  = np.reshape(rot_array, (3,3))
+
+        # print(rot_matrix)
+        beta        = math.asin(-rot_matrix[2,0])                   # RL
+        alpha       = math.atan2(rot_matrix[1,0],rot_matrix[0,0]);  # AP
+        gamma       = math.atan2(rot_matrix[2,1],rot_matrix[2,2]);  # SI
+
+        MAT = [beta, alpha, gamma]
+
+        print("")
+        print(" Rotation values:")
+
+        c = 0
+        for i in MAT:
+            c += 1
+
+            if c == 1:
+                axis = "RL"
+                euc = "x"
+                val = round(scanner_coord[0],5)
+
+                if val < 0:
+                    txt = "to the left of "
+                else:
+                    txt = "to the right of "
+
+            elif c == 2:
+                axis = "AP"
+                euc = "y"
+                val = round(scanner_coord[1],5)
+
+                if val < 0:
+                    txt = "posterior of "
+                else:
+                    txt = "anterior of "
+
+            elif c == 3:
+                axis = "SI"
+                euc = "z"
+                val = round(scanner_coord[2],5)
+
+                if val < 0:
+                    txt = "superior of "
+                else:
+                    txt = "inferior of "
+
+            if i < 0 and c == 1:
+                ori_rot = "counterclockwise"
+            elif i < 0 and c != 1:
+                ori_rot = "clockwise"
+            elif i > 0 and c == 1:
+                ori_rot = "clockwise"
+            elif i > 0 and c != 1:
+                ori_rot = "counterclockwise"
+
+            print("  " + euc + " = " + str(round(i, 5)) + " degrees " + ori_rot + " and " + str(val) + " mm " + txt + axis + "-axis")
+
+    else:
+        print(" No affine matrix was specified, only outputting translation values:")
+        print("  x [RL] = " + str(round(scanner_coord[0],5)) + "; neg = to the left, pos = to the right")
+        print("  y [AP] = " + str(round(scanner_coord[1],5)) + "; neg = posterior, pos = anterior")
+        print("  z [SI] = " + str(round(scanner_coord[2],5)) + "; neg = superior, pos = inferior")
+
+    print("")
+if __name__ == "__main__":
+    main(sys.argv[1:])

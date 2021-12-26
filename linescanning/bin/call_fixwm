@@ -1,0 +1,92 @@
+#!/usr/bin/env python
+
+import os
+import numpy as np
+import warnings
+from nilearn import image
+import nibabel as nb
+from linescanning import utils
+import sys, getopt
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_fixwm
+
+The white-matter segmentation from FreeSurfer is not always optimal. With the script we inject the
+segmentation from CAT12 into FreeSurfer, which is much more accurate, especially around insular re-
+gions. We just give it the FreeSurfer subject and the path to CAT12's white matter segmentation. I
+tried inserting the CAT12 segmentation as manualsegwm in call_gdhinject, but then you get similar
+cerebellum issues.
+
+Args:
+    <subject>       subject ID as used in the FreeSurfer directory
+    <WM seg>        path to WM-segmentation from CAT12
+    <cortex seg>    path to cortex mask to eliminate cerebellum > created during spinoza_cortexre-
+                    construction
+
+Example:
+    call_fixwm sub-999 /path/to/p2WMseg.nii.gz /path/to/cortexseg.nii.gz
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    subject = None
+    wmseg   = None
+    cortex  = None
+
+    if len(argv) < 2:
+        print("\nNEED AT LEAST A SUBJECT ID")
+        print(main.__doc__)
+        sys.exit()
+
+    try:
+        subject = argv[0]
+        wmseg   = argv[1]
+        cortex  = argv[2]
+    except:
+        subject = argv[0]
+        wmseg   = argv[1]    
+
+    fsdir = opj(os.environ['SUBJECTS_DIR'], subject)
+    if not os.path.exists(fsdir):
+        raise ValueError(f"Could not find {subject} in SUBJECTS_DIR. Is it set correctly?")
+    
+             
+    fswm = opj(fsdir, 'mri', 'wm.mgz')
+
+    if cortex == None:
+        cortex = utils.get_file_from_substring("cruise_mask", opj(os.environ['DIR_DATA_DERIV'], 'manual_masks', subject, 'ses-1'))
+
+    catwm = image.resample_to_img(wmseg, fswm, interpolation='nearest')
+    cortex = image.resample_to_img(cortex, fswm, interpolation='nearest')
+
+    catwm_img = nb.freesurfer.MGHImage(catwm.get_fdata().astype(np.float32), affine=catwm.affine)
+    cortex = nb.freesurfer.MGHImage(cortex.get_fdata().astype(np.float32), affine=cortex.affine)
+    
+    manual_inside_mask = image.math_img('(cat * cortex) > 0',
+                                        cat=catwm_img,
+                                        cortex=cortex)
+
+    freesurfer_wm_new = image.math_img('(freesurfer_wm + manual_inside_mask > 0)',
+                                        manual_inside_mask=manual_inside_mask,
+                                        freesurfer_wm=fswm)
+
+    freesurfer_wm_new = nb.freesurfer.MGHImage(freesurfer_wm_new.get_fdata().astype(np.float32), affine=freesurfer_wm_new.affine)
+    freesurfer_wm_new = image.math_img('freesurfer_wm * 110', 
+                                       freesurfer_wm=freesurfer_wm_new)
+
+    # remove weird small components
+    largest_component = image.largest_connected_component_img(freesurfer_wm_new)
+    largest_component = nb.MGHImage(largest_component.get_data(), freesurfer_wm_new.affine, freesurfer_wm_new.header)
+
+    freesurfer_wm_new = image.math_img('freesurfer_wm * largest_component',
+                                        freesurfer_wm=freesurfer_wm_new,
+                                        largest_component=largest_component)                                                           
+
+    freesurfer_wm_new.to_filename(opj(fsdir, 'mri', 'wm.mgz'))
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

@@ -1,0 +1,155 @@
+#!/usr/bin/env python
+
+import os
+import numpy as np
+import cortex
+import random
+import sys, getopt
+import pandas as pd
+from datetime import datetime
+import warnings
+import ast
+from linescanning import optimal
+warnings.filterwarnings('ignore')
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_pycortex2 (object oriented version of call_pycortex with more properties to use in selection)
+
+This script calculates the orientation of the line in the first session anatomy based on the sur-
+faces as outputted by FreeSurfer and later also the pRF-maps. Eventually it will create a csv-file
+containing the most important information about the orientation of the line. The main operations
+will be governed by the classes in linescanning/optimal.py. Aside from functional properties, we
+can now also set cut off criteria for cortical thickness and sulcal depth. If you do not wish to
+apply a certain filter, just leave it empty and press ENTER. That way, the default value (i.e.,
+no thresholding) will be used.
+
+Args:
+    -d (--deriv=)       Path to all derivatives (e.g., freesurfer/pycortex/prf)
+    -s (--sub=)         Subject name as defined in FreeSurfer directory
+    -r (--roi=)         ROI to be used; must be a label present in <fs_dir>/<subject>/label; de-
+                        fault = V1_exvivo.thresh. It should be following the nomenclature of Free-
+                        Surfer but omitting the 'lh'/'rh' to include both hemispheres
+                        in the analysis
+    -t (--task=)        Specify the task to use in case of multiple tasks in one session. Default
+                        is read from os.environ['TASK_SES1'] as specified in the spinoza_setup 
+                        file
+    -o (--out=)         Output file containing translation and rotation values
+    -u (--use-prf)      Exclude pRF in the calculation of the best vertex even if you have a pRF-
+                        parameter file to only use surface (anatomical) information. Does not re-
+                        quire an argument. Specifying this flag means you want to include it
+    -v (--vert)         list of manually specified vertices instead of based on surface calculation.
+                        use the format [5875,8872] with the first vertex in left hemisphere and se-
+                        cond in right hemisphere.
+    -f (--freeview)     Disable FreeView while verifying vertex location. Only do this if you al-
+                        ready know where it's located!
+
+Optional (if -d is not specified or the directories are not all located in 'derivatives'):
+    --fs                   path to freesurfer directory up to subject specific directories
+    --ctx                  path to pycortex directory up to subject specific directories
+    --prf                  path to pRF directory up to subject specific directories
+
+Outputs:
+    a csv-file called line_pycortex.csv in the pycortex/sub-xxx directory specifying the
+    orientation of the line in the first session anatomy
+
+Examples:
+    call_pycortex2 -s sub-001 -d /dir/to/derivatives -o pycortex/sub-001/line_pycortex.csv -b 1
+    call_pycortex2 -s sub-001 --fs /path/freesurfer --ctx /path/pycortex --prf /path/prf
+    call_pycortex2 -s sub-001 -d /dir/to/derivatives -u
+
+Notes:
+    - You only need to specify the paths up until the sub-xxx, assuming a BIDS-like structure
+    - There are various types of vertex-selection:
+        > pRF and surface:
+            use both the information from pRF and surface calculations (default). For
+            this we need a pRF-parameter file from call_prfpy or separate numpy files for eccentric-
+            ity, r2, and polar angle. Additionally, we need the surfaces from FreeSurfer
+        > pRF-only:
+            will still require the same information as above, but instead you can leave the thres-
+            hold for structural properties to default
+        > surface-only:
+            will require the FreeSurfer surfaces, but if the pRF file is present, set the thres-
+            holds to default to not interfere with the mask
+        > curvature-only:
+            leave all thresholds to default to only look for minimal curvature
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    subject     = None
+    task        = f"{os.environ['TASK_SES1']}_model-gauss_stage-iter"
+    out         = None
+    roi         = "V1_exvivo.thresh"
+    use_prf     = 1
+    verts       = None
+    open_fv     = 1
+
+    try:
+        opts = getopt.getopt(argv,"fuhd:s:t:r:o:b:v:",["help", "deriv=", "task=", "sub=", "roi=", "out=", "fs=", "ctx=", "prf=", "vert=", "use-prf", "--freeview"])[0]
+    except getopt.GetoptError:
+        print("ERROR IN ARGUMENT HANDLING!")
+        print(main.__doc__)
+        sys.exit(2)
+
+    for opt, arg in opts:
+        if opt == '-h':
+            print(main.__doc__)
+            sys.exit()
+        elif opt in ("-s", "--sub"):
+            subject = arg
+        elif opt in ("-r", "--roi"):
+            roi = arg
+        elif opt in ("-o", "--out"):
+            out = arg
+        elif opt in ("-u", "--use-prf"):
+            use_prf = 1
+        elif opt in ("-t", "--task"):
+            task = arg
+        elif opt in ("-f", "--freeview"):
+            open_fv = 0
+        elif opt in ("--vert"):
+            verts = arg
+
+    if len(argv) < 1:
+        print("\nNEED AT LEAST A SUBJECT ID")
+        print(main.__doc__)
+        sys.exit()
+
+    #----------------------------------------------------------------------------------------------------------------
+    # Set inputs
+    if verts:
+        try:
+            verts = np.array(ast.literal_eval(verts))
+        except:
+            raise ValueError(f"You used '{verts}'. Make sure to use '[x,y,z]' (comma-separated and no spaces)")
+    
+    # set output file
+    if out == None:
+        out = opj(os.environ['CTX'], subject, 'line_pycortex.csv')
+
+    # use pRFs or not when selecting vertex
+    if use_prf == 1:
+        use_prf = True
+    else:
+        use_prf = False
+
+    # open FreeView or not?
+    if open_fv == 1:
+        open_fv = True
+    else:
+        open_fv = False
+
+    optimal.call_pycortex2(subject, 
+                           task=task, 
+                           vert=verts,
+                           use_prf=use_prf,
+                           out=out,
+                           roi=roi,
+                           webshow=open_fv)
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

@@ -1,0 +1,556 @@
+#!/bin/bash
+#$ -S /bin/bash
+#$ -cwd
+#$ -j Y
+#$ -q short.q@jupiter
+#$ -V
+#$ -pe smp 5
+#$ -m ea
+#$ -M j.heij@spinozacentre.nl
+#
+#---------------------------------------------------------------------------------------------------------
+# check if there's is a setup file containing the major paths and source it if it exists
+call_loadsetup
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+spinoza_gdhpipeline
+
+this script contains the pipeline that mimics G. de Hollander's pipeline, wherein manual segmenta-
+tion are injected into fmriprep and MGDM to optimize the cortical reconstruction with FreeSurfer 
+and CRUISE. It is run after completion of region extraction (spinoza_extractregions).
+
+It will open windows to view the reconstruction and the segmentation, after which user input is re-
+quired: if you're happy, it will run the remaining modules for cortical reconstruction using the 
+same command as specified in the master script for that particular module. If you're not happy, you 
+can make your edits to the files, save the files with a particular name, and re-run the pipeline 
+with the following modules: fmriprep (spinoza_fmriprep > removes surface_recon_wf-directory first), 
+skullstripping (spinoza_masking), and MGDM-tissue classification (spinoza_segmentmgdm). It will 
+then open the window again to check the changes in reconstruction/classfication. That concludes the 
+loop.
+
+The following arguments can be specified, but by default the script will read the variables from the
+spinoza_setup file, so if you have not changed any of the paths, you'll only need to specify the sub
+ID.
+
+Arguments:
+  -s <subject ID>   subject ID
+  -a <anat>         directory with skullstripped T1w & T1map images (default = 'skullstripped'). 
+                    Files should be suffixed with "skullstrip_<T1w|T1map>", otherwise call_gdhmgdm 
+                    will fail  
+  -n <session nr>   session number (default is '1', specify 'n' for no session)
+  -c <nighres dir>  root directory with MGDM-output (until <subject ID>)
+  -t <prob seg dir> root directory with levelsets-output (until <subject ID>)
+  -f <fmriprep dir> root directory with fmriprep-output (until <subject ID>). This flag also lets 
+                    you control whether you want to run or skip fMRIprep. Leave empty or specify 
+                    a directory to run it, enter '-f n' if want to go to fMRIprep directly. This 
+                    can be useful if you've encountered an error after you ran fMRIprep and don't
+                    want to run it again.
+  -r <freesurfer>   root directory with freesurfer-output (until <subject ID>). This flag also lets 
+                    you control whether you want to run or skip FreeSurfer. Leave empty or specify 
+                    a directory to run it, enter '-r n' if want to go to fMRIprep directly. This 
+                    can be useful if you've encountered an error after you ran FreeSurfer and don't
+                    want to run it again.
+  -m <mask dir>     root directory with the masks (until <subject ID>)
+  -w <wf dir>       directory containing the fmriprep workflow folders
+  -p <stage>        freesurfer stage to start off from (e.g., 'pial', 'wm' | default = 'wm')
+  -i <inject>       inject manual edits in FreeSurfer (y|n; default="y", but can be set to 'n' if
+                    you did manual edits to brainmask.mgz)
+  -q <fprep type>   if you only want to run anatomical workflows again, enter '-q anat'. If you 
+                    also want to include functional, enter '-q func'. The latter is default for 
+                    most projects
+  -y <run MGDM>     run MGDM after fMRIprep. Default = 'y', but can be turned of by specifying '-y
+                    n'.     
+  -z <post MGDM>    after MGDM, we normally re-run denoising/pRF and later Nighres modules. If we 
+                    don't want this, specify 'n' (default = yes!)              
+
+Usage:
+  spinoza_gdhpipeline -s <sub ID> -t <mgdm dir> -f <fprep dir> -r <fs dir> -m <mask dir> -w <wf dir>
+
+Example:
+  spinoza_gdhpipeline -s sub-001
+  spinoza_gdhpipeline -s sub-001 -t /path/to/mdgm -p pial -i n (don't overwrite brainmask)
+  spinoza_gdhpipeline -s sub-001 -r n -f n (skip FreeSurfer & fMRIprep)
+  spinoza_gdhpipeline -s sub-001 -r n -f n -z n (run call_gdhmgdm only)
+  spinoza_gdhpipeline -s sub-001 -f n -z n -y n (only inject manual edits and re-run FreeSurfer)
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+if [[ $# -lt 1 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+# Allocate input arguments to variables
+#
+while getopts s:a:n:c:t:f:r:w:m:p:i:q:z: argument
+do
+    case ${argument} in
+      s)  subject=${OPTARG}
+            ;;
+      a)  anats=${OPTARG}
+            ;;
+      n)  session=${OPTARG}
+            ;;
+      c)  nighres=${OPTARG}
+            ;;
+      t)  level=${OPTARG}
+            ;;
+      f)  fprep=${OPTARG}
+            ;;
+      r)  fs=${OPTARG}
+            ;;
+      m)  masks=${OPTARG}
+            ;;
+      w)  work=${OPTARG}
+            ;;
+      p)  stage=${OPTARG}
+            ;;
+      i)  inject=${OPTARG}
+            ;;
+      q)  fprep_wf=${OPTARG}
+            ;;       
+      z)  run_postmgdm=${OPTARG}
+            ;;
+      y)  run_mgdm=${OPTARG}
+            ;;                               
+    esac
+done
+
+if [[ -z ${subject} ]]; then
+  echo "Always need at least a starting point"
+  Usage >&2
+  exit 1
+fi
+
+#-----------------------------------------------------------------------------
+# Start clock
+#-----------------------------------------------------------------------------
+
+echo
+echo "==================================================================================================="
+printf "ITERATIVE SEGMENTATION/RECONSTRUCTION PIPELINE\n"
+start=`date +%s`
+start_date=`date`
+
+printf "Started at ${start_date}\n"
+echo "==================================================================================================="
+
+echo
+echo "**************************************** Processing `basename ${subject}` ***************************************"
+
+#-----------------------------------------------------------------------------
+# Set default session if none specified
+if [[ -z ${session} ]]; then
+  ses_nr=1
+  base="${subject}/ses-${ses_nr}"
+else
+  if [[ ${session,,} == "n" ]]; then
+    base=${subject}
+    ses_nr=""
+  else
+    ses_nr=${session}
+    base="${subject}/ses-${ses_nr}"
+  fi
+fi
+
+#-----------------------------------------------------------------------------
+# Set default NIGHRES-dir if none specified
+if [[ -z ${nighres} ]]; then
+  NIGHRES=${DIR_DATA_DERIV}/nighres
+else
+  NIGHRES=${nighres}
+fi
+
+if [[ ! -d ${NIGHRES} ]]; then
+  echo "Nighres directory does not exist.."
+  exit 1
+fi
+
+#-----------------------------------------------------------------------------
+# Set default PROBSEG-dir if none specified
+if [[ -z ${level} ]]; then
+  PROBSEG=${DIR_DATA_DERIV}/manual_masks/${base} # base contains <subject>/(<ses-x>) if specified
+else
+  PROBSEG=${level}/${base}/region
+fi
+
+if [[ ! -d ${PROBSEG} ]]; then
+  echo "Levelset directory does not exist.."
+  exit 1
+fi
+
+#-----------------------------------------------------------------------------
+# Set default anat-dir if none specified
+if [[ -z ${anats} ]]; then
+  ANATDIR=${DIR_DATA_DERIV}/skullstripped/${base} # base contains <subject>/(<ses-x>) if specified
+else
+  ANATDIR=${anats}/${base}
+fi
+
+if [[ ! -d ${ANATDIR} ]]; then
+  echo "Directory with T1w/T1map-images does not exist.."
+  exit 1
+fi
+
+#-----------------------------------------------------------------------------
+# Set default fmriprep workflow-dir if none specified
+if [[ -z ${work} ]]; then
+  WORK=${PATH_HOME}/programs/packages/fmriprep/${PROJECT}/fmriprep_wf
+else
+  WORK=${work}
+fi
+
+if [[ ! -d ${WORK} ]]; then
+  echo "fMRIprep-workflow directory does not exist.."
+  exit 1
+fi
+
+#-----------------------------------------------------------------------------
+# Set default fmriprep-dir if none specified
+if [[ -z ${fprep} ]]; then
+  FPREP=${DIR_DATA_DERIV}/fmriprep/${base}
+else
+  if [[ ${fprep} == "n" ]]; then
+    FPREP="no"
+  else
+    FPREP=${fprep}/${base}
+  fi
+fi
+
+if [[ ${FPREP} != "no" ]] && [[ ! -d ${FPREP} ]]; then
+  echo "fMRIprep-directory does not exist.."
+  exit 1
+fi
+
+#-----------------------------------------------------------------------------
+# Set default freesurfer-dir if none specified
+if [[ -z ${fs} ]]; then
+  FS=${SUBJECTS_DIR}/${subject}
+else
+  if [[ ${fs} == "n" ]]; then
+    FS="no"
+  else
+    FS=${fs}/${subject}
+  fi
+fi
+
+if [[ ${FS} != "no" ]] && [[ ! -d ${FS} ]]; then
+  echo "FreeSurfer-directory does not exist.."
+  exit 1
+fi
+
+#-----------------------------------------------------------------------------
+# Set default masks-dir if none specified
+if [[ -z ${masks} ]]; then
+  MASKS=${DIR_DATA_DERIV}/manual_masks/${base}
+else
+  MASKS=${masks}/${base}
+fi
+
+if [[ ! -d ${MASKS} ]]; then
+  echo "Mask-directory does not exist.."
+  exit 1
+fi
+
+#-----------------------------------------------------------------------------
+# Set default FreeSurfer stage to start off from
+if [[ -z ${stage} ]]; then
+  STAGE="wm"
+else
+  if [[ "${stage,,}" == "cp" ]] || [[ "${stage,,}" == "wm" ]] || [[ "${stage,,}" == "pial" ]]; then
+    STAGE=${stage}
+  else
+    call_freesurfer
+    echo
+    echo "ERROR: To run this mode, you need to specify \"cp\", \"wm\", \"pial\" to let me know your type of edit.."
+    exit 1
+  fi
+fi
+
+#-----------------------------------------------------------------------------
+# Set default fMRIprep-workflow to re-run
+if [[ -z ${fprep_wf} ]]; then
+  RUN_WF="func"
+else
+  if [[ "${fprep_wf,,}" == "anat" ]] || [[ "${fprep_wf,,}" == "func" ]]; then
+    RUN_WF=${fprep_wf}
+  else
+    echo
+    echo "ERROR: To run this mode, you need to specify \"func\", \"anat\""
+    exit 1
+  fi
+fi
+
+#-----------------------------------------------------------------------------
+# Set default fMRIprep-workflow to re-run
+if [[ -z ${run_postmgdm} ]]; then
+  RUN_POSTMGDM="y"
+else
+  if [[ ${run_postmgdm,,} == "n" ]]; then
+    RUN_POSTMGDM="no"
+  else
+    RUN_POSTMGDM="y"
+  fi
+fi
+
+#-----------------------------------------------------------------------------
+# Set default MGDM-workflow to re-run
+if [[ -z ${run_mgdm} ]]; then
+  RUN_MGDM="y"
+else
+  if [[ ${run_mgdm,,} == "n" ]]; then
+    RUN_MGDM="n"
+  else
+    RUN_MGDM="y"
+  fi
+fi
+
+#-----------------------------------------------------------------------------
+# Step 1: inject manual segmentations into fmriprep
+if [[ ${FS} != "no" ]]; then
+  if [[ -z ${inject} ]] || [[ ${inject} == "y" ]]; then
+    if [[ -d ${FS} && -d ${PROBSEG} ]]; then
+      echo "Injecting manual segmentations into FreeSurfer"
+      call_gdhinject ${FS} ${PROBSEG}
+      if [[ $? != 0 ]]; then
+        echo
+        echo "---------------------------------------------------------------------------------------------------"
+        echo "ERROR in `basename ${0}`: call_gdhinject exited with non-zero status"
+        exit 1
+      fi
+    fi
+  else
+    echo "Not updating brainmask.mgz, assuming you did manual edits to brainmask.mgz"
+  fi
+
+  # Re-run freesurfer as if we just did pial edits and white matter edits
+  echo
+  echo "---------------------------------------------------------------------------------------------------"
+  echo "Re-running FS as of \"${STAGE}\"-stage"
+  call_freesurfer -s ${subject} -r 23 -e "${STAGE}"
+  # qsub $DIR_SCRIPTS/bin/utils/qsub_test.sh
+
+  if [[ `hostname` == *"spinozacentre"* ]]; then
+    PID=$(qstat | grep -A0 "${subject}_23" | awk '{print $1}')
+    # PID=$(qstat | grep -A0 "qsub_test" | awk '{print $1}')
+    echo "Waiting for FreeSurfer to finish"
+    while true; do
+      JOBRUNNING=$(qstat -u "`whoami`" | awk '$1 == '"${PID}"'' | wc -l)
+      if [[ ${JOBRUNNING} == "0" ]]; then
+        echo "Job done"
+        break
+      fi
+    done
+  fi
+else
+  echo "Skipping FreeSurfer reconstruction"
+fi
+
+#-----------------------------------------------------------------------------
+# re-rerun modules:
+
+function get_module_nr() {
+
+  if [[ $# -eq 0 ]]; then
+    echo "NEED AT LEAST ONE ARGUMENT!"
+    echo
+    echo "---------------------------------------------------------------------------------------------------"
+    echo "get_module_nr"
+    echo
+    echo "Function to get the module number given an input string. It reads the help-text of the master script"
+    echo "in linescanning/shell/master from line 56 to 100 and looks for the module corresponding to the input"
+    echo "string. I have this because module numbers tend to change and I don't feel like looking that up every"
+    echo "time.."
+    echo
+    echo "The more specific you are with your string, the more stable the result will be. Important is that the"
+    echo "format as specified in the master-script is maintained. This is because it looks for the leading semi-"
+    echo "colon and certain spaces. So if you add modules to the help text, use the format that you see in there!"
+    echo
+    echo "Usage"
+    echo "  get_module_nr <string1>"
+    echo
+    echo "Examples"
+    echo "  get_module_nr \"spinoza_fmriprep\"    > fetches the module number of fmriprep"
+    echo "  get_module_nr \"spinoza_freesurfer\"  > fetches the module number of freesurfer"
+    echo "---------------------------------------------------------------------------------------------------"
+    echo
+  else
+    # Function to fetch the module number by reading the 'help' info from the master-script. It
+    # accepts a string to look for as argument.
+    sed -n "74,120p" ${DIR_SCRIPTS}/shell/master | grep -A0 "${1}" | awk '{print $2}' | cut -d':' -f1
+  fi
+
+}
+
+# masking=`get_module_nr "spinoza_masking"`
+fmriprep=`get_module_nr "spinoza_fmriprep"`
+denoise=`get_module_nr "spinoza_denoising"`
+prf=`get_module_nr "spinoza_fitprfs"`
+mgdm=`get_module_nr "spinoza_segmentmgdm"`
+region=`get_module_nr "spinoza_extractregions"`
+cruise=`get_module_nr "spinoza_cortexreconstruction"`
+
+# the -s flag for master we also set the -s flag in the specified scripts, meaning we will
+# only run these modules for this particular subject. Normally the modules will loop through
+# the list of subjects, but now it'll do just one
+#
+# Internally, it will still submit the fmriprep job to the cluster, but instead of going to the
+# next subject immediately, it waits for the job to finish, as MGDM needs that input. See spi-
+# noza_fmriprep for the details. Quite nifty if you ask me.
+
+################################ RERUN FMRIPREP ################################
+# qsub $DIR_SCRIPTS/bin/utils/qsub_test.sh
+
+if [[ ${FPREP} != "no" ]]; then
+
+  echo
+  echo "Re-running modules: ${fmriprep},${denoise},${prf},${mgdm},${region},${cruise}"
+
+  wf_dir=${WORK}/single_subject_$(basename ${subject} | cut -d'-' -f2)_wf/anat_preproc_wf/surface_recon_wf
+  if [[ -d ${wf_dir} ]]; then
+    echo "Removing surface_recon_wf directory"
+    rm -r ${wf_dir}
+  fi
+
+  isRunning=${WORK}/single_subject_$(basename ${subject} | cut -d'-' -f2)_wf/anat_preproc_wf/fs_isrunning
+  if [[ -d ${isRunning} ]]; then
+    echo "Removing isRunning directory"
+    rm -r ${isRunning}
+  fi
+
+  # Wait for the job to finish if the -s flag was specified!
+  if [[ `hostname` == *"spinozacentre"* ]]; then
+
+    JOB=$(qstat | grep -A0 "fprep_$(basename ${subject} | cut -d'-' -f2)")
+    if [[ -z ${JOB} ]]; then
+      # submit job
+      echo "submitting job"
+      master -m ${fmriprep} -s $(basename ${subject} | cut -d'-' -f2) -t ${RUN_WF}
+    else
+      echo "Job named \"fprep_$(basename ${subject} | cut -d'-' -f2)\" already running"
+    fi
+
+    # monitor job status
+    PID=$(qstat | grep -A0 "fprep_$(basename ${subject} | cut -d'-' -f2)" | awk '{print $1}')
+    # PID=$(qstat | grep -A0 "qsub_test" | awk '{print $1}')
+
+    if [[ -z ${PID} ]]; then
+      echo "ERROR in `basename ${0}`: could not find PID of fMRIprep-job. Probably erroneous submission"
+      exit 1
+    fi
+
+    echo "Waiting for fmriprep to finish"
+    while true; do
+      JOBRUNNING=$(qstat -u "`whoami`" | awk '$1 == '"${PID}"'' | wc -l)
+
+      if [[ ${JOBRUNNING} == "0" ]]; then
+        break
+      fi
+    done
+
+    # double check for commlib error..
+    JOBRUNNING=$(qstat -u "`whoami`" | awk '$1 == '"${PID}"'' | wc -l)
+    if [[ ${JOBRUNNING} != "0" ]]; then
+      echo "Got commlib error, exiting as precaution. Restart spinoza_gdhpipeline"
+      exit 1
+    else
+      echo "Job done"
+    fi
+
+  else
+
+    # run locally
+    master -m ${fmriprep} -s $(basename ${subject} | cut -d'-' -f2) -t ${RUN_WF}
+
+  fi
+
+  if [[ $? != 0 ]]; then
+    echo
+    echo "---------------------------------------------------------------------------------------------------"
+    echo "ERROR in `basename ${0}`: job submission was unsuccessful"
+    exit 1
+  fi
+
+else
+  echo "Skipping fMRIprep"
+  echo
+  echo "Re-running modules: ${denoise},${prf},${mgdm},${region},${cruise}"
+fi
+
+if [[ ${RUN_MGDM} != "no" ]]; then
+
+  ################################ RERUN NIGHRES ################################
+  # Prep for new nighres segmentation using fmriprep's brainmask
+  echo "---------------------------------------------------------------------------------------------------"
+  echo "Running custom version of MGDM-segmentation"
+  echo
+
+  # brainmask_fn=`find ${FPREP}/anat -type f -name "*brain_mask.nii.gz"`
+  # if [[ -z ${brainmask_fn} ]]; then
+  #   echo
+  #   echo "ERROR: Could not find brain mask in ${FPREP}/anat!!"
+  #   exit 1
+  # fi
+
+  dura_fn=`find ${MASKS} -type f -name "*-outside*"`
+  if [[ -z ${dura_fn} ]]; then
+    echo
+    echo "ERROR: Could not find dura mask in ${MASKS}!!"
+    exit 1
+  fi
+
+  # slightly different call compared to call_nighresmgdm. I'm leaving a few options to default so
+  # if your directories are different make sure it's aligned..
+  call_gdhmgdm \
+    -s ${subject} \
+    -n ${ses_nr} \
+    -a ${ANATDIR} \
+    -b "fs" \
+    -d ${dura_fn} \
+    -o ${NIGHRES}/${base}/mgdm
+
+  if [[ $? != 0 ]]; then
+    echo
+    echo "---------------------------------------------------------------------------------------------------"
+    echo "ERROR in `basename ${0}`: call_gdhmgdm exited with non-zero status"
+    exit 1
+  fi
+fi
+
+if [[ ${RUN_POSTMGDM} != "n" ]]; then
+  # Because the output of call_gdhmgdm is the same as spinoza_segmentmgdm, we can safely run
+  # spinoza_extractregions and spinoza_cortexreconstruction
+  if [[ ${PLACE} == "SPINOZA" ]]; then
+    echo "Re-running post-edit Nighres segmentations and pRF-analyses"
+    qsub -N post_gdh_nighres -wd ${DIR_LOGS} ${DIR_SCRIPTS}/shell/master -m ${region},${cruise} -s $(basename ${subject} | cut -d'-' -f2) # overwrite is default for nighres modules
+    qsub -N post_gdh_prf -wd ${DIR_LOGS} ${DIR_SCRIPTS}/shell/master -m ${denoise},${prf} -s $(basename ${subject} | cut -d'-' -f2) -o y # explicitly set to overwrite for denoising/prf-fitting
+  else
+    master -m ${region},${cruise},${denoise},${prf}
+  fi
+fi
+echo
+echo "GdH-pipeline COMPLETED: now do your manual edits to segmentations and rerun"
+
+#-----------------------------------------------------------------------------
+# Calculate time spent using 'let'
+echo
+echo "---------------------------------------------------------------------------------------------------"
+end=`date +%s`
+end_date=`date`
+printf "Done at ${end_date}\n"
+
+let deltatime=end-start
+let hours=deltatime/3600
+let minutes=(deltatime/60)%60
+let seconds=deltatime%60
+printf "Time spent: %d:%02d:%02d\n" ${hours} ${minutes} ${seconds}
+echo "---------------------------------------------------------------------------------------------------"

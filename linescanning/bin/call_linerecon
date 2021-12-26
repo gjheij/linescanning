@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+#$ -S /bin/bash
+#$ -cwd
+#$ -j y
+#$ -q all.q@minerva
+#$ -V
+#$ -pe smp 6
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_linerecon
+
+wrapper for the reconstruction of line-data using a matlab template. For now, we can only run it
+on the Spinoza server, maybe we can port it to local processing as well some day. For now we also
+need to submit it to the minerva server by specifying -q all.q@minerva, because that's the only
+place MRecon seems to work.
+
+Usage:
+  call_linerecon <subject number> <run number> <raw data> <output basename>
+
+Arguments:
+  <sub number>      number of subject's directory from which you can omit "sub-" (e.g.,
+                    for "sub-001", enter "001")
+  <run number>      integer for the nth bold run number
+  <raw data>        path to raw files on which to run reconstruction. Needs to contain .lab files of
+                    the "recon"-slice (slice with rest-slabs on) and the .lab file of the functional
+                    run ("bold"-file)
+  <basename>        basename for output. Will automatically store the output in a .mat file, so spe-
+                    cify up until .mat
+
+  <-n nordic on>    if -n is specified, we'll run NORDIC during reconstruction
+
+Example:
+  call_linerecon 001 1 sourcedata/sub-001/ses-2 sub-001_ses-2_task-2R_run-1_bold
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+if [[ $# -lt 4 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+if [[ "${@}" == *"-n"* ]]; then
+  SUB=${@:$OPTIND+1:1}
+  RUN=${@:$OPTIND+2:1}
+  RAW=${@:$OPTIND+3:1}
+  OUT=${@:$OPTIND+4:1}
+  do_nordic="on"
+else
+  SUB=${@:$OPTIND:1}
+  RUN=${@:$OPTIND+1:1}
+  RAW=${@:$OPTIND+2:1}
+  OUT=${@:$OPTIND+3:1}
+  do_nordic="off"
+fi
+
+#-----------------------------------------------------------------------------
+# Start loop
+
+if [[ ! -d ${RAW} ]]; then
+  echo
+  echo "---------------------------------------------------------------------------------------------------"
+  echo "ERROR in `basename ${0}`: could not find input directory"
+  exit 1
+fi
+
+if [[ ${PLACE} == SPINOZA ]]; then
+
+  newrecon=${RAW}/sub${SUB}_run${RUN}_recon.m
+  if [[ -f ${newrecon} ]]; then
+    rm -r ${newrecon}
+  fi
+
+  # MRecon requires the filelocation (i.e., RAW) to end on backslash
+  if [[ ${RAW: -1} != "/" ]]; then
+    RAW="${RAW}/"
+  fi
+
+  # if [[ -f ${DIR_SCRIPTS}/bin/utils/recon_template.m ]]; then
+  #   cp ${DIR_SCRIPTS}/bin/utils/recon_template.m ${newrecon}
+  # fi
+
+  # reconpar=`find "${RAW}" -type f \( -name "*run-${RUN}*" -name "*recon*" -and -name "*.PAR" \) 2>/dev/null`
+  reconlab=`find "${RAW}" -type f \( -name "*run-1*" -name "*recon*" -and -name "*.lab" \) 2>/dev/null`
+  tasklab=`find "${RAW}" -type f \( -name "*run-${RUN}*" -name "*bold*" -and -name "*.lab" \) 2>/dev/null`
+
+  if [[ -f ${reconlab} && -f ${tasklab} ]]; then
+
+    (
+    echo "%% paths"
+    echo "addpath(getenv('MRRECON')) %working without patch or with seline patch"
+    echo "addpath(getenv('MATLAB_DIR'))"
+    echo "addpath('/data1/projects/MicroFunc/common');"
+    echo "addpath(genpath(fullfile(getenv('PATH_HOME'), 'programs', 'luisa')))"
+    echo "disp(\"Starting recon\")"
+    echo "filelocation = '${RAW}';"
+    echo ""
+    echo "% py_PAR   = 'RECON_PAR'; % sub-xxx_desc-recon.PAR"
+    echo "py_lab   = '$(basename ${reconlab})';  % sub-xxx_desc-recon.LAB"
+    echo "nopy_lab = '$(basename ${tasklab})'; % sub-xxx_task-2R_bold.LAB"
+    echo "nordic   = '${do_nordic}';"
+    echo ""
+    echo "Nc = 32; % nr of channels"
+    echo "TR = 105; %TR in ms"
+    echo "sp_res = 0.25; %line resolution [mm]"
+    echo "gausskernel = 24;"
+    echo ""
+    echo "Data_pc       = basic_recon(py_lab,filelocation, Nc);"
+    echo "nord_tresh    = 9; %not used now, since you are selecting the NORDIC threshold based on the scree plot"
+    echo "varargin_par  = {Data_pc, nord_tresh};"
+    echo "Data_wcsmtSNR = LS_recon_1way(nopy_lab, filelocation, Nc, 'all', TR, gausskernel, 'no', 'wcsmtSNR', nordic, varargin_par);"
+    echo ""
+    echo "save('${OUT}','Data_wcsmtSNR');"
+    echo "disp(\"Done\")"
+    ) >> ${newrecon}
+
+    DIR=`pwd`
+    cd ${RAW}
+    matlab -nodesktop -nosplash -nodisplay -r "$(basename ${newrecon} .m); quit"
+    cd ${DIR}
+
+  else
+
+    if [[ ! -f ${reconlab} ]]; then
+      txt="No LAB-file containing information about reconstruction; should be like sub-xxx_desc-recon.lab"
+    elif [[ ! -f ${tasklab} ]]; then
+      txt="No LAB-file containing information about the line data; should be like sub-xxx_task-2R_bold.lab"
+    fi
+
+    echo
+    echo "---------------------------------------------------------------------------------------------------"
+    echo "ERROR in `basename ${0}`: ${txt}"
+    exit 1
+
+  fi
+
+fi

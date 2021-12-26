@@ -1,0 +1,168 @@
+#!/usr/bin/env bash
+
+SETUP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SETUP_FILE="${SETUP_DIR}/spinoza_setup"
+REPO_DIR=$(dirname ${SETUP_DIR})
+PATH_HOME=$(dirname $(dirname $(dirname $(dirname ${SETUP_DIR}))))
+
+if [[ $1 == "setup" ]]; then
+
+  echo
+  echo "---------------------------------------------------------------------------------------------------------"
+  echo "Welcome to the linescanning-repository!"
+  echo
+  echo "Execute the following steps to setup the repository:"
+  echo " 1) Hit \"master\" in the terminal; if all went well this should bring up the help-menu"
+  echo " 2) Hit \"cd $(dirname ${REPO_DIR})\""
+  echo " 3) If you have sudo-right, do \"sudo python setup.py develop\", if not: \"python setup.py develop --user\""
+  echo " 4) Enter \"ipython\" and then \"from linescanning import *\". No error means SUCCESS!"
+  echo " 5) Go to line 67 and specify where your projects are. Default is set to:"
+  echo "    \"${PATH_HOME}/projects\""
+  echo "---------------------------------------------------------------------------------------------------------"
+  echo
+
+  # ignore permission changes in git
+  git config core.fileMode false
+
+  # make scripts executable
+  chmod -R 775 ${REPO_DIR}/bin
+  chmod -R 775 ${REPO_DIR}/shell
+
+  if [ -f ~/.bash_profile ]; then
+    search_for="source ${SETUP_FILE}"
+    case `grep -Fx "${search_for}" ~/.bash_profile >/dev/null; echo $?` in
+      0)
+        # code if found
+        # echo "Line already present"
+        ;;
+      1)
+        # code if not found
+        (
+        echo 
+        echo "# Inserted via the linescanning-repository"
+        echo "source ${SETUP_FILE}"
+        echo "echo \"ACTIVE PROJECT    ${DIR_DATA_HOME}\""
+        echo "echo \"ACTIVE ACQ FORMAT ${DATA}\""
+        ) >> ~/.bash_profile
+        ;;
+      *)
+        # code if an error occurred
+        echo "ERROR: Could not complete setup.."
+        ;;
+    esac
+  else
+      (
+      echo "# .bash_profile"
+      echo "# Inserted via the linescanning-repository"
+      echo "source ${SETUP_FILE}"
+      echo "echo \"ACTIVE PROJECT    ${DIR_DATA_HOME}\""
+      echo "echo \"ACTIVE ACQ FORMAT ${DATA}\""
+      ) >> ~/.bash_profile
+  fi
+
+  source ~/.bash_profile
+
+fi
+
+#===================================================================================================
+# VARIABLES
+#===================================================================================================
+
+if [[ `whoami` == "fsluser" ]] || [[ `whoami` == 'gjheij' ]]; then
+  export PLACE=HOME
+else
+  export PLACE=SPINOZA
+  export MRRECON=/packages/matlab/toolbox/MRecon/3.0.541
+  export MATLAB_DIR=/packages/matlab/R2020b
+fi
+
+if [[ ${PLACE} == HOME ]]; then
+  if [[ `whoami` == 'gjheij' ]]; then
+    export SPM_PATH=/mnt/d/FSL/shared/software/spm12
+  else
+    export SPM_PATH=/mnt/hgfs/shared/software/spm12
+  fi
+elif [[ ${PLACE} == SPINOZA ]]; then
+  export SKIP_LINES=30
+  export SPM_PATH=${PATH_HOME}/programs/packages/spm12
+fi
+
+export PATH_HOME=${PATH_HOME}
+
+export PROJECT=hemifield # ANAT_SEG-Raw #URIS-MDD #hemifield
+export TASK_SES1="2R"
+export TASK_SES2="LR"
+
+# set your project-root folder (folder where PROJECT lives)
+export DIR_PROJECTS=${PATH_HOME}/projects 
+
+# Switch to tell us what type of data was acquired
+## You can have an average of the given acquisitions if desired, but then the first element
+## Should be the 'reference' space
+declare -a ACQ=("MP2RAGE") # or ("MP2RAGE" "MEMP2RAGE")
+
+# Switch to tell us what the output format should be. "AVERAGE" means average of MP2RAGE and MEMP2RAGE
+export DATA=MP2RAGE # or MP2RAGEME/AVERAGE
+if [[ ${DATA} == "MEMP2RAGE" ]]; then
+  export space="memp2rage"
+elif [[ ${DATA} == "MP2RAGE" ]]; then
+  export space="mp2rage"
+elif [[ ${DATA} == "MPRAGE" ]]; then
+  export space="mprage"  
+elif [[ ${DATA} == "AVERAGE" ]]; then
+  if [[ `echo ${#ACQ[@]}` -ne 2 ]]; then
+    echo "Average of what..? \"ACQ\" variable in spinoza_setup has ${#ACQ[@]} items"
+    exit 1
+  fi
+  export space="average"
+else
+  echo "ERROR: please set correct mode (\"average\" | \"mp2rage\" | \"memp2rage\")"
+  exit 1
+fi
+
+#===================================================================================================
+# PATHS
+#===================================================================================================
+
+export DIR_SCRIPTS=${REPO_DIR}
+export DIR_DATA_HOME=${DIR_PROJECTS}/${PROJECT}
+export DIR_LOGS=${DIR_DATA_HOME}/code/logs
+export DIR_DATA_SOURCE=${DIR_DATA_HOME}/sourcedata
+export DIR_DATA_DERIV=${DIR_DATA_HOME}/derivatives
+export DIR_DATA_ATLAS=${PATH_HOME}/atlas/MICCAI2012-Multi-Atlas-Challenge-Data
+export SOURCEDATA=${DIR_DATA_HOME}
+export DERIVATIVES=${DIR_DATA_DERIV}
+export MASKS=${DIR_DATA_DERIV}/manual_masks
+export ANTS=${DIR_DATA_DERIV}/ants
+export FS=${DIR_DATA_DERIV}/freesurfer
+export ANTS=${DIR_DATA_DERIV}/ants
+export AVG=${DIR_DATA_DERIV}/average
+export MASKED_AVG=${DIR_DATA_DERIV}/masked_average
+export PYMP2RAGE=${DIR_DATA_DERIV}/pymp2rage
+export NIGHRES=${DIR_DATA_DERIV}/nighres
+export FSL=${DIR_DATA_DERIV}/fsl
+export SKULLSTRIP=${DIR_DATA_DERIV}/skullstripped
+export CTX=${DIR_DATA_DERIV}/pycortex
+export PRF=${DIR_DATA_DERIV}/prf
+
+# Make executables available in environment
+export PATH=${PATH}:${DIR_SCRIPTS}/bin
+export PATH=${PATH}:${DIR_SCRIPTS}/shell
+
+# chmod -R 775 ${DIR_SCRIPTS}/bin
+# chmod -R 775 ${DIR_SCRIPTS}/shell
+
+# Store acquisitions file file in data folder
+if [[ -f ${DIR_SCRIPTS}/data/acq.txt ]]; then
+  rm -r ${DIR_SCRIPTS}/data/acq.txt 2>/dev/null
+fi
+
+touch ${DIR_SCRIPTS}/data/acq.txt
+j=0
+for i in `seq 1 ${#ACQ[@]}`; do
+  echo "ACQ${i}=${ACQ[j]}" >> ${DIR_SCRIPTS}/data/acq.txt
+  (( j++ ))
+done
+
+while IFS= read -r line; do export ${line}; done < ${DIR_SCRIPTS}/data/acq.txt
+# source ${DIR_SCRIPTS}/bin/utils/acq.txt

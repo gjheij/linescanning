@@ -1,0 +1,206 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# check if there's is a setup file containing the major paths and source it if it exists
+call_loadsetup
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+spinoza_bestvertex
+
+wrapper for call_pycortex to calculate the best vertex and normal vector based on the minimal curva-
+ture given an ROI.
+
+this script requires input from FreeSurfer, so it won't do much if that hasn't run yet. Ideally, you
+should perform FreeSurfer with the pRF-mapping in fMRIprep (module before [13]), then run this thing so
+it can also take in the pRF to locate an even better vertex.
+
+(need to update this so it takes in variable areas, now it's just set to V1)
+
+Args:
+  -o              rename existing file to numerically increasing (e.g., line_pycortex > line_pycor-
+                  tex1.csv) so that a new line_pycortex.csv-file is created. Given that the original
+                  file is NOT deleted, I consider this a soft-overwrite mode. You can always manual-
+                  ly delete unwanted/unused files.
+  -n              prevent FreeView from opening while verifying the location. ONLY do this if you
+                  already know the position. Generally only used for debugging purposes.
+  -s <subject>    subject ID as used throughout the pipeline without prefix (e.g., sub-001 > 001)
+  -v <vertices>   manually specify two vertices to use instead of having the program look for it. 
+                  The format is important here and should always be: "<vertex in lh>,<vertex in rh>".
+                  Always try to specify two vertices; doesn't matter too much if one is not relevant
+  <project root>  Path to where the subject-drectories are located; used to loop through subjects, 
+                  unless the -s switch is triggered
+  <derivatives>   Derivatives folder containing the output from pycortex and pRF-fitting. Looks for 
+                  <derivatives>/freesurfer, <derivatives>/pycortex, and <derivatives>/prf for the 
+                  surface reconstruction, pycortex-import, and pRF-data, respectively
+  <ROI>           Region-of-interest to use. Still underdeveloped and set to V1 by default, but as 
+                  of now it doesn't do much in the script. Eventually you will be able to specify
+                  a FreeSurfer-named label-file to use to look for your vertex.
+
+Usage:
+  spinoza_bestvertex <-s sub> <-v "lh,rh"> <sourcedata> <derivatives> <ROI>
+
+Example:
+  spinoza_bestvertex $DIR_DATA_HOME $DIR_DATA_DERIV V1
+  spinoza_bestvertex -s 001 $DIR_DATA_HOME $DIR_DATA_DERIV V1
+  spinoza_bestvertex -s 001 -v "1957,8753" $DIR_DATA_HOME $DIR_DATA_DERIV V1
+
+Notes:
+  - Has the '-s' switche to specify a particular subject
+  - Has a '-v' switch to specify your own vertices; mind the format!! "lh,rh"
+  - Both these switches are optional and can be controlled with the master-script
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+# Check for subject flag
+while getopts nos:v: argument
+do
+    case ${argument} in
+      s)  sub=${OPTARG}
+            ;;
+      v)  vert=${OPTARG}
+              ;;            
+    esac
+done
+
+if [[ $# -lt 2 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+BASE=${@:$OPTIND:1}
+DERIV=${@:$OPTIND+1:1}
+
+if [[ -z ${sub} ]]; then
+  # loop through subjects
+  search="${BASE}/sub-*"
+else
+  # do for 1 subject
+  sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
+  search="${BASE}/sub-${sub_nr}"
+fi
+
+# force overwrite (default = yes); no saves time while debugging. Just leave it empty..
+if [[ "${@}" == *"-o"* ]]; then
+  echo "Overwrite mode enabled (non-default!)"
+  OW=1
+else
+  OW=0
+fi
+
+# disable FreeView
+if [[ "${@}" == *"-n"* ]]; then
+  FREEVIEW=0
+else
+  FREEVIEW=1
+fi
+
+#-----------------------------------------------------------------------------
+# Start clock
+#-----------------------------------------------------------------------------
+
+echo
+echo "==================================================================================================="
+printf "BEST VERTEX AND NORMAL VECTOR USING PYCORTEX\n"
+start=`date +%s`
+start_date=`date`
+
+printf "Started at ${start_date}\n"
+echo "==================================================================================================="
+
+#-----------------------------------------------------------------------------
+# Run it
+
+for dir in ${search}; do
+
+  if [[ ! -d ${DERIV}/pycortex ]]; then
+    mkdir -p ${DERIV}/pycortex
+  fi
+
+  line_orientation_file=${DERIV}/pycortex/$(basename ${dir})/line_pycortex.csv
+  if [[ ${OW} -eq 1 ]]; then
+    if [[ -f ${line_orientation_file} ]]; then
+      nr=`find $(dirname ${line_orientation_file}) -type f -name "line_pycortex*" | wc -w`
+      fname=${DERIV}/pycortex/$(basename ${dir})/line_pycortex${nr}.csv
+      mv ${line_orientation_file} ${fname}
+    fi
+  fi
+
+  if [[ ! -f ${line_orientation_file} ]]; then
+
+    if [[ ! -d ${DERIV}/freesurfer/$(basename ${dir}) ]]; then
+      echo "  `basename ${dir}`: No FreeSurfer directory found. Make sure to run that first"
+      continue
+    fi
+
+    if [[ ! -d ${DERIV}/prf/$(basename ${dir}) ]]; then
+      echo "  `basename ${dir}`: No pRF directory found. Make sure to run that first"
+      continue
+    fi
+
+    echo
+    echo "**************************************** Processing `basename ${dir}` ***************************************"
+    echo "Creating line_pycortex.csv file"
+
+    if [[ ! -z ${vert} ]]; then
+      man_verts="-v [${vert}]"
+    else
+      man_verts=""
+    fi
+
+    # set some defaults
+    roi="V1_exvivo.thresh"
+    task="${TASK_SES1}_model-gauss_stage-iter"
+    
+    # use the --use-prf flag if the roi = V1. Otherwise exclude pRFs in the selecting of the vertex
+    if [[ ${roi} != "V1_exvivo.thresh" ]]; then
+      use_prfs=""
+    else
+      use_prfs="--use-prf"
+    fi
+
+    if [[ ${FREEVIEW} -eq 0 ]]; then
+      OPEN_FV="-f"
+    else
+      OPEN_FV=""
+    fi
+
+    call_pycortex2 ${OPEN_FV} -s $(basename ${dir}) ${man_verts} -r ${roi} -t ${task} ${use_prfs} -o ${line_orientation_file}
+
+    if [[ $? != 0 ]]; then
+      echo
+      echo "---------------------------------------------------------------------------------------------------"
+      echo "ERROR in `basename ${0}`: call_pycortex exited with non-zero status"
+      exit 1
+    fi
+
+  else
+
+    echo "`basename ${dir}`: line_pycortex.csv already present"
+
+  fi
+
+done
+
+#-----------------------------------------------------------------------------
+# Calculate time spent using 'let'
+echo
+echo "---------------------------------------------------------------------------------------------------"
+end=`date +%s`
+end_date=`date`
+printf "Done at ${end_date}\n"
+
+let deltatime=end-start
+let hours=deltatime/3600
+let minutes=(deltatime/60)%60
+let seconds=deltatime%60
+printf "Time spent: %d:%02d:%02d\n" ${hours} ${minutes} ${seconds}
+echo "---------------------------------------------------------------------------------------------------"

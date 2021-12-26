@@ -1,0 +1,280 @@
+#!/usr/bin/env python
+
+# # ME-MP2RAGE
+#
+# `MEMP2RAGE` is a subclass of `MP2RAGE` to can deal with multi-echo MP2RAGE data.
+# In such a dataset, you collect multiple echoes for the second inversion time. These echoes are all T2\*-weighted
+# and by fitting an exponentially decaying curve to their signal intensities, you can estimate the quantitative
+# T2\* map of the image.
+#
+# Note that segmentation of gray vs white matter, as well as subcortical nuclei can be considerably improved by not using only T1, but also T2(\*) information.
+#
+# We start by importing the MEMP2RAGE-class (rather than the MP2RAGE-class).
+
+from numpy.lib.function_base import select
+from pymp2rage import MP2RAGE
+import os
+import pathlib
+import sys, getopt
+import json
+import warnings
+import numpy as np
+from nilearn import image
+import nibabel as nb
+import platform
+from bids import BIDSLayout
+from linescanning.utils import get_bids_file, remove_files
+warnings.filterwarnings("ignore")
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_mp2rage
+
+This script is a wrapper for the memp2rage object that can calculate a Unified T1-weighted image
+and a quantitative T1 map, based on the magnitude and phase-information of the two volumes of a
+MP2RAGE-sequence (Marques et al., 2010).
+
+Args:
+    -i (--inputdir=)    input directory     project root directory with the subject-directories on
+                                            which we need to run the script. <subject> will be ap-
+                                            pended, as well as the session nr if specified
+
+    -o (--outputdir=)   output directory    path to output directory; you should specify <subject>/
+                                            <ses-?> yourself
+
+    -b (--outputbase=)  output basename     if you don't want <subject_ID>_ses-<session>_acq-MP2RAGE,
+                                            specify a different prefix for output files
+
+    -c                  make INV2 mask      no input required
+    -u                  use UP-parameters   no input required; there's different MP2RAGE-parameters
+                                            for universal pulses
+
+Optional args:
+    Instead of an input directory, you can also specify the paths to the individual files. The files
+    we need are;
+
+    --inv1              first inversion magnitude image (usually something with INV1)
+    --inv1ph            first inversion phase (usually something with INV1ph)
+    --inv2              second inversion magnitude image (usually something with INV2)
+    --inv2ph            second inversion phase image (usually something with INV2ph)
+
+    There's no short flag option for this kind of input, so use these flags to specify the paths to
+    the files, otherwise it will through an error.
+
+Outputs:
+    T1map   (Nifti1Image): Quantitative T1 map
+    T1w     (Nifti1Image): Bias-field corrected T1-weighted image
+
+Example:
+    call_mp2rage -i $DIR_DATA_HOME/sub-005/ses-1 -o $DIR_DATA_DERIV/pymp2rage/sub-005/ses-1 -b 
+                 sub-005_ses-1_acq-MP2RAGE
+    call_mp2rage --inv1 inv1.nii.gz --inv1ph inv1ph.nii.gz --inv2 inv2.nii.gz --inv2ph
+                 inv2ph.nii.gz -o derivatives/pymp2rage/sub-06 -b sub-005_
+
+Notes:
+    - Assumes you ran spinoza_scanner2bids before. If not, change the required filenames in the
+      script
+
+---------------------------------------------------------------------------------------------------
+    """
+    inputdir    = None
+    outputdir   = None
+    inv1        = None
+    inv1ph      = None
+    inv2        = None
+    inv2ph      = None
+    ups         = False
+    outputbase  = "sample_desc"
+    do_stuff    = False
+
+    try:
+        opts = getopt.getopt(argv, "huci:o:b:", ["inputdir=", "outputdir=", "outputbase=", "inv1=", "inv1ph=", "inv2=", "inv2ph="])[0]
+    except getopt.GetoptError:
+        print(main.__doc__)
+        sys.exit(2)
+
+    for opt, arg in opts:
+        if opt == '-h':
+            print(main.__doc__)
+            sys.exit()
+        elif opt in ("-u"):
+            ups = True              
+        elif opt in ("-i", "--inputdir"):
+            inputdir = arg
+        elif opt in ("-o", "--outputdir"):
+            outputdir = arg
+        elif opt in ("-b", "--outputbase"):
+            outputbase = arg
+        elif opt in ("-c"):
+            do_stuff = True
+        elif opt in ("--inv1"):
+            inv1 = arg
+        elif opt in ("--inv1ph"):
+            inv1ph = arg
+        elif opt in ("--inv2"):
+            inv2 = arg
+        elif opt in ("--inv2ph"):
+            inv2ph = arg
+
+    if len(argv) < 3:
+        print("NOT ENOUGH ARGUMENTS SPECIFIED")
+        print(main.__doc__)
+        sys.exit(1)
+
+    if inputdir != None:
+        # we got an input directory; look for files with "acq-MP2RAGE"
+        bids_fn     = BIDSLayout(opj(inputdir), validate=False).get(datatype='anat', extension=['nii.gz'], return_type='file')
+        select_fn   = get_bids_file(bids_fn, ['acq-MP2RAGE', 'inv'])
+    else:
+        select_fn = []
+        # we did not get an input directory; check if separate files have been specified
+        fn = ["inv1", "inv1ph", "inv2", "inv2ph"]
+        for r,i in enumerate([inv1, inv1ph, inv2, inv2ph]):
+            if i == None:
+                raise ValueError("Missing {k}-file. Make sure you specified it with the --{k} flag".format(k=fn[r]))
+            else:
+                if os.path.dirname(i) == "":
+                    i = opj(os.getcwd(), i)
+                select_fn.append(i)
+
+    if len(select_fn) != 4:
+        print("For MP2RAGE-reconstruction we should have 4 files; got {}".format(len(select_fn)))
+        sys.exit(1)
+    else:
+        if inputdir == None:
+            inputdir = os.path.dirname(select_fn[0])
+
+    print("Loading all images to the mp2rage object")
+    if not ups:
+        mp2rage = MP2RAGE(MPRAGE_tr=5.5,
+                        invtimesAB=[0.8,2.7],
+                        flipangleABdegree=[6,6],
+                        nZslices=200,
+                        FLASH_tr=[0.0062, 0.0062],
+                        inv1      = select_fn[0],
+                        inv1ph    = select_fn[1],
+                        inv2      = select_fn[2],
+                        inv2ph    = select_fn[3]
+                        )
+    else:
+        # UPs
+        print("Using parameters for Universal Pulses (UPs)")
+        mp2rage = MP2RAGE(MPRAGE_tr=6.778,
+                        invtimesAB=[0.67,3.754],
+                        flipangleABdegree=[4,4],
+                        nZslices=150,
+                        FLASH_tr=[0.0062, 0.031273],
+                        inv1      = select_fn[0],
+                        inv1ph    = select_fn[1],
+                        inv2      = select_fn[2],
+                        inv2ph    = select_fn[3]
+                        )
+
+    # We can also put the ME-MP2RAGE data in BIDS-format. That will look something like this:
+    # memp2rage = MEMP2RAGE.from_bids('D:\FSL\shared\spinoza\projects\ANAT_SEG-Raw', subject)
+
+    pathlib.Path(outputdir).mkdir(parents=True, exist_ok=True)
+
+    # Calculate and right multiparametric maps to outputdir
+    OUTPUT = {'t1w_uni': opj(outputdir, f'{outputbase}_T1w.nii.gz'),'t1map': opj(outputdir, f'{outputbase}_T1map.nii.gz')}
+    TAG = ["MP2RAGE unified T1-weighted image", "MP2RAGE T1 map"]
+
+    print("Creating output files")
+    for r,p in enumerate(OUTPUT):
+        
+        if not os.path.exists(OUTPUT[p]):
+
+            print(" writing {}-image: {}".format(p, os.path.basename(OUTPUT[p])))
+
+            # getattr(x, 'y') is equivalent to x.y
+            # setattr(x, 'y', v) is equivalent to x.y = v
+            # delattr(x, 'y') is equivalent to del x.y
+            tmp = getattr(mp2rage, p).get_fdata()
+            tmp = np.nan_to_num(tmp)
+            nb.Nifti1Image(tmp.astype('float32'), affine=getattr(mp2rage, p).affine, header=getattr(mp2rage, p).header).to_filename(OUTPUT[p])
+            
+            try:
+                os.system('fslorient -setqformcode 1 {}'.format(OUTPUT[p]))
+                os.system('fslorient -setsformcode 2 {}'.format(OUTPUT[p]))
+            except:
+                pass
+
+        else:
+
+            print(" {} already exists".format(os.path.basename(OUTPUT[p])))
+
+        json_file = OUTPUT[p].split('.')[0]+'.json'
+        base_path = None
+        if not os.path.exists(json_file):
+            
+            sp = select_fn[0].split(os.sep)
+            for i in sp:
+                if i.startswith('sub-') and not i.endswith('.nii.gz'):
+                    base_path = os.sep.join(sp[sp.index(i)+1:-1])
+            
+            if not base_path:
+                base_path = os.path.dirname(select_fn[0])
+
+            params = {
+                    'BasedOn':
+                        [
+                        os.path.join(base_path, os.path.basename(select_fn[0])),
+                        os.path.join(base_path, os.path.basename(select_fn[1])),
+                        os.path.join(base_path, os.path.basename(select_fn[2])),
+                        os.path.join(base_path, os.path.basename(select_fn[3]))
+                        ],
+                    'EstimationReference': 'Marques et al., 2010',
+                    "EstimationAlgorithm": f'{TAG[r]}',
+                    "EstimationSoftwareName": "pymp2rage",
+                    "EstimationSoftwareVer": "v0.1",
+                    "EstimationSoftwareLang": "python {}".format(platform.python_version()),
+                    "EstimationSoftwareEnv": "{}".format(platform.platform())
+                    }
+
+            with open(json_file, "w+") as file:
+                json.dump(params, file, indent=4)
+
+    if do_stuff:
+        brainmask = opj(outputdir, f'{outputbase}_desc-spm_mask.nii.gz')
+        if not os.path.exists(brainmask):
+
+            try:
+                print("Make mask with FSL from INV2-image")
+                cmd = f"bet2 {select_fn[2]} {opj(inputdir, 'tmp')} -m -f 0.2"
+                os.system(cmd)
+            except:
+                pass
+            
+            try:
+                print("Make mask with SPM from INV2-image")
+                cmd = f'call_spmmask {select_fn[2]} {brainmask} y'
+                os.system(cmd)
+            except:
+                pass
+            
+            # SPM-mask sometimes gets rid of a part of the cerebellum; adding FSL's bet2 mask to it improves this area, 
+            # but also leaves in more dura. This will be removed, however, during the CAT12 stage
+            if os.path.exists(brainmask) and os.path.exists(opj(inputdir, 'tmp_mask.nii.gz')):
+                
+                print("Combining SPM & FSL mask to include cerebellum too")
+
+                new_mask = image.math_img('(spm + fsl) > 0', spm=brainmask, fsl=opj(inputdir, 'tmp_mask.nii.gz'))
+                new_mask.to_filename(brainmask)
+
+                # remove files starting with 'tmp'
+                remove_files(inputdir, 'tmp', ext=False)
+
+        # try:
+        print("Removing background")
+        os.system(f"call_rmbackground -t {OUTPUT['t1w_uni']} -m {brainmask} -i {select_fn[2]} -o {OUTPUT['t1w_uni']}")
+        # except:
+        #     pass
+        print("TIP: check the brain mask; if needed, edit it, remove T1w.nii.gz-file and re-run")
+
+    print("Done")
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

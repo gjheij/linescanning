@@ -1,0 +1,216 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# check if there's is a setup file containing the major paths and source it if it exists
+call_loadsetup
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+spinoza_linereconstruction
+
+wrapper for call_linerecon that performs the reconstruction of the line data. Uses MRecon, so we can
+only run it on the spinoza cluster. It calls upon call_linerecon, which internally uses a template
+for the reconstruction with MRecon based on scripts provided by Luisa Raimondo.
+
+Usage:
+  spinoza_linereconstruction <project root directory> <sourcedata>
+
+Arguments:
+  <project root>      base directory containing the derivatives and the subject's folders.
+  <sourcedata>        base directory containing the raw data for reconstruction
+
+Eample:
+  spinoza_linereconstruction ${DIR_DATA_HOME} ${DIR_DATA_SOURCE}
+
+Notes:
+  relies on matlab scripts stored in '/data1/projects/MicroFunc/common'. As it relies on MRecon,
+  we can only run this on the spinoza server
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+if [[ $# -lt 2 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+# Check for subject & session flags
+while getopts ojs:n: argument
+do
+    case ${argument} in
+      s)  sub=${OPTARG}
+            ;;
+      n)  ses=${OPTARG}
+            ;;            
+    esac
+done
+
+OUTPUT=${@:$OPTIND:1}
+INPUT=${@:$OPTIND+1:1}
+
+if [[ -z ${sub} ]]; then
+  # loop through subjects
+  search="${INPUT}/sub-*"
+else
+  # do for 1 subject
+  sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
+  search="${INPUT}/sub-${sub_nr}"
+fi
+
+if [[ ! -z ${ses} ]]; then
+  nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
+fi
+
+if [[ "${@}" == *"-o"* ]]; then
+  OW=1
+else
+  OW=0
+fi
+
+if [[ "${@}" == *"-j"* ]]; then
+  SGE=1
+else
+  SGE=0
+fi
+
+# define function to get task-ID
+function task_id {
+  func=${1}
+  if [[ ${func} != *"task-"* ]]; then
+    task=${TASK_SES2}
+  else
+    # need some operations to find the task ID
+    part_after_task=${func#*task-}
+    if [[ ! -z ${part_after_task} ]]; then
+      # use brute force underscore as delimiter an pray your sequences have been set correctly
+      task=$(echo ${part_after_task} | cut -d'_' -f1)
+    else
+      # could not derive task; assume its pRF
+      task=pRF
+    fi
+  fi
+
+  echo ${task}
+}
+
+#-----------------------------------------------------------------------------
+# Start clock
+#-----------------------------------------------------------------------------
+
+echo
+echo "==================================================================================================="
+printf "DATA RECONSTRUCTION WITH MRECON [LUISA]\n"
+start=`date +%s`
+start_date=`date`
+
+printf "Started at ${start_date}\n"
+echo "==================================================================================================="
+
+#-----------------------------------------------------------------------------
+# Run it
+
+for dir in ${search}; do
+
+  if [[ -d ${INPUT}/$(basename ${dir})/ses-${nr} ]]; then
+
+    bidsfunc=${OUTPUT}/$(basename ${dir})/ses-${nr}/func
+    if [[ ! -d ${bidsfunc} ]]; then
+      mkdir -p ${bidsfunc}
+    fi
+
+    nr_runs=`echo ${INPUT}/$(basename ${dir})/ses-${nr}/*bold*.lab | wc -w`
+    # echo ${INPUT}/$(basename ${dir})/ses-2
+
+    if [[ -z ${nr_runs} ]]; then
+      echo "`basename ${dir}`: Could not find BOLD-data"
+      continue
+    fi
+
+    if [[ ${PLACE} == SPINOZA ]]; then
+
+      echo
+      echo "**************************************** Processing `basename ${dir}` ***************************************"
+
+      for i in `seq 1 ${nr_runs}`; do
+
+        lab_file=`find "${INPUT}/$(basename ${dir})/ses-${nr}" -type f \( -name "*run-${i}*" -and -name "*bold*" -and -name "*.lab" \) 2>/dev/null`
+
+        if [[ ! -z ${lab_file} ]]; then
+
+          # find task ID
+          task=`task_id ${lab_file}`
+          out=`find "${bidsfunc}" -type f \( -name "*run-${i}*" -name "*task-${task}*" -and -name "*.mat" \) 2>/dev/null`
+
+          if [[ ${OW} -eq 1 ]]; then
+            rm -r ${out}
+          fi
+
+          if [[ ! -f ${out} ]]; then
+            # echo "  Running recon for run-${i}"
+            IDnr=`basename ${dir} | cut -d'-' -f2`
+
+            if [[ ${SGE} -eq 1 ]]; then
+              job="qsub -N recon_${IDnr} -wd ${DIR_LOGS}"
+            else
+              job="bash"
+              echo "Using `basename ${lab_file}` for reconstruction"
+            fi
+
+            ${job} ${DIR_SCRIPTS}/bin/call_linerecon -n \
+              ${IDnr} \
+              ${i} \
+              ${INPUT}/$(basename ${dir})/ses-${nr} \
+              ${bidsfunc}/$(basename ${dir})_ses-${nr}_task-${task}_run-${i}_bold
+
+            if [[ $? != 0 ]]; then
+              exit 1
+            fi
+          fi
+
+        else
+
+          echo "`basename ${dir}`: could not find lab-file for run-${i}"
+          
+        fi
+
+      done
+
+    else
+
+      echo "Sneaky, but I told you in the usage that we can run this on the server only;)"
+      echo "For good measures:"
+      Usage >&2
+      exit 1
+
+    fi
+
+  else
+
+    echo "`basename ${dir}`: ses-${nr} not yet performed"
+    continue
+
+  fi
+
+done
+
+#-----------------------------------------------------------------------------
+# Calculate time spent using 'let'
+echo
+echo "---------------------------------------------------------------------------------------------------"
+end=`date +%s`
+end_date=`date`
+printf "Done at ${end_date}\n"
+
+let deltatime=end-start
+let hours=deltatime/3600
+let minutes=(deltatime/60)%60
+let seconds=deltatime%60
+printf "Time spent: %d:%02d:%02d\n" ${hours} ${minutes} ${seconds}
+echo "---------------------------------------------------------------------------------------------------"

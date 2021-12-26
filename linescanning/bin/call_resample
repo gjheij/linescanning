@@ -1,0 +1,50 @@
+#!/usr/bin/env python
+
+import os
+from nilearn import image
+import nibabel as nb
+import sys, getopt
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_resample
+
+This function quickly resamples a given input image to a given reference image and write a new file
+with the resampled-to-reference input image
+
+Args:
+    <input>     image to be resampled
+    <reference> image to resample to
+    <output>    optional: output filename, otherwise input name will be used!
+
+Example:
+    call_resample <input> <reference> <output>
+
+---------------------------------------------------------------------------------------------------
+
+    """
+
+    if len(argv) < 2:
+        print("\nNEED AT LEAST AN INPUT AND REFERENCE IMAGE")
+        print(main.__doc__)
+        sys.exit()
+    elif len(argv) == 2:
+        in_img  = argv[0]
+        ref_img = argv[1]
+        out_img = in_img
+    elif len(argv) == 3:
+        in_img  = argv[0]
+        ref_img = argv[1]
+        out_img = argv[2]
+    else:
+        print(main.__doc__)        
+        raise ValueError("Got {} arguments. Only require 3".format(len(argv)))
+
+
+    resampled_img = image.resample_to_img(in_img, ref_img, interpolation='nearest')
+    resampled_img.to_filename(out_img)
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# check if there's is a setup file containing the major paths and source it if it exists
+call_loadsetup
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+spinoza_newBIDSsession
+
+create BIDS structure for new session
+
+Usage:
+  spinoza_newBIDSsession.sh <SUBJECT NR> <SESSION NR>
+
+Example:
+  ./spinoza_newBIDSsession.sh 001 1 (subject ID = 001 and session ID = 1)
+  ./spinoza_newBIDSsession.sh       (shows this help text)
+
+Notes:
+  The project name should be specified in the setup.sh file in the variable PROJECT
+  The default structure that is created is this:
+    > PROJECT
+      > sourcedata
+        > sub-001
+          > ses-1
+            > anat
+            > func
+            
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+#---------------------------------------------------------------------------------------------------------
+# Deal with arguments
+
+if [[ $# -le 1 ]]; then
+  echo not enough arguments specified
+  Usage
+fi
+
+# for i in "$@"; do
+#   case $i in
+#       -sub=*)
+#       SUB="${i#*=}"
+#       shift # past argument=value
+#       ;;
+#       -ses=*)
+#       SES="${i#*=}"
+#       shift # past argument=value
+#       ;;
+#       -h*|--help*)
+#       HELP="${i#*=}"
+#       shift # past argument=value
+#       ;;
+#       *)
+#             # unknown option
+#       ;;
+#   esac
+# done
+
+#---------------------------------------------------------------------------------------------------------
+# Try to catch some exceptions
+if [[ ${1} =~ ^[0-9]+$ ]];then
+  :
+else
+  echo "Input contains non numerical value. Please specify 3 digit number (eg., 032)"
+  exit 1
+fi
+
+if [[ ${2} =~ ^[0-9]+$ ]];then
+  :
+else
+  echo "Input contains non numerical value. Please specify 1 digit number (eg., 2)"
+  exit 1
+fi
+
+#---------------------------------------------------------------------------------------------------------
+# execute main function of script
+
+echo
+echo "---------------------------------------------------------------------------------------------------------"
+echo "SPINOZA: newBIDSsession"
+echo "  creating a new data structure with the following inputs:"
+echo "  subject ID  = ${1}"
+echo "  session ID  = ${2}"
+echo
+
+#---------------------------------------------------------------------------------------------------------
+# Do the "sourcedata" part
+if [[ ! -d ${DIR_DATA_SOURCE}/sub-${1}/ses-${2} ]]; then
+  echo "creating ${DIR_DATA_SOURCE}/sub-${1}/ses-${2}"
+  mkdir -p ${DIR_DATA_SOURCE}/sub-${1}/ses-${2}
+fi
+
+if [[ ! -d ${DIR_DATA_HOME}/sub-${1}/ses-${2}/anat ]]; then
+  echo "creating ${DIR_DATA_HOME}/sub-${1}/ses-${2}/anat"
+  mkdir -p ${DIR_DATA_HOME}/sub-${1}/ses-${2}/anat
+fi
+
+if [[ ! -d ${DIR_DATA_HOME}/sub-${1}/ses-${2}/func ]]; then
+  echo "creating ${DIR_DATA_HOME}/sub-${1}/ses-${2}/func"
+  mkdir -p ${DIR_DATA_HOME}/sub-${1}/ses-${2}/func
+fi

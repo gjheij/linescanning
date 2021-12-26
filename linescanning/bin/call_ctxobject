@@ -1,0 +1,113 @@
+#!/usr/bin/env python
+
+import os, sys, getopt
+from linescanning.pycortex import create_ctx_transform
+import random
+import cortex
+import numpy as np
+import nibabel as nb
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_ctxobject
+
+Create webviewer containing the partial anatomies as well as the intended pRF-positions. You'll need
+to specify the subject number and the pycortex root directory. From there it will find the files it
+needs to output an html webbrowser with the pRFs
+
+Args:
+    -s (--subj=)           subject name (e.g., sub-xxx)
+    -c (--cxdir=)          path to pycortex dir (e.g., derivatives/pycortex)
+    -p (--prfdir=)         path to pRF dir (e.g., derivatives/prf)
+
+Outputs:
+    A webbrowser as per output of pycortex webgl.
+
+Example:
+    call_ctxobject -s sub-xxx -c ${CTX} -p ${PRF}
+
+Notes:
+    -
+
+---------------------------------------------------------------------------------------------------
+
+    """
+
+    subject         = ''
+    ctx_dir         = ''
+    prf_dir         = ''
+    loc             = ''
+    try:
+        opts, args = getopt.getopt(argv,"hs:c:p:l",["help=", "subj=", "cxdir=", "prfdir=", "loc="])
+    except getopt.GetoptError:
+        print(main.__doc__)
+        sys.exit(2)
+
+    for opt, arg in opts:
+        if opt == '-h':
+            print(main.__doc__)
+            sys.exit()
+        elif opt in ("-s", "--subj"):
+            subject = arg
+        elif opt in ("-c", "--cxdir"):
+            ctx_dir = arg
+        elif opt in ("-p", "--prfdir"):
+            prf_dir = arg
+        elif opt in ("-l", "--loc"):
+            loc = arg
+    if len(argv) < 3:
+        print("NOT ENOUGH ARGUMENTS SPECIFIED")
+        print(main.__doc__)
+        sys.exit()
+
+    if not os.path.isdir(opj(ctx_dir, subject)):
+        print("  ERROR! pycortex directory does not exist")
+        sys.exit(1)
+
+    if not os.path.isdir(opj(prf_dir, subject)):
+        print("  ERROR! prf directory does not exist")
+        sys.exit(1)
+
+    slice9 = opj(ctx_dir, subject, 'warped', f'{subject}_ses-2_acq-9slice_run-1_space-fs_desc-bin_T1w.nii.gz')
+    slice1 = opj(ctx_dir, subject, 'warped', f'{subject}_ses-2_acq-1slice_run-1_space-fs_desc-bin_T1w.nii.gz')
+    line = opj(ctx_dir, subject, 'warped', f'{subject}_ses-2_task-2R_run-1_space-fs_bold.nii.gz')
+    prf_l = opj(prf_dir, subject, f'{subject}_desc-bestvertex_hemi-L.npy')
+    prf_r = opj(prf_dir, subject, f'{subject}_desc-bestvertex_hemi-R.npy')
+    prf_lr = opj(prf_dir, subject, f'{subject}_desc-bestvertex_hemi-LR.npy')
+
+    for i in [line, slice1, slice9, prf_l, prf_r]:
+        if not os.path.isfile(i):
+            print(f"  ERROR: {i} does not exist!")
+            sys.exit(1)
+
+    slice9_vol  = cortex.Volume(slice9, subject=subject, xfmname='9slice2ctx', vmin=0, vmax=1)
+    slice1_vol  = cortex.Volume(slice1, subject=subject, xfmname='1slice2ctx', vmin=0, vmax=1)
+    line_vol    = cortex.Volume(line, subject=subject, xfmname='line2ctx', vmin=0, vmax=1)
+    prf_l_ver   = cortex.Vertex(np.load(prf_l), subject=subject, cmap='magma', vmin=-0.5, vmax=1)
+    prf_r_ver   = cortex.Vertex(np.load(prf_r), subject=subject, cmap='magma', vmin=-0.5, vmax=1)
+    prf_lr_ver   = cortex.Vertex(np.load(prf_lr), subject=subject, cmap='magma', vmin=-0.5, vmax=1)
+
+    if loc == "SPINOZA":
+        web = False
+        txt = "Now run {script} {port} in your local terminal".format(script='/mnt/hgfs/shared/spinoza/programs/linescanning/bin/call_webviewer.sh', port=port)
+    else:
+        web = True
+        txt = ""
+
+    port = random.randint(1024,65536)
+
+    cortex.webshow({'multi slice': slice9_vol,
+                    'single slice': slice1_vol,
+                    'line': line_vol,
+                    'pRFs': prf_lr_ver,
+                    }, open_browser=web, port=port)
+    os.wait()#
+
+    if txt != "":
+        print(txt)
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

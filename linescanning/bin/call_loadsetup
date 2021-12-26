@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+
+setupFile=$(dirname ${DIR})/shell/spinoza_setup
+if [[ -f ${setupFile} ]]; then
+  #echo loading in setup file
+  source ${setupFile}
+else
+  echo please run script from directory containing the scripts
+  echo e.g., ${PATH_HOME}/programs
+  exit 1
+fi

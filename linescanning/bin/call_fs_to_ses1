@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+
+function Usage {
+  cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_fs_to_ses1
+
+This script warps the orig.mgz image from FreeSurfer to the anatomy of session 1 as per output of py-
+mp2rage. It uses predefined paths only so unless you changed something in previous steps you can use 
+it with just the subject ID.
+
+It will look for the following files:
+  - orig.mgz: $FS/<subject>/mri
+  - ses-1 anat: $PYMP2RAGE/<subject>/ses-1
+
+And output a transformation matrix as:
+  $CTX/transforms/<subject>_from-fs_to-ses1_desc-genaff.mat/.dat
+
+Arguments:
+  <-s software> use antsRegistration or FreeSurfer's tkregister2. Can be 'fs' or 'ants'. Default is 
+                set to ants
+  <subject>     subject ID, e.g., sub-001
+
+Usage:
+  call_fs_to_ses1 <-s fs|ants> <subject> 
+
+Example:
+  call_fs_to_ses1 sub-001
+  call_fs_to_ses1 -s fs sub-001
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+  exit 1
+}
+
+#-----------------------------------------------------------------------------
+# Deal with arguments
+while getopts s: arg
+do
+    case ${arg} in
+      s)  SOFTWARE=${OPTARG}
+            ;;      
+    esac
+done
+
+if [[ $# -lt 1 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+if [[ -z ${SOFTWARE} ]]; then
+  SOFTWARE="ants"
+else
+  SOFTWARE=${SOFTWARE}
+fi
+
+SUBJECT=${@:$OPTIND:1}
+
+#-----------------------------------------------------------------------------
+# Check some directories/files
+if [[ ! -d $CTX/${SUBJECT} ]]; then
+  call_ctximport -s ${SUBJECT}
+fi
+
+if [[ ${SOFTWARE,,} == "ants" ]]; then
+  orig=${FS}/${SUBJECT}/mri/orig.nii.gz
+  ses1=`find ${DIR_DATA_DERIV}/pymp2rage/${SUBJECT}/ses-1 -type f -name "${SUBJECT}*" -and -name "*T1w.nii.gz" 2>/dev/null`
+
+  # convert mgz to nifti
+  if [[ ! -f ${orig} ]]; then
+    call_mriconvert $(dirname ${orig})/$(basename ${orig} .nii.gz).mgz
+  fi
+
+  if [[ -z ${ses1} ]]; then
+    ses1=${FS}/${SUBJECT}/mri/rawavg.nii.gz
+    # convert mgz to nifti
+    if [[ ! -f ${ses1} ]]; then
+      call_mriconvert $(dirname ${ses1})/$(basename ${ses1} .nii.gz).mgz
+    fi
+  else
+    echo "ERROR in `basename ${0}`: could not find ses-1 anatomy and could not use rawavg.mgz"
+    exit 1
+  fi
+
+  aff=${CTX}/${SUBJECT}/transforms/${SUBJECT}_from-fs_to-ses1_desc-genaff.mat
+  if [[ ! -d $(dirname ${aff}) ]]; then
+    mkdir -p $(dirname ${aff})
+  fi
+
+  if [[ ! -f ${aff} ]]; then
+    cmd="call_antsregistration ${ses1} ${orig} $(dirname ${aff})/$(basename ${aff} genaff.mat) rigid"
+    echo ${cmd}
+    exec ${cmd}
+  else
+    echo "Found outdated file; remove and run again to overwrite"
+  fi
+
+elif [[ ${SOFTWARE,,} == "fs" ]]; then
+
+  aff=${CTX}/${SUBJECT}/transforms/${SUBJECT}_from-fs_to-rawavg_desc-genaff.dat
+  if [[ ! -d $(dirname ${aff}) ]]; then
+    mkdir -p $(dirname ${aff})
+  fi
+
+  tkregister2 --mov ${FS}/${SUBJECT}/mri/rawavg.mgz --targ ${FS}/${SUBJECT}/mri/orig.mgz --reg ${aff} --noedit --regheader
+
+fi

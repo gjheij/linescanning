@@ -1,0 +1,52 @@
+#!/usr/bin/env python
+
+import os, sys
+import numpy as np
+import nibabel as nb
+from linescanning.image import create_line_from_slice
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_createimg
+
+This super short script creates an empty nifti image based on the reference image. This is useful 
+for creating the manual segmentations (saves a bunch of clicking in ITK-Snap).
+
+Args:
+    <ref file>        reference image
+    <output file>     empty output image
+
+Outputs
+    output file       new volume with the same dimensions as reference image
+
+Usage:
+    call_createimg <input> <output> 
+
+Example:
+    call_createimg input.nii.gz output.nii.gz
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    ref = None
+    out = None
+
+    if len(argv) < 2:
+        print("NOT ENOUGH ARGUMENTS SPECIFIED")
+        print(main.__doc__)
+        sys.exit()
+
+    ref = argv[0]
+    out = argv[1]
+
+    if os.path.exists(ref):
+        ref_data = nb.load(ref).get_fdata()
+        new_data = np.zeros_like(ref_data)
+        nb.Nifti1Image(new_data, affine=nb.load(ref).affine, header=nb.load(ref).header).to_filename(out)
+    else:
+        raise FileNotFoundError(f"Could not find specified file: {ref}")
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

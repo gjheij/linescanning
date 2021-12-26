@@ -1,0 +1,319 @@
+#!/usr/bin/env bash
+#$ -S /bin/bash
+#$ -cwd
+#$ -j Y
+#$ -q short.q@jupiter
+#$ -V
+#$ -pe smp 5
+
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_antsregistration
+
+This scripts makes the call to antsRegistration a little easier, as you'll only have to provide the
+reference image, the moving image, the output-prefix, the type of registration and an initial trans-
+formation file (optional, will be included if specified, otherwise ignored).
+
+Arguments:
+  -v            Turn on verbose level 1
+  -x <mask>     Image masks to limit voxels considered by the metric
+  -i <initial>  the initial moving transform(s) which get immediately incorporated into the compo-
+                site transform
+  -t <interp>   interpolation type: 'lin' (linear), 'nn' (NearestNeighbor), mul (MultiLabel), gau 
+                (Gaussian), bspl<order>, cws (CosineWindowedSinc), wws (WelchWindowedSinc), hws 
+                (HammingWindowedSinc), lws (LanczosWindowedSinc), gen (GenericLabel); default = 'nn'
+  <reference>   Reference image
+  <moving>      Moving image
+  <output>      Basename (incl path) for output files ('genaff' will be appended)
+  <reg type>    Registration type
+
+Usage:
+  call_antsregistration <fixed> <moving> <output prefix> <type of reg (rigid|affine|syn) <initial>
+
+Example:
+  call_antsregistration -i initial.txt ref.nii.gz mov.nii.gz out_ rigid
+  call_antsregistration -v ref.nii.gz mov.nii.gz out_ syn
+  call_antsregistration -x mask.nii.gz -t lwc ref.nii.gz mov.nii.gz out_ syn
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+#-----------------------------------------------------------------------------
+# Exit if we do not have enough arguments. The initial moving transform is op-
+# tional, so we need at least 4 arguments
+
+# Check for subject flag
+while getopts vi:t:x: argument
+do
+  case ${argument} in
+    x)  mask=${OPTARG}
+          ;;
+    i)  initial=${OPTARG}
+          ;;          
+    t)  interp=${OPTARG}
+          ;;
+  esac
+done
+
+if [[ $# -lt 4 ]] ; then
+  echo "NOT ENOUGH ARGUMENTS SPECIFIED"
+  Usage >&2
+  exit 1
+fi
+
+REF=${@:$OPTIND:1}
+MOV=${@:$OPTIND+1:1}
+OUT=${@:$OPTIND+2:1}
+TYPE=${@:$OPTIND+3:1}
+
+if [[ "${@}" == *"-v"* ]]; then
+  VERB=1
+  VERBOSE="--verbose 1"
+else
+  VERB=0
+  VERBOSE=""
+fi
+
+if [[ -z ${interp} ]]; then
+  INT="NearestNeighbor"
+else
+  if [[ ${interp} == "lin" ]]; then
+    INT="Linear"
+  elif [[ ${interp} == "nn" ]]; then
+    INT="NearestNeighbor"
+  elif [[ ${interp} == "mul" ]]; then
+    INT="MultiLabel"    
+  elif [[ ${interp} == "gau" ]]; then
+    INT="Gaussian"
+  elif [[ ${interp} == *"bspl"* ]]; then
+    INT="BSpline[$(basename ${interp} | cut -c 5)]"
+  elif [[ ${interp} == "cws" ]]; then
+    INT="CosineWindowedSinc"
+  elif [[ ${interp} == "wws" ]]; then
+    INT="WelchWindowedSinc"
+  elif [[ ${interp} == "hws" ]]; then
+    INT="HammingWindowedSinc"
+  elif [[ ${interp} == "lws" ]]; then
+    INT="${INT}"
+  elif [[ ${interp} == "gen" ]]; then
+    INT="GenericLabel"    
+  else
+    echo "Invalid interpolation type specified:"
+    Usage
+    exit 1
+  fi
+fi
+
+#-----------------------------------------------------------------------------
+# source bash helper functions
+source call_bashhelper
+
+#-----------------------------------------------------------------------------
+# set flag to extract first volume from 4D image to 0
+extract_fixed=0
+extract_moving=0
+
+#-----------------------------------------------------------------------------
+# append full paths
+REF=`fetch_filepath ${REF}`
+MOV=`fetch_filepath ${MOV}`
+OUT=`fetch_filepath ${OUT}`
+
+#-----------------------------------------------------------------------------
+# Make sure a bunch of stuff surrounding the input images is ok, such as the
+# extensions and dimensionality
+if [[ -f ${REF} && -f ${MOV} ]]; then
+
+  ext_fixed=`fetch_extension "${REF}"`
+  ext_moving=`fetch_extension "${MOV}"`
+
+  if [[ $ext_fixed == "gz" ]] || [[ $ext_fixed == "nii" ]]; then
+    :
+  else
+    echo "No nifti file detected. Not really sure how to deal with this. Exiting."
+    exit 1
+  fi
+
+  if [[ $ext_moving == "gz" ]] || [[ $ext_moving == "nii" ]]; then
+    :
+  else
+    echo "No nifti file detected. Not really sure how to deal with this. Exiting."
+    exit 1
+  fi
+
+  DIMfixed=`fslval ${REF} dim0`
+  DIMmoving=`fslval ${MOV} dim0`
+
+  if [[ $DIMfixed != $DIMmoving ]]; then
+
+    # check if we can extract first volume of time-series
+    if [[ $((${DIMmoving})) -eq 4 ]]; then
+    
+      if [ ${VERB} -eq 1 ]; then
+        echo "Taking first volume of 4D-moving image"
+      fi
+      
+      MOVING=$(dirname ${MOV})/example_moving.nii.gz
+      fslroi ${MOV} ${MOVING} 0 1
+      extract_moving=1
+
+    else  
+      DIM=$DIMmoving
+      MOVING=${MOV}
+    fi
+
+    if [[ $((${DIMfixed})) -eq 4 ]]; then
+    
+      if [ ${VERB} -eq 1 ]; then
+        echo "Taking first volume of 4D-fixed image"
+      fi
+      
+      FIXED=$(dirname ${REF})/example_fixed.nii.gz
+      fslroi ${REF} ${FIXED} 0 1
+      extract_fixed=1
+    else  
+      DIM=$DIMmoving
+      FIXED=${REF}
+    fi
+
+    # final check
+    if [[ `fslval ${FIXED} dim0` != `fslval ${MOVING} dim0` ]]; then
+      echo "Input files have different dimensions. Fix this before continuing."
+      echo " Fixed image:   `fslval ${FIXED} dim0`"
+      echo " Moving image:  `fslval ${MOVING} dim0`g"
+      exit 1
+    fi
+
+  else
+    FIXED=${REF}
+    MOVING=${MOV}
+  fi
+fi
+
+#-----------------------------------------------------------------------------
+# Deal with initial transform file if the argument is not empty.
+if [[ ! -z ${initial} ]]; then
+
+  if [ ${VERB} -eq 1 ]; then
+    echo "Using `basename ${initial}` as initial moving transform file"
+  fi
+  
+  fname=$(basename -- "${initial}")
+  ext="${fname##*.}"
+  filename="${fname%.*}"
+
+  if [[ $ext != "txt" ]]; then
+    echo "${initial} is not a text file. It should be if it's an initial moving transform file"
+    exit 1
+  else
+    # If we have an initial moving transform matrix, insert this line in the command
+    INITIAL=$(echo "-r ${initial}")
+  fi
+
+fi
+
+#-----------------------------------------------------------------------------
+# Deal with mask file if the argument is not empty.
+if [[ ! -z ${mask} ]]; then
+  if [ ${VERB} -eq 1 ]; then
+    echo "Using `basename ${mask}` as mask file"
+  fi
+  MASK=$(echo "-x [NULL,${mask}]")
+fi
+
+#-----------------------------------------------------------------------------
+# Now we need to start building the command based on the fourth argument.
+if [[ ${TYPE,,} == "rigid" ]]; then
+  # echo "Registration type selected: Rigid"
+  cmd() {
+    antsRegistration $5 -d 3 --float 1 -z 1 $4 -n $6 $7 \
+      -o [$3] \
+      -u 0 \
+      -w [0.005,0.995] \
+      -t Rigid[0.1] \
+      -m MI[$1,$2,1,32,Regular,0.25] \
+      -c [1000x500x250x100,1e-6,10] \
+      -f 8x4x2x1 \
+      -s 4x3x2x1vox
+  }
+
+elif [[ ${TYPE,,} == "affine" ]]; then
+  # echo "Registration type selected: Syn"
+  cmd() {
+    antsRegistration $5 -d 3 --float 1 -z 1 $4 -n $6 $7 \
+      --output [$3]  \
+      --use-histogram-matching 0  \
+      --winsorize-image-intensities [0.005,0.995]  \
+      --transform Rigid[0.1]  \
+      --metric MI[$1,$2,1,32,Regular,0.25]  \
+      --convergence [1000x500x250x100,1e-6,10]  \
+      --shrink-factors 8x4x2x1  \
+      --smoothing-sigmas 4x3x2x1vox  \
+      --transform Affine[0.1]  \
+      --metric MI[$1,$2,1,32,Regular,0.25]  \
+      --convergence [1000x500x250x100,1e-6,10]  \
+      --shrink-factors 8x4x2x1  \
+      --smoothing-sigmas 4x3x2x1vox 
+  }
+
+elif [[ ${TYPE,,} == "syn" ]]; then
+  # echo "Registration type selected: Syn"
+  cmd() {
+    antsRegistration $5 -d 3 --float 1 -z 1 $4 -n $6 $7 \
+      --output [$3]  \
+      --use-histogram-matching 0  \
+      --winsorize-image-intensities [0.005,0.995]  \
+      --transform Rigid[0.1]  \
+      --metric MI[$1,$2,1,32,Regular,0.25]  \
+      --convergence [1000x500x250x100,1e-6,10]  \
+      --shrink-factors 8x4x2x1  \
+      --smoothing-sigmas 4x3x2x1vox  \
+      --transform Affine[0.1]  \
+      --metric MI[$1,$2,1,32,Regular,0.25]  \
+      --convergence [1000x500x250x100,1e-6,10]  \
+      --shrink-factors 8x4x2x1  \
+      --smoothing-sigmas 4x3x2x1vox \
+      --transform SyN[0.1,2,0]  \
+      --metric CC[$1,$2,1,4]  \
+      --convergence [1000x500x250x100,1e-6,10]  \
+      --shrink-factors 8x4x2x1  \
+      --smoothing-sigmas 4x3x2x1vox
+  }
+
+else
+  echo "Unknown registration type \"${TYPE}\" specified"
+  Usage >&2
+  exit 1
+fi
+
+#       $1          $2        $3         $4           $5         $6        $7
+cmd "${FIXED}" "${MOVING}" "${OUT}" "${INITIAL}" "${VERBOSE}" "${INT}" "${MASK}"
+
+# Execute command
+if [[ -f ${OUT}0GenericAffine.mat ]]; then
+  # echo "  Found a pre-run registration file, renaming it"
+  mv ${OUT}0GenericAffine.mat ${OUT}genaff.mat
+fi
+
+# remove temporary file
+if [[ ${extract_moving} -eq 1 ]]; then
+  if [ ${VERB} -eq 1 ]; then
+    echo "Removing temporary moving file"
+  fi
+
+  rm ${MOVING} 2>/dev/null
+fi
+
+# remove temporary file
+if [[ ${extract_fixed} -eq 1 ]]; then
+  if [ ${VERB} -eq 1 ]; then
+    echo "Removing temporary fixed file"
+  fi
+
+  rm ${FIXED} 2>/dev/null
+fi

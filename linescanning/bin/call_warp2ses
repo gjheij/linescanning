@@ -1,0 +1,242 @@
+#!/usr/bin/env bash
+
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_warp2ses
+
+This script warps the content of an input directory to the second session given the transformation
+matrix warping session 1 to session 2 (should be obtained with spinoza_lineplanning). It assumes a
+relatively BIDS-ified file structure, where you have /derivatives/<software>/<subject>/<ses->/...
+
+Arguments:
+  -s <subject>    subject ID, e.g., sub-001
+  -f <from ses>   which files to warp (integer, e.g., '1'; 'ses-' is automatically appended)
+  -t <to ses>     where to warp files to (integer, e.g., '2'; 'ses-' is automatically appended)
+                  you can also specify "ctx" or "fs" to warp session 1 input to the surface of py-
+                  cortex (call_ctxsurfmove) or FreeSurfer (call_resample)
+  -d <input dir>  root directory with files to warp; assumes <input dir>/<subject>/<from ses>
+                  kind of structure
+  -o <output dir> output directory; if empty, <input dir>/ses-<to-ses> will be used
+  -w <warp file>  affine transformation matrix created with e.g., ANTs (should've been created
+                  during spinoza_lineplanning)
+  -i <invert>     should we invert the <warp file> (0=no|1=yes, default = no)
+  -r <reference>  reference image to which to warp the files from <input dir> to
+  -a <appendix>   specify here a subdirectory within <input dir>/<subject>/<session>
+  -q <search>     specify any additional substring to look in the files for
+
+Usage:
+  call_warp2ses -s <subject> -f <from ses> -t <to ses> -d <input dir> -w <warp file> r <ref>
+
+Example:
+  call_warp2ses -s sub-001 -f 1 -t 2 -d derivatives/nighres -w genaff.mat -r anat_ses-2.nii.gz
+
+Notes:
+  Check linescanning/bin/utils/utils.py for 'warpsession', a python implementation with similar
+  features as this script. call_warp2ses does stuff more in bulk, whereas in 'warpsession', you
+  can warp individual files across sessions
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+#-----------------------------------------------------------------------------
+# Deal with arguments
+while getopts s:f:t:d:w:i:o:r:a:q: arg; do
+  case $arg in
+    s)  sub=${OPTARG}
+          ;;
+    f)  from_ses=${OPTARG}
+          ;;
+    t)  to_ses=${OPTARG}
+          ;;
+    d)  in_dir=${OPTARG}
+          ;;
+    o)  out_dir=${OPTARG}
+          ;;
+    w)  warp_file=${OPTARG}
+          ;;
+    i)  invert_warp=${OPTARG}
+          ;;
+    r)  ref_img=${OPTARG}
+          ;;
+    a)  add=${OPTARG}
+          ;;
+    q)  search=${OPTARG}
+          ;;
+  esac
+done
+
+if [[ $# -lt 6 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+#-----------------------------------------------------------------------------
+# Check some directories/files
+if [[ -z ${in_dir} ]]; then
+  echo "ERROR: please specify input directory.."
+  Usage
+  exit 1
+fi
+
+if [[ -z ${warp_file} ]]; then
+  # check in planning folder
+  warp_file=`find ${DIR_DATA_SOURCE}/${sub}/ses-2/planning/nifti -type f -name "*genaff.mat" 2>/dev/null`
+  if [[ -z ${warp_file} ]]; then
+    echo "ERROR: could not find warp-file.."
+    Usage
+    exit 1
+  fi
+fi
+
+if [[ ! -f ${warp_file} ]]; then
+  echo "ERROR: could not find warp-file.."
+  Usage
+  exit 1
+fi
+
+# check in DIR_DATA_HOME/<sub>/ses-<to_ses>/anat
+if [[ -z ${ref_img} ]]; then
+  ref_img=`find ${DIR_DATA_HOME}/${sub}/ses-${to_ses}/anat -type f -name "*acq-${space^^}*" -and -not -name "*space-*" -and -name "*.nii.gz" 2>/dev/null`
+  if [[ -z ${ref_img} ]]; then
+    echo "ERROR: could not find reference image.."
+    Usage
+    exit 1
+  fi
+fi
+
+if [[ ! -f ${ref_img} ]]; then
+  echo "ERROR: could not find reference-file.."
+  Usage
+  exit 1
+fi
+
+#-----------------------------------------------------------------------------
+# Set invert to 0 (do not invert input warp file)
+if [[ -z ${invert_warp} ]]; then
+  invert=0
+  txt="not inverting warp file"
+else
+  invert=${invert_warp}
+  if [[ ${invert} -eq 0 ]]; then
+    txt="not inverting warp file"
+  else
+    txt="inverting warp file"
+  fi
+fi
+
+# set input directory
+if [[ ! -z ${add} ]]; then
+  input=${in_dir}/${sub}/ses-${from_ses}/${add}
+else
+  input=${in_dir}/${sub}/ses-${from_ses}
+fi
+
+if [[ ! -d ${input} ]]; then
+  echo
+  echo "ERROR: could not fine input directory: \"${input}\""
+  Usage
+  exit 1
+fi
+
+# set output directory
+if [ -z ${out_dir} ]; then
+  base=$(basename $(dirname ${f}))
+  if [[ ${base} == *"ses"* ]]; then
+    out_dir=${in_dir}/${sub}/ses-${to_ses}
+  else
+    out_dir=${in_dir}/${sub}/ses-${to_ses}/${base}
+  fi
+fi
+
+if [[ ! -d ${out_dir} ]]; then
+  mkdir -p ${out_dir}
+fi
+
+echo "call_warp2ses"
+echo
+echo "Input session   = ${from_ses}"
+echo "Output session  = ${to_ses,,  }"
+
+# echo "$(basename $0)"
+# echo
+# echo "reference image = [${ref_img}]"
+# echo "warp file       = [${warp_file}]"
+# echo "invert warp     = ${invert}; ${txt}"
+
+#-----------------------------------------------------------------------------
+# check if we have something between actual files and ses-x tag
+echo "Start warping.."
+fn=`find ${input} -type f -name "*${search}*" -and -name "*.nii.gz" 2>/dev/null`
+for f in ${fn[@]}; do
+
+  # re-direct output to ses-2 directory and insert "space-ses<to_ses>"
+  # outf=$(basename ${f})
+  # newf=${out_dir}/${outf%%"desc-"*}space-ses${to_ses}_${outf#*"${outf%%"desc-"*}"}
+
+  if [[ ${to_ses,,} == "ctx" ]] || [[ ${to_ses,,} == "fs" ]]; then
+
+    # warp to fs or ctx
+    # insert "space-" tag in the middle of filename
+    newf=${out_dir}/$(basename ${f} | cut -d'_' -f-3)_space-${to_ses,,}_$(basename ${f} | cut -d"_" -f4-)
+
+    if [[ ! -f ${newf} ]]; then
+
+      if [[ ${to_ses,,} == "fs" ]]; then
+        # got fs, use call_resample
+
+        call_resample ${f} ${ref_img} ${newf}
+
+        if [[ $? -eq 0 ]]; then
+          echo " wrote `basename ${newf}`"
+        else
+          echo "ERROR: call_resample did not execute cleanly"
+          exit 1
+        fi
+
+      elif [[ ${to_ses,,} == "ctx" ]]; then
+        # got ctx, use call_ctxsurfmove
+
+        call_ctxsurfmove ${sub} ${f} ${newf}
+
+        if [[ $? -eq 0 ]]; then
+          echo " wrote `basename ${newf}`"
+        else
+          echo "ERROR: call_ctxsurfmove did not execute cleanly"
+          exit 1
+        fi
+
+      else
+
+        echo "ERROR: unknown option ${to_ses} was specifed. Either use integers, or \"ctx\" or \"fs\" in special cases"
+        exit 1
+
+      fi
+
+    fi
+
+  else
+
+    newf=${out_dir}/${sub}_ses-${to_ses}_$(basename ${f} | cut -d "_" -f3-)
+
+    if [[ ! -f ${newf} ]]; then
+      call_antsapplytransforms -i ${invert} ${ref_img} ${f} ${newf} ${warp_file}
+
+      if [[ $? -eq 0 ]]; then
+        echo " wrote `basename ${newf}`"
+      else
+        echo "ERROR: call_antsapplytransforms did not execute cleanly"
+        exit 1
+      fi
+
+    fi
+
+  fi
+
+done
+
+echo "Done"

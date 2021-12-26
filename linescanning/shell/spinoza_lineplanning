@@ -1,0 +1,227 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# check if there's is a setup file containing the major paths and source it if it exists
+call_loadsetup
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+spinoza_lineplanning
+
+Quick registration of partial anatomy from ses-2 with whole brain anatomy from ses-1 to plan the line
+as accurately as possible.
+
+Assumes you have run the pycortex notebook to obtain the text file with the values describing the
+orientation of the line in the first session anatomy based on the minimal curvature (and pRF-mapping).
+This notebook should ouput a line_orientation.txt file in the pycortex/sub-xxx directory. It will
+complain if this file's not here, we need it!!
+
+Steps:
+  - Convert data                          (call_dcm2niix)
+  - Create initial matrix                 (itksnap)
+  - Registration                          (call_antsregistration; ANTs)
+  - Store output registration in txt file
+  - Fetch output from pycortex notebook or spinoza_bestvertex
+  - Calculate values from both files      (call_mrconsole)
+
+Usage:
+  spinoza_lineplanning  -s <subject ID>
+                        -n <session ID>
+                        -i <path to raw session 2 anatomy>
+                        -a <path to session 1 anatomy>
+                        -p <path to file containing the orientation of the line>
+                        -h <which hemisphere> (left | right)
+                        -o <overwrite point files> (omit if we should not overwrite)
+
+Example:
+  spinoza_lineplanning -s sub-001 -n 3 -i /path/to/raw/ses-2 -a /path/to/ses-1_anat.nii.gz -p /path/to
+                        /pycortex_file.csv -h "left"
+
+Notes:
+  - You NEED ANTs for this to run
+  - It also depends on python3; if something doesn't seem to work, try to update the package
+    with python -m pip install <package> --upgrade
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+if [[ $# -le 8 ]]; then
+  Usage >&2
+  exit 1
+fi
+
+# Allocate input arguments to variables
+#
+while getopts uos:i:a:p:h:n: argument
+do
+    case ${argument} in
+      s)  subject=${OPTARG}
+            ;;
+      n)  session=${OPTARG}
+            ;;            
+      i)  nifti=${OPTARG}
+            ;;
+      a)  anat_session1=${OPTARG}
+            ;;
+      p)  ctxfile=${OPTARG}
+            ;;
+      h)  hemi=${OPTARG}
+            ;;
+    esac
+done
+
+#-----------------------------------------------------------------------------
+# Start clock
+#-----------------------------------------------------------------------------
+echo
+echo "==================================================================================================="
+printf "CALCULATE ROTATION/TRANSLATION VALUES FOR MR-CONSOLE\n"
+start=`date +%s`
+start_date=`date`
+
+printf "Started at ${start_date}\n"
+echo "==================================================================================================="
+echo
+
+#-----------------------------------------------------------------------------
+# Check if all input are correctly specified
+if [[ ! -d ${nifti} ]]; then
+  echo "Please specify the path to the raw session 2 anatomy"
+  exit 1
+fi
+
+echo "Subject                            = ['${subject}']"
+echo "Hemisphere                         = ['${hemi}']"
+
+#-----------------------------------------------------------------------------
+# Convert orig.mgz to orig.nii.gz to take as session 1 input
+fs_dir=${FS}
+anat_session1=${fs_dir}/${subject}/mri/orig.nii.gz
+if [[ ! -f ${anat_session1} ]]; then
+  echo "Converting orig.mgz to nifti to use as session 1 anatomy"
+  call_mriconvert $(dirname ${anat_session1})/$(basename ${anat_session1} .nii.gz).mgz
+
+  if [[ $? != 0 ]]; then
+    echo
+    echo "---------------------------------------------------------------------------------------------------"
+    echo "ERROR in `basename ${0}`: call_mriconvert exited with non-zero status"
+    exit 1
+  fi
+
+else
+
+  echo "Session 1 input                    = ['`basename ${anat_session1}`']"
+
+fi
+
+# double double check
+anat_session1=${fs_dir}/${subject}/mri/orig.nii.gz
+if [[ ! -f ${anat_session1} ]]; then
+  echo "ERROR: could not find orig.nii.gz"
+  exit 1
+fi
+
+#-----------------------------------------------------------------------------
+# Convert PARREC to nifti for registration
+if [[ ! -d ${nifti}/nifti ]]; then
+  echo "Converting data with dcm2niix"
+  call_dcm2niix -i ${nifti} -o ${nifti}/nifti
+  echo
+fi
+
+# find delay time for nifti file
+PAR_FILE=`find ${nifti} -maxdepth 1 -type f -name "*.PAR" 2>/dev/null`
+ttime=`cat ${PAR_FILE} | awk '/^\s*$/ {next;} {print $33}' | grep -oE '[0-9]+' | head -n 1`
+      # echo content      #extract 33rd column              # filter numbers    # get first value (= trigger delay)
+
+if [[ -z ${ttime} ]]; then
+  # set ttime to 1008 if command above did not work
+  ttime="1008"
+  echo "Could not find Trigger Delay time in .PAR file, setting it to \"${ttime}\""
+else
+  echo "Trigger Delay time                 = ['${ttime}']"
+fi
+
+anat_session2=`find "${nifti}/nifti" -type f \( -name "*t${ttime}*" -and -name "*real*" -and -name "*.nii.gz" \) 2>/dev/null`
+if [[ -z ${anat_session2} ]]; then
+  echo "ERROR: Couldn't find lower anatomy file, please specify correctly.."
+  exit 1
+elif [ `echo ${anat_session2} | wc -w` -gt 1 ]; then
+  echo "ERROR: Found more than 1 file, make sure only one file is specified for session 2 anatomy:"
+  for i in ${anat_session2[@]}; do echo "  ${i}"; done
+  exit 1
+else
+  echo "Session ${session} input                    = ['`basename ${anat_session2}`']"
+fi
+
+#-----------------------------------------------------------------------------
+# Call ANTs registration with Rigid body transformation
+genaff=${nifti}/nifti/${subject}_from-fs_to-ses${session}_desc-genaff.mat
+
+if [[ ! -f ${genaff} ]]; then
+  # enter bash ${DIR_SCRIPTS}/bin/call_antsregistration.sh for help
+  echo "Register FS (orig.mgz) to session ${session}"
+  call_antsregistration \
+    ${anat_session2} \
+    ${anat_session1} \
+    $(dirname ${genaff})/$(basename ${genaff} genaff.mat) \
+    rigid
+else
+  echo "ANTs matrix mapping fs to ses${session}     = ['`basename ${genaff}`']"
+fi
+
+#-----------------------------------------------------------------------------
+# Fetch the file created with the jupyter notebook containing the orientation
+# of the line in session 1 anatomy calculated based on the minimal curvature
+# and pRF-mapping
+line_orientation_file=${ctxfile}
+if [[ -f ${genaff} ]]; then
+
+  call_mrconsole \
+    -s ${subject} \
+    -q 1 \
+    -n ${session} \
+    -d ${DIR_DATA_DERIV} \
+    --ses2 ${anat_session2} \
+    -a ${genaff} \
+    -h ${hemi} \
+    -l ${line_orientation_file}
+
+  if [[ $? != 0 ]]; then
+    echo
+    echo "---------------------------------------------------------------------------------------------------"
+    echo "ERROR in `basename ${0}`: call_mrconsole exited with non-zero status"
+    exit 1
+  fi
+
+else
+  echo "ERROR: Missing files for call_mrconsole"
+  exit 1
+fi
+
+# overwrite file earlier created with call_fs_to_ses2 or something
+if [ -d ${DIR_DATA_DERIV}/pycortex/${subject}/transforms ]; then
+  cp ${genaff} ${DIR_DATA_DERIV}/pycortex/${subject}/transforms
+fi
+
+#-----------------------------------------------------------------------------
+# Calculate time spent using 'let'
+
+echo "---------------------------------------------------------------------------------------------------"
+end=`date +%s`
+end_date=`date`
+printf "Done at ${end_date}\n"
+
+let deltatime=end-start
+let hours=deltatime/3600
+let minutes=(deltatime/60)%60
+let seconds=deltatime%60
+printf "Time spent: %d:%02d:%02d\n" ${hours} ${minutes} ${seconds}
+echo "---------------------------------------------------------------------------------------------------"

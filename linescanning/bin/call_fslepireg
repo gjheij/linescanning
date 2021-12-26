@@ -1,0 +1,199 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_fslepireg
+
+from: https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/FLIRT/UserGuide
+This is a script designed to register EPI images (typically functional or diffusion) to structural 
+(e.g. T1-weighted) images. The pre-requisites to use this method are: (1) a structural image that 
+can be segmented to give a good white matter boundary; and (2) an EPI that contains some intensity 
+contrast between white matter and grey matter (though it does not have to be enough to get a seg-
+mentation). This script will either use an existing white-matter segmentation of the structural 
+image, or create one itself, to define a white-matter boundary. To use an existing white-matter 
+segmentation you can use the --wmseg option. Alternately, there needs to be an image with the same 
+basename as the input t1brain image, but ending with _wmseg. We recommend that the structural image 
+is bias-corrected separately beforehand if there is obvious bias field present.
+
+You can also specify a FreeSurfer directory, in which case we will take the orig.mgz as --t1brain,
+the brainmask.mgz as --t1, and the wm.mgz as --wmseg. You can even specify a transformation matrix 
+in combination with this, so that we warp all files first to that space, then register the BOLD to
+that. Generally it's more advisable to get the BOLD as close as the structural scans as possible, 
+then run this script. You can specify to use FreeSurfer using the '-s <subject>' flag, we will then
+take SUBJECTS_DIR/<subject>/mri as default folder.
+
+Arguments:
+    <-s subject>    subject ID as specified in FreeSurfer directory if you want to use the FreeSur-
+                    fer as default inputs
+    <-t matrix>     specify a transformation matrix in case we want to warp the input files to a 
+                    different space first. As said above, it's better to get the BOLD in the desig-
+                    nated space first (e.g., with ITK-Snap), then run this script.
+    <-w wm file>    white matter segmentation if <subject> is empty
+    <-h t1head>     whole head T1w-image
+    <-b t1brain>    brain extracted T1w-image
+    <-i initial>    initial transformation to be applied to the BOLD file before registration. Can 
+                    be useful in combination with the <-s subject> (FreeSurfer) option. This should
+                    be a matrix created by manually placing the BOLD file over the t1brain/head.
+    <-q>            print this help
+    <-a>            convert output matrix to ANTs format
+    <epi file>      input BOLD image
+    <output>        output file name
+
+Usage:
+  call_fslepireg <-s subject> <-t matrix> <-w wm> <-h t1head> <-b t1brain> <epi_file> <output file>
+
+Example:
+  call_fslepireg -h wholehead_T1w.nii.gz -b brain_T1w.nii.gz bold.nii.gz bold_in_t1w.nii.gz
+  call_fslepireg -s sub-001 bold.nii.gz bold_in_fs.nii.gz
+  call_fslepireg -s sub-001 -t fs2space.mat bold.nii.gz bold_in_space.nii.gz
+  call_fslepireg -s sub-001 -i bold2fs.mat bold.nii.gz bold_in_fs.nii.gz
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+if [[ $# -lt 2 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+#-----------------------------------------------------------------------------
+# Souce some helper functions such as fetch_filepath
+source call_bashhelper
+if [[ $? -ne 0 ]]; then
+    echo "ERROR in master: call_bashhelper exited with non-zero status. Make sure to specify full paths!"
+fi
+
+#-----------------------------------------------------------------------------
+# Deal with arguments
+while getopts qas:t:w:h:b:i: arg
+do
+    case ${arg} in
+        s)  subject=${OPTARG}
+            ;;
+        t)  matrix_file=${OPTARG}
+            ;;
+        w)  wm_file=${OPTARG}
+            ;;
+        h)  t1head=${OPTARG}
+            ;;
+        i)  initial=${OPTARG}
+            ;;					
+        b)  t1brain=${OPTARG}
+            ;;                                                    
+    esac
+done
+
+epi_file=${@:$OPTIND:1}
+out_file=${@:$OPTIND+1:1}
+
+#-----------------------------------------------------------------------------
+# Check if we have FreeSurfer flag
+if [[ ! -z ${subject} ]]; then
+
+    if [[ -z ${SUBJECTS_DIR} ]];	then
+        echo "ERROR in `basename ${0}`: FreeSurfer was requested, but SUBJECTS_DIR is not set"
+        exit 1
+    fi
+
+    wm_file=${SUBJECTS_DIR}/${subject}/mri/wm.nii.gz
+    t1head=${SUBJECTS_DIR}/${subject}/mri/orig.nii.gz
+    t1brain=${SUBJECTS_DIR}/${subject}/mri/brainmask.nii.gz
+    
+    # convert them to nifti for safety
+    for ii in ${wm_file} ${t1head} ${t1brain}; do
+        if [[ ! -f ${ii} ]]; then
+            call_mriconvert $(dirname ${ii})/$(basename ${ii} .nii.gz).mgz
+        fi
+    done
+
+    # binarize wm file, otherwise BBR will complain
+    fslmaths ${wm_file} -bin ${wm_file}
+
+fi
+
+#-----------------------------------------------------------------------------
+# check if we got a white matter file
+if [[ -z ${wm_file} ]]; then
+    do_we_have_wm=0
+else
+    do_we_have_wm=1
+fi
+
+#-----------------------------------------------------------------------------
+# Check if we should warp anatomical stuff
+epi_file=`fetch_filepath ${epi_file}`
+out_file=`fetch_filepath ${out_file}`
+
+if [[ ! -z ${matrix_file} ]]; then
+
+    matrix_file=`fetch_filepath ${matrix_file}`
+
+    # by setting the reference and moving to the same image, we retain the geometry of the input files
+    # for the mask image (wm), we use a GenericLabel interpolation, for the T1w-images a linear
+
+    if [[ ${do_we_have_wm} -eq 1 ]]; then
+        call_antsapplytransforms -t gen ${wm_file} ${wm_file} $(dirname ${out_file})/wm_$(basename $out_file) ${matrix_file}
+        if [[ $? -ne 0 ]]; then
+            echo "ERROR in `basename ${0}`: call_antsapplytransforms exited with non-zero status (wm-file)"
+            exit 1
+        fi
+        wm_file=$(dirname ${out_file})/wm_$(basename $out_file)
+        wm_flag="--wmseg=${wm_file}"
+    fi
+
+    call_antsapplytransforms -t lin ${t1head} ${t1head} $(dirname ${out_file})/t1head_$(basename $out_file) ${matrix_file}
+    if [[ $? -ne 0 ]]; then
+        echo "ERROR in `basename ${0}`: call_antsapplytransforms exited with non-zero status (t1head-file)"
+        exit 1
+    fi
+
+    call_antsapplytransforms -t lin ${wm_file} ${wm_file} $(dirname ${out_file})/t1brain_$(basename $out_file) ${matrix_file}
+    if [[ $? -ne 0 ]]; then
+        echo "ERROR in `basename ${0}`: call_antsapplytransforms exited with non-zero status (t1brain-file)"
+        exit 1
+    fi	
+
+    # overwrite variables; we need to do that after call_antsapplytransforms otherwise bad things happen
+    t1head=$(dirname ${out_file})/t1head_$(basename $out_file)
+    t1brain=$(dirname ${out_file})/t1brain_$(basename $out_file)
+
+else
+    if [[ ${do_we_have_wm} -eq 1 ]]; then
+        wm_flag="--wmseg=${wm_file}"
+    else
+        wm_flag=""
+    fi
+fi
+
+#-----------------------------------------------------------------------------
+# Check if we should warp functional stuff
+if [[ ! -z ${initial} ]]; then
+    initial=`fetch_filepath ${initial}`
+    call_antsapplytransforms -t lin ${t1head} ${epi_file} $(dirname ${out_file})/bold_in_t1head.nii.gz ${initial}
+    epi_file=$(dirname ${out_file})/bold_in_t1head.nii.gz
+fi
+
+#-----------------------------------------------------------------------------
+# Run the epi_reg command
+if [[ -f ${t1head} && -f ${t1brain} ]]; then
+    cmd="epi_reg --epi=${epi_file} --t1=${t1head} --t1brain=${t1brain} --out=${out_file} ${wm_flag}"
+    echo ${cmd} && exec ${cmd}
+else
+    echo "ERROR in `basename ${0}`: could not find t1brain/t1head-files"
+    exit 1
+fi
+
+#-----------------------------------------------------------------------------
+# Check if we should convert the matrix to ANTs format
+if [[ "${@}" == *"-a"* ]]; then
+    fname=$(dirname ${out_file})/$(basename ${out_file} .nii.gz)
+    call_ras2fsl -i ${t1head} ${epi_file} ${fname}.mat ${fname}.txt
+    ConvertTransformFile 3 ${fname}.txt ${fname}_itk.mat --convertToAffineType
+fi

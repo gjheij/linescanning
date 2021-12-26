@@ -1,0 +1,87 @@
+#!/usr/bin/env python
+
+import os, sys
+import numpy as np
+import nibabel as nb
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_ribbon2mrvista
+
+This script converts the ribbon.mgz file as created by FreeSurfer to the MrVista compatible segmen-
+tation file
+
+Args:
+    <input file>        path to ribbon.mgz file
+    <output file>       path to output segmentation file
+
+Outputs
+    output file         new volume containing the correct values for gray and white matter:
+                        LW: 2 => 3
+                        LG: 3 => 5
+                        RW: 41 => 4
+                        RG: 42 => 6
+
+See: http://web.stanford.edu/group/vista/cgi-bin/wiki/index.php/FreeSurfer#Extracting_a_white_matter_segmentation_to_use_with_itkGray                     
+
+Example:
+    call_ribbon2mrvista ribbon.mgz itk_segmentation.nii
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    in_file     = ''
+    out_file    = ''
+
+    if len(argv) < 2:
+        print("NOT ENOUGH ARGUMENTS SPECIFIED")
+        print(main.__doc__)
+        sys.exit()
+
+    in_file     = argv[0]
+    out_file    = argv[1]
+
+    # get extension of output file
+    if out_file.endswith('.gz'):
+      ext = "nii.gz"
+    elif out_file.endswith('.nii'):
+      ext = "nii"
+    else:
+      raise ValueError(f"Unrecognized extension.. Use either .nii.gz or .nii")
+
+    # "warp" segmentation file from FreeSurfer space to native space (the space of the input image)
+    cmd = f"mri_label2vol --seg {in_file} --temp {opj(os.path.dirname(in_file),'rawavg.mgz')} --o {opj(os.path.dirname(in_file),'ribbon-in-rawavg.mgz')}  --regheader {in_file}"
+    try:
+      os.system(cmd)
+    except:
+      raise ValueError("Could not run mri_label2vol command..")
+
+    # convert mgz to nii
+    tmp_file = opj(os.path.dirname(in_file), f'ribbon-in-rawavg.{ext}')
+    cmd = f"mri_convert --in_type mgz --out_type nii {opj(os.path.dirname(in_file),'ribbon-in-rawavg.mgz')} {tmp_file}"
+    try:
+      os.system(cmd)
+    except:
+      raise ValueError("Could not run mri_convert command..")
+
+    # load file with nibabel
+    segmentation = nb.load(tmp_file)
+    segmentation_data = segmentation.get_fdata().astype(int)
+
+    # create an empty image with same dimensions
+    new_segmentation = np.zeros_like(segmentation_data)
+
+    # switch values
+    new_segmentation[segmentation_data == 42] = 6
+    new_segmentation[segmentation_data == 41] = 4
+    new_segmentation[segmentation_data == 3] = 5
+    new_segmentation[segmentation_data == 2] = 3
+
+    # save new image
+    nb.Nifti1Image(new_segmentation.astype(int), affine=segmentation.affine, header=segmentation.header).to_filename(out_file)
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

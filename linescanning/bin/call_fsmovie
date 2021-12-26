@@ -1,0 +1,152 @@
+#!/usr/bin/env python
+
+##################################################################################################################
+#
+#   This script uses freeview to make screenshots of a freesurfer segmentation.
+#   These screenshots are then combined to a movie, for easy diagnosis of
+#   FreeSurfer segmentation problems. I have chosen for sagittal orientation,
+#   because this allows one to see whether the sagittal sinus is misclassified as V1 gray matter.
+#
+##################################################################################################################
+import subprocess as sb
+import os
+import glob
+import sys, getopt
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_fsmovie
+
+Command-line friendly adaptation of T. Knapens FreeSurfer_segmentation_movie.py. The idea is to be 
+more free in specifying certain settings of the command, such as subject-specific input rather than
+a subject list, the range to use, colors, etc.
+For original see: https://gist.github.com/tknapen/85d9a23a09c95d15f4b23ba1965fa54d
+
+Args:
+    -s (--subject)  : str (default = None)
+                    subject number as used in the FreeSurfer directory
+
+    -r (--range)    : list (default = [90,240])
+                    range of slices to use, generally [90, 240] suffices for the standard 0.7
+                    MP2RAGE
+
+    -f (--fsdir)    : str (default = SUBJECTS_DIR)
+                    FreeSurfer directory if SUBJECTS_DIR is not set
+
+    -v (--view)     : str (default = "sagittal")
+                    View to use for the png's; could be one of "sagittal", "axial", "coronal", "all"
+
+Outputs
+    <fsdir>/<subject>/<movie> directory containing the png's and mp4-output
+
+Example:
+    call_fsmovie -s sub-001 (easiest form)
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    subject     = None
+    slice_range = [90,240]
+    fsdir       = os.environ['SUBJECTS_DIR']
+    slice_view  = "sagittal"
+
+    try:
+        opts = getopt.getopt(argv,"hs:r:f:v:",["subject=", "range=", "fsdir=", "view="])[0]
+    except getopt.GetoptError:
+        print(main.__doc__)
+        sys.exit(2)
+
+    for opt, arg in opts:
+        if opt == '-h':
+            print(main.__doc__)
+            sys.exit()
+        elif opt in ("-s", "--subject"):
+            subject = arg
+        elif opt in ("-r", "--range"):
+            slice_range = arg
+        elif opt in ("-f", "--fsdir"):
+            fsdir = arg
+        elif opt in ("-v", "--view"):
+            slice_view = arg
+
+    if len(argv) < 1:
+            print("\nNOT ENOUGH ARGUMENTS SPECIFIED")
+            print(main.__doc__)
+            sys.exit()
+
+    if subject == None:
+        print("Need at the bare minimum at subject ID")
+        sys.exit(1)
+
+    freeview_command = 'freeview -cmd {cmd} '
+    cmd_txt = """ -v {anatomy}:grayscale=10,100 -f {lh_wm}:color=yellow:edgecolor=yellow -f {rh_wm}:color=yellow:edgecolor=yellow -f {lh_pial}:color=blue:edgecolor=blue -f {rh_pial}:color=blue:edgecolor=blue
+    -viewport {view}
+    """
+
+    # it's also possible to load an EPI dataset, but you'll need a registration file also. The following string has to be appended to the cmd_txt
+    # -v {EPI}:colormap=jet:heatscale=20,200,500:reg={reg_filename}:opacity=0.65
+
+    # and we can also add labels, if we're interested in surface ROIs
+    # -l {lhV1label}:color=yellow -l {rhV1label}:color=yellow
+
+
+    # To step through the sagittal slices this is added for every slice.
+    if slice_view == "sagittal":
+        slice_addition = ' -slice {xpos} 127 127 \n -ss {opfn} \n  '
+    elif slice_view == "axial":
+        slice_addition = ' -slice 127 {xpos} 127 \n -ss {opfn} \n  '
+    elif slice_view == "coronal":
+        slice_addition = ' -slice 127 127 {xpos} \n -ss {opfn} \n  '
+    elif slice_view == "all":
+        raise NotImplementedError("WIP: not implemented yet. Rerun command with different view")
+    else:
+        raise ValueError(f"Received {slice_view} for orientation. Should be 'sagittal', 'axial', or 'coronal'")
+
+    FS_folder = os.path.join(fsdir, subject)
+    if os.path.exists(FS_folder):
+
+        target_directory = os.path.join(FS_folder, 'movie')
+
+        if not os.path.exists(target_directory):
+            os.makedirs(target_directory, exist_ok=True)
+
+            cmd_file = os.path.join(target_directory, 'cmd.txt')
+
+            sj_cmd = cmd_txt.format(
+                anatomy=os.path.join(FS_folder, 'mri', 'T1.mgz'),
+                lh_wm=os.path.join(FS_folder, 'surf', 'lh.white'),
+                lh_pial=os.path.join(FS_folder, 'surf', 'lh.pial'),
+                rh_wm=os.path.join(FS_folder, 'surf', 'rh.white'),
+                rh_pial=os.path.join(FS_folder, 'surf', 'rh.pial'),
+                subject=subject,
+                view=slice_view
+                # EPI=EPI,
+                # reg_filename=reg_filename
+                # lhV1label=lhV1label,
+                # rhV1label=rhV1label
+            )
+
+            for sag_slice in range(*slice_range):
+
+                sj_cmd += slice_addition.format(
+                    xpos=sag_slice,
+                    opfn=os.path.join(target_directory, str(
+                        sag_slice).zfill(3) + '.png')
+                )
+
+            sj_cmd += ' -quit \n '
+
+            with open(cmd_file, 'w') as f:
+                f.write(sj_cmd)
+
+            sb.call(freeview_command.format(cmd=cmd_file), shell=True)
+
+    out_movie = os.path.join(target_directory, f'{subject}_desc-{slice_view}.mp4')
+    if not os.path.exists(out_movie) and os.path.exists(target_directory):
+        convert_command = f'ffmpeg -framerate 5 -pattern_type glob -i "{target_directory}/*.png" -b:v 2M -c:v mpeg4 {out_movie}'
+        sb.call(convert_command, shell=True)
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

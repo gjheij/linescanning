@@ -1,0 +1,94 @@
+#!/usr/bin/env python
+
+import sys, getopt
+import os
+from nilearn import image
+from scipy import ndimage
+import pathlib
+import nibabel as nb
+import warnings
+warnings.filterwarnings("ignore")
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_t12ratio
+
+Taking the T1w over T2w ratio presents a nice change to delineate the sagittal sinus and other nui-
+sance areas quite nicely. This is a first step in making a sinus mask. The other one involved re-
+gistering the T1w to the MNI152 template, followed by using that transformation to get the MNI152
+dilated sagittal sinus in subject-specific space. Multiplying these images should result in a decent
+initial estimate of the sinus.
+
+Args:
+    --t1            T1-weighted image with background noise
+    --t2            T2-weighted image with background noise
+    -o (--out)      Output basename including the path for the ratio image and sagittal sinus image
+                    ("-desc_ratio" and "-desc_nuisance" will be appended)
+    -t (--thresh)   Threshold to use before binarizing the mask. If no threshold is specified, ITK-
+                    Snap will be opened to determine a threshold based on the calculated ratio.
+
+Outputs
+    1) T1w/T2w-ratio image
+    2) Initial sagittal sinus estimate
+
+Example:
+    call_t12ratio --t1 t1w.nii.gz --t2 t2w.nii.gz -o /some/path/sub-001_desc
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    t1w     = None
+    t2w     = None
+    out     = None
+    thresh  = None
+
+    try:
+        opts = getopt.getopt(argv,"ho:t:",["t1=", "t2=", "out=", "thresh="])[0]
+    except getopt.GetoptError:
+        print(main.__doc__)
+        sys.exit(2)
+
+    for opt, arg in opts:
+        if opt == '-h':
+            print(main.__doc__)
+            sys.exit()
+        elif opt in ("--t1"):
+            t1w = arg
+        elif opt in ("--t2"):
+            t2w = arg
+        elif opt in ("-o", "--out"):
+            out = arg            
+        elif opt in ("-t", "--thresh"):
+            thresh = arg
+
+    if len(argv) < 3:
+        print("\nNOT ENOUGH ARGUMENTS SPECIFIED")
+        print(main.__doc__)
+        sys.exit()
+
+    # get full paths just in case
+    t1w = os.path.abspath(t1w)
+    t2w = os.path.abspath(t2w)
+
+    if not os.path.exists(os.path.dirname(t2w)):
+      os.makedirs(os.path.dirname(t2w), exist_ok=True)
+
+    # calculate ratio
+    ratio_img = image.math_img('(t1 / t2)', t1=t1w, t2=t2w)
+    ratio_img.to_filename(out+"_desc-ratio.nii.gz")
+
+    # threshold image
+    if thresh == None:
+        print("Opening ITK-Snap; go to 'tools' > 'Color Map Editor'")
+        os.system(f"itksnap -g {out+'_desc-ratio.nii.gz'} 2>/dev/null")
+        thresh = input('Threshold: ')
+
+    sinus_img = image.threshold_img(ratio_img, float(thresh))
+    sinus_img = image.math_img('(img > 0)', img=sinus_img)
+    sinus_img.to_filename(out+"_desc-nuisance.nii.gz")
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
