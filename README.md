@@ -4,6 +4,19 @@
 
 This repository contains all of the tools used during the acquisition and postprocessing of line scanning data at the Spinoza Centre for Neuroimaging in Amsterdam. The script `master` controls the modules prefixed by `spinoza_`, which in turn call upon various scripts in the `utils` and `bin` directory. The scripts in the latter folders are mostly helper scripts to make life a tad easier. The repository contains a mix of languages in bash, python, and matlab.
 
+## In active development - do not use unless otherwise instructed by repo owners
+
+Documentation for this package can be found at [readthedocs](https://linescanning.readthedocs.io/en/latest/) (not up to date)
+
+## Policy & To Do
+
+- [x] install using `python setup.py develop`
+- [x] Docstrings in numpy format.
+- [ ] PEP8 - please set your editor to autopep8 on save!
+- [ ] Documentation with Sphinx (WIP)
+- [ ] Explore options to streamline code
+- [ ] Examples of applications for package (integration of pycortex & pRFpy)
+
 # overview of the pipeline
 
 ## how to set up
