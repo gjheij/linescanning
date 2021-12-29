@@ -166,3 +166,5 @@ done
 
 while IFS= read -r line; do export ${line}; done < ${DIR_SCRIPTS}/data/acq.txt
 # source ${DIR_SCRIPTS}/bin/utils/acq.txt
+
+export SSH_KEY="${HOME}/.ssh/hp_windows"
