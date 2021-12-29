@@ -1,0 +1,11 @@
+sphinx
+matplotlib
+sphinx-gallery
+sphinx-rtd-theme
+matplotlib
+scipy
+numpydoc
+sklearn
+nilearn
+ipython
+pybids
