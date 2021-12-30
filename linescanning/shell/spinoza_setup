@@ -94,7 +94,7 @@ export TASK_SES1="2R"
 export TASK_SES2="LR"
 
 # set your project-root folder (folder where PROJECT lives)
-export DIR_PROJECTS=${PATH_HOME}/projects 
+export DIR_PROJECTS=$(dirname ${PATH_HOME})/projects 
 
 # Switch to tell us what type of data was acquired
 ## You can have an average of the given acquisitions if desired, but then the first element
