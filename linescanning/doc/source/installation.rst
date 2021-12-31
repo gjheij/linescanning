@@ -5,7 +5,8 @@ Installation
 ------------
 You can install *LineScanning* within a `Manually Prepared Environment (Python 3.7+)`_. The workflow to install *LineScanning* is as follows. 
 
-Download the repository from `github`::
+Download the repository from `github`:
+::
    $ git clone https://github.com/gjheij/linescanning.git
 
 Setup the environment for `bash`:
