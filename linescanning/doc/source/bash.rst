@@ -262,6 +262,7 @@ Below the help information for each module, which can also be called with:
 ===========================================
 
 ::
+
     ---------------------------------------------------------------------------------------------------
     spinoza_brainextraction
 
@@ -290,6 +291,7 @@ Below the help information for each module, which can also be called with:
 ===========================================
 
 ::
+
     ---------------------------------------------------------------------------------------------------
     spinoza_masking
 
@@ -325,6 +327,7 @@ Below the help information for each module, which can also be called with:
 ===========================================
 
 ::
+    
     ---------------------------------------------------------------------------------------------------
     spinoza_freesurfer
 
