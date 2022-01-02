@@ -5,30 +5,42 @@ Installation
 ------------
 You can install *LineScanning* within a `Manually Prepared Environment (Python 3.7+)`_. The workflow to install *LineScanning* is as follows. 
 
-Download the repository from `github`:
-::
+Download the repository from ``github``:
+
+.. code:: bash
+
    $ git clone https://github.com/gjheij/linescanning.git
 
-Setup the environment for `bash`:
-::
+Setup the environment for ``bash``:
+
+.. code:: bash
+
    $ bash linescanning/linescanning/shell/spinoza_setup setup
 
-This will print out a set of instructions that are executed under the hood; it makes sure the setup file is loaded in your `.bash_profile` each time you start a new a new terminal and makes the scripts inside the repository executable similar to how *FSL* works. Setup the `python`_ environment. Edit the *environment.yml* file to your liking (e.g., paths and environment name) and execute the following commands:
-::
+This will print out a set of instructions that are executed under the hood; it makes sure the setup file is loaded in your ``.bash_profile`` each time you start a new a new terminal and makes the scripts inside the repository executable similar to how *FSL* works. Setup the ``python`` environment. Edit the *environment.yml* file to your liking (e.g., paths and environment name) and execute the following commands:
+
+.. code:: bash
+
    $ cd linescanning
    $ conda create --name <environment name> --file environment.yml
    $ pip install -e .
 
 Test the installation with:
-::
+
+.. code:: bash
+
    $ python -c "import linescanning"
 
-If no error was given, the installation was successful. To test the `bash` environment, enter the following:
-::
+If no error was given, the installation was successful. To test the ``bash`` environment, enter the following:
+
+.. code:: bash
+
    $ master
 
-This should give the help menu of the master script. If not, something went wrong. A first check if to make sure the files in `linescanning/bin` and `linescanning/shell` are indeed executables. If not, hit the following and try again:
-::
+This should give the help menu of the master script. If not, something went wrong. A first check if to make sure the files in ``linescanning/bin`` and ``linescanning/shell`` are indeed executables. If not, hit the following and try again:
+
+.. code:: bash
+   
    $ chmod -R 775 linescanning/bin
    $ chmod -R 775 linescanning/shell
 
@@ -51,6 +63,9 @@ the ``LineScanning`` package:
 - FreeSurfer_ (version 7.2.0)
 - Nideconv_
 - pRFpy_
+- fMRIprep_ (version 20.2.6)
 - CAT12_ (version r1113)
 - SPM_
 - Nighres_
+- Pybest_
+- Pycortex_ 

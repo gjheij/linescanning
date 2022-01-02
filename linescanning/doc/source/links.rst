@@ -10,3 +10,7 @@
 .. _pRFpy: https://github.com/VU-Cog-Sci/prfpy
 .. _CAT12: http://www.neuro.uni-jena.de/cat/index.html#DOWNLOAD
 .. _Nighres: https://github.com/nighres/nighres
+.. _Pymp2rage: https://github.com/Gilles86/pymp2rage
+.. _fMRIprep: https://fmriprep.org/en/stable/usage.html
+.. _Pybest: https://github.com/lukassnoek/pybest/tree/master/pybest
+.. _Pycortex: https://github.com/gallantlab/pycortex

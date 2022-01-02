@@ -13,6 +13,7 @@ Documentation for this package can be found at [readthedocs](https://linescannin
 - [x] install using `python setup.py develop`
 - [x] Docstrings in numpy format.
 - [ ] PEP8 - please set your editor to autopep8 on save!
+- [ ] Write docs for glm.py
 - [ ] Documentation with Sphinx (WIP)
 - [ ] Explore options to streamline code
 - [ ] Examples of applications for package (integration of pycortex & pRFpy)
