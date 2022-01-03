@@ -919,3 +919,32 @@ function make_html_end {
 
 EOF
 }
+
+function scanner_v_itksnap {
+
+    cat <<USAGE
+
+SCANNER VS ITKSNAP SOFTWARE ANGLES
+--------------------------------------------------------------------------------------------------------
+Translation values:
+    ________|__ITKSNAP________________________________|__SCANNER_______________________________
+    X (LR)  |  R = +mm (R = pos; L is neg)            |  L = +mm (R = neg; L = pos)
+    Y (AP)  |  A = +mm (A = pos; P = neg)             |  P = +mm (A = neg; P = pos)
+    Z (FH)  |  F = +mm (F = pos; H = neg)             |  H = +mm (F = neg; H = pos)
+
+Orientation values:
+    ________|__ITKSNAP________________________________|__SCANNER_______________________________
+    X (LR)  |  neg = counterclock; pos = clockwise    |  neg = clockwise;    pos = counterclock
+    Y (AP)  |  neg = clockwise;    pos = counterclock |  neg = counterclock; pos = clockwise
+    Z (FH)  |  neg = clockwise;    pos = counterclock |  neg = counterclock; pos = clockwise
+
+As you can see, the values are interpreted inversely, meaning we need to flip the signs of the rotation
+and translation if we want values corresponding to scanner customs.
+
+Another important note to make: the voxel values from coordinates.csv are indexed starting from 0.
+Other software packages, such as ITKSNAP indexes starting from 1. If you want the correct value from
+coordinates.csv in ITK-Snap, add 1 to all dimensions.
+
+USAGE
+
+}
