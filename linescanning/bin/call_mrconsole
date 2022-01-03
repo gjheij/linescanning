@@ -105,12 +105,12 @@ Usage:
         prf_dir = opj(deriv, 'prf', subject, f'ses-{prf_ses}')
 
     # this scan object will do everyting
-    scanner.Scanner(optimal.call_pycortex2(subject,
-                                           fsdir=fs_dir,
-                                           cxdir=cx_dir,
-                                           prfdir=prf_dir,
-                                           out=line_fn),
-                    fs_dir=fs_dir, new_anat=anat2, fs2ses=affine, hemi=hemi,ses=new_ses)
+    scanner.Scanner(optimal.target_vertex(subject,
+                                          fsdir=fs_dir,
+                                          cxdir=cx_dir,
+                                          prfdir=prf_dir,
+                                          out=line_fn),
+                    fsdir=fs_dir, new_anat=anat2, fs2ses=affine, hemi=hemi,ses=new_ses)
 
 if __name__ == "__main__":
     main(sys.argv[1:])

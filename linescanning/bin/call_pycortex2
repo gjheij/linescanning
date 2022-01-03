@@ -143,13 +143,13 @@ Notes:
     else:
         open_fv = False
 
-    optimal.call_pycortex2(subject, 
-                           task=task, 
-                           vert=verts,
-                           use_prf=use_prf,
-                           out=out,
-                           roi=roi,
-                           webshow=open_fv)
+    optimal.target_vertex(subject, 
+                          task=task, 
+                          vert=verts,
+                          use_prf=use_prf,
+                          out=out,
+                          roi=roi,
+                          webshow=open_fv)
 
 if __name__ == "__main__":
     main(sys.argv[1:])
