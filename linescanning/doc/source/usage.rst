@@ -370,6 +370,7 @@ For this section to be relevant, you're in the following situation: you have a s
     $ master -m 00 -s <subject (without 'sub')> -h <hemisphere (left|right)> -n <session (new session ID, e.g., 3 | default = 2)>
 
 This will do the following:
+
 - Register ``<project>/derivatives/freesurfer/<subject>/mri/orig.mgz`` to low-resolution anatomical scan
 - Use transformation file to translate the target vertex's coordinate/normal vector to session 2
 - Convert the normal vector to Euler angles interpretable by the scanner
