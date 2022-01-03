@@ -26,32 +26,27 @@ def get_prfdesign(screenshot_path,
                   n_pix=40,
                   dm_edges_clipping=[0, 0, 0, 0]):
     """
-get_prfdesign
+    get_prfdesign
 
-Basically Marco's gist, but then incorporated in the repo. It takes the directory of screenshots
-and creates a vis_design.mat file, telling pRFpy at what point are certain stimulus was presented.
+    Basically Marco's gist, but then incorporated in the repo. It takes the directory of screenshots and creates a vis_design.mat file, telling pRFpy at what point are certain stimulus was presented.
 
-Args:
-    screenshot_path     : str
-                        string describing the path to the directory with png-files
+    Parameters
+    ----------
+    screenshot_path: str
+        string describing the path to the directory with png-files
+    n_pix: int
+        size of the design matrix (basically resolution). The larger the number, the more demanding for the CPU. It's best to have some value which can be divided with 1080, as this is easier to downsample. Default is 40, but 270 seems to be a good trade-off between resolution and CPU-demands
+    dm_edges_clipping: list
+        people don't always see the entirety of the screen so it's important to check what the subject can actually see by showing them the cross of for instance the BOLD-screen (the matlab one, not the linux one) and clip the image accordingly
 
-    n_pix               : int
-                        size of the design matrix (basically resolution). The larger the number,
-                        the more demanding for the CPU. It's best to have some value which can be
-                        divided with 1080, as this is easier to downsample. Default is 40, but 270
-                        seems to be a good trade-off between resolution and CPU-demands
+    Returns
+    ----------
+    numpy.ndarray
+        array with shape <n_pix,n_pix,timepoints> representing a binary paradigm
 
-    dm_edges_clipping   : list
-                        people don't always see the entirety of the screen so it's important to
-                        check what the subject can actually see by showing them the cross of for
-                        instance the BOLD-screen (the matlab one, not the linux one) and clip the
-                        image accordingly
-
-Usage:
-    dm = get_prfdesign('path/to/dir/with/pngs', n_pix=270, dm_edges_clipping=[6,1,0,1])
-
-Notes:
-
+    Example
+    ----------
+    >>> dm = get_prfdesign('path/to/dir/with/pngs', n_pix=270, dm_edges_clipping=[6,1,0,1])
     """
 
     image_list = os.listdir(screenshot_path)
@@ -102,17 +97,19 @@ Notes:
 
 def radius(stim_arr):
 
-    """
-radius
+    """radius
 
-Return the radius of a given stimulus within a stimulus grid.
+    Return the radius of a given stimulus within a stimulus grid.
 
-Args:
-    stim_arr    : np.ndarray
-                arrays containing the stimulus as created with prf.make_stims
-Returns:
-    radius      : float
-                radius of circular stimulus within stim_arr
+    Parameters
+    ----------
+    stim_arr: numpy.ndarray
+        arrays containing the stimulus as created with :func:`linescanning.prf.make_stims`
+
+    Returns
+    ----------
+    float
+        radius of circular stimulus within stim_arr
     """
 
     max_idc = np.where(stim_arr == float(1))[0]
@@ -127,28 +124,25 @@ Returns:
 
 def create_circular_mask(h, w, center=None, radius=None):
 
-    """
-create_circular_mask
+    """create_circular_mask
 
-Creates a circular mask in a numpy meshgrid to create filled stimuli or mask out
-parts of a circular stimulus to create concentric stimuli.
+    Creates a circular mask in a numpy meshgrid to create filled stimuli or mask out parts of a circular stimulus to create concentric stimuli.
 
-Args:
-    h           : int
-                height of meshgrid
+    Parameters
+    ----------
+    h: int
+        height of meshgrid
+    w: int
+        width of meshgrid
+    center: tuple, list
+        center of the circle to create
+    radius: float
+        radius of stimulus to draw
 
-    w           : int
-                width of meshgrid
-
-    center      : tuple|list
-                center of the circle to create
-
-    radius      : float
-                radius of stimulus to draw
-
-Returns:
-    mask        : float
-                np.meshgrid with input size with the specified circle set to ones
+    Returns
+    ----------
+    numpy.ndarray
+        np.meshgrid with input size with the specified circle set to ones
     """
 
     if center is None:  # use the middle of the image
@@ -165,35 +159,29 @@ Returns:
 
 def make_stims(n_pix, prf_object, dim_stim=2, factr=4, concentric=False, concentric_size=0.65):
 
-    """
-make_stims
+    """make_stims
 
-Creates a list of stimuli to create size/response curves.
+    Creates a list of stimuli to create size/response curves.
 
-Args:
-    n_pix               : int
-                        number of pixels in the grid to use
+    Parameters
+    ----------
+    n_pix: int
+        number of pixels in the grid to use
+    prf_object: prfpy.stimulus.PRFStimulus2D
+        representation the pRF in visual space
+    dim_stim: int
+        number of dimensions to use: 2 for circle, 1 for bar
+    factr: int
+        factor with which to increase stimulus size
+    concentric: boolean
+        If true, concentric stimuli will be made. For that, the next argument is required
+    concentric_size: float
+        proportion of stimulus size that needs to be masked out again
 
-    prf_object          : object
-                        an instantiation of prfpy.stimulus.PRFStimulus2D
-
-    dim_stim            : int
-                        number of dimensions to use: 2 for circle, 1 for bar
-
-    factr               : int
-                        factor with which to increase stimulus size
-
-    concentric          : boolean
-                        If true, concentric stimuli will be made. For that, the next argument
-                        is required
-
-    concentric_size:    : float
-                        proportion of stimulus size that needs to be masked out again
-
-Returns:
-    stims               : list
-                        list of np.ndarrays with meshgrid-size containing the stimuli. Can be
-                        plotted with "prf.plot_stims"
+    Returns
+    ----------
+    list
+        list of numpy.ndarrays with meshgrid-size containing the stimuli. Can be plotted with :func:`linescanning.prf.plot_stims`
     """
 
     ss_deg = 2.0 * np.degrees(np.arctan(prf_object.screen_size_cm /(2.0*prf_object.screen_distance_cm)))
@@ -233,38 +221,29 @@ Returns:
 
 def make_stims2(n_pix, prf_object, dim_stim=2, degrees=[0,6], concentric=False, concentric_size=0.65):
 
-    """
-make_stims2
+    """make_stims2
 
-Creates a list of stimuli to create size/response curves. In contrast to the first version, this
-version uses `prf.create_circular_mask` more intensively. This allows for the manual specification
-of visual degrees to use, as it uses an adaptation of psychopy's `deg2pix` function to translate
-the visual degree to pixel space to create a numpy mask.
+    Creates a list of stimuli to create size/response curves. In contrast to the first version, this version uses :func:`linescanning.prf.create_circular_mask` more intensively. This allows for the manual specification of visual degrees to use, as it uses an adaptation of psychopy's `deg2pix` function to translate the visual degree to pixel space to create a numpy mask.
 
-Args:
-    n_pix               : int
-                        number of pixels in the grid to use
+    Parameters
+    ----------
+    n_pix: int
+        number of pixels in the grid to use
+    prf_object: prfpy.stimulus.PRFStimulus2D
+        representation the pRF in visual space
+    dim_stim: int
+        number of dimensions to use: 2 for circle, 1 for bar
+    degrees: list
+        list representing the range of visual degrees to create the stimuli with
+    concentric: boolean
+        If true, concentric stimuli will be made. For that, the next argument is required
+    concentric_size: float
+        proportion of stimulus size that needs to be masked out again
 
-    prf_object          : object
-                        an instantiation of prfpy.stimulus.PRFStimulus2D
-
-    dim_stim            : int
-                        number of dimensions to use: 2 for circle, 1 for bar
-
-    degrees             : list
-                        list representing the range of visual degrees to create the stimuli with
-
-    concentric          : boolean
-                        If true, concentric stimuli will be made. For that, the next argument
-                        is required
-
-    concentric_size:    : float
-                        proportion of stimulus size that needs to be masked out again
-
-Returns:
-    stims               : list
-                        list of np.ndarrays with meshgrid-size containing the stimuli. Can be
-                        plotted with "prf.plot_stims"
+    Returns
+    ----------
+    list
+        list of numpy.ndarrays with meshgrid-size containing the stimuli. Can be plotted with :func:`linescanning.prf.plot_stims`
     """
 
     degrees = np.linspace(*degrees, num=33)
@@ -302,21 +281,19 @@ Returns:
 
 def plot_stims(stims, n_rows=3, n_cols=11, figsize=(60,10)):
 
+    """plot_stims
+
+    Plots all stimuli contained in `stims` as created in `prf.make_stims`. Assumesthat about 33 stimuli have been produced, otherwise axes ordering will be messy..
+
+    Parameters
+    ----------
+    stims: list
+        list of numpy.ndarrays with meshgrid-size containing the stimuli
+
+    Returns
+    ----------
+    matplotlib.pyplot plot
     """
-plot_stims
-
-Plots all stimuli contained in `stims` as created in `prf.make_stims`. Assumes
-that about 33 stimuli have been produced, otherwise axes ordering will be messy..
-
-Args:
-    stims   : list
-            list of np.ndarrays with meshgrid-size containing the stimuli
-
-Returns:
-    plot    : matplotlib.pyplot plot
-    """
-
-    
 
     # if len(stims) != 33:
     #     raise Exception(f"Ideally, the number of created stimuli is 33 for this function.. Length = {len(stims)}")
@@ -349,30 +326,25 @@ Returns:
     plt.tight_layout()
 
 def make_prf(prf_object, mu_x=0, mu_y=0, size=None):
-    """
-make_prf
+    """make_prf
 
-Create an instantiation of a pRF using the parameters obtained during fitting.
+    Create an instantiation of a pRF using the parameters obtained during fitting.
 
-Args:
-    prf_object      : object
-                    an instantiation of prfpy.stimulus.PRFStimulus2D
+    Parameters
+    ----------
+    prf_object: prfpy.stimulus.PRFStimulus2D
+        representation the pRF in visual space
+    mu_x: float
+        x-component of pRF. Leave default if you want to create size/response functions
+    mu_y: float
+        y-component of pRF. Leave default if you want to create size/response functions
+    size: float
+        size of pRF
 
-    mu_x            : float
-                    x-component of pRF. Leave default if you want to create
-                    size/response functions
-
-    mu_y            : float
-                    y-component of pRF. Leave default if you want to create
-                    size/response functions
-
-    size            : float
-                    size of pRF
-
-Returns:
-    prf             : np.ndarray
-                    meshgrid containing Gaussian characteristics of the pRF. Can
-                    be plotted with `prf.plot_prf`
+    Returns
+    ----------
+    numpy.ndarray
+        meshgrid containing Gaussian characteristics of the pRF. Can be plotted with :func:`linescanning.prf.plot_prf`
     """
 
     prf = np.rot90(rf.gauss2D_iso_cart(x=prf_object.x_coordinates[..., np.newaxis],
@@ -387,19 +359,20 @@ Returns:
 def plot_prf(prf,vf_extent, return_axis=False, save_as=None):
 
     """
-plot_prf
+    plot_prf
 
-Plot the geometric location of the Gaussian pRF.
+    Plot the geometric location of the Gaussian pRF.
 
-Args:
-    prf         : np.ndarray
-                instantiation of `gauss2D_iso_cart`
+    Parameters
+    ----------
+    prf: numpy.ndarray
+        instantiation of `gauss2D_iso_cart`
+    vf_extent: list
+        the space the pRF lives in
 
-    vf_extent:  : list
-                the space the pRF lives in
-
-Returns:
-    plot    : matplotlib.pyplot plot
+    Returns
+    ----------
+    matplotlib.pyplot plot
     """
 
     fig, ax = plt.subplots()
@@ -418,8 +391,8 @@ Returns:
 
 # From Marco's https://github.com/VU-Cog-Sci/prfpy_tools/blob/master/utils/postproc_utils.py
 def norm_2d_sr_function(a,b,c,d,s_1,s_2,x,y,stims,mu_x=0,mu_y=0):
-
     """create size/response function given set of parameters and stimuli"""
+
     xx,yy = np.meshgrid(x,y)
 
     sr_function = (a*np.sum(np.exp(-((xx-mu_x)**2+(yy-mu_y)**2)/(2*s_1**2))*stims, axis=(-1,-2)) + b) / (c*np.sum(np.exp(-((xx-mu_x)**2+(yy-mu_y)**2)/(2*s_2**2))*stims, axis=(-1,-2)) + d) - b/d
@@ -428,18 +401,15 @@ def norm_2d_sr_function(a,b,c,d,s_1,s_2,x,y,stims,mu_x=0,mu_y=0):
 
 # From Marco's https://github.com/VU-Cog-Sci/prfpy_tools/blob/master/utils/postproc_utils.py
 def norm_1d_sr_function(a,b,c,d,s_1,s_2,x,stims,mu_x=0):
-
     """Create size/response function for 1D stimuli"""
+
     sr_function = (a*np.sum(np.exp(-(x-mu_x)**2/(2*s_1**2))*stims, axis=-1) + b) / (c*np.sum(np.exp(-(x-mu_x)**2/(2*s_2**2))*stims, axis=-1) + d) - b/d
     return sr_function
 
 
 # Adapted from psychopy
 def pix2deg(pixels, prf_object, scrSizePix=[270, 270]):
-    """Convert size in pixels to size in degrees for a given Monitor object
-    """
-
-    
+    """Convert size in pixels to size in degrees for a given Monitor object""" 
 
     # get monitor params and raise error if necess
     scrWidthCm = prf_object.screen_size_cm
@@ -451,8 +421,8 @@ def pix2deg(pixels, prf_object, scrSizePix=[270, 270]):
 
 # Adapted from psychopy
 def deg2pix(degrees, prf_object, scrSizePix=[270, 270]):
-    """Convert size in degrees to size in pixels for a given pRF object
-    """
+    """Convert size in degrees to size in pixels for a given pRF object"""
+
     # get monitor params and raise error if necess
     scrWidthCm = prf_object.screen_size_cm
     dist = prf_object.screen_distance_cm
@@ -478,53 +448,39 @@ def get_onset_idx(design):
 # create design matrix by selecting
 def select_stims(settings_dict, stim_library, frames=225, baseline_frames=15, randomize=False, shuffle=True, verbose=False, TR=1.5, return_onsets=False, settings_fn=None):
 
-    """
-select_stims
+    """select_stims
 
-Function to create a fictitious design matrix based on the 'lib'-variable containing a library of 4 different types of
-bar stimuli: 'hori' (horizontal), 'vert' (vertical) 'rot_45' (horizontal bars rotated 45 degrees counterclockwise),
-and 'rot_135' (horizontal bars rotated 135 degrees counterclockwise). Using a 'settings'-dictionary, you can specify
-how many and which of each of these stimuli you want.
+    Function to create a fictitious design matrix based on the 'lib'-variable containing a library of 4 different types of bar stimuli: 'hori' (horizontal), 'vert' (vertical) 'rot_45' (horizontal bars rotated 45 degrees counterclockwise), and 'rot_135' (horizontal bars rotated 135 degrees counterclockwise). Using a 'settings'-dictionary, you can specify how many and which of each of these stimuli you want.
 
-Args:
-    settings_dict          : dict
-                            dictionary containing the number of stimuli and index of stimuli (as per the library) that
-                            you would like to include. An example is:
+    Parameters
+    ----------
+    settings_dict: dict
+        dictionary containing the number of stimuli and index of stimuli (as per the library) that you would like to include. An example is:
 
-                            use_settings = {'hori': [0, 18],
-                                            'vert': [4, 25],
-                                            'rot_45': [4, 18],
-                                            'rot_135': [0, 5]}
+        use_settings = {'hori': [0, 18],
+                        'vert': [4, 25],
+                        'rot_45': [4, 18],
+                        'rot_135': [0, 5]}
 
-                            this selects 0 horizontal stimuli, 4x the 25th vertical stimulus in 'lib', 4x the 18th sti-
-                            mulus of the 45 degree rotated stimuli, and 0 of the 135 degree rotated stimuli.
+        this selects 0 horizontal stimuli, 4x the 25th vertical stimulus in 'lib', 4x the 18th sti-
+        mulus of the 45 degree rotated stimuli, and 0 of the 135 degree rotated stimuli.
+    stim_library: dict
+        library containing different types of stimuli. Can be create with :func:`linescanning.prf.create_stim_library`
+    frames: int 
+        number of frames your design matrix should have. Should be the same as your functional data in terms of TR (default = 225)!
+    baseline_frames: int 
+        number of baseline frames before stimulus presentation begins. Only needs to be specified if 'randomize' is set to False (default = 15).
+    randomize: bool 
+        boolean whether you want to completely randomize your experiment or not. Generally you'll want to set this to false, to create a regular intervals between stimuli (default = False).
+    shuffle: bool 
+        if randomize is turned off, we can still shuffle the order of the stimulus presentations. This you can do by setting shuffle to True (default = True)
+    verbose: bool 
+        Set to True if you want some messages along the way (default = False)
 
-    stim_library            : dict
-                            library containing different types of stimuli. Can be create with prf.create_stim_library
-
-    frames                  : int (default = 225)
-                            number of frames your design matrix should have. Should be the same as your functional data
-                            in terms of TR!
-
-    baseline_frames         : int (default = 15)
-                            number of baseline frames before stimulus presentation begins. Only needs to be specified
-                            if 'randomize' is set to False.
-
-    randomize               : bool (default = False)
-                            boolean whether you want to completely randomize your experiment or not. Generally you'll
-                            want to set this to false, to create a regular intervals between stimuli.
-
-    shuffle                 : bool (default = True )
-                            if randomize is turned off, we can still shuffle the order of the stimulus presentations.
-                            This you can do by setting shuffle to True
-
-    verbose                 : bool (default = False)
-                            Set to True if you want some messages along the way
-
-Returns:
-    design/stims            : np.ndarray
-                            <n_pix,n_pix,frames> numpy array representing your design
-
+    Returns
+    ----------
+    numpy.ndarray
+        <n_pix,n_pix,frames> numpy array representing your design
     """
 
     # except:
@@ -761,42 +717,34 @@ Returns:
 
 def prf_neighbouring_vertices(subject, hemi='lh', vertex=None, prf_params=None, compare=False):
 
-    """
-prf_neighbouring_vertices
+    """prf_neighbouring_vertices
 
-Function to extract pRF-parameters from vertices neighbouring a particular vertex of interest.
-Internally uses "call_prfinfo" to extract the parameters, so it assumes a particular kind of
-data structure (for now..)
+    Function to extract pRF-parameters from vertices neighbouring a particular vertex of interest. Internally uses "call_prfinfo" to extract the parameters, so it assumes a particular kind of data structure (for now..)
 
-Args:
-    <subject>       : str
-                    string used as subject ID (e.g., 'sub-001')
+    Parameters
+    ----------
+    subject: str
+        string used as subject ID (e.g., 'sub-001')
+    hemi: str 
+        string ('lh'|'rh') used to annotate the hemisphere which is required to index the correct pRF parameters
+    vertex: int
+        vertex from which to extract neighbouring vertices
+    prf_params: str, np.ndarray
+        if you do not want to depend on fixed data structures, you can specify the pRF-parameters directly with a string pointing to a numpy-file or the numpy-array itself
+    compare: bool
+        if True, it will compare the parameters of neighbouring vertices with the parameters of <vertex>
 
-    <hemi>          : str ('lh'|'rh')
-                    string used to annotate the hemisphere which is required to index the correct
-                    pRF parameters
+    Returns
+    ----------
+    list
+        list of dictionaries containing the pRF-parameters for each vertex
 
-    <vertex>        : int
-                    vertex from which to extract neighbouring vertices
+    list
+        list of the neighbouring vertices
 
-    <prf_params>    : str | np.ndarray
-                    if you do not want to depend on fixed data structures, you can specify the
-                    pRF-parameters directly with a string pointing to a numpy-file or the numpy-
-                    array itself
-
-    <compare>       : bool
-                    if True, it will compare the parameters of neighbouring vertices with the para-
-                    meters of <vertex>
-
-Returns:
-    prfs            : list
-                    list of dictionaries containing the pRF-parameters for each vertex
-
-    verts           : list
-                    list of the neighbouring vertices
-
+    Notes
+    ----------
     Note that the last element in both is the information about the requested vertex itself!
-
     """
 
     # fetch the surface used for vertex extraction
@@ -852,61 +800,35 @@ def create_line_prf_matrix(log_dir,
                            baseline_after=24,
                            skip_first_img=True):
 
-    """
-create_line_prf_matrix
+    """create_line_prf_matrix
 
-Adaptation of get_prfdesign. Uses a similar principle, but rather than having an image per TR, we
-have images with onset times. With this function we can fill in an empty design matrix with size of
-n_samples to create the design matrix. This holds for cases where the stimulus duration is modulo 
-the repetition time (e.g., stim duration = 0.315, repetition time = 0.105). In cases where the stimu-
-lus duration is incongruent with the repetition time, we can loop through the repetition times and 
-find, in the onsets dataframe, the closest time and select that stimulus for our design matrix. This
-later case works for the partial pRF experiment that we run with 3D-EPI 1.1s TR acquisition, and 
-should work with the line-scanning acquisition as well.
+    Adaptation of get_prfdesign. Uses a similar principle, but rather than having an image per TR, we have images with onset times. With this function we can fill in an empty design matrix with size of n_samples to create the design matrix. This holds for cases where the stimulus duration is modulo the repetition time (e.g., stim duration = 0.315, repetition time = 0.105). In cases where the stimulus duration is incongruent with the repetition time, we can loop through the repetition times and find, in the onsets dataframe, the closest time and select that stimulus for our design matrix. This later case works for the partial pRF experiment that we run with 3D-EPI 1.1s TR acquisition, and should work with the line-scanning acquisition as well.
 
-Args:
-    <log_dir>           : str
-                        path to the log-directory as per the output of exptools experiments. We should
-                        have a "Screenshots"-directory in there and a *.tsv file containing the onset
-                        times
+    Parameters
+    ----------
+    log_dir: str
+        path to the log-directory as per the output of exptools experiments. We should have a "Screenshots"-directory in there and a *.tsv*-file containing the onset times
+    nr_trs: int
+        number of TRs in an acquisition run; this one is required if the stimulus duration is not modulo the repetition time
+    TR: float (default = 0.105s)
+        repetition time of scan acquisition. Needed to convert the onset times from seconds to TRs
+    stim_at_half_TR: bool
+        set to True if you want the stimulus halfway through the TR. This flag can be used in combination with <nr_trs>, when the stimulus duration is not modulo the repetition time
+    deleted_first: int 
+        number of volumes to skip in the beginning; should be the same as used in ParseFunc-file and/or ParseFuncFile (if used in concert) (default = 0)
+    deleted_last: int
+        number of volumes to skip at the end; should be the same as used in ParseFuncFile and/or ParseFuncFile (if used in concert) (default = 0)
+    n_pix: int 
+        size determinant of the design matrix. Note, <n_pix> is hardcoded as well in the function itself because I ran stuff on my laptop and that screen has a different size than the stimulus computer @Spinoza (default = 270px)
+    stim_duration: float
+        length of stimulus presentation (in seconds; default = 1s)
+    skip_first_img: boolean 
+        depending on how you coded the screenshot capturing, the first empty screen is something also captured. With this flag we can skip that image (default = True).
 
-    <nr_trs>            : int
-                        number of TRs in an acquisition run; this one is required if the stimulus du-
-                        ration is not modulo the repetition time
-
-    <TR>                : float (default = 0.105s)
-                        repetition time of scan acquisition. Needed to convert the onset times from
-                        seconds to TRs
-
-    <stim_at_half_TR>   : bool
-                        set to True if you want the stimulus halfway through the TR. This flag can be used
-                        in combination with <nr_trs>, when the stimulus duration is not modulo the repeti-
-                        tion time
-
-    <deleted_first>     : int (default = 0)
-                        number of volumes to skip in the beginning; should be the same as used in ParseFunc-
-                        File and/or ParseFuncFile (if used in concert)       
-
-    <deleted_last>      : int (default = 0)
-                        number of volumes to skip at the end; should be the same as used in ParseFuncFile 
-                        and/or ParseFuncFile (if used in concert) 
-
-    <n_pix>             : int (default = 270px)
-                        size determinant of the design matrix. Note, <n_pix> is hardcoded as well in
-                        the function itself because I ran stuff on my laptop and that screen has a
-                        different size than the stimulus computer @Spinoza
-
-    <stim_duration>     : float (default = 1s)
-                        length of stimulus presentation (in seconds)
-
-    <skip_first_img>    : boolean (default = True)
-                        depending on how you coded the screenshot capturing, the first empty screen
-                        is something also captured. With this flag we can skip that image.
-
-Returns:
-    design_matrix       : np.ndarray
-                        design matrix with size <n_pix, n_pix, n_samples>
-
+    Returns
+    ----------
+    np.ndarray
+        design matrix with size <n_pix, n_pix, n_samples>
     """
 
     screenshot_path = utils.get_file_from_substring("Screenshot", log_dir)
@@ -1089,36 +1011,33 @@ def distance_centers(prf1,prf2):
 
 def generate_model_params(model='gauss', dm=None, TR=1.5, outputdir=None, settings=None):
 
-    """
-generate_model_params
+    """generate_model_params
 
-Function to generate a yaml-file with parameters to use. Utilizes the analysis_settings.yml
-as basis, and adds information along the way, such as grid specifications and model type.
+    Function to generate a yaml-file with parameters to use. Utilizes the analysis_settings.yml as basis, and adds information along the way, such as grid specifications and model type.
 
-Args:
-    <model>     : str
-                model type to utilize.
+    Parameters
+    ----------
+    model: str
+        model type to utilize.
+    dm: numpy.ndarray
+        design matrix, n_pix X n_pix X volumes. Needed to create the pRF stimulus
+    TR: float
+        repetition time; can be fetched from gifti-file; default = 1.5s
+    outputdir: str
+        path-like object pointing to the prf-directory so each analysis comes with its own analysis-settings file  
+    settings: str
+        load the settings from a settings file generate earlier
 
-    <dm>        : np.ndarray
-                design matrix, n_pix X n_pix X volumes. Needed to create the pRF stimulus
+    Returns
+    ----------
+    str
+        saves a settings-file in the output directory
 
-    <TR>        : float
-                repetition time; can be fetched from gifti-file; default = 1.5s
+    yml
+        returns the content of settings-file
 
-    <outputdir> : str
-                path-like object pointing to the prf-directory so each analysis comes with
-                its own analysis-settings file  
-
-    <settings>  : str
-                load the settings from a settings file generate earlier
-
-Example:
-
-Returns:
-    1) saves a settings-file in the output directory
-    2) returns the content of it 
-    3) returns the prfpy.stimlus.PRFStimulus2D object
-
+    prfpy.stimlus.PRFStimulus2D
+        pRF object
     """
     
     if settings != None:
@@ -1201,52 +1120,41 @@ Returns:
 
 class pRFmodelFitting(): 
 
-    """
-class pRFmodelFitting
+    """pRFmodelFitting
 
-Main class to perform all the pRF-fitting. As of now, the Gaussian and Divisive Normalization models are implemented.
-For each model, an analysis-file is produced an stored in <output_dir> for later reference.
+    Main class to perform all the pRF-fitting. As of now, the Gaussian and Divisive Normalization models are implemented. For each model, an analysis-file is produced an stored in <output_dir> for later reference.
 
-Args:
-    <data>          : np.ndarray
-                    <voxels,time> numpy array
+    Parameters
+    ----------
+    data: numpy.ndarray
+        <voxels,time> numpy array
+    design_matrix: numpy.ndarray
+        <n_pix, n_pix, time> numpy array containing the paradigm
+    TR: float
+        repetition time of acquisition; required for the analysis file. If you're using gifti-input, you can fetch the TR from that file with `gifti = linescanning.utils.ParseGiftiFile(gii_file).TR_sec`. If you're file have been created with fMRIprep or call_vol2fsaverage, this should work.
+    model: str
+        as of now, either 'gauss', or 'norm' is accepted
+    stage: str
+        can either be 'grid' or 'grid+iter', in combination with the <model> flag
+    output_dir: str
+        directory to store all files in; should be somewhere in <project>/derivatives/prf/<subject>
+    output_base: str
+        basename for output files; should be something like <subject>_<ses-?>_<task-?>
+    write_files: bool
+        save files (True) or not (False). Should be used in combination with <output_dir> and <output_base>
+    hrf: np.ndarray
+        <1,time_points> describing the HRF. Can be created with :func:`linescanning.glm.double_gamma`, then add an
+        axis before the timepoints:
+        >>> time_points = np.linspace(0,36,np.rint(float(36)/dt).astype(int))
+        >>> hrf_custom = linescanning.glm.double_gamma(time_points, lag=6)
+        >>> hrf_custom = hrf_custom[np.newaxis,...]
+    verbose: bool
+        print messages to the terminal
 
-    <design_matrix> : np.ndarray
-                    <n_pix, n_pix, time> numpy array containing the paradigm
-
-    <TR>            : float
-                    repetition time of acquisition; required for the analysis file. If you're using gifti-input, you
-                    can fetch the TR from that file with `gifti = linescanning.utils.ParseGiftiFile(gii_file).TR_sec`.
-                    If you're file have been created with fMRIprep or call_vol2fsaverage, this should work.
-
-    <model>         : str
-                    as of now, either 'gauss', or 'norm' is accepted
-
-    <stage>         : str
-                    can either be 'grid' or 'grid+iter', in combination with the <model> flag
-
-    <output_dir>    : str
-                    directory to store all files in; should be somewhere in <project>/derivatives/prf/<subject>
-
-    <output_base>   : str
-                    basename for output files; should be something like <subject>_<ses-?>_<task-?>
-
-    <write_files>   : bool
-                    save files (True) or not (False). Should be used in combination with <output_dir> and <output_base>
-
-    <hrf>           : np.ndarray
-                    <1,time_points> describing the HRF. Can be created with linescanning.glm.double_gamma, then add an
-                    axis before the timepoints:
-                    time_points = np.linspace(0,36,np.rint(float(36)/dt).astype(int))
-                    hrf_custom = linescanning.glm.double_gamma(time_points, lag=6)
-                    hrf_custom = hrf_custom[np.newaxis,...]
-
-    <verbose>       : bool
-                    print messages to the terminal
-
-Example:
-    In [1]: from linescanning.prf import pRFmodelFitting
-    In [2]: fitting = pRFmodelFitting(func, design_matrix=dm, model='gauss')
+    Example
+    ----------
+    >>> from linescanning.prf import pRFmodelFitting
+    >>> fitting = pRFmodelFitting(func, design_matrix=dm, model='gauss')
     """
 
     def __init__(self, 
@@ -1520,7 +1428,28 @@ Example:
 
 def find_most_similar_prf(reference_prf, look_in_params, verbose=False, return_nr='all', r2_thresh=0.5):
 
-    """find a pRF with similar characteristics in one array given the specifications of another pRF"""
+    """find_most_similar_prf
+
+    find a pRF with similar characteristics in one array given the specifications of another pRF
+
+    Parameters
+    ----------
+    reference_prf: numpy.ndarray
+        pRF-parameters from the reference pRF, where `reference_prf[0]` = **x**, `reference_prf[1]` = **y**, and `reference_prf[2]` = **size**
+    look_in_params: numpy.ndarray
+        array of pRF-parameters in which we will be looking for `reference_prf`
+    verbose: bool
+        turn on/off verbose
+    return_nr: str, int
+        same parameter as in :func:`linescanning.utils.find_nearest`, where we can specify how many matches we want to have returned (default = "all") 
+    r2_thresh: float
+        after finding matching pRF, throw away fits below `r2_thresh`
+
+    Returns
+    ----------
+    numpy.ndarray
+        array containing the indices of `look_in_params` that conform the search
+    """
 
     x_par,_ = utils.find_nearest(look_in_params[...,0], reference_prf[0], return_nr='all')
 

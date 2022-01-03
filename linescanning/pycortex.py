@@ -9,21 +9,20 @@ import sys
 opj = os.path.join
 
 def set_ctx_path(p=None, opt="update"):
-    """
-set_ctx_path
+    """set_ctx_path
 
-function that changes the filestore path in the cortex config file to make changing between projects
-flexible.
+    Function that changes the filestore path in the cortex config file to make changing between projects flexible. Just specify the path to the new pycortex directory to change. If you do not specify a string, it will default to what it finds in the os.environ['CTX'] variable as specified in the setup script. You can also ask for the current filestore path with "opt='show_fs'", or the path to the config script with "opt='show_pn'". To update, leave 'opt' to 'update'.
 
-Just specify the path to the new pycortex directory to change. If you do not specify a string, it
-will default to what it finds in the os.environ['CTX'] variable as specified in the setup script
+    Parameters
+    ----------
+    p: str, optional
+        either the path we need to set `filestore` to (in combination with `opt="update"`), or None (in combination with `opt="show_fs"` or `opt="show_pn"`)
+    opt: str
+        either "update" to update the `filestore` with `p`; "show_pn" to show the path to the configuration file; or "show_fs" to show the current `filestore`
 
-You can also ask for the current filestore path with "opt='show_fs'", or the path to the config script
-with "opt='show_pn'". To update, leave 'opt' to 'update'
-
-Usage:
-    set_ctx_path('path/to/pycortex', "update")
-
+    Example
+    ----------
+    >>> set_ctx_path('path/to/pycortex', "update")
     """
 
     if p == None:
@@ -58,38 +57,34 @@ Usage:
 
 def create_ctx_transform(subj, ctx_dir, in_file, warp_name, binarize=False, ctx_type=None, cmap=None):
 
-    """
-create_ctx_transform
+    """create_ctx_transform
 
-This script takes an input volume, creates a warp directory, and uses this to get the volume in the
-surface space of pycortex
+    This script takes an input volume, creates a warp directory, and uses this to get the volume in the
+    surface space of pycortex
 
-Args:
-    <subj>          : str
-                    subject name (e.g., sub-xxx)
+    Parameters
+    ----------
+    subj: str
+        subject name (e.g., sub-xxx)
+    pycortex dir: str
+        path to pycortex derivatives folder (excluding sub-xxx)
+    input file: str
+        string-like path to file to extract from
+    warp name: str
+        string-like path to name of the warp
+    binarize?: int
+        should we binarize the FOV? Relevant for partial anatomies, less so for the line (0=no, 1=yes)
+    type: str
+        string defining the type of the file, either vertex or volume
 
-    <pycortex dir>  : str
-                    path to pycortex derivatives folder (excluding sub-xxx)
+    Returns
+    ----------
+    str
+        new volume containing the extracted data from input file
 
-    <input file>    : str
-                    string-like path to file to extract from
-
-    <warp name>     : str
-                    string-like path to name of the warp
-
-    <binarize?>     : int
-                    should we binarize the FOV? Relevant for partial anatomies, less so for the line
-                    (0=no, 1=yes)
-
-    <type>          : str
-                    string defining the type of the file, either vertex or volume
-
-Outputs
-    output file       new volume containing the extracted data from input file
-
-Example:
-    create_ctx_transform(input.nii.gz output.nii.gz)
-
+    Example
+    ----------
+    >>> create_ctx_transform("sub-001", "/path/derivatives/pycortex", "input.nii.gz", "fs2ctx")
     """
 
     if os.path.isfile(in_file):
@@ -169,25 +164,28 @@ Example:
 
 
 def get_thickness(thick_map, hemi, vertex_nr):
-    """
-get_thickness
+    """get_thickness
 
-Fetch the cortical thickness given a vertex in a certain hemisphere.
+    Fetch the cortical thickness given a vertex in a certain hemisphere.
 
-Args:
-    thick_map   : str
-                thickness.npz created by pycortex (to be implemented: map created by user)
+    Parameters
+    ----------
+    thick_map: str
+        thickness.npz created by pycortex (to be implemented: map created by user)
+    hemi: str
+        which hemisphere do we need to fetch data from
+    vertex: int
+        which vertex in the specified hemisphere
 
-    hemi        : str
-                which hemisphere do we need to fetch data from
+    Returns
+    ----------
+    float
+        thickness measure given a hemisphere and vertex number
 
-    vertex      : int
-                which vertex in the specified hemisphere
-
-Example:
-    In [1]: get_thickness("/path/to/thickness.npz", "left", 875)
-    Out[2]: 1.3451
-
+    Example
+    ----------
+    >>> get_thickness("/path/to/thickness.npz", "left", 875)
+    1.3451
     """
 
     import numpy as np
@@ -201,25 +199,18 @@ Example:
 
 
 def view_maps(subj_nr, cxdir=None, prfdir=None):
-    """
-view_maps
+    """view_maps
 
-Create webviewer containing the polar angle maps, best vertices, curvature, etc to gain a
-better idea of the information in the best vertex and for figure plotting.
+    Create webviewer containing the polar angle maps, best vertices, curvature, etc to gain a better idea of the information in the best vertex and for figure plotting.
 
-Args:
-    subject     : str
-                subject name without 'sub' (e.g., sub-xxx)
-
-    cxdir       : str
-                path to pycortex dir (e.g., derivatives/pycortex)
-
-    prfdir      : str
-                path to pRF dir (e.g., derivatives/prf)
-
-Outputs:
-    A webbrowser as per output of pycortex webgl
-
+    Parameters
+    ----------
+    subject: str
+        subject name without 'sub' (e.g., sub-xxx)
+    cxdir: str
+        path to pycortex dir (e.g., derivatives/pycortex)
+    prfdir: str
+        path to pRF dir (e.g., derivatives/prf)
     """
 
     if cxdir == None:
@@ -306,19 +297,23 @@ Outputs:
 
 def get_ctxsurfmove(subj):
 
-    """
-get_ctxsurfmove
+    """get_ctxsurfmove
 
-Following cortex.freesurfer module: "Freesurfer uses FOV/2 for center, let's set the surfaces to use the magnet isocenter",
-where it adds an offset of [128, 128, 128]*the affine of the files in the 'anatomicals'-folder.
+    Following `cortex.freesurfer` module: "Freesurfer uses FOV/2 for center, let's set the surfaces to use the magnet isocenter", where it adds an offset of [128, 128, 128]*the affine of the files in the 'anatomicals'-folder. This short function fetches the offset added given a subject name, assuming a correct specification of the cortex-directory as defined by 'database.default_filestore, cx_subject'
 
-This short function fetches the offset added given a subject name, assuming a correct specification of the cortex-directory
-as defined by 'database.default_filestore, cx_subject'
+    Parameters
+    ----------
+    subj: str
+        subject name (e.g., sub-xxx)
 
-Usage:
+    Returns
+    ----------
+    numpy.ndarray
+        (4,4) array representing the inverse of the shift induced when importing a `FreeSurfer` subject into `Pycortex`
 
-offset = get_ctxsurfmove("sub-001")
-
+    Example
+    ----------
+    >>> offset = get_ctxsurfmove("sub-001")
     """
 
     anat = opj(cortex.database.default_filestore, subj, 'anatomicals', 'raw.nii.gz')
@@ -333,59 +328,45 @@ offset = get_ctxsurfmove("sub-001")
 
 def get_linerange(thick_map=None, hemi=None, vertex_nr=None, direction=None, line_vox=720, vox_size=0.25, method="ctx", tissue=None):
 
-    """
-get_linerange
+    """get_linerange
 
-Fetches the range of the line that covers the cortical band given a thickness map as per output of
-pycortex. It assumes that the vertex is located at the fiducial surface (middle of WM>Pial) and
-that the middle of the line is positioned at the vertex. The line is 720 voxels long, that would
-mean that 360 is approximately at the position of te vertex. The voxel size of the line is 0.25 mm
-so the range = (360-0.5*thickness, 360+0.5*thickness).
+    Fetches the range of the line that covers the cortical band given a thickness map as per output of pycortex. It assumes that the vertex is located at the fiducial surface (middle of WM>Pial) and that the middle of the line is positioned at the vertex. The line is 720 voxels long, that would mean that 360 is approximately at the position of te vertex. The voxel size of the line is 0.25 mm so the range = (360-0.5*thickness, 360+0.5*thickness).
 
-Args:
-    thick_map   : str
-                thickness.npz created by pycortex (to be implemented: map created by user)
+    Parameters
+    ----------
+    thick_map: str
+        thickness.npz created by pycortex (to be implemented: map created by user)
+    hemi: str
+        which hemisphere do we need to fetch data from
+    vertex: int
+        which vertex in the specified hemisphere
+    direction: str
+        which border does the line hit first, 'pial' or 'wm'?
+    line_vox: int
+        size of the line
+    vox_size: int
+        voxel size we need to utilize
+    method: str
+        use the cortical thickness method with the parameters described above ("ctx") or use the Nighres cortex-segmentation ("nighres"). The assumptions described below hold true for the 'ctx' method, so the nighres-method is preferred. If you use this method, you'll need to give the cruise_cortex file to derive the line-range
+    tissue: np.ndarray
+        cortical segmentation array derived by calculating the average of the max contribtion of each tissue probability (see segmentation_to_line notebook). Only required if you have specified method="nighres"
+    
+    Returns
+    ----------
+    list 
+        minimum and maximum range of the line covering the cortical band
 
-    hemi        : str
-                which hemisphere do we need to fetch data from
+    Example
+    ----------
+    >>> get_linerange("/path/to/thickness.npz", "left", 875, "wm")
+    [560,572]
 
-    vertex      : int
-                which vertex in the specified hemisphere
+    Notes
+    ----------
+    Based on two VERY broad assumptions:
 
-    direction   : str
-                which border does the line hit first, 'pial' or 'wm'?
-
-    line_vox    : int
-                size of the line
-    vox_size    : int
-                voxel size we need to utilize
-
-    method      : str
-                use the cortical thickness method with the parameters described above ("ctx")
-                or use the Nighres cortex-segmentation ("nighres"). The assumptions described
-                below hold true for the 'ctx' method, so the nighres-method is preferred. If
-                you use this method, you'll need to give the cruise_cortex file to derive the
-                line-range
-
-    tissue      : np.ndarray
-                cortical segmentation array derived by calculating the average of the max con-
-                tribtion of each tissue probability (see segmentation_to_line notebook). Only
-                required if you have specified method="nighres"
-
-Example:
-    In [1]: get_linerange("/path/to/thickness.npz", "left", 875, "wm")
-    Out[1]: [560,572]
-
-Returns:
-    a list with the minimum and maximum range of the line covering the cortical band
-
-Notes:
-- Based on two VERY broad assumptions:
-    1.) Vertex is located at fiducial surface, also in second session anatomy
-    2.) Middle of line (360) is located at the vertex
-
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
+    * Vertex is located at fiducial surface, also in second session anatomy
+    * Middle of line (360) is located at the vertex
     """
 
     if method == "ctx":

@@ -9,53 +9,28 @@ warnings.filterwarnings('ignore')
 opj = os.path.join
 
 class Scanner(object):
+    """Scanner
 
-    """
-Scanner
+    This object combines the information from the CalcBestVertex and pRFCalc classes to fetch the best vertex and related information from the surfaces. In fact, it runs these classes internally, so you'd only have to specify this class in order to run the others as well. At the minimum, you need to specify the subject ID as defined in the FreeSurfer/pycortex/BIDS-anat directory, the dictionary resulting from CalcBestVertex, the matrix mapping session 1 to session 2 (the 'fs2ses=' flag), the hemisphere you're interested in, and the FreeSurfer directory.
 
-This object combines the information from the CalcBestVertex and pRFCalc classes to fetch the best
-vertex and related information from the surfaces. In fact, it runs these classes internally, so you'd
-only have to specify this class in order to run the others as well. At the minimum, you need to speci-
-fy the subject ID as defined in the FreeSurfer/pycortex/BIDS-anat directory, the dictionary resulting
-from CalcBestVertex, the matrix mapping session 1 to session 2 (the 'fs2ses=' flag), the hemisphere
-you're interested in, and the FreeSurfer directory.
+    Parameters
+    ----------
+    subject: str
+        subject-ID corresponding to the name in the pycortex filestore directory (mandatory!! for looking up how much the image has been moved when imported from FreeSurfer to Pycortex)
+    df: dict
+        output from optimal.call_pycortex2; a dictionary containing the result from :class:`linescanning.optimal.CalcBestVertex`
+    fs2ses: str, numpy.ndarray
+        (4,4) array or path to matrix file mapping FreeSurfer to the new session. It sort of assumes the matrix has been created with ANTs, so make sure the have run `call_antsregistration`. Enter 'identity' to use an identity matrix; this is useful if you want to plan the line in FreeSurfer-space (before session 2)
+    new_anat: str
+        string pointing to the new anatomy file. Generally this is in `<project>/sourcedata/<subject>/<ses>/planning/nifti`, if you've ran `spinoza_lineplanning`. Should be the **fixed** input for call_antsregistration to create `fs2ses`
+    hemisphere: str
+        hemisphere you're interested in. Should be 'right' or 'left'. It will do all operations on both hemispheres anyway, but only print the actual values you need to insert in the MR console for the specified hemisphere
+    fs_dir: str
+        path to FreeSurfer directory; will default to SUBJECTS_DIR if left empty.
 
-Args:
-    subject         str:
-                    subject-ID corresponding to the name in the pycortex filestore directory (manda-
-                    tory!! for looking up how much the image has been moved when imported from Free-
-                    Surfer to Pycortex)
-
-    df              dict:
-                    output from optimal.call_pycortex2; a dictionary containing the result from Calc
-                    BestVertex
-
-    fs2ses          str|numpy.ndarray:
-                    4x4 array or path to matrix file mapping FreeSurfer to the new session. It sort
-                    of assumes the matrix has been created with ANTs, so make sure the have run call_
-                    antsregistration. Enter 'identity' to use an identity matrix; this is useful if 
-                    you want to plan the line in FreeSurfer-space (before session 2)
-
-    new_anat        str:
-                    string pointing to the new anatomy file. Generally this is in <project>/sourcedata/
-                    <subject>/<ses>/planning/nifti, if you've ran spinoza_lineplanning. Should be the 
-                    <fixed> input for call_antsregistration to create <fs2ses>
-
-    hemisphere      str:
-                    hemisphere you're interested in. Should be 'right' or 'left'. It will do all ope-
-                    rations on both hemispheres anyway, but only print the actual values you need to
-                    insert in the MR console for the specified hemisphere
-
-    fs_dir          str:
-                    path to FreeSurfer directory; will default to SUBJECTS_DIR if left empty.
-
-Attributes:
-
-
-Example:
-    scan = scanner.Scanner(optimal.call_pycortex2('sub-001'), fs2ses='genaff.mat', hemi='left', new_anat=
-                           'path/to/sub-001_ses-2_T1w.nii.gz')
-
+    Example
+    ----------
+    >>> scan = scanner.Scanner(optimal.target_vertex('sub-001'), fs2ses='genaff.mat', hemi='left', new_anat='path/to/sub-001_ses-2_T1w.nii.gz')
     """
 
     def __init__(self, 
@@ -338,28 +313,20 @@ Example:
         return coord
 
     def warp_normals(self, hemi="both", system="RAS"):
-
-        """
-    warp_normals
+        """warp_normals
     
-    Apply a rigid-body transformation on a vector. Important here is that the coordinate
-    systems used are the same: e.g., only warp an RAS-vector with an RAS-matrix, and a
-    LPS-vector with an LPS-matrix. ANTs outputs per definition an LPS-matrix, so we'd 
-    need to convert that with ConvertTransformFile first
+        Apply a rigid-body transformation on a vector. Important here is that the coordinate systems used are the same: e.g., only warp an RAS-vector with an RAS-matrix, and a LPS-vector with an LPS-matrix. ANTs outputs per definition an LPS-matrix, so we'd need to convert that with ConvertTransformFile first
 
-    Args:
-        <hemi>      : str (default = 'both')
-                    the dataframe has a normal vector for the left hemisphere and right
-                    hemisphere. Easiest to leave this to what it is.
-                
-        <system>    : str (default = 'ras')
-                    if we warp an RAS-vector we need an RAS matrix, if we warp an LPS
-                    vector we need an LPS matrix. The function totate_normal will ac-
-                    tually deal with this problem
+        Parameters
+        ----------
+        hemi: str (default = 'both')
+            the dataframe has a normal vector for the left hemisphere and right hemisphere. Easiest to leave this to what it is.
+        system: str (default = 'ras')
+            if we warp an RAS-vector we need an RAS matrix, if we warp an LPS vector we need an LPS matrix. The function totate_normal will actually deal with this problem
 
-    Example:
-        self.warp_normal = self.warp_normals()
-
+        Example
+        ----------
+        >>> self.warp_normal = self.warp_normals()
         """
 
         if hemi == "both":
@@ -373,7 +340,6 @@ Example:
             raise NotImplementedError(f"Im lazy, sorry.. Just to both hemi's please")
 
     def get_all_coords(self,hemi="lh", out_type="both"):
-
         """Just print all coordinates to the terminal"""
 
         if out_type.lower() == "vox":

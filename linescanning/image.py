@@ -13,34 +13,32 @@ opj = os.path.join
 
 
 def reorient_img(img, code="RAS", out=None, qform="orig"):
-    """
-reorient_img
+    """reorient_img
 
-python wrapper for fslswapdim to reorient an input image given an orientation code.
-Valid options are: RAS, AIL for now. You can also specify "nb" as code, which re-
-orients the input image to nibabel's RAS+ convention.
+    Python wrapper for fslswapdim to reorient an input image given an orientation code. Valid options are: RAS, AIL for now. You can also specify "nb" as code, which reorients the input image to nibabel's RAS+ convention. If no output name is given, it will overwrite the input image.
 
-If no output name is given, it will overwrite the input image.
+    Parameters
+    ----------
+    img: str
+        nifti-image to be reoriented
+    code: str, optional
+        code for new orientation (default = "RAS")
+    out: str, optional
+        string to output nifti image
+    qform: str,int, optional
+        set qform code to original (str 'orig' = default) or a specified integer
 
-Args:
-    img     : str
-            nifti-image to be reoriented
+    Returns
+    ----------
+    str
+        if `out=="None"`, then `img` will receive the new coordinate code, otherwise `out` is created.
+        The function only operates, it doesn't actually return something that can be captured in a variable
 
-    code    : str
-            code for new orientation
-
-    out     : str
-            string to output nifti image
-
-    qform   : str|int
-            set qform code to original (str 'orig' = default) or a specified in-
-            teger
-
-Usage
-    reorient_img("input.nii.gz", code="RAS", out="output.nii.gz")
-    reorient_img("input.nii.gz", code="AIL", qform=1)
-    reorient_img("input.nii.gz", code="AIL", qform='orig')
-
+    Examples
+    ----------
+    >>> reorient_img("input.nii.gz", code="RAS", out="output.nii.gz")
+    >>> reorient_img("input.nii.gz", code="AIL", qform=1)
+    >>> reorient_img("input.nii.gz", code="AIL", qform='orig')
     """
 
     if out != None:
@@ -85,40 +83,35 @@ Usage
 
 def create_line_from_slice(in_file, out_file=None, width=16, fold="FH", keep_input=False):
 
-    """
-create_line_from_slice
+    """create_line_from_slice
 
-This creates a binary image of the outline of the line. The line's dimensions are 16 voxels of 0.25
-mm x 2.5 mm (slice thickness) and 0.25 mm (frequency encoding direction). We know that the middle of
-the line is at the center of the slice, so the entire line encompasses 8 voxels up/down from the cen-
-ter. This is represented by the 'width' flag, set to 16 by default
+    This creates a binary image of the outline of the line. The line's dimensions are 16 voxels of 0.25mm x 2.5 mm (slice thickness) and 0.25 mm (frequency encoding direction). We know that the middle of the line is at the center of the slice, so the entire line encompasses 8 voxels up/down from the center. This is represented by the 'width' flag, set to 16 by default
 
-Args:
-    in_file     : str
-                path to image that should be used as reference (generally this should be the 1 slice
-                file of the first run or something)
+    Parameters
+    ----------
+    in_file: str
+        path to image that should be used as reference (generally this should be the 1 slice file of the first run or something)
+    out_file: str, optional
+        path specifying the output name of the newly created 'line' or 'beam' file
+    width: int, optional
+        how many voxels should we use to define the line. Remember that the center of the line is width/2, so if it's set to 16, we take 8 voxels below center and 8 voxels above center.
+    fold: str, optional
+        string denoting the type of foldover direction that was used. We can find this in the info-file in the pycortex directory and can either be *FH* (line = `LR`), or *LR* (line = `FH`)
+    
+    Returns
+    ----------
+    nibabel.Nifti1Image
+        if `out_file==None`, a niimg-object is returned
 
-    out_file    : str
-                path specifying the output name of the newly created 'line' or 'beam' file
+    str
+        an actual file if the specified output name is created (*NOT RETURNED*)
 
-    width       : int
-                how many voxels should we use to define the line. Remember that the center of the
-                line is width/2, so if it's set to 16, we take 8 voxels below center and 8 voxels
-                above center.
-
-    fold        : str
-                string denoting the type of foldover direction that was used. We can find this in the
-                info-file in the pycortex directory and can either be FH (line = LR), or LR (line =
-                FH)
-Returns:
-    nibabel.niimg or an actual file if the specified output name
-
-Example:
-    In [1]: img = create_line_from_slice("input.nii.gz")
-    In [2]: img
-    Out[2]: <nibabel.nifti1.Nifti1Image at 0x7f5a1de00df0>
-    In [3]: img.to_filename('sub-001_ses-2_task-LR_run-8_bold.nii.gz')
-
+    Examples
+    ----------
+    >>> img = create_line_from_slice("input.nii.gz")
+    >>> img
+    <nibabel.nifti1.Nifti1Image at 0x7f5a1de00df0>
+    >>> img.to_filename('sub-001_ses-2_task-LR_run-8_bold.nii.gz')
     """
 
     in_img = nb.load(in_file)
@@ -160,27 +153,29 @@ Example:
 
 def get_max_coordinate(in_img):
 
-    """
-get_max_coordinate
+    """get_max_coordinate
 
-fetches the point with the maximum value given an input image_file. Useful if you want to find the
-voxel with the highest value after warping a binary file with ANTs. Mind you, it outputs the VOXEL
-value, not the actual index of the array. The VOXEL value = idx_array+1 to account for different in-
-dexing in nifti & python.
+    Fetches the point with the maximum value given an input image_file. Useful if you want to find the voxel with the highest value after warping a binary file with ANTs. Mind you, it outputs the VOXEL value, not the actual index of the array. The VOXEL value = idx_array+1 to account for different indexing in nifti & python.
 
-Args:
-    in_img      : str|numpy.ndarray
-                string to nifti image or numpy array
+    Parameters
+    ----------
+    in_img: str,numpy.ndarray,nibabel.Nifti1Image
+        nibabel.Nifti1Image object, string to nifti image or numpy array
 
-Returns:
-    np.ndarray  if only 1 max value was detected
-    list        list of np.ndarray containing the voxel coordinates with max value
+    Returns
+    ----------
+    np.ndarray
+        if only 1 max value was detected
 
-Example:
-    In [33]: get_max_coordinate('sub-001_space-ses1_hemi-L_vert-875.nii.gz')
-    Out[33]: array([142,  48, 222])
-    In [34]: get_max_coordinate('sub-001_space-ses1_hemi-R_vert-6002.nii.gz')
-    Out[34]: [array([139,  35, 228]), array([139,  36, 228])]
+    list
+        list of np.ndarray containing the voxel coordinates with max value
+
+    Examples
+    ----------
+    >>> get_max_coordinate('sub-001_space-ses1_hemi-L_vert-875.nii.gz')
+    array([142,  48, 222])
+    >>> get_max_coordinate('sub-001_space-ses1_hemi-R_vert-6002.nii.gz')
+    [array([139,  35, 228]), array([139,  36, 228])]
     """
 
     if isinstance(in_img, np.ndarray):
@@ -208,17 +203,26 @@ Example:
 
 
 def get_isocenter(img):
-    """
-get_isocenter
+    """get_isocenter
 
-This function returns the RAS coordinates of the input image's origin. This resembles the
-offset relative to the magnetic isocenter. You
+    This function returns the RAS coordinates of the input image's origin. This resembles the
+    offset relative to the magnetic isocenter
 
-Example:
-    In [14]: img = 'sub-001_space-ses1_hemi-R_vert-6002.nii.gz'
-    In [15]: get_isocenter(img)
-    Out[15]: array([  0.27998984,   1.49000375, -15.34000604])
+    Parameters
+    ----------
+    img: str,nibabel.Nifti1Image
+        input image to extract the isocenter coordinate from
 
+    Returns
+    ----------
+    numpy.ndarray
+        array containing isocenter coordinate from `img`
+
+    Example
+    ----------
+    >>> img = 'sub-001_space-ses1_hemi-R_vert-6002.nii.gz'
+    >>> get_isocenter(img)
+    array([  0.27998984,   1.49000375, -15.34000604])
     """
 
     # get origin in RAS
@@ -236,30 +240,32 @@ Example:
 
 
 def bin_fov(img, thresh=0, out=None, fsl=False):
-    """
-bin_fov
+    """bin_fov
 
-This function returns a binarized version of the input image. If no output name was specified,
-it will return the dataframe in nifti-format
+    This function returns a binarized version of the input image. If no output name was specified,
+    it will return the dataframe in nifti-format
 
-Args:
-    img         : str
-                path to input image
+    Parameters
+    ----------
+    img: str
+        path to input image
+    thresh: int
+        threshold to use (default = 0)
+    out: str
+        path to output image (default is None, and will return the data array of the image)
+    fsl: bool
+        if you reeeally want a binary image also run fslmaths -bin.. Can only be in combination with an output image and on a linux system with FSL (default is false)
+    
+    Returns
+    ----------
+    nibabel.Nifti1Image
+        niimg-object with a binarized FOV of input image `img`
 
-    thresh      : int
-                threshold to use (default = 0)
-
-    out         : str
-                path to output image (default is None, and will return the data array of the image)
-
-    fsl         : bool
-                if you reeeally want a binary image also run fslmaths -bin.. Can only be in combina
-                tion with an output image and on a linux system with FSL (default is false)
-Example:
-    file = bin_fov("/path/to/image.nii.gz")
-    bin_fov("/path/to/image.nii.gz", thresh=1, out="/path/to/image.nii.gz", fsl=True)
-    bin_fov("/path/to/image.nii.gz", thres=2)
-
+    Example
+    ----------
+    >>> file = bin_fov("/path/to/image.nii.gz")
+    >>> bin_fov("/path/to/image.nii.gz", thresh=1, out="/path/to/image.nii.gz", fsl=True)
+    >>> bin_fov("/path/to/image.nii.gz", thres=2)
     """
 
     img_file = nb.load(img)                                     # load file
@@ -286,7 +292,6 @@ Example:
         return img_bin_img
 
 def mgz2nii(input, output=None, return_type='file'):
-
     """wrapper for call_mriconvert to convert mgz image to nifti"""
 
     if not isinstance(input, str):
@@ -307,7 +312,6 @@ def mgz2nii(input, output=None, return_type='file'):
 
 
 def nii2mgz(input, output=None, return_type='file'):
-
     """wrapper for mri_convert to convert mgz image to nifti"""
 
     import os
@@ -329,46 +333,40 @@ def nii2mgz(input, output=None, return_type='file'):
         raise NotImplementedError(f"Can't deal with return_type {return_type}. Please use 'file' or 'nifti'")
 
 def massp_to_table(label_file, out=None, nr_structures=31, unit="vox"):
+    """massp_to_table
 
-    """
-massp_to_table
+    This function creates a tabular output from the label image generated by call_nighresmassp (or any other version of MASSP). Just input the 'label' file and hit go. You can either have the dataframe returned or create a file by specifying an output name.
 
-This function creates a tabular output from the label image generated by call_nighresmassp (or any
-other version of MASSP). Just input the 'label' file and hit go. You can either have the dataframe
-returned or create a file by specifying an output name.
+    Parameters
+    ----------
+    label_file: str
+        path to nifti image (MASSP-output 'label' file)
+    out: str
+        path to output name. You can either safe it as a csv, json, txt, or pickle file.
+    nr_structures: int
+        set to 31 by default as per the massp script
+    unit: str
+        output unit (voxels or mm3). Should be 'vox' for voxel output, or 'mm' for mm^3
 
-Args:
-    label_file      str:
-                    path to nifti image (MASSP-output 'label' file)
+    Returns
+    ----------
+    dict
+        dictionary containing the average volume of each ROI in `label_file` in units of voxel count or mm^3
 
-    out             str:
-                    path to output name. You can either safe it as a csv, json, txt, or pickle file.
-                    I think right now, json-file might be the cleanest.
-
-    nr_structures   int:
-                    set to 31 by default as per the massp script
-
-    unit            str:
-                    output unit (voxels or mm3). Should be 'vox' for voxel output, or 'mm' for mm
-                    (seems to make sense huh..)
-
-Usage:
-    file = massp_to_table('sub-001_desc-massp_label.nii.gz', out='massp_lut.json')
-
-Example:
-    In [1]: file = massp_to_table('sub-001_desc-massp_label.nii.gz', out='massp_lut.json')
-    In [2]: file
-    Out[2]: 'massp_lut.json'
-    In [3]: massp_to_table('sub-001_desc-massp_label.nii.gz', unit="mm")
-    Out[3]:
+    Example
+    ----------
+    >>> file = massp_to_table('sub-001_desc-massp_label.nii.gz', out='massp_lut.json')
+    >>> file
+    'massp_lut.json'
+    >>> massp_to_table('sub-001_desc-massp_label.nii.gz', unit="mm")
     {'Str-l': 10702.2163,
-     'Str-r': 10816.1125,
-     'STN-l': 136.6179,
-     'STN-r': 149.2731,
-     'SN-l': 540.4317,
-     'SN-r': 532.9537,
-     ...
-     }
+    'Str-r': 10816.1125,
+    'STN-l': 136.6179,
+    'STN-r': 149.2731,
+    'SN-l': 540.4317,
+    'SN-r': 532.9537,
+    ...
+    }
     """
 
     img = nb.load(label_file)
@@ -421,47 +419,41 @@ Example:
         return d
 
 def massp_mask_img(label_file, img_to_mask, out=None, nr_structures=31):
+    """massp_mask_img
 
-    """
-massp_mask_img
+    This function extracts the average of each structure in the MASSP-segmentation given an image (e.g.,
+    T1map)
 
-This function extracts the average of each structure in the MASSP-segmentation given an image (e.g.,
-T1map)
+    Parameters
+    ----------
+    label_file: str
+        path to nifti image (MASSP-output 'label' file)
+    img_to_mask: str
+        path to nifti image for which we want to extract the averages in the MASSP-structures
+    out: str
+        path to output name. You can either safe it as a csv, json, txt, or pickle file.
+    nr_structures: int
+        set to 31 by default as per the massp script
 
-Args:
-    label_file      str:
-                    path to nifti image (MASSP-output 'label' file)
+    Returns
+    ----------
+    dict
+        dictionary containing the average value of each ROI in the units of `img_to_mask`
 
-    img_to_mask     str:
-                    path to nifti image for which we want to extract the averages in the MASSP-struc-
-                    tures               
-
-    out             str:
-                    path to output name. You can either safe it as a csv, json, txt, or pickle file.
-                    I think right now, json-file might be the cleanest.
-
-    nr_structures   int:
-                    set to 31 by default as per the massp script
-
-Usage:
-    file = massp_to_table('sub-001_desc-massp_label.nii.gz', out='massp_lut.json')
-
-Example:
-    In [1]: file = massp_mask_img('sub-001_desc-massp_label.nii.gz', 'sub-001_T1map.nii.gz',
-            out='massp_t1map.json')
-    In [2]: file
-    Out[2]: 'massp_t1map.json'
-    In [3]: massp_mask_img('sub-001_desc-massp_label.nii.gz', 'sub-001_T1map.nii.gz',
-            out='massp_t1map.json')
-    Out[3]:
+    Examples
+    ----------
+    >>> file = massp_mask_img(sub-001_desc-massp_label.nii.gz', 'sub-001_T1map.nii.gz', out='massp_t1map.json')
+    >>> file
+    'massp_t1map.json'
+    >>> massp_mask_img('sub-001_desc-massp_label.nii.gz', 'sub-001_T1map.nii.gz', out='massp_t1map.json')
     {'Str-l': 1502,234,
-     'Str-r': 1081.1125,
-     'STN-l': 1326.6179,
-     'STN-r': 1492.2731,
-     'SN-l': 1540.4317,
-     'SN-r': 1532.9537,
-     ...
-     }
+    'Str-r': 1081.1125,
+    'STN-l': 1326.6179,
+    'STN-r': 1492.2731,
+    'SN-l': 1540.4317,
+    'SN-r': 1532.9537,
+    ...
+    }
     """
 
     label_img = nb.load(label_file)
@@ -512,25 +504,21 @@ Example:
 
 
 def tissue2line(data, line=None):
+    """tissue2line
 
-    """
-tissue2line
+    Project tissue probability maps to the line by calculating the probability of each tissue type in each voxel of the 16x720 beam and then average these to get a 1x720 line. Discrete tissues are assigned by means of the highest probability of a particular tissue type.
 
-Project tissue probability maps to the line by calculating the probability of each tissue type in 
-each voxel of the 16x720 beam and then average these to get a 1x720 line. Discrete tissues are 
-assigned by means of the highest probability of a particular tissue type.
+    Parameters
+    ----------
+    data: list,numpy.ndarray,str
+        for tissue data: list of three numpy array/nifti images/strings describing the probability of white matter/gray matter and CSF
+    line: str,nibabel.Nifti1Image,numpy.ndarray
+        used for the direction of the line and should have the same dimensions as `data`. Generally this is the output from create_line_from_slice
 
-Args:
-    <data>      : list|numpy.ndarray|str
-                for tissue data: list of three numpy array/nifti images/strings describing the proba-
-                bility of white matter/gray matter and CSF
-    <line>      : str|nibabel.Nifti1Image|numpy.ndarray
-                used for the direction of the line and should have the same dimensions as <data>. 
-                Generally this is the output from create_line_from_slice
-
-Returns:
-    1x720 np.ndarray of your input data in the line
-
+    Returns
+    ----------
+    numpy.ndarray
+        (1,720) array of your `data` in the line
     """
 
     # load in reference line data
@@ -601,22 +589,21 @@ Returns:
 
 
 def layers2line(data):
+    """layers2line
 
-    """
-layers2line
+    Project layer delineations to the line by calculating the probability of each layer membership in each voxel of the 16x720 beam and then average these to get a 1x720 line. Discrete layers are assigned by means of the highest probability of a particular layer membership.
 
-Project layer delineations to the line by calculating the probability of each layer membership in 
-each voxel of the 16x720 beam and then average these to get a 1x720 line. Discrete layers are as-
-signed by means of the highest probability of a particular layer membership.
+    Parameters
+    ----------
+    data: list, numpy.ndarray, str
+        (720,720) numpy array with the middle 16 rows containing information about the layers
+    line: str,nibabel.Nifti1Image,numpy.ndarray
+        used for the direction of the line and should have the same dimensions as `data`. Generally this is the output from create_line_from_slice
 
-Args:
-    <data>      : list|numpy.ndarray|str
-                720x720 numpy array with the middle 16 rows containing information about the layers
-                (outside that should be set to zero)
-
-Returns:
-    1x720 np.ndarray of your input data in the line
-
+    Returns
+    ----------
+    numpy.ndarray
+        (1,720) array of your `data` in the line
     """
 
     data[data == 0] = np.nan # convert zeros to NaN
@@ -629,40 +616,38 @@ Returns:
 
 def clip_image(img, thr=None, val=None, return_type="image", out_file=None): 
 
-    """
-clip_image
+    """clip_image
 
-This function takes an image or numpy array, and takes the <thr>-value as threshold to 
-clip the maximum value of the input. This is especially useful to increase contrast in 
-the masked_mp2rage-files. For some reason, the masking can be detrimental for the con-
-trast resulting in failing segmentations. 
+    This function takes an image or numpy array, and takes the <thr>-value as threshold to clip the maximum value of the input. This is especially useful to increase contrast in the masked_mp2rage-files. For some reason, the masking can be detrimental for the contrast resulting in failing segmentations. 
 
-args:
-    <img>       : numpy.ndarray|nibabel.Nifti1Image|str
-                input data; can either be a numpy array, a Nifti-image, or a string poin-
-                ting to a nifti-file.
+    Parameters
+    ----------
+    img: numpy.ndarray, nibabel.Nifti1Image, str
+        input data; can either be a numpy array, a Nifti-image, or a string pointing to a nifti-file.
+    thr: float, optional
+        cut-off to use as threshold of image intensity. This represents 0.5% occuring values, after which a drop of intensities is seen.
+    val: float, optional
+        cut-off to use as threshold of image intensity. This represents a hard threshold of literal image values
+    return_type: str, optional
+        output type; can either be a numpy array ('arr'), a Nifti-image ('nib'), or a file ('file'). In the case of the latter, an output name should be provided
+    out_file: str, optional
+        string to output name if 'return_type="file"' is specified
 
-    thr         : float
-                cut-off to use as threshold of image intensity. This represents 0.5% 
-                occuring values, after which a drop of intensities is seen.
+    Returns
+    ----------
+    nibabel.Nifti1Image
+        if `return_type=="file"`, a niimg-object is returned
 
-    val         : float
-                cut-off to use as threshold of image intensity. This represents a hard 
-                threshold of literal image values
+    numpy.ndarray
+        if `return_type=="arr"`, an array with the shape of `img` is returned
 
-    return_type : str
-                output type; can either be a numpy array ('arr'), a Nifti-image ('nib'),
-                or a file ('file'). In the case of the latter, an output name should be 
-                provided
+    str
+        if `return_type=="file"`, a new file is created and nothing is returned
 
-
-    out_file    : str
-                string to output name if 'return_type="file"' is specified
-
-usage:
-    new_img = clip_image("input.nii.gz", thr=0.005, return_type="nib")
-    clip_image("input.nii.gz", return_type='file', out_file='output.nii.gz')
-
+    Example
+    ----------
+    >>> new_img = clip_image("input.nii.gz", thr=0.005, return_type="nib")
+    >>> clip_image("input.nii.gz", return_type='file', out_file='output.nii.gz')
     """
 
     if not img:
@@ -714,23 +699,26 @@ usage:
 
 def tsnr(img,file_name=None):
 
-    """
-tsnr
+    """tsnr
 
-This function calculates the temporal SNR of an input image. Can also create 3D tSNR
-map, but generally will just output the mean tSNR
+    This function calculates the temporal SNR of an input image. Can also create 3D tSNR
+    map, but generally will just output the mean tSNR
 
-args:
-    <img>       : numpy.ndarray|nibabel.Nifti1Image|str
-                input data; can either be a numpy array, a Nifti-image, or a string poin-
-                ting to a nifti-file
+    Parameters
+    ----------
+    img: numpy.ndarray, nibabel.Nifti1Image, str
+        input data; can either be a numpy array, a Nifti-image, or a string pointing to a nifti-file.
+    file_name: str, optional
+        path to tSNR-map file. Set to None by default
 
-    file_name   : str
-                path to tSNR-map file. Set to None by default
+    Returns
+    ----------
+    numpy.ndarray
+        tSNR in array with shape of `img` (minus last dimension if `img.shape`>3)
 
-usage:
-    tsnr = tsnr('path/to/func.nii.gz')
-
+    Example
+    ----------
+    >>> tsnr = tsnr('path/to/func.nii.gz')
     """
 
     # ignore divide-by-zero error

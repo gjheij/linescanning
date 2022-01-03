@@ -6,40 +6,26 @@ import pandas as pd
 
 def correct_angle(x, verbose=False, only_angles=True):
 
-    """
-correct_angle
+    """correct_angle
 
-This function converts the angles obtained with normal2angle to angles that we can use 
-on the scanner. The scanner doesn't like angles >45 degrees. If inserted, it will flip 
-all kinds of parameters such as slice orientation and foldover. This function is WIP, 
-and needs further investigation to make it robust
+    This function converts the angles obtained with normal2angle to angles that we can use on the scanner. The scanner doesn't like angles >45 degrees. If inserted, it will flip  all kinds of parameters such as slice orientation and foldover.
 
-Args:
-    <x>                 : float | np.ndarray
-                        generally this should be literally the output from normal2angle, 
-                        a (3,) array containing the angles relative to each axis.
+    Parameters
+    ----------
+    x: float, numpy.ndarray
+        generally this should be literally the output from normal2angle, a (3,) array containing the angles relative to each axis.
+    verbose: bool 
+        print messages during the process (default = False)
+    only_angles: bool 
+        if we are getting the angles for real, we need to decide what the angle with the z-axis means. We do this by returning an additional variable 'z_axis_represents_angle_around' so that we know in :func:`linescanning.utils.get_console_settings` where to place this angle. By default this is false, and it will only return converted angles. When doing the final conversion, the real one, turn this off (default = True).
 
-    <verbose>           : bool (default = False)
-                        print messages during the process
+    Returns
+    ----------
+    numpy.ndarray
+        scanner representation of the input angles
 
-    <only_angles>       : bool (default = True)
-                        if we are getting the angles for real, we need to decide what
-                        the angle with the z-axis means. We do this by returning an
-                        additional variable 'z_axis_represents_angle_around' so that
-                        we know in '.utils.get_foldover' where to place this angle.
-                        By default this is false, and it will only return converted 
-                        angles. When doing the final conversion, the real one, turn 
-                        this off.
-
-Returns:
-    <scanner_angles>    : np.ndarray
-                        scanner representation of the input angles
-
-    <z_axis meaning>    : str
-                        if <only_angles> is set to False, it additionally returns an
-                        "X" or "Y", which specifies around which axis (X or Y) the 
-                        angle with the z-axis is to be used
-
+    str
+        if <only_angles> is set to False, it additionally returns an "X" or "Y", which specifies around which axis (X or Y) the angle with the z-axis is to be used
     """
 
     if isinstance(x, np.ndarray) or isinstance(x, list):
@@ -250,47 +236,30 @@ Returns:
 
 def normal2angle(normal, unit="deg", system="RAS", return_axis=['x','y','z']):
 
-    """
-normal2angle
+    """normal2angle
 
-Convert the normal vector to angles representing the angle with the x,y,z axis. This
-can be done by taking the arc cosine over the dot product of the normal vector and a
-vector representing the axis of interest. E.g., the vector for x would be [1,0,0], for
-y it would be [0,1,0], and for z it would be [0,0,1]. Using these vector representations
-of the axis we can calculate the angle between these vectors and the normal vector. This
-results in radians, so we convert it to degrees by multiplying it with 180/pi.
-
-Notes:
-- convert angles to sensible plane: https://www.youtube.com/watch?v=vVPwQgoSG2g: angles
-  obtained with this method are not coplanar; they don't live in the same space. So an
-  idea would be to decompose the normal vector into it's components so it lives in the
-  XY-plane, and then calculate the angles.
-
-Args:
-    <normal>        : np.ndarray | list
-                    array or list-like representation of the normal vector as per output of
-                    pycortex or FreeSurfer (they will return the same normals)
+    Convert the normal vector to angles representing the angle with the x,y,z axis. This can be done by taking the arc cosine over the dot product of the normal vector and a vector representing the axis of interest. E.g., the vector for x would be [1,0,0], for y it would be [0,1,0], and for z it would be [0,0,1]. Using these vector representations of the axis we can calculate the angle between these vectors and the normal vector. This results in radians, so we convert it to degrees by multiplying it with 180/pi.
     
-    <unit>          : str (default = "deg")
-                    unit of angles: "deg"rees or "rad"ians
+    Parameters
+    ----------
+        normal: numpy.ndarray, list
+            array or list-like representation of the normal vector as per output of pycortex or FreeSurfer (they will return the same normals)
+        unit: str
+            unit of angles: "deg"rees or "rad"ians (default = "deg")
+        system: str
+            coordinate system used as reference for calculating the angles. A right-handed system is default (RAS)
+            see: http://www.grahamwideman.com/gw/brain/orientation/orientterms.html. The scanner works in LPS, so we'd need to define the x/y-axis differently to get correct angles (default = "RAS").
+        return_axis: list 
+            List of axes to return the angles for. For some functions we only need the first two axes, which we can retrieve by specifying 'return_axes=['x', 'y']' (default = ['x','y','z']).
 
-    <system>        : str (default = "RAS")
-                    coordinate system used as reference for calculating the angles. A right-
-                    handed system is default (RAS)
-                    see: http://www.grahamwideman.com/gw/brain/orientation/orientterms.htm
-                    The scanner works in LPS, so we'd need to define the x/y-axis differently
-                    to get correct angles
+    Returns
+    ----------
+    list
+        list-like representation of the angles with each axis, first being the x axis, second the y axis, and third the z-axis.
 
-    <return_axis>   : list (default = ['x','y','z'])
-                    List of axes to return the angles for. For some functions we only need 
-                    the first two axes, which we can retrieve by specifying 'return_axes=
-                    ['x', 'y']'.
-
-Returns:
-    <angles>    : list
-                list-like representation of the angles with each axis, first being the 
-                x axis, second the y axis, and third the z-axis.
-
+    Notes
+    ----------
+    Convert angles to sensible plane: https://www.youtube.com/watch?v=vVPwQgoSG2g: angles obtained with this method are not coplanar; they don't live in the same space. So an idea would be to decompose the normal vector into it's components so it lives in the XY-plane, and then calculate the angles.
     """
 
     vector = np.zeros((3))
@@ -337,48 +306,27 @@ Returns:
 
 def get_console_settings(angles, hemi, idx, z_axis_meaning="Y"):
 
-    """
-get_console_settings
+    """get_console_settings
 
-Function that outputs what is to be inserted in the MR console. This function is the 
-biggest source of misery during my PhD so far. Needs thorough investigation. The idea
-is pretty simple: we have a set of angles obtained from normal2angle, we have conver-
-ted them to angles that the scanner can understand (i.e., angles <45 degrees), and 
-now we need to derive which ones to use in order to place the line along the normal
-vector.
+    Function that outputs what is to be inserted in the MR console. This function is the biggest source of misery during my PhD so far. Needs thorough investigation. The idea is pretty simple: we have a set of angles obtained from normal2angle, we have converted them to angles that the scanner can understand (i.e., angles <45 degrees), and now we need to derive which ones to use in order to place the line along the normal vector.
 
-Args:
-    <angles>    : np.ndarray
-                literally the output from correct_angles, a (3,) numpy array with the
-                'corrected' angles
+    Parameters
+    ----------
+        angles: np.ndarray
+            literally the output from correct_angles, a (3,) numpy array with the 'corrected' angles
+        hemi: str
+            should be "L" or "R", is mainly for info reason. It's stored in the dataframe so we can use it to index
+        idx: int
+            this should be the integer representing the selected vertex. This is also only stored in the dataframe. No operations are executed on it
+        z_axis: str
+            this string specifies how to interpret the angle with the z-axis: as angle around the X (RL) or Y (AP) axis. This can be obtained by turning off <only_angles> in :func:`linescanning.utils.correct_angle`. By default it's set to 'Y', as that means we're dealing with a coronal slice; the most common one. Though we can also get sagittal slices, so make sure to do this dilligently.
+        foldover: str
+            foldover direction of the OVS bands. Generally this will be FH, but there are instances where that does not apply. It can be returned by `linescanning.utils.correct_angle(foldover=True)`
 
-    <hemi>      : str
-                should be "L" or "R", is mainly for info reason. It's stored in the 
-                dataframe so we can use it to index
-    
-    <idx>       : int
-                this should be the integer representing the selected vertex. This is 
-                also only stored in the dataframe. No operations are executed on it
-
-    <z_axis>    : str
-                this string specifies how to interpret the angle with the z-axis: as
-                angle around the X (RL) or Y (AP) axis. This can be obtained by tur-
-                ning off <only_angles> in .utils.correct_angle(). By default it's set
-                to 'Y', as that means we're dealing with a coronal slice; the most 
-                common one. Though we can also get sagittal slices, so make sure to
-                do this dilligently.
-
-    <foldover>  : str
-                foldover direction of the OVS bands. Generally this will be FH, but 
-                there are instances where that does not apply. It can be returned by
-                utils.correct_angle(foldover=True)                
-
-Returns:
-    <df>        : pd.DataFrame
-                a dataframe containing the information needed to place the line accor-
-                dingly. It tells you the foldover direction, slice orientation, and
-                angles
-
+    Returns
+    ----------
+    pd.DataFrame
+        a dataframe containing the information needed to place the line accordingly. It tells you the foldover direction, slice orientation, and angles
     """
 
     # Get index of smallest angle
@@ -474,32 +422,26 @@ Returns:
 
 def rotate_normal(norm, xfm, system="RAS"):
 
-    """
-rotate_normal
+    """rotate_normal
 
-applies the rotation part of an affine matrix to the normal vectorself.
+    Applies the rotation part of an affine matrix to the normal vectorself.
 
-Args:
-    norm    : numpy.ndarray
-            1x3 or 1x4 array If 1x4 array, the last value should be set to zero to avoid translations
+    Parameters
+    ----------
+    norm: numpy.ndarray
+        (3,) or (4,) array; If (4,) array, the last value should be set to zero to avoid translations
+    xfm: numpy.ndarray, str
+        (4,4) affine numpy array or string pointing to the matrix-file, can also be 'identity', in which case np.eye(4) will be used. This is handy for planning the line in session 1/FreeSurfer space
+    system: str
+        use RAS (freesurfer) or LPS (ITK) coordinate system. This is important as we need to apply the matrix in the coordinate system that the vector is living in. e.g., RAS vector = RAS matrix (not ANTs' default), LPS vector = LPS matrix. If LPS, then :func:`linescanning.utils.get_matrixfromants` is used, otherwise the matrix is first converted to ras with `ConvertTransformFile` and then read in with `np.loadtxt`.
 
-    xfm     : numpy.ndarray | str
-            4x4 affine numpy array or string pointing to the matrix-file, can also be 'identity', in 
-            which case np.eye(4) will be used. This is handy for planning the line in session 1/Free-
-            Surfer space
+    Example
+    ----------
+    >>> rotate_normal(normal_vector, xfm, system="LPS")
 
-    system  : str
-            use RAS (freesurfer) or LPS (ITK) coordinate system. This is important 
-            as we need to apply the matrix in the coordinate system that the vector is living in.
-            e.g., RAS vector = RAS matrix (not ANTs' default), LPS vector = LPS matrix. If LPS, 
-            then get_matrixfromants is used, otherwise the matrix is first converted to ras with
-            ConvertTransformFile and then read in with np.loadtxt.
-
-            Of note: the results of LPS_vector @ LPS_matrix is the same as RAS_vector @ RAS_matrix
-
-Example:
-    rotate_normal(normal_vector, xfm, system="LPS")
- 
+    Notes
+    ----------
+    The results of LPS_vector @ LPS_matrix is the same as RAS_vector @ RAS_matrix
     """
 
     import numpy as np
@@ -530,6 +472,7 @@ Example:
     return rot_norm[:3]
 
 def create_line_pycortex(normal, hemi, idx, coord=None):
+    """create the line_pycortex file"""
 
     angles = normal2angle(normal)
 

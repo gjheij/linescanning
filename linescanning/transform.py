@@ -8,33 +8,32 @@ import sys
 opj = os.path.join
 
 def ants_registration(fixed=None,moving=None,reg_type="rigid",output=None):
+    """ants_registration
 
-    """
-ants_registration
+    python wrapper for call_antsregistration to perform registration with ANTs in the python
+    environment. Requires the same input as call_antsregistration
 
-python wrapper for call_antsregistration to perform registration with ANTs in the python
-environment. Requires the same input as call_antsregistration
+    Parameters
+    ----------
+    fixed: str
+        string to nifti reference image (.nii.gz)
+    moving: str
+        moving (to-be-registered) image (.nii.gz)
+    reg_type: str
+        type of transformation (default = 'rigid')
+    output base: str
+        output basename (stuff will be appended)
 
-Args:
-    fixed       : str
-                string to nifti reference image (.nii.gz)
+    Returns
+    ----------
+    str:
+        path to transform file 
 
-    moving      : str
-                moving (to-be-registered) image (.nii.gz)
-
-    reg_type    : str
-                type of transformation (default = 'rigid')
-
-    output base : str
-                output basename (stuff will be appended)
-
-Usage
-    In [1]: trafo = ants_registration(fixed="fixed.nii.gz", moving="moving.nii.gz", output="output_")
-    In [2]: trafo
-    Out[2]: '/path/to/output_genaff.mat'
-
-Returns:
-    path to transform file (str)
+    Examples
+    ----------
+    >>> trafo = ants_registration(fixed="fixed.nii.gz", moving="moving.nii.gz", output="output_")
+    >>> trafo
+    '/path/to/output_genaff.mat'
     """
 
     if os.sep in output:
@@ -59,44 +58,46 @@ Returns:
 
 
 def ants_applytrafo(fixed, moving, trafo=None, invert=0, interp='nn', output=None, return_type="file"):
+    """ants_applytrafo
 
-    """
-ants_applytrafo
+    Python wrapper for call_antsapplytransforms to apply a given transformation, and a set fixed/moving
+    images. See call_antsapplytransforms for more information on the actual call.
 
-Python wrapper for call_antsapplytransforms to apply a given transformation, and a set fixed/moving
-images. See call_antsapplytransforms for more information on the actual call.
+    Parameters
+    ----------
+    fixed: str|nibabel.Nifti1Image
+        string to nifti reference image (.nii.gz) or nibabel.Nifti1Image that will be con-verted temporarily to a file (fixed.nii.gz) in the working directory
 
-Args
-    fixed       : str|nibabel.Nifti1Image
-                string to nifti reference image (.nii.gz) or nibabel.Nifti1Image that will be con-
-                verted temporarily to a file (fixed.nii.gz) in the working directory
+    moving: str|nibabel.Nifti1Image
+        moving (to-be-registered) image (.nii.gz) or nibabel.Nifti1Image that will be converted temporarily to a file (moving.nii.gz) in the working directory
 
-    moving      : str|nibabel.Nifti1Image
-                moving (to-be-registered) image (.nii.gz) or nibabel.Nifti1Image that will be con-
-                verted temporarily to a file (moving.nii.gz) in the working directory
+    trafo: str|list
+        list or single path to transformation files in order of application
 
-    trafo       : str|list
-                list or single path to transformation files in order of application
+    interp: str
+        interpolation type: 'lin' (linear), 'nn' (NearestNeighbor), gau (Gaussian), bspl<order>, cws  CosineWindowedSinc), wws (WelchWindowedSinc), hws (HammingWindowed-Sinc), lws (LanczosWindowedSinc); default = 'nn'
 
-    interp      : str
-                interpolation type: 'lin' (linear), 'nn' (NearestNeighbor), gau (Gaussian), bspl<or-
-                order>, cws (CosineWindowedSinc), wws (WelchWindowedSinc), hws (HammingWindowed-Sinc),
-                lws (LanczosWindowedSinc); default = 'nn'
+    invert: int|list
+        list or single integer with the length of trafo-list to specify which transformations to invert or not. Default = 0 for all, meaning use as they are specified: do not invert
 
-    invert      : int|list
-                list or single integer with the length of trafo-list to specify which transforma-
-                tions to invert or not. Default = 0 for all, meaning use as they are specified: do
-                not invert
+    output: str
+        output name for warped file
 
-    output      : str
-                output name for warped file
+    return_type: str
+        whether you'd like the `filename` returned (return_type='file') or a `nibabel.Nifti1Image` (return_type="nb")
+    
+    Returns
+    ----------
+    str
+        if `return_type="str"`, then a filename is returned
 
-    return_type : str
-                whether you'd like the filename returned (return_type='file') or a nibabel.Nifti1-
-                Image (return_type="nb")
-Usage
-    f = ants_applytrafo(fixed.nii.gz, moving.nii.gz, trafo=[f1.mat,f2.mat], invert=[0,0], output=
-                        "outputfile.nii.gz", return_type="file")
+    nibabel.Nifti1Image
+        if `return_type="nb"`, a `nibabel.Nifti1Image` is returned
+    
+    Example
+    ----------
+    >>> ants_applytrafo(fixed.nii.gz, moving.nii.gz, trafo=[f1.mat,f2.mat], invert=[0,0], output="outputfile.nii.gz", return_type="file")
+    'outputfile.nii.gz'
     """
 
     if isinstance(fixed, nb.Nifti1Image):
@@ -175,35 +176,36 @@ Usage
         raise FileNotFoundError(f"Could not find file '{output}'")
 
 def ants_applytopoints(chicken_file, output_file, trafo_file):
+    """ants_applytopoints
 
-    """
-ants_applytopoints
+    Wrapper for antsApplyTransformToPoints to warp a coordinate specified in `chicken_file` to a new space using `trafo_file`. Run :func:`linescanning.utils.make_chicken_csv` and `call_antsregistration` from 1 space to another first.
 
-Wrapper for antsApplyTransformToPoints to warp a coordinate specified in <chicken_file> 
-to a new space using <trafo_file>. Run linescanning.utils.make_chicken_csv and call_
-antsregistration from 1 space to another first.
-
-Args
-    <chicken_file>  : str
-                    output from linescanning.utils.make_chicken_csv containing the coordi-
-                    nate that needs to be warped
+    Parameters
+    ----------
+    chicken_file: str
+        output from linescanning.utils.make_chicken_csv containing the coordinate that needs to be warped
     
-    <output_file>   : str
-                    output csv file containing the warped point in LPS-convention! Swap the 
-                    first and second dimensions to make the coordinate RAS
+    output_file: str
+        output csv file containing the warped point in LPS-convention! Swap the first and second dimensions to make the coordinate RAS
 
-    <trafo_file>    : str
-                    ANTs-transformation file mapping between the spaces. You can also spe-
-                    cify 'identity', in which case 'call_makeitkident' will be called
+    trafo_file: str
+        ANTs-transformation file mapping between the spaces. You can also specify 'identity', in which case 'call_makeitkident' will be called
 
-Usage
-    fn = ants_applytopoints(input.csv, output.csv, trafo.mat)
+    Returns
+    ----------
+    str
+        filename of output csv file containing the warped point in LPS-convention, `output_file`
 
+    Example
+    ----------
+    >>> fn = ants_applytopoints("input.csv", "output.csv", "trafo.mat")
+    >>> fn
+    'output.csv'
     """
 
     if trafo_file == "identity":
         trafo_file = opj(os.path.dirname(output_file), 'identity.txt')
-        cmd = f"call_makeitkident {trafo_file}"
+        cmd = f"call_createident {trafo_file}"
         os.system(cmd)
 
     cmd = f"antsApplyTransformsToPoints -d 3 -i {chicken_file} -o {output_file} -t [{trafo_file},1]"
@@ -214,12 +216,23 @@ Usage
 
 
 def vert2coord(subject,vert=None, surf=None):
+    """vert2coord
+    
+    Fetch TKR coordinate of surface vertex using mris_info.
 
-    """
-vert2coord
+    Parameters
+    -----------
+    subject: str
+        subject ID as used in `SUBJECTS_DIR`
+    vert: int
+        surface vertex in TKR space that we want to extract information from
+    surf: str
+        surface from which to extract `vert`.
 
-Fetch TKR coordinate of surface vertex using mris_info
-
+    Returns
+    ----------
+    numpy.ndarray
+        numpy array containing the coordinate of `vert` in surface `surf`
     """
 
     cmd = ('mris_info', '--vx', str(vert), surf)
@@ -229,13 +242,27 @@ Fetch TKR coordinate of surface vertex using mris_info
     return tkr_ras
 
 def fs2tkr(subject, coord=None, ref="orig.mgz", fs_dir=os.environ['SUBJECTS_DIR'], strip_lead=True):    
+    """fs2tkr
 
-    """
-fs2tkr
+    Option [4] from https://surfer.nmr.mgh.harvard.edu/fswiki/CoordinateSystems: "*I have a CRS from a voxel in the orig.mgz volume and want to compute the RAS in surface space (tkrRAS) for this point*"
 
-Option [4] from https://surfer.nmr.mgh.harvard.edu/fswiki/CoordinateSystems: I have a CRS from a voxel in the orig.mgz volume and 
-want to compute the RAS in surface space (tkrRAS) for this point
+    Parameters
+    -----------
+    subject: str
+        subject ID as used in `SUBJECTS_DIR`
+    coord: numpy.ndarray|list
+        containing the coordinate in `FreeSurfer` RAS convention
+    ref: str, optional
+        reference image to use for translation to `Surface` RAS convention (default = `orig.mgz`)
+    fs_dir: str, optional
+        `FreeSurfer` directory (default = SUBJECTS_DIR)
+    strip_lead: bool
+        if `True`, a numpy array with shape (4,) with the last element being 1 is returned. If `False`, a numpy array with shape (3,) is returned
 
+    Returns
+    ----------
+    numpy.ndarray
+        numpy array containing the `coord` in Surface RAS convention
     """
 
     torig = get_vox2ras_tkr(opj(fs_dir, subject, 'mri', ref))
@@ -262,13 +289,21 @@ want to compute the RAS in surface space (tkrRAS) for this point
             return tkr_ras
 
 def tkr2ctx(subject, coord=None):
+    """tkr2ctx
 
-    """
+    Add the surfmove-correction that Pycortex internally applies to FreeSurfer coordinates (see :func:`linescanning.pycortex.get_ctxsurfmove`)
 
-tkr2ctx
+    Parameters
+    -----------
+    subject: str
+        subject ID as used in `SUBJECTS_DIR`
+    coord: numpy.ndarray|list
+        numpy array or list containing the `coord` in Surface RAS convention
 
-Add the surfmove-correction that Pycortex internally applies to FreeSurfer coordinates
-
+    Returns
+    ----------
+    numpy.ndarray
+        numpy array containing the `coord` in Pycortex convention
     """
 
     sm = pycortex.get_ctxsurfmove(subject)
@@ -282,36 +317,38 @@ Add the surfmove-correction that Pycortex internally applies to FreeSurfer coord
     return coord+sm
 
 def ctx2vert(surf,coord=None,rtol=0.015):
+    """ctx2vert
 
+    Finds the closest vertices given an RAS coordinate as defined by pycortex. It uses np.closeall with a customizable rtol-value. If this function does not return anything, increase the rtol. If the original coordinate is not on the surface, results might differ.
+
+    Procedure to view CRS in orig.mgz on the surface in Pycortex (also see fs2vert):
+    >>> from linescanning import *
+    >>> pp = optimal.CalcBestVertex(subject)
+    >>> fs_coord = np.array([187,177,41])
+    >>> fs2tkr = transform.fs2tkr('sub-001', coord=fs_coord)
+    >>> tkr2ctx = transform.tkr2ctx('sub-001', coord=fs2tkr)
+    >>> vert = transform.ctx2vert(pp.surface.lh_surf_data[0], coord=tkr2ctx)
+    >>> import cortex
+    >>> mm = pp.surface.label_to_mask(subject='sub-001', lh_arr=vert, hemi='lh')
+    >>> cortex.webview(mm['whole_roi_v'])
+
+    It runs through the surface-array and calculates the similarity between the RAS coordinates in there and the specified coordinate with a given tolerance. All elements of the coordinate should be as close to 1 as possible, showing more similarities between the given coordinate and the coordinate that has a vertex attached to it. Because of this iterative nature, the process takes a few seconds, so it's not that your system is slow per se. 
+    Returns a list of indices where the coordinate has passed the tolerance test. You can verify this by entering the indices in FreeView on the given surface. E.g., if you used lh.fiducial, enter the vertex in that box.
+
+    Parameters
+    -----------
+    surf: str
+        surface to extract the vertex from (e.g., `lh.fiducial`)
+    coord: numpy.ndarray|list
+        numpy array or list containing the `coord` in Pycortex convention
+    rtol: float
+        error margin in `mm`
+
+    Returns
+    ----------
+    int
+        vertex number corresponding to `coord` in surface `surf`
     """
-ctx2vert
-
-Finds the closest vertices given an RAS coordinate as defined by pycortex. It uses np.closeall
-with a customizable rtol-value. If this function does not return anything, increase the rtol. 
-If the original coordinate is not on the surface, results might differ.
-
-Procedure to view CRS in orig.mgz on the surface in Pycortex (also see fs2vert):
-  In [1]: from linescanning import *
-  In [2]: pp = optimal.CalcBestVertex(subject)
-  In [3]: fs_coord = np.array([187,177,41])
-  In [4]: fs2tkr = transform.fs2tkr('sub-001', coord=fs_coord)
-  In [5]: tkr2ctx = transform.tkr2ctx('sub-001', coord=fs2tkr)
-  In [6]: vert = transform.ctx2vert(pp.surface.lh_surf_data[0], coord=tkr2ctx)
-  In [7]: import cortex
-  In [8]: mm = pp.surface.label_to_mask(subject='sub-001', lh_arr=vert, hemi='lh')
-  In [9]: cortex.webview(mm['whole_roi_v'])
-
-It runs through the surface-array and calculates the similarity between the RAS coordinates in 
-there and the specified coordinate with a given tolerance. All elements of the coordinate should
-be as close to 1 as possible, showing more similarities between the given coordinate and the 
-coordinate that has a vertex attached to it. Because of this iterative nature, the process 
-takes a few seconds, so it's not that your system is slow per se.
-
-Returns a list of indices where the coordinate has passed the tolerance test. You can verify 
-this by entering the indices in FreeView on the given surface. E.g., if you used lh.fiducial, 
-enter the vertex in that box.
-
-"""
 
     qq = []
     for i in surf:
@@ -320,13 +357,26 @@ enter the vertex in that box.
     return [i for i,x in enumerate(qq) if x]
 
 def fs2vert(subject, coord=None, hemi="lh"):
+    """ctx2vert
 
-    """
+    Warp a CRS-point from orig.mgz to Pycortex as described in :func:`linescanning.transform.ctx2vert`.
 
-fs2vert
+    Parameters
+    -----------
+    subject: str
+        subject ID as used in `SUBJECTS_DIR`
+    coord: numpy.ndarray|list
+        numpy array or list containing the `coord` in Pycortex convention
+    hemi: str
+        hemisphere to extract the vertex from (should be `lh` or `rh`)
 
-Warp a CRS-point from orig.mgz to Pycortex as described in the function ctx2vert.
+    Returns
+    ----------
+    dict
+        Dictionary collecting outputs under the following keys
 
+        * vert_nr (int): vertex number corresponding to the input coordinate `coord`
+        * vert_obj (dict): output from :func:`linescanning.optimal.CalcBestVert.label_to_mask`, consisting of numpy.ndarrays representing a boolean mask of the vertex
     """
 
     pp = optimal.CalcBestVertex(subject)
@@ -345,59 +395,42 @@ Warp a CRS-point from orig.mgz to Pycortex as described in the function ctx2vert
 
 def ctx2tkr(subject, img=None, coord=None, correct=True, hm=True, ret=True, pad_ones=True):
 
-    """
-ctx2tkr
+    """ctx2tkr
 
-Convert a coordinate from Pycortex to FreeSurfer's TKR (surface) definition. Basically it adds the
-offset back (https://gallantlab.github.io/pycortex/_modules/cortex/freesurfer.html) that is added by
-Pycortex. With this particular function, you can apply that offset matrix to a given image, or enter
-a list of coordinate to which to apply the offset to. To just get the offset, specify the subject
-(needed for all operations), with 'hm' set to False (3x1 coordinate array) or True (4x4 homogenous
-matrix with offset in translation column).
+    Convert a coordinate from Pycortex to FreeSurfer's TKR (surface) definition. Basically it adds the offset back (https://gallantlab.github.io/pycortex/_modules/cortex/freesurfer.html) that is added by Pycortex. With this particular function, you can apply that offset matrix to a given image, or enter a list of coordinate to which to apply the offset to. To just get the offset, specify the subject (needed for all operations), with 'hm' set to False (3x1 coordinate array) or True (4x4 homogenous matrix with offset in translation column).
 
-Args:
-    subject         str:
-                    subject-ID corresponding to the name in the pycortex filestore directory (manda-
-                    tory!! for looking up how much the image has been moved when imported from Free-
-                    Surfer to Pycortex)
+    Parameters
+    ----------
+    subject: str
+        subject-ID corresponding to the name in the pycortex filestore directory (mandatory!! for looking up how much the image has been moved when imported from FreeSurfer to Pycortex)
+    img: nb.Nifti1Image, str
+        nifti image or path to nifti image to which to apply the offset to
+    coord: list
+        one or multiple coordinates to apply the offset to (e.g., left|right hemisphere) in list format (also when entering just 1 coordinate)
+    correct: bool
+        actually apply the matrix to an input image and return the nifti image with padded affine matrix. Should be used in combination with 'img'
+    hm: bool
+        if `True`: output a homogenous (4,4) matrix with the offset in the translation column
+        if `False`: just the offset values (3,)
+    ret: bool
+        used in combination with the list of coordinates to return the corrected coordinates in a list. Artifact from when this was part of a class and included the corrected coordinates in the class object itself
+    pad_ones: bool
+        pad the coordinates with a '1' if the length does not match the (4,4) `surf2orig` matrix to ensure proper dot product
 
-    img             nb.Nifti1Image|str
-                    nifti image or path to nifti image to which to apply the offset to
+    Returns
+    ----------
+    np.ndarray
+        offset coordinates; 4x4 or 3x1 (depending on the 'hm' flag) array containing the offset values
+    list
+        corrected coordinates if `coord`-input was a list
+    nb.Nifti1Image
+        new nifti image with corrected affine matrix
 
-    coord           list:
-                    one or multiple coordinates to apply the offset to (e.g., left|right hemisphere)
-                    in list format (also when entering just 1 coordinate)
-
-    correct         bool:
-                    actually apply the matrix to an input image and return the nifti image with pad-
-                    ded affine matrix. Should be used in combination with 'img'
-
-    hm              bool:
-                    output a homogenous (4x4) matrix with the offset in the translation column or
-                    False for just the offset values (3,)
-
-    ret             bool:
-                    used in combination with the list of coordinates to return the corrected coordi-
-                    nates in a list. Artifact from when this was part of a class and included the
-                    corrected coordinates in the class object itself
-
-    pad_ones        bool:
-                    pad the coordinates with a '1' if the length does not match the 4x4 surf2orig
-                    matrix to ensure proper dot product
-Returns (one of):
-    offset coordinates      np.ndarray
-                            4x4 or 3x1 (depending on the 'hm' flag) array containing the offset values
-
-    corrected coordinates   list:
-                            corrected coordinates from 'coord'-list
-
-    corrected image         nb.Nifti1Image
-                            new nifti image with corrected affine matrix
-
-Examples:
-    get offset:             offset = ctx2tkr('sub-001', hm=False)
-    correct coordinates:    corr_coordinates = ctx2tkr('sub-001', coord=[coord1,coord2], ret=True)
-    correct nifti:          corr_nifti = ctx2trk('sub-001', img=input.nii.gz, correct=True)
+    Examples
+    ----------
+    >>> offset = ctx2tkr('sub-001', hm=False)
+    >>> corr_coordinates = ctx2tkr('sub-001', coord=[coord1,coord2], ret=True)
+    >>> corr_nifti = ctx2trk('sub-001', img=input.nii.gz, correct=True)
     """
 
     offset = pycortex.get_ctxsurfmove(subject)
@@ -451,41 +484,33 @@ Examples:
 
 
 def tkr2fs(subject, coord=None, fs_dir=os.environ['SUBJECTS_DIR'], pad_ones=True):
+    """tkr2fs
 
-    """
-tkr2fs
+    Convert a coordinate from FreeSurfer's TKR (surface) definition to FreeSurfer's anatomical (volume) definition. This involves the procedure described here: https://surfer.nmr.mgh.harvard.edu/fswiki/CoordinateSystems scenario [3]: "I have a point on the surface ("Vertex RAS" in tksurfer) and want to compute the Scanner RAS in orig.mgz that corresponds to this point".
 
-Convert a coordinate from FreeSurfer's TKR (surface) definition to FreeSurfer's anatomical (volume)
-definition. This involves the procedure described here: https://surfer.nmr.mgh.harvard.edu/fswiki/-
-CoordinateSystems scenario [3]: "I have a point on the surface ("Vertex RAS" in tksurfer) and want
-to compute the Scanner RAS in orig.mgz that corresponds to this point".
+    Parameters
+    ----------
+    subject: str
+        subject-ID corresponding to the name in the pycortex filestore directory (mandatory!! for looking up how much the image has been moved when imported from FreeSurfer to Pycortex)
+    img: nb.Nifti1Image, str
+        nifti image or path to nifti image to which to apply the offset to
+    coord: list
+        one or multiple coordinates to apply the offset to (e.g., left|right hemisphere) in list format (also when entering just 1 coordinate)
+    fs_dir: str, optional
+        `FreeSurfer` directory (default = SUBJECTS_DIR)
+    pad_ones: bool
+        pad the coordinates with a '1' if the length does not match the (4,4) `surf2orig` matrix to ensure proper dot product
 
-Args:
-    subject         str:
-                    subject-ID corresponding to the name in the pycortex filestore directory (manda-
-                    tory!! for looking up how much the image has been moved when imported from Free-
-                    Surfer to Pycortex)
+    Returns
+    ----------
+    np.ndarray
+        (4,4) array containing the transformation from Surface RAS to Scanner RAS
+    list
+        corrected coordinates if `coord`-input was a list
 
-    coord           list:
-                    one or multiple coordinates to apply the offset to (e.g., left|right hemisphere)
-                    in list format (also when entering just 1 coordinate)
-
-    fs_dir          str:
-                    by default SUBJECTS_DIR, but you can specify whatever you want
-
-    pad_ones        bool:
-                    pad the coordinates with a '1' if the length does not match the 4x4 surf2orig
-                    matrix to ensure proper dot product
-
-Returns (one of):
-    tkr2fs trafo    np.ndarray
-                    4x4 array containing the transformation from Surface RAS to Scanner RAS
-
-    coords          list:
-                    corrected coordinates from 'coord'-list
-
-Examples:
-    off,coord = tkr2fs('sub-001', coord=[tkr_coord1,tkr_coord2])
+    Examples
+    ----------
+    >>> off,coord = tkr2fs('sub-001', coord=[tkr_coord1,tkr_coord2])
     """
 
     orig_mgz = opj(fs_dir, subject, 'mri', 'orig.mgz')
@@ -519,8 +544,24 @@ Examples:
         return surf2orig
 
 def rawavg2fs(subject, coord=None, fs_dir=os.environ['SUBJECTS_DIR']):
+    """rawavg2fs
 
-    """convert a CRS in rawavg.mgz to orig.mgz"""
+    Option [6] from https://surfer.nmr.mgh.harvard.edu/fswiki/CoordinateSystems: "*I have a CRS from a voxel in my functional/diffusion/ASL/rawavg/etc "mov" volume and want to compute the CRS for the corresponding point in the orig.mgz*"
+
+    Parameters
+    -----------
+    subject: str
+        subject ID as used in `SUBJECTS_DIR`
+    coord: numpy.ndarray|list
+        containing the coordinate in `FreeSurfer` rawavg convention (voxels)
+    fs_dir: str, optional
+        `FreeSurfer` directory (default = SUBJECTS_DIR)
+
+    Returns
+    ----------
+    numpy.ndarray
+        numpy array containing the `coord` in `orig.mgz` voxel convention
+    """
 
     orig = opj(fs_dir, subject, 'mri', 'orig.mgz')
     move = opj(fs_dir, subject, 'mri', 'rawavg.mgz')
@@ -537,8 +578,24 @@ def rawavg2fs(subject, coord=None, fs_dir=os.environ['SUBJECTS_DIR']):
     return np.array([int(round(i,0)) for i in orig_coord])
 
 def fs2rawavg(subject, coord=None, fs_dir=os.environ['SUBJECTS_DIR']):
+    """fs2rawavg
 
-    """convert a CRS in orig.mgz to rawavg.mgz"""
+    Inverse of :func:`linescanning.transform.rawavg2fs`
+
+    Parameters
+    -----------
+    subject: str
+        subject ID as used in `SUBJECTS_DIR`
+    coord: numpy.ndarray|list
+        containing the coordinate in `FreeSurfer` rawavg convention (voxels)
+    fs_dir: str, optional
+        `FreeSurfer` directory (default = SUBJECTS_DIR)
+
+    Returns
+    ----------
+    numpy.ndarray
+        numpy array containing the `coord` in `rawavg.mgz` voxel convention
+    """
 
     orig = opj(fs_dir, subject, 'mri', 'orig.mgz')
     move = opj(fs_dir, subject, 'mri', 'rawavg.mgz')
@@ -557,47 +614,36 @@ def fs2rawavg(subject, coord=None, fs_dir=os.environ['SUBJECTS_DIR']):
 
 def tkr2rawavg(subject,matrix=None,coord=None,reg=True,fs_dir=os.environ['SUBJECTS_DIR'], inv=False, out_type="voxel"):
 
-    """
-tkr2rawavg
+    """tkr2rawavg
 
-Computes the transformation from FreeSurfer TKR space (orig.mgz) to the native space (rawavg.nii.gz).
-It a ssumes the FreeSurfer and native space differ, which is not necessarily the case if you already
-have isotropic native data. You can either specify the registration file as per the output of tkre-
-gister2 or have this function create that file (register.dat by default)
+    Computes the transformation from FreeSurfer TKR space (orig.mgz) to the native space (rawavg.nii.gz). It a ssumes the FreeSurfer and native space differ, which is not necessarily the case if you already have isotropic native data. You can either specify the registration file as per the output of tkregister2 or have this function create that file (register.dat by default)
 
-Args:
-    subject         str:
-                    subject-ID corresponding to the name in the pycortex filestore directory (manda-
-                    tory!! for looking up how much the image has been moved when imported from Free-
-                    Surfer to Pycortex)
+    Parameters
+    ----------
+    subject: str
+        subject-ID corresponding to the name in the pycortex filestore directory (mandatory!! for looking up how much the image has been moved when imported from FreeSurfer to Pycortex)
+    matrix: str
+        path to ANTs-format registration file (either the .txt or .mat file, doesn't really matter for ants_applytrafo)
+    reg: bool
+        create the matrix mapping FreeSurfer to native instead of specifying a matrix. Only one or the other is needed.
+    fs_dir: str
+        `FreeSurfer` directory (default = SUBJECTS_DIR)
+    inv: bool
+        if the matrix file you specify with 'matrix' is actually mapping native to FreeSurfer, set this flag to True to invert the matrix
+    out_type: str
+        output either the voxel ('voxel') or RAS ('ras') coordinate
 
-    matrix          str:
-                    path to ANTs-format registration file (either the .txt or .mat file, doesn't
-                    really matter for ants_applytrafo)
+    Returns
+    ----------
+    np.ndarray
+        (4,4) array containing the transformation from Surface RAS to Scanner RAS
+                        
+    list
+        corrected coordinates if `coord`-input was a list
 
-    reg             bool:
-                    create the matrix mapping FreeSurfer to native instead of specifying a matrix.
-                    Only one or the other is needed.
-
-    fs_dir          str:
-                    by default SUBJECTS_DIR, but you can specify whatever you want
-
-    inv             bool:
-                    if the matrix file you specify with 'matrix' is actually mapping native to Free-
-                    Surfer, set this flag to True to invert the matrix
-
-    out_type        str:
-                    output either the voxel ('voxel') or RAS ('ras') coordinate
-
-Returns (one of):
-    tkr2rawavg      np.ndarray
-                    4x4 array containing the transformation from Surface RAS to Scanner RAS
-
-    coords          list:
-                    corrected coordinates from 'coord'-list
-
-Examples:
-    off,coord = tkr2rawavg('sub-001', matrix="register.dat", coord=[tkr_coord1,tkr_coord2])
+    Example
+    ----------
+    >>> off,coord = tkr2rawavg('sub-001', matrix="register.dat", coord=[tkr_coord1,tkr_coord2])
     """
 
     mov = opj(fs_dir, subject, 'mri', 'rawavg.mgz')
@@ -642,8 +688,28 @@ Examples:
 
 
 def rawavg2lowres(fixed, moving, matrix, inv=False, out_file=None):
+    """rawavg2lowres
 
-    """Warp files from rawavg to another session given warp 'matrix'"""
+    Transform a file from `rawavg` in another session (e.g., `lowres`) via a registration matrix. Uses :func:`linescanning.transform.ants_applytransform`
+
+    Parameters
+    -----------
+    fixed: str
+        reference image (e.g., `lowres`)
+    moving: str
+        moving image (e.g., `rawavg`)
+    matrix: str
+        transformation file mapping `moving` to `fixed`
+    inv: bool
+        if transformation file maps `fixed` to `moving`, we can invert the matrix by setting `inv=True`
+    out_file: str
+        output file representing `moving` in `fixed`-space
+
+    Returns
+    ----------
+    str
+        filename of output file representing `moving` in `fixed`-space
+    """
 
     if inv == False:
         do_invert = 0
@@ -663,8 +729,34 @@ def rawavg2lowres(fixed, moving, matrix, inv=False, out_file=None):
 
 
 def get_tkrreg(subject, mov=None, targ=None, out_file=None, fs_dir=os.environ['SUBJECTS_DIR'], return_type='arr'):
+    """get_tkrreg
+    
+    Implementation of `tkregister2` by sending a command to the command line.
 
-    """Perform registration of TKR to FS orig with tkregister2"""
+    Parameters
+    ----------
+    subject: str
+        subject-ID corresponding to the name in the pycortex filestore directory (mandatory!! for looking up how much the image has been moved when imported from FreeSurfer to Pycortex)
+    mov: str
+        moving image
+    targ: str
+        reference image (will default to `orig.mgz` if left empty)
+    out_file: str
+        output file of transformation file
+    fs_dir: str
+        `FreeSurfer` directory (default = SUBJECTS_DIR)
+    return_type: str
+        if `file`, `out_file` is returned
+        if `arr`, `out_file` will be read into a numpy.ndarray
+
+    Returns
+    ----------
+    str
+        if `return_type=="file", `out_file` is returned
+
+    numpy.ndarray
+        if `return_type=="arr", `out_file` is returned
+    """
 
     if not targ:
         targ = opj(fs_dir, subject, 'mri', 'orig.mgz')
@@ -717,6 +809,7 @@ def get_vox2ras(img):
     return norig
 
 def ras2lps(coord):
+    """represent an RAS coordinate in LPS convention"""
 
     # ras2lps = [-1,-1,1]
     if len(coord) == 4:
@@ -725,7 +818,7 @@ def ras2lps(coord):
     return coord*np.array([-1,-1,1])
 
 def ras2las(coord):
-
+    """represent an RAS coordinate in LAS convention"""
     # ras2las = [-1,1,1]
     if len(coord) == 4:
         coord = coord[:3]
@@ -733,6 +826,7 @@ def ras2las(coord):
     return coord*np.array([-1,1,1])
     
 def ras2lpi(coord):
+    """represent an RAS coordinate in LPO+I convention"""
 
     # ras2las = [-1,-1,-1]
     if len(coord) == 4:
@@ -741,43 +835,37 @@ def ras2lpi(coord):
     return coord*np.array([-1,-1,-1])
 
 def native_to_scanner(anat, coord, inv=False, addone=True):
-    """
-native_to_scanner
+    """native_to_scanner
+    
+    This function returns the RAS coordinates in scanner space given a coordinate in native anatomy space. Required inputs are an anatomical image to derive the VOX-to-RAS conversion from and a voxel coordinate. Conversely, if you have a RAS coordinate, you can set the 'inv' flag to True to get the voxel coordinate corresponding to that RAS-coordinate. To make the output 1x4, the addone-flag is set to true. Set to false if you'd like 1x3 coordinate.
 
-This function returns the RAS coordinates in scanner space given a coordinate in native anatomy space.
-Required inputs are an anatomical image to derive the VOX-to-RAS conversion from and a voxel coordinate.
+    Parameters
+    ----------
+    anat: str
+        nifti image to derive the ras2vox (and vice versa) conversion
+    coord: numpy.ndarray
+        numpy array containing a coordinate to convert
+    inv: bool
+        False if 'coord' is voxel, True if `coord` is RAS        
+    addone: bool
+        False if you don't want a trailing *1*, returning a 1x3 array, or True if you want a trailing *1* to make a matrix homogenous
 
-Conversely, if you have a RAS coordinate, you can set the 'inv' flag to True to get the voxel coordinate
-corresponding to that RAS-coordinate. To make the output 1x4, the addone-flag is set to true. Set to
-false if you'd like 1x3 coordinate.
+    Returns
+    ----------
+    numpy.ndarray
+        (3,) or (4,) array containing the input coordinate `coord` in scanner convention (if `coord` is in voxel convention and `inv==False`) or voxel convention (if `coord` is in scanner convention and `inv==True`)
 
-Args:
-    anat    : str
-            nifti image to derive the ras2vox (and vice versa) conversion
-
-    coord   : numpy.ndarray
-            numpy array containing a coordinate to convert
-
-    inv     : bool
-            False if 'coord' is voxel, True if 'coord' is RAS
-
-    addone  : bool
-            False if you don't want a trailing '1', returning a 1x3 array, or True if you want a
-            trailing '1' to make a matrix homogenous
-
-Example:
-    >> vox2ras
-        In [23]: native_to_scanner('sub-001_space-ses1_hemi-L_vert-875.nii.gz', np.array([142,  48, 222]))
-        Out[23]: array([ -7.42000937, -92.96745521, -15.27866316,   1.        ])
-
-    >> ras2vox
-        In [24]: native_to_scanner('sub-001_space-ses1_hemi-L_vert-875.nii.gz', np.array([ -7.42000937, -92.96745521, -15.27866316]), inv=True)
-        Out[24]: array([142,  48, 222,   1])
-
-    >> disable trailing '1'
-        In [25]: native_to_scanner('sub-001_space-ses1_hemi-L_vert-875.nii.gz', np.array([142,  48, 222]), addone=False)
-        Out[25]: array([ -7.42000937, -92.96745521, -15.27866316])
-
+    Examples
+    ----------
+    >>> # vox2ras
+    >>> native_to_scanner('sub-001_space-ses1_hemi-L_vert-875.nii.gz', np.array([142,  48, 222]))
+    array([ -7.42000937, -92.96745521, -15.27866316,   1.        ])
+    >>> # ras2vox
+    >>> native_to_scanner('sub-001_space-ses1_hemi-L_vert-875.nii.gz', np.array([ -7.42000937, -92.96745521, -15.27866316]), inv=True)
+    array([142,  48, 222,   1])
+    >>> # disable trailing '1'
+    >>> native_to_scanner('sub-001_space-ses1_hemi-L_vert-875.nii.gz', np.array([142,  48, 222]), addone=False)
+    array([ -7.42000937, -92.96745521, -15.27866316])            
     """
 
     if len(coord) != 3:
