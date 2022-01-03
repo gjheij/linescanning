@@ -5,5 +5,6 @@ Utils
 
 Utility functions
 
+
 .. automodule:: linescanning.utils
    :members:
