@@ -66,7 +66,7 @@ ants_applytrafo
 Python wrapper for call_antsapplytransforms to apply a given transformation, and a set fixed/moving
 images. See call_antsapplytransforms for more information on the actual call.
 
-Args:
+Args
     fixed       : str|nibabel.Nifti1Image
                 string to nifti reference image (.nii.gz) or nibabel.Nifti1Image that will be con-
                 verted temporarily to a file (fixed.nii.gz) in the working directory
