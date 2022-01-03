@@ -1145,6 +1145,7 @@ class pRFmodelFitting():
     hrf: np.ndarray
         <1,time_points> describing the HRF. Can be created with :func:`linescanning.glm.double_gamma`, then add an
         axis before the timepoints:
+        
         >>> time_points = np.linspace(0,36,np.rint(float(36)/dt).astype(int))
         >>> hrf_custom = linescanning.glm.double_gamma(time_points, lag=6)
         >>> hrf_custom = hrf_custom[np.newaxis,...]
