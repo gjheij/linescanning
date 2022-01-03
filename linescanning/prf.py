@@ -457,11 +457,11 @@ def select_stims(settings_dict, stim_library, frames=225, baseline_frames=15, ra
     settings_dict: dict
         dictionary containing the number of stimuli and index of stimuli (as per the library) that you would like to include. An example is:
 
-        use_settings = {'hori': [0, 18],
-                        'vert': [4, 25],
-                        'rot_45': [4, 18],
-                        'rot_135': [0, 5]}
-
+        >>> use_settings = {'hori': [0, 18],
+        >>>                 'vert': [4, 25],
+        >>>                 'rot_45': [4, 18],
+        >>>                 'rot_135': [0, 5]}
+        
         this selects 0 horizontal stimuli, 4x the 25th vertical stimulus in 'lib', 4x the 18th sti-
         mulus of the 45 degree rotated stimuli, and 0 of the 135 degree rotated stimuli.
     stim_library: dict
@@ -1145,7 +1145,8 @@ class pRFmodelFitting():
     hrf: np.ndarray
         <1,time_points> describing the HRF. Can be created with :func:`linescanning.glm.double_gamma`, then add an
         axis before the timepoints:
-        
+
+        >>> dt = 1
         >>> time_points = np.linspace(0,36,np.rint(float(36)/dt).astype(int))
         >>> hrf_custom = linescanning.glm.double_gamma(time_points, lag=6)
         >>> hrf_custom = hrf_custom[np.newaxis,...]
