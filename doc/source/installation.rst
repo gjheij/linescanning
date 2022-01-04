@@ -9,19 +9,19 @@ Download the repository from ``github``:
 
 .. code:: bash
 
+   $ cd <some directory>
    $ git clone https://github.com/gjheij/linescanning.git
 
 Setup the environment for ``bash``:
 
 .. code:: bash
 
-   $ bash linescanning/linescanning/shell/spinoza_setup setup
+   $ bash <some directory>/linescanning/shell/spinoza_setup setup
 
 This will print out a set of instructions that are executed under the hood; it makes sure the setup file is loaded in your ``.bash_profile`` each time you start a new a new terminal and makes the scripts inside the repository executable similar to how *FSL* works. Setup the ``python`` environment. Edit the *environment.yml* file to your liking (e.g., paths and environment name) and execute the following commands:
 
 .. code:: bash
 
-   $ cd linescanning
    $ conda create --name <environment name> --file environment.yml
    $ pip install -e .
 
@@ -46,15 +46,12 @@ This should give the help menu of the master script. If not, something went wron
 
 Manually Prepared Environment (Python 3.7+)
 ===========================================
-
 Make sure all of *LineScanning*'s `External Dependencies`_ are installed. These tools must be installed and their binaries available in the system's ``$PATH``.
 As an additional installation setting, FreeSurfer requires a license file (see `<https://surfer.nmr.mgh.harvard.edu/fswiki/License>`_).
 
 External Dependencies
 ---------------------
-*LineScanning* is written using Python 3.7 (or above). *LineScanning* requires some other neuroimaging software tools that are
-not handled by the Python's packaging system (Pypi) used to deploy
-the ``LineScanning`` package:
+*LineScanning* is written using Python 3.7 (or above). *LineScanning* requires some other neuroimaging software tools that are not handled by the Python's packaging system (Pypi) used to deploy the ``LineScanning`` package:
 
 - FSL_ (version 5.0.9)
 - ANTs_ (version 2.3.1)
