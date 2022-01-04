@@ -75,10 +75,10 @@ def set_threshold(name=None, borders=None, set_default=None):
 
 def target_vertex(subject,
                   deriv=None,
-                  prfdir=os.environ['PRF'],
-                  cxdir=os.environ['CTX'],
-                  fsdir=os.environ['FS'],
-                  task=f"{os.environ['TASK_SES1']}_model-gauss_stage-iter",
+                  prfdir=None,
+                  cxdir=None,
+                  fsdir=None,
+                  task="2R_model-gauss_stage-iter",
                   webshow=True,
                   out=None,
                   roi="V1_exvivo.thresh",
@@ -391,7 +391,7 @@ class SurfaceCalc(object):
     Embedded in :class:`linescanning.optimal.CalcBestVertex`, so if you can also just call that class and you won't have to run the command in "usage"
     """
 
-    def __init__(self, subject=None, fsdir=os.environ['SUBJECTS_DIR'], fs_label="V1_exvivo.thresh"):
+    def __init__(self, subject=None, fsdir=None, fs_label="V1_exvivo.thresh"):
 
         """Initialize object"""
 
@@ -461,7 +461,7 @@ class SurfaceCalc(object):
         setattr(self, 'rh_surf_sm', self.rh_surf.smooth(self.curvature.data[self.lh_surf_data[0].shape[0]:], factor=kernel, iterations=nr_iter))
 
     @staticmethod
-    def read_fs_label(subject, fs_path=os.environ['SUBJECTS_DIR'], fs_label=None, hemi="both"):
+    def read_fs_label(subject, fs_path=None, fs_label=None, hemi="both"):
         """read_fs_label
 
         read a freesurfer label file (name must match with file in freesurfer directory)
@@ -589,7 +589,7 @@ class pRFCalc(object):
     """
 
     # Get stuff from SurfaceCalc
-    def __init__(self, subject=None, prffile=None, prfdir=None, ses_nr=1, task=os.environ['TASK_SES1']):
+    def __init__(self, subject=None, prffile=None, prfdir=None, ses_nr=1, task="2R"):
 
         self.subject = subject
         self.session = ses_nr
@@ -667,17 +667,17 @@ class CalcBestVertex(object):
 
     Example
     ----------
-    >>> GetBestVertex = CalcBestVertex(subject=subject, fsdir=opj(os.environ['DIR_DATA_DERIV'], 'freesurfer_orig'), prffile=prf_params)
+    >>> GetBestVertex = CalcBestVertex(subject=subject, fsdir='/path/to/derivatives/freesurfer'), prffile=prf_params)
     """
 
     def __init__(self, subject=None,
-                 fsdir=os.environ['SUBJECTS_DIR'],
-                 cxdir=os.environ['CTX'],
-                 prfdir=os.environ['PRF'],
+                 fsdir=None,
+                 cxdir=None,
+                 prfdir=None,
                  prfile=None,
                  fs_label="V1_exvivo.thresh",
                  ses_nr=1,
-                 task=os.environ['TASK_SES1']):
+                 task="2R"):
 
         self.subject = subject
         self.surface = SurfaceCalc(subject=self.subject, fsdir=fsdir, fs_label=fs_label)
