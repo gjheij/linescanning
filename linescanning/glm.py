@@ -5,7 +5,39 @@ from scipy.interpolate import interp1d
 import seaborn as sns
 
 def double_gamma(x, lag=6, a2=12, b1=0.9, b2=0.9, c=0.35, scale=True):
+    """double_gamma
 
+    Create a double gamma hemodynamic response function (HRF).
+
+    Parameters
+    ----------
+    x: numpy.ndarray
+        timepoints along the HRF
+    lag: int, optional
+        duration until peak of HRF is reached, by default 6
+    a2: int, optional
+        second determinant of the HRF drop, by default 12
+    b1: float, optional
+        first determinant of HRF rise, by default 0.9
+    b2: float, optional
+        second determinant of HRF rise, by default 0.9
+    c: float, optional
+        constant for HRF drop, by default 0.35
+    scale: bool, optional
+        normalize course of HRF, by default True
+
+    Returns
+    ----------
+    numpy.ndarray
+        HRF across given timepoints with shape (,`x.shape[0]`)
+
+    Example
+    ----------
+    >>> dt = 1
+    >>> time_points = np.linspace(0,36,np.rint(float(36)/dt).astype(int))
+    >>> hrf_custom = linescanning.glm.double_gamma(time_points, lag=6)
+    >>> hrf_custom = hrf_custom[np.newaxis,...]
+    """
     a1 = lag
     d1 = a1 * b1
     d2 = a2 * b2
@@ -19,14 +51,45 @@ def double_gamma(x, lag=6, a2=12, b1=0.9, b2=0.9, c=0.35, scale=True):
 
 
 def make_stimulus_vector(onset_df, scan_length=None, TR=0.105, osf=None, type='event', block_length=None, amplitude=None):
+    """make_stimulus_vector
 
+    [summary]
+
+    Parameters
+    ----------
+    onset_df: pandas.DataFrame
+        onset times as read in with :class:`linescanning.utils.ParseExpToolsFile`
+    scan_length: [type], optional
+        [description], by default None
+    TR: float, optional
+        [description], by default 0.105
+    osf: [type], optional
+        [description], by default None
+    type: str, optional
+        [description], by default 'event'
+    block_length: [type], optional
+        [description], by default None
+    amplitude: [type], optional
+        [description], by default None
+
+    Returns
+    ----------
+    [type]
+        [description]
+
+    Raises
+    ----------
+    ValueError
+        [description]
+    ValueError
+        [description]
+    ValueError
+        [description]
+
+    Example
+    ----------
+    >>> 
     """
-    make_stimulus_vector
-
-    create a np.1darray for a given condition with the length of number of scans
-
-    """
-
     # check if we should reset or not
     try:
         onset_df = onset_df.reset_index()
