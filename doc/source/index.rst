@@ -11,8 +11,7 @@ Welcome to the linescanning repository
 
 .. image:: ../imgs/overview.png
 
-This repository contains all of the tools used during the acquisition and postprocessing of line scanning data at the Spinoza Centre for Neuroimaging in Amsterdam. The script master controls the modules prefixed by ``<spinoza_>``, which in turn call upon various scripts in the utils and bin directory. The scripts in the latter 
-folders are mostly helper scripts to make life a tad easier. The repository contains a mix of languages in bash, python, and matlab. 
+This repository contains all of the tools used during the acquisition and postprocessing of line scanning data at the Spinoza Centre for Neuroimaging in Amsterdam. The main goal of the package is to create the most accurate segmentations (both volumetric and surface) by combining various software packages such as Nighres_, fMRIprep_, FreeSurfer_, CAT12_, and SPM_. 
 
 Contents
 --------

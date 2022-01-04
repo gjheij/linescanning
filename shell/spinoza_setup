@@ -4,6 +4,7 @@ SETUP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SETUP_FILE="${SETUP_DIR}/spinoza_setup"
 REPO_DIR=$(dirname ${SETUP_DIR})
 PATH_HOME=$(dirname $(dirname ${SETUP_DIR}))
+export PATH_HOME=${PATH_HOME}
 
 if [[ $1 == "setup" ]]; then
 
@@ -16,7 +17,7 @@ if [[ $1 == "setup" ]]; then
   echo " 2) Hit \"cd $(dirname ${REPO_DIR})\""
   echo " 3) If you have sudo-right, do \"sudo python setup.py develop\", if not: \"python setup.py develop --user\""
   echo " 4) Enter \"ipython\" and then \"from linescanning import *\". No error means SUCCESS!"
-  echo " 5) Go to line 67 and specify where your projects are. Default is set to:"
+  echo " 5) Go to line 87 and specify where your projects are. Default is set to:"
   echo "    \"${PATH_HOME}/projects\""
   echo "---------------------------------------------------------------------------------------------------------"
   echo
@@ -68,27 +69,16 @@ fi
 # VARIABLES
 #===================================================================================================
 
-if [[ `whoami` == "fsluser" ]] || [[ `whoami` == 'gjheij' ]]; then
-  export PLACE=HOME
-else
-  export PLACE=SPINOZA
-  export MRRECON=/packages/matlab/toolbox/MRecon/3.0.541
-  export MATLAB_DIR=/packages/matlab/R2020b
-fi
+# If you have access to SGE, leave to Spinoza; otherwise change to e.g., HOME
+export PLACE=SPINOZA
 
-if [[ ${PLACE} == HOME ]]; then
-  if [[ `whoami` == 'gjheij' ]]; then
-    export SPM_PATH=/mnt/d/FSL/shared/software/spm12
-  else
-    export SPM_PATH=/mnt/hgfs/shared/software/spm12
-  fi
-elif [[ ${PLACE} == SPINOZA ]]; then
-  export SKIP_LINES=30
-  export SPM_PATH=${PATH_HOME}/programs/packages/spm12
-fi
+# Set matlab paths
+export MRRECON=/packages/matlab/toolbox/MRecon/3.0.541
+export MATLAB_DIR=/packages/matlab/R2020b
+export SPM_PATH=${PATH_HOME}/programs/packages/spm12
+export SKIP_LINES=30 # number of lines to skip during start up
 
-export PATH_HOME=${PATH_HOME}
-
+# set your project name and possible task names
 export PROJECT=hemifield # ANAT_SEG-Raw #URIS-MDD #hemifield
 export TASK_SES1="2R"
 export TASK_SES2="LR"

@@ -4,13 +4,181 @@
 Usage notes
 ------------
 
-The package encompasses two intertwined processes:
+On this page, we will elaborate on the following:
 
-1) `Preprocessing of anatomical data`_. This mostly consists of command line functions with similar characteristics as e.g., FSL.
+1) `Set up your own setup file`_. How to setup your environment to make the most out of the programs.
+2) `File naming`_. How to name your files once your setup is completed
+3) `Preprocessing of anatomical data`_. This mostly consists of command line functions with similar characteristics as e.g., FSL.
+4) `Selecting best vertex`_ to plan the line through and other vertex-related processes. This is handled by the python modules.
+5) `Vertex to session 2`_. Translate a coordinate through various coordinates systems.
+   
+Set up your own setup file
+===========================================
 
-2) `Selecting best vertex`_ to plan the line through and other vertex-related processes. This is handled by the python modules.
+The path specifications are mainly controlled by the setup file called ``spinoza_setup``, which looks like this:
 
-Setup directories and file naming
+.. code:: bash
+
+    # If you have access to SGE, leave to Spinoza; otherwise change to e.g., HOME
+    export PLACE=SPINOZA
+    export MRRECON=/packages/matlab/toolbox/MRecon/3.0.541
+    export MATLAB_DIR=/packages/matlab/R2020b
+    export PATH_HOME=${PATH_HOME}
+
+    if [[ ${PLACE} == SPINOZA ]]; then
+        export SKIP_LINES=30
+        export SPM_PATH=${PATH_HOME}/programs/packages/spm12
+    fi
+
+    # set your project name and possible task names
+    export PROJECT=hemifield # ANAT_SEG-Raw #URIS-MDD #hemifield
+    export TASK_SES1="2R"
+    export TASK_SES2="LR"
+
+    # set your project-root folder (folder where PROJECT lives)
+    export DIR_PROJECTS=$(dirname $(dirname ${PATH_HOME}))/projects 
+
+    # Switch to tell us what type of data was acquired
+    ## You can have an average of the given acquisitions if desired, but then the first element
+    ## Should be the 'reference' space
+    declare -a ACQ=("MP2RAGE") # or ("MP2RAGE" "MEMP2RAGE")
+
+    # Switch to tell us what the output format should be. "AVERAGE" means average of MP2RAGE and MEMP2RAGE
+    export DATA=MP2RAGE # or MP2RAGEME/AVERAGE
+    if [[ ${DATA} == "MEMP2RAGE" ]]; then
+        export space="memp2rage"
+    elif [[ ${DATA} == "MP2RAGE" ]]; then
+        export space="mp2rage"
+    elif [[ ${DATA} == "MPRAGE" ]]; then
+        export space="mprage"  
+    elif [[ ${DATA} == "AVERAGE" ]]; then
+        if [[ `echo ${#ACQ[@]}` -ne 2 ]]; then
+            echo "Average of what..? \"ACQ\" variable in spinoza_setup has ${#ACQ[@]} items"
+            exit 1
+        fi
+        export space="average"
+    else
+        echo "ERROR: please set correct mode (\"average\" | \"mp2rage\" | \"memp2rage\")"
+        exit 1
+    fi
+
+    #===================================================================================================
+    # PATHS
+    #===================================================================================================
+
+    export DIR_SCRIPTS=${REPO_DIR}
+    export DIR_DATA_HOME=${DIR_PROJECTS}/${PROJECT}
+    export DIR_LOGS=${DIR_DATA_HOME}/code/logs
+    export DIR_DATA_SOURCE=${DIR_DATA_HOME}/sourcedata
+    export DIR_DATA_DERIV=${DIR_DATA_HOME}/derivatives
+    export DIR_DATA_ATLAS=${PATH_HOME}/atlas/MICCAI2012-Multi-Atlas-Challenge-Data
+    export SOURCEDATA=${DIR_DATA_HOME}
+    export DERIVATIVES=${DIR_DATA_DERIV}
+    export MASKS=${DIR_DATA_DERIV}/manual_masks
+    export ANTS=${DIR_DATA_DERIV}/ants
+    export FS=${DIR_DATA_DERIV}/freesurfer
+    export ANTS=${DIR_DATA_DERIV}/ants
+    export AVG=${DIR_DATA_DERIV}/average
+    export MASKED_AVG=${DIR_DATA_DERIV}/masked_average
+    export PYMP2RAGE=${DIR_DATA_DERIV}/pymp2rage
+    export NIGHRES=${DIR_DATA_DERIV}/nighres
+    export FSL=${DIR_DATA_DERIV}/fsl
+    export SKULLSTRIP=${DIR_DATA_DERIV}/skullstripped
+    export CTX=${DIR_DATA_DERIV}/pycortex
+    export PRF=${DIR_DATA_DERIV}/prf
+
+You will have to set a few things yourself:
+
+1) If you have access to a sun-grid engine, leave ``PLACE`` to ``SPINOZA``. Set the ``MATLAB_DIR``:
+
+.. code:: bash
+
+    $ export PLACE=SPINOZA
+    $ export MATLAB_DIR=<path to matlab>
+    $ export SPM_PATH=<path to spm12>
+    $ export SKIP_LINES=30 # number of lines to skip during start up
+
+2) Set your project and task names:
+
+.. code:: bash
+
+    $ export PROJECT=<your project name>
+    $ export TASK_SES1="2R"
+    $ export TASK_SES2="LR"
+
+3) Set the path to the projects
+
+.. code:: bash
+
+    $ # set your project-root folder (folder where PROJECT lives)
+    $ export DIR_PROJECTS=<path up until <$PROJECT>
+
+4) Specify your data type(s). 
+   
+   * This is to account for a protocol including ``MP2RAGE`` and ``MEMP2RAGE`` where you might want to averge the two acquisitions into ``AVERAGE``. In that case, you'd specify:
+
+    .. code:: bash
+
+        $ declare -a ACQ=("MP2RAGE" "MEMP2RAGE")
+        $ export DATA=AVERAGE
+
+   * If you have an ``MP2RAGE`` and ``MEMP2RAGE`` acquisition, but you only want to use one of them, specify:
+
+    .. code:: bash
+
+        $ declare -a ACQ=("MP2RAGE" "MEMP2RAGE")
+        $ export DATA="MP2RAGE"
+
+    .. warning::
+        This is actually untested. If you use this option, let us know how this goes!
+   
+   * In case you have an ``MPRAGE`` acquisition, specify:
+
+    .. code:: bash
+
+        $ declare -a ACQ=("MPRAGE")
+        $ export DATA=MPRAGE
+
+   * In case you have an ``MP2RAGE`` acquisition, specify:
+
+    .. code:: bash
+
+        $ declare -a ACQ=("MP2RAGE")
+        $ export DATA=MP2RAGE
+
+   * In case you have an ``MEMP2RAGE``, specify:
+
+    .. code:: bash
+
+        $ declare -a ACQ=("MEMP2RAGE")
+        $ export DATA=MEMP2RAGE
+
+.. note::
+
+    **Example**: Let's say I have the following:
+
+    * project name: ``my_first_project``
+    * full path to project: ``/home/user/projects/my_first_project``
+    * matlab: ``/home/user/matlab``
+    * spm12: ``/home/users/programs/spm12``
+    * data acquisition: ``MP2RAGE``
+    * task name session 1: ``pRF``
+    * task name session 2: ``sizeresponse``
+
+    .. code:: bash
+
+        # I would then set the following:
+        $ export PLACE=SPINOZA
+        $ export MATLAB_DIR=/home/user/matlab
+        $ export SPM_PATH=/home/user/programs/spm12
+        $ export PROJECT='my_first_project'
+        $ export TASK_SES1="pRF"
+        $ export TASK_SES2="sizeresponse"
+        $ export DIR_PROJECTS=/home/user/projects
+        $ declare -a ACQ=("MPRAGE")
+        $ export DATA=MPRAGE
+
+File naming
 ===========================================
 
 The input dataset is required to be in valid :abbr:`BIDS (Brain Imaging Data Structure)` format. The directory pointing to the project should be specified in the ``spinoza_setup``-file as ``$DIR_PROJECTS``. Then specify the the project name as ``$PROJECT``. It is assumed your converted data lived in:
@@ -193,34 +361,40 @@ Below is the ``help``-information from the ``master`` script:
         is annotated by "space-mp2rage".
     - To know which mode we're running, type from your programs directory "call_whichmode"
  
-All of these modules loop, by default, through *all* the subjects present in ``$DIR_PROJECTS/$PROJECT``. Also by default, it assumes that we only want to process ``ses-1``. To steer the pipeline towards particular directories, such as individual subjects, you can use additional flags when calling the ``master`` script. For instance:
+All of these modules loop, by default, through *all* the subjects present in ``$DIR_PROJECTS/$PROJECT`` (which is defined as ``DIR_DATA_HOME``. Also by default, it assumes that we only want to process ``ses-1``. To steer the pipeline towards particular directories, such as individual subjects, you can use additional flags when calling the ``master`` script. For instance:
 
 .. code:: bash
 
     $ master -m 04 -s 001
 
-Would only run module **04** (spinoza_qmrimaps)` for **sub-001**. The help info shows more modules than you'll actually need to run in order to get your data in analyze'able state. 
+Would only run module **04** (spinoza_qmrimaps)` for **sub-001**. The help info shows more modules than you'll actually need to run in order to get your data in analyzable state. 
 
 Generally, the following steps are included:
 
-Combine **INV1** and **INV2** into ``T1w`` and ``T1map``:
+Combine **INV1** and **INV2** into ``T1w`` and ``T1map`` with Pymp2rage_. If you do not combine **INV1** and **INV2** yourself, - you already have a ``T1w``-/ ``T1map``-file in ``DIR_DATA_HOME`` - you can skip the part below and go to ``module 06``:
 
 .. code:: bash
 
     $ master -m 04 # spinoza_qmrimaps
 
-If you have a ``T2w``-image, you can create a sagittal sinus mask. In the ``utils`` folder, we provide a heavily dilated sinus mask in MNI-space that we use to exclude the T2-values from the subcortex. First, we register the subject's anatomy to the MNI-space, use these warp files to transform the dilated sinus mask to subject space, and multiply our sinus mask derived from the T2 with that dilated mask. This way, we exclude any subcortical voxels from being masked out. This procedure will lead to a file called ``<subject>_<ses-?>_acq-(ME)MP(2)RAGE_desc-sagittalsinus`` in the ``derivatives/masked_(me)mp(2)rage/<subject>/<ses-?>`` folder:
+If you have a ``T2w``-image, you can create a sagittal sinus mask. In the ``misc`` folder, we provide a heavily dilated sinus mask in MNI-space that we use to exclude the T2-values from the subcortex. First, we register the subject's anatomy to the MNI-space, use these warp files to transform the dilated sinus mask to subject space, and multiply our sinus mask derived from the T2 with that dilated mask. This way, we exclude any subcortical voxels from being masked out. This procedure will lead to a file called ``<subject>_<ses-?>_acq-(ME)MP(2)RAGE_desc-sagittalsinus`` in the ``derivatives/masked_(me)mp(2)rage/<subject>/<ses-?>`` folder. If you do *NOT* have a ``T2w``-file, skip these steps and continue to ``module 08`` 
 
 .. code:: bash
 
     $ master -m 06 # spinoza_registration
     $ master -m 07 # spinoza_sinusfrommni
 
-Bias correct (*SPM*) and denoise (*SANLM*) your ``T1w``-image:
+Bias correct (*SPM*) and denoise (*SANLM*) your ``T1w``-image. If you did not use Pymp2rage_, we'll be looking for the ``T1w``-file in ``DIR_DATA_HOME/<subject>/<ses>/anat``. If you did use Pymp2rage_, we'll be looking for the file in ``<DIR_DATA_HOME>/derivatives/pymp2rage/<subject>/<ses>``.
 
 .. code:: bash
 
     $ master -m 08 # spinoza_biassanlm
+
+Perform brain extraction and white/gray matter + CSF segmentations with CAT12_.
+
+.. code:: bash
+
+    $ master -m 09 # spinoza_brainextraction
 
 Create a ``desc-outside.nii.gz`` mask in the ``derivatives/masked_(me)mp(2)rage/<subject>/<ses-?>`` folder that contains the sinus, dura, and tentorium (stuff between the cerebellum and cortex) and apply this mask to the ``T1w`` image so FreeSurfer doesn't label non-gray matter voxels as gray matter.
 
