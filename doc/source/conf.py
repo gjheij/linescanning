@@ -188,6 +188,6 @@ texinfo_documents = [
      'Miscellaneous'),
 ]
 
-MOCK_MODULES = ['pycortex', 'nitime', 'nitime.timeseries', 'nitime.analysis']
+MOCK_MODULES = ['pycortex', 'nitime', 'nitime.timeseries', 'nitime.analysis', 'prfpy']
 for mod_name in MOCK_MODULES:
     sys.modules[mod_name] = mock.Mock()
