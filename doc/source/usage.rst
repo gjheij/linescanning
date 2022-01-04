@@ -95,6 +95,8 @@ You will have to set a few things yourself:
 
     $ export PLACE=SPINOZA
     $ export MATLAB_DIR=<path to matlab>
+    $ export SPM_PATH=<path to spm12>
+    $ export SKIP_LINES=30 # number of lines to skip during start up
 
 2) Set your project and task names:
 
@@ -158,6 +160,7 @@ You will have to set a few things yourself:
     * project name: ``my_first_project``
     * full path to project: ``/home/user/projects/my_first_project``
     * matlab: ``/home/user/matlab``
+    * spm12: ``/home/users/programs/spm12``
     * data acquisition: ``MP2RAGE``
     * task name session 1: ``pRF``
     * task name session 2: ``sizeresponse``
@@ -167,6 +170,7 @@ You will have to set a few things yourself:
         # I would then set the following:
         $ export PLACE=SPINOZA
         $ export MATLAB_DIR=/home/user/matlab
+        $ export SPM_PATH=/home/user/programs/spm12
         $ export PROJECT='my_first_project'
         $ export TASK_SES1="pRF"
         $ export TASK_SES2="sizeresponse"

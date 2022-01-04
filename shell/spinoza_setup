@@ -4,6 +4,7 @@ SETUP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SETUP_FILE="${SETUP_DIR}/spinoza_setup"
 REPO_DIR=$(dirname ${SETUP_DIR})
 PATH_HOME=$(dirname $(dirname ${SETUP_DIR}))
+export PATH_HOME=${PATH_HOME}
 
 if [[ $1 == "setup" ]]; then
 
@@ -70,14 +71,12 @@ fi
 
 # If you have access to SGE, leave to Spinoza; otherwise change to e.g., HOME
 export PLACE=SPINOZA
+
+# Set matlab paths
 export MRRECON=/packages/matlab/toolbox/MRecon/3.0.541
 export MATLAB_DIR=/packages/matlab/R2020b
-export PATH_HOME=${PATH_HOME}
-
-if [[ ${PLACE} == SPINOZA ]]; then
-  export SKIP_LINES=30
-  export SPM_PATH=${PATH_HOME}/programs/packages/spm12
-fi
+export SPM_PATH=${PATH_HOME}/programs/packages/spm12
+export SKIP_LINES=30 # number of lines to skip during start up
 
 # set your project name and possible task names
 export PROJECT=hemifield # ANAT_SEG-Raw #URIS-MDD #hemifield
