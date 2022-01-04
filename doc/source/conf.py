@@ -188,6 +188,6 @@ texinfo_documents = [
      'Miscellaneous'),
 ]
 
-# MOCK_MODULES = ['numpy', 'sklearn', 'matplotlib', 'h5py', 'nibabel']
-# for mod_name in MOCK_MODULES:
-#     sys.modules[mod_name] = mock.Mock()
+MOCK_MODULES = ['pycortex']
+for mod_name in MOCK_MODULES:
+    sys.modules[mod_name] = mock.Mock()
