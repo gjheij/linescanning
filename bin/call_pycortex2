@@ -105,6 +105,8 @@ Notes:
             roi = arg
         elif opt in ("-o", "--out"):
             out = arg
+        elif opt in ("-d", "--deriv"):
+            deriv = arg
         elif opt in ("-u", "--use-prf"):
             use_prf = 1
         elif opt in ("-t", "--task"):
@@ -144,6 +146,7 @@ Notes:
         open_fv = False
 
     optimal.target_vertex(subject, 
+                          deriv=deriv,
                           task=task, 
                           vert=verts,
                           use_prf=use_prf,

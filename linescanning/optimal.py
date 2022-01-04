@@ -83,8 +83,7 @@ def target_vertex(subject,
                   out=None,
                   roi="V1_exvivo.thresh",
                   use_prf=True,
-                  vert=None,
-                   ):
+                  vert=None):
 
     """target_vertex
 
@@ -398,7 +397,11 @@ class SurfaceCalc(object):
         # print(" Perform surface operations")
         self.subject = subject
         self.ctx_path = opj(cortex.database.default_filestore, self.subject)
-        self.fs_path = fsdir
+
+        if fs_dir == None:
+            self.fs_dir = os.environ['SUBJECTS_DIR']
+        else:
+            self.fs_dir = fs_dir
 
         if not os.path.isdir(self.ctx_path):
             # import subject from freesurfer (will have the same names)
@@ -596,15 +599,20 @@ class pRFCalc(object):
         self.task_id = task
         self.fname   = f"{self.subject}_ses-{self.session}_task-{self.task_id}"
 
+        if prfdir == None:
+            self.prfdir = os.environ['PRF']
+        else:
+            self.prfdir = prfdir
+
         if not prffile or not os.path.exists(prffile):
 
-            if prfdir != None:
+            if self.prfdir != None:
 
                 try:
                     # print(" Load in pRF-estimates")
-                    self.r2_file      = utils.get_file_from_substring("R2", opj(prfdir, self.subject))
-                    self.ecc_file     = utils.get_file_from_substring("eccentricity", opj(prfdir, self.subject))
-                    self.polar_file   = utils.get_file_from_substring("polar", opj(prfdir, self.subject))
+                    self.r2_file      = utils.get_file_from_substring("R2", opj(self.prfdir, self.subject))
+                    self.ecc_file     = utils.get_file_from_substring("eccentricity", opj(self.prfdir, self.subject))
+                    self.polar_file   = utils.get_file_from_substring("polar", opj(self.prfdir, self.subject))
                 except:
                     # print(" Set pRF-estimates to none")
                     self.r2      = None
@@ -679,18 +687,31 @@ class CalcBestVertex(object):
                  ses_nr=1,
                  task="2R"):
 
+        # set default freesurfer directory
+        if fsdir == None:
+            self.fsdir = os.environ['SUBJECTS_DIR']
+        else:
+            self.fsdir = fsdir
+
+        # set default pRF directory
+        if prfdir == None:
+            self.prfdir = os.environ['PRF']
+        else:
+            self.prfdir = prfdir
+
+        # set default pycortex directory
+        if cxdir == None:
+            self.cxdir = os.environ['CTX']
+        else:
+            self.cxdir = cxdir
+
         self.subject = subject
-        self.surface = SurfaceCalc(subject=self.subject, fsdir=fsdir, fs_label=fs_label)
+        self.surface = SurfaceCalc(subject=self.subject, fsdir=self.fsdir, fs_label=fs_label)
         self.session = ses_nr
         self.task_id = task
         self.fname   = f"{self.subject}_ses-{self.session}_task-{self.task_id}"
 
-        # try:
-        self.prf = pRFCalc(subject=self.subject, prffile=prffile)
-        # except:
-        #     print("No pRF-parameters included; probably a mismatch between vertices of pRF & Pycortex/FreeSurfer")
-        #     pass
-        self.prfdir = prfdir
+        self.prf = pRFCalc(subject=self.subject, prfdir=self.prfdir, prffile=prffile)
 
     def apply_thresholds(self, r2_thresh=None, ecc_thresh=None, polar_thresh=None, thick_thresh=None, depth_thresh=None):
 

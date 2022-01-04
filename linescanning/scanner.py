@@ -43,10 +43,14 @@ class Scanner(object):
                  print_to_console=True,
                  debug=False):
 
+        if fs_dir == None:
+            self.fs_dir = os.environ['SUBJECTS_DIR']
+        else:
+            self.fs_dir = fs_dir
+            
         self.pycortex = df
         self.fs2ses = fs2ses
         self.new_anat = new_anat
-        self.fs_dir = fs_dir
         self.subject = self.pycortex.subject
 
         # set reference anatomy to orig

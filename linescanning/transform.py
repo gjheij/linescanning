@@ -265,6 +265,9 @@ def fs2tkr(subject, coord=None, ref="orig.mgz", fs_dir=None, strip_lead=True):
         numpy array containing the `coord` in Surface RAS convention
     """
 
+    if fs_dir == None:
+        fs_dir = os.environ['SUBJECTS_DIR']
+
     torig = get_vox2ras_tkr(opj(fs_dir, subject, 'mri', ref))
 
     if len(coord) == 3:
@@ -513,6 +516,9 @@ def tkr2fs(subject, coord=None, fs_dir=None, pad_ones=True):
     >>> off,coord = tkr2fs('sub-001', coord=[tkr_coord1,tkr_coord2])
     """
 
+    if fs_dir == None:
+        fs_dir = os.environ['SUBJECTS_DIR']
+
     orig_mgz = opj(fs_dir, subject, 'mri', 'orig.mgz')
 
     # NORIG
@@ -563,6 +569,9 @@ def rawavg2fs(subject, coord=None, fs_dir=None):
         numpy array containing the `coord` in `orig.mgz` voxel convention
     """
 
+    if fs_dir == None:
+        fs_dir = os.environ['SUBJECTS_DIR']
+
     orig = opj(fs_dir, subject, 'mri', 'orig.mgz')
     move = opj(fs_dir, subject, 'mri', 'rawavg.mgz')
 
@@ -596,6 +605,9 @@ def fs2rawavg(subject, coord=None, fs_dir=None):
     numpy.ndarray
         numpy array containing the `coord` in `rawavg.mgz` voxel convention
     """
+
+    if fs_dir == None:
+        fs_dir = os.environ['SUBJECTS_DIR']
 
     orig = opj(fs_dir, subject, 'mri', 'orig.mgz')
     move = opj(fs_dir, subject, 'mri', 'rawavg.mgz')
@@ -645,6 +657,7 @@ def tkr2rawavg(subject,matrix=None,coord=None,reg=True,fs_dir=None, inv=False, o
     ----------
     >>> off,coord = tkr2rawavg('sub-001', matrix="register.dat", coord=[tkr_coord1,tkr_coord2])
     """
+
 
     mov = opj(fs_dir, subject, 'mri', 'rawavg.mgz')
     tar = opj(fs_dir, subject, 'mri', 'orig.mgz')
@@ -758,6 +771,9 @@ def get_tkrreg(subject, mov=None, targ=None, out_file=None, fs_dir=None, return_
         if `return_type=="arr", `out_file` is returned
     """
 
+    if fs_dir == None:
+        fs_dir = os.environ['SUBJECTS_DIR']
+        
     if not targ:
         targ = opj(fs_dir, subject, 'mri', 'orig.mgz')
 
