@@ -616,7 +616,11 @@ if [[ $? -eq 0 ]]; then
     SUBJECT="-s ${SUB}"
   fi
   
-  spinoza_registration ${SUBJECT} ${SESSION} ${DIR_DATA_DERIV}/pymp2rage ${DIR_DATA_DERIV}/ants mni
+  if [[ -d ${DIR_DATA_DERIV}/pymp2rage ]]; then
+    spinoza_registration ${SUBJECT} ${SESSION} ${DIR_DATA_DERIV}/pymp2rage ${DIR_DATA_DERIV}/ants mni
+  else
+    spinoza_registration ${SUBJECT} ${SESSION} ${DIR_DATA_HOME} ${DIR_DATA_DERIV}/ants mni
+  fi
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_registration exited with non-zero status"
@@ -676,7 +680,11 @@ if [[ $? -eq 0 ]]; then
     OW=""
   fi
 
-  spinoza_sinusfrommni ${SUBJECT} ${SESSION} ${OW} ${DIR_DATA_DERIV}/pymp2rage ${DIR_DATA_DERIV}/ants ${DIR_DATA_DERIV}/manual_masks
+  if [[ -d ${DIR_DATA_DERIV}/pymp2rage ]]; then
+    spinoza_sinusfrommni ${SUBJECT} ${SESSION} ${OW} ${DIR_DATA_DERIV}/pymp2rage ${DIR_DATA_DERIV}/ants ${DIR_DATA_DERIV}/manual_masks  
+  else
+    spinoza_sinusfrommni ${SUBJECT} ${SESSION} ${OW} ${DIR_DATA_HOME} ${DIR_DATA_DERIV}/ants ${DIR_DATA_DERIV}/manual_masks
+  fi
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in `basename ${0}`: spinoza_sinusfrommni exited with non-zero status"
@@ -717,10 +725,10 @@ if [[ $? -eq 0 ]]; then
     SUBJECT="-s ${SUB}"
   fi
 
-  if [[ ${PROJECT} == "URIS-MDD" ]]; then
-    spinoza_biassanlm ${SUBJECT} ${SESSION} ${DIR_DATA_HOME} ${DIR_DATA_DERIV}/denoised
-  else
+  if [[ -d ${DIR_DATA_DERIV}/pymp2rage ]]; then
     spinoza_biassanlm ${SUBJECT} ${SESSION} ${DIR_DATA_DERIV}/pymp2rage ${DIR_DATA_DERIV}/denoised
+  else
+    spinoza_biassanlm ${SUBJECT} ${SESSION} ${DIR_DATA_HOME} ${DIR_DATA_DERIV}/denoised
   fi
 
   # spinoza_biascorrection ${SUBJECT} ${SESSION} ${DIR_DATA_HOME} ${DIR_DATA_DERIV}/ants inv-2
