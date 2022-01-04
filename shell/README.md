@@ -27,9 +27,3 @@ You can then type `PROG` in the terminal to change directory to the master scrip
 
 ## the setup-script
 All scripts controlled by the master-script call upon `spinoza_setup`, a setup file containing variables and paths. Should you want to adapt parts of this pipeline for your own purposes, you might want to change the `PATH_HOME` variable. All other paths use this variable, so changing this one variable will adapt the pipeline to your system. The anatomical part of this pipeline is built to process either MP2RAGE data only, or a combination of MP2RAGE and multi-echo (ME-) MP2RAGE data. This switch can also be set in the setup script with the variable `space`. If set to `mp2rage`, the pipeline will only process MP2RAGE files, while if set to `average`, it will first register the MEMP2RAGE to the MP2RAGE and then calculate an average, resulting in outputs in "average space".
-
-## the bin-folder
-This folder contains short script to make life easier and are call upon in the scripts prefixed by `spinoza_`. It is a mix of python and bash, and depends on a variety of packages (see file "requirements.txt").
-
-## the utils-folder
-This folder contains mostly template for certain programs, such as fmriprep (used when running on SGEs) and the PhysIO toolbox to extract physiological data from the line-scanning session.
