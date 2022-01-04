@@ -170,7 +170,7 @@ for dir in ${search}; do
         if [[ -f ${fn_nuisance} ]]; then
 
           # fetch template and warp files created with spinoza_registration in step before
-          mni_mask=${DIR_SCRIPTS}/data/MNI152_T1_1mm_Dil3_sagsinus_mask.nii.gz
+          mni_mask=${DIR_SCRIPTS}/misc/MNI152_T1_1mm_Dil3_sagsinus_mask.nii.gz
           mat_file=`find "${pn_matrix}" -type f \( -name "*from-MNI152Nlin6Asym*" -and -name "*genaff.mat" \) 2>/dev/null`
           warp_file=`find "${pn_matrix}" -type f \( -name "*from-MNI152Nlin6Asym*" -and -name "*invwarp.nii.gz" \) 2>/dev/null`
           

@@ -8,21 +8,6 @@ function add_prefix {
 	for f in *; do mv "$f" "$1$f"; done
 }
 
-function start_ssh {
-	# start the ssh-agent in the background
-	eval $(ssh-agent -s)
-	
-	# Add a private key to SSH.
-	if [ -f ~/.ssh/hp_windows ]; then
-		ssh-add ~/.ssh/hp_windows
-		
-		# Should say: Hi username, you have been verified blabla
-		ssh -T git@github.com
-	else
-		echo "hp_windows key not found!"
-	fi
-}
-
 function task_id {
   func=${1}
   if [[ ${func} != *"task-"* ]]; then
@@ -49,13 +34,13 @@ function start_ssh {
 	eval $(ssh-agent -s)
 	
 	# Add a private key to SSH.
-	if [ -f ${1} ]; then
-		ssh-add ${1}
+	if [ -f ${SSH_KEY} ]; then
+		ssh-add ${SSH_KEY}
 		
 		# Should say: Hi username, you have been verified blabla
 		ssh -T git@github.com
 	else
-		echo "${1} key not found!"
+		echo "${SSH_KEY} key not found!"
 	fi
 }
 

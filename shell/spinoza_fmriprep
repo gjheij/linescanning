@@ -24,7 +24,7 @@ that it is included by fMRIprep.
 Arguments:
   <-s subject>    subject ID (optional)
   <-n session>    session ID (optional)
-  <-c config>     configuration file as specified in /data/fmriprep_config?.json
+  <-c config>     configuration file as specified in /misc/fmriprep_config?.json
   <-f func dir>   directory containing functional data; used after running FreeSurfer outside of
                   fMRIprep <optional>
   <-r>            remove surface_recon_wf to project functional data to new surface; used after

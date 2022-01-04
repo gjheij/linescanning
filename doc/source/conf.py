@@ -17,10 +17,10 @@
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
+import mock
 import os
 import sys
-sys.path.insert(0, os.path.abspath('../../..'))
-sys.setrecursionlimit(1500)
+sys.path.insert(0, os.path.abspath('../..'))
 
 
 # -- General configuration ------------------------------------------------
@@ -182,3 +182,7 @@ texinfo_documents = [
      author, 'linescanning', 'One line description of project.',
      'Miscellaneous'),
 ]
+
+MOCK_MODULES = ['numpy', 'sklearn', 'matplotlib', 'h5py', 'nibabel']
+for mod_name in MOCK_MODULES:
+    sys.modules[mod_name] = mock.Mock()

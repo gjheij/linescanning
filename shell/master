@@ -117,9 +117,9 @@ Args:
                         new reconstruction
                       - spinoza_bestvertex; disable FreeView during vertex selection                        
                       - spinoza_profiling; specify the type of file to use
-  -u <config>       specify configuration file for fMRIprep (see linescanning/bin/data for examp-
+  -u <config>       specify configuration file for fMRIprep (see linescanning/misc for examp-
                     les). If not specified, no configuration will be used. If ses-1 is specified,
-                    linescanning/bin/data/fmriprep_config.json is used; above that, fmriprep_con-
+                    linescanning/misc/fmriprep_config.json is used; above that, fmriprep_con-
                     fig2.json is used. Enter '-u none' if you have multiple sessions and you want
                     to process everything without filtering
 
@@ -1037,9 +1037,9 @@ if [[ $? -eq 0 ]]; then
   # first set default configuration files; overwrite later if we don't want it
   if [[ $((${SES})) -gt 1 ]]; then
     # dealing with a non-standard acquisition
-    confFile="-c ${DIR_SCRIPTS}/bin/data/fmriprep_config2.json"
+    confFile="-c ${DIR_SCRIPTS}/misc/fmriprep_config2.json"
   else
-    confFile="-c ${DIR_SCRIPTS}/bin/data/fmriprep_config.json"
+    confFile="-c ${DIR_SCRIPTS}/misc/fmriprep_config.json"
   fi
 
   if [[ -z ${SUB} ]]; then

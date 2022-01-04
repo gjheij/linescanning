@@ -3,7 +3,7 @@
 SETUP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SETUP_FILE="${SETUP_DIR}/spinoza_setup"
 REPO_DIR=$(dirname ${SETUP_DIR})
-PATH_HOME=$(dirname $(dirname $(dirname $(dirname ${SETUP_DIR}))))
+PATH_HOME=$(dirname $(dirname ${SETUP_DIR}))
 
 if [[ $1 == "setup" ]]; then
 
@@ -94,7 +94,7 @@ export TASK_SES1="2R"
 export TASK_SES2="LR"
 
 # set your project-root folder (folder where PROJECT lives)
-export DIR_PROJECTS=$(dirname ${PATH_HOME})/projects 
+export DIR_PROJECTS=$(dirname $(dirname ${PATH_HOME}))/projects 
 
 # Switch to tell us what type of data was acquired
 ## You can have an average of the given acquisitions if desired, but then the first element
@@ -153,18 +153,18 @@ export PATH=${PATH}:${DIR_SCRIPTS}/shell
 # chmod -R 775 ${DIR_SCRIPTS}/shell
 
 # Store acquisitions file file in data folder
-if [[ -f ${DIR_SCRIPTS}/data/acq.txt ]]; then
-  rm -r ${DIR_SCRIPTS}/data/acq.txt 2>/dev/null
+if [[ -f ${DIR_SCRIPTS}/misc/acq.txt ]]; then
+  rm -r ${DIR_SCRIPTS}/misc/acq.txt 2>/dev/null
 fi
 
-touch ${DIR_SCRIPTS}/data/acq.txt
+touch ${DIR_SCRIPTS}/misc/acq.txt
 j=0
 for i in `seq 1 ${#ACQ[@]}`; do
-  echo "ACQ${i}=${ACQ[j]}" >> ${DIR_SCRIPTS}/data/acq.txt
+  echo "ACQ${i}=${ACQ[j]}" >> ${DIR_SCRIPTS}/misc/acq.txt
   (( j++ ))
 done
 
-while IFS= read -r line; do export ${line}; done < ${DIR_SCRIPTS}/data/acq.txt
+while IFS= read -r line; do export ${line}; done < ${DIR_SCRIPTS}/misc/acq.txt
 # source ${DIR_SCRIPTS}/bin/utils/acq.txt
 
 export SSH_KEY="${HOME}/.ssh/hp_windows"
