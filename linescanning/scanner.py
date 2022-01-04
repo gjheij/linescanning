@@ -38,7 +38,7 @@ class Scanner(object):
                  fs2ses=None,
                  new_anat=None,
                  hemi=None,
-                 fs_dir=os.environ['SUBJECTS_DIR'],
+                 fs_dir=None,
                  ses='2',
                  print_to_console=True,
                  debug=False):
