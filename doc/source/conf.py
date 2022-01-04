@@ -188,6 +188,6 @@ texinfo_documents = [
      'Miscellaneous'),
 ]
 
-MOCK_MODULES = ['pycortex']
+MOCK_MODULES = ['pycortex', 'nitime']
 for mod_name in MOCK_MODULES:
     sys.modules[mod_name] = mock.Mock()
