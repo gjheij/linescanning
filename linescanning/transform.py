@@ -241,7 +241,7 @@ def vert2coord(subject,vert=None, surf=None):
 
     return tkr_ras
 
-def fs2tkr(subject, coord=None, ref="orig.mgz", fs_dir=os.environ['SUBJECTS_DIR'], strip_lead=True):    
+def fs2tkr(subject, coord=None, ref="orig.mgz", fs_dir=None, strip_lead=True):    
     """fs2tkr
 
     Option [4] from https://surfer.nmr.mgh.harvard.edu/fswiki/CoordinateSystems: "*I have a CRS from a voxel in the orig.mgz volume and want to compute the RAS in surface space (tkrRAS) for this point*"
@@ -483,7 +483,7 @@ def ctx2tkr(subject, img=None, coord=None, correct=True, hm=True, ret=True, pad_
             return offset
 
 
-def tkr2fs(subject, coord=None, fs_dir=os.environ['SUBJECTS_DIR'], pad_ones=True):
+def tkr2fs(subject, coord=None, fs_dir=None, pad_ones=True):
     """tkr2fs
 
     Convert a coordinate from FreeSurfer's TKR (surface) definition to FreeSurfer's anatomical (volume) definition. This involves the procedure described here: https://surfer.nmr.mgh.harvard.edu/fswiki/CoordinateSystems scenario [3]: "I have a point on the surface ("Vertex RAS" in tksurfer) and want to compute the Scanner RAS in orig.mgz that corresponds to this point".
@@ -543,7 +543,7 @@ def tkr2fs(subject, coord=None, fs_dir=os.environ['SUBJECTS_DIR'], pad_ones=True
     else:
         return surf2orig
 
-def rawavg2fs(subject, coord=None, fs_dir=os.environ['SUBJECTS_DIR']):
+def rawavg2fs(subject, coord=None, fs_dir=None):
     """rawavg2fs
 
     Option [6] from https://surfer.nmr.mgh.harvard.edu/fswiki/CoordinateSystems: "*I have a CRS from a voxel in my functional/diffusion/ASL/rawavg/etc "mov" volume and want to compute the CRS for the corresponding point in the orig.mgz*"
@@ -577,7 +577,7 @@ def rawavg2fs(subject, coord=None, fs_dir=os.environ['SUBJECTS_DIR']):
 
     return np.array([int(round(i,0)) for i in orig_coord])
 
-def fs2rawavg(subject, coord=None, fs_dir=os.environ['SUBJECTS_DIR']):
+def fs2rawavg(subject, coord=None, fs_dir=None):
     """fs2rawavg
 
     Inverse of :func:`linescanning.transform.rawavg2fs`
@@ -612,7 +612,7 @@ def fs2rawavg(subject, coord=None, fs_dir=os.environ['SUBJECTS_DIR']):
     # return np.array([int(round(i,0)) for i in orig_coord])    
     return orig_coord
 
-def tkr2rawavg(subject,matrix=None,coord=None,reg=True,fs_dir=os.environ['SUBJECTS_DIR'], inv=False, out_type="voxel"):
+def tkr2rawavg(subject,matrix=None,coord=None,reg=True,fs_dir=None, inv=False, out_type="voxel"):
 
     """tkr2rawavg
 
@@ -728,7 +728,7 @@ def rawavg2lowres(fixed, moving, matrix, inv=False, out_file=None):
     return f
 
 
-def get_tkrreg(subject, mov=None, targ=None, out_file=None, fs_dir=os.environ['SUBJECTS_DIR'], return_type='arr'):
+def get_tkrreg(subject, mov=None, targ=None, out_file=None, fs_dir=None, return_type='arr'):
     """get_tkrreg
     
     Implementation of `tkregister2` by sending a command to the command line.
