@@ -21,7 +21,7 @@ import mock
 import os
 import sys
 sys.path.insert(0, os.path.abspath('../'))
-os.makedirs(os.path.join(os.path.expanduser('~'), ".config"))
+os.makedirs(os.path.join(os.path.expanduser('~'), ".config"), exist_ok=True)
 
 # -- General configuration ------------------------------------------------
 
