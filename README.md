@@ -1,5 +1,7 @@
 # line scanning repository
 
+[![Documentation Status](https://readthedocs.org/projects/linescanning/badge/?version=latest)](https://linescanning.readthedocs.io/en/latest/?badge=latest)
+
 ![plot](https://github.com/gjheij/linescanning/blob/master/linescanning/examples/figures/20201106_workflow_acquisition_third_attempt.png)
 
 This repository contains all of the tools used during the acquisition and postprocessing of line scanning data at the Spinoza Centre for Neuroimaging in Amsterdam. The script `master` controls the modules prefixed by `spinoza_`, which in turn call upon various scripts in the `utils` and `bin` directory. The scripts in the latter folders are mostly helper scripts to make life a tad easier. The repository contains a mix of languages in bash, python, and matlab.
