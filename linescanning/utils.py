@@ -15,10 +15,12 @@ import os
 import pandas as pd
 from PIL import ImageColor
 from prfpy import gauss2D_iso_cart
+import random
 from re import I
 from scipy import io
 from scipy.interpolate import interp1d
 from scipy.signal import detrend
+import seaborn as sns
 import subprocess
 import warnings
 
@@ -1298,9 +1300,228 @@ def find_max_val(array):
 
 
 def read_fs_reg(dat_file):
-    """reads the output from bbregister (e.g., register.dat) into a numpy array"""
+    """read_fs_reg
 
+    Read a `.dat`-formatted registration file from FreeSurfer
+
+    Parameters
+    ----------
+    dat_file: str
+        path pointing to the registration file
+
+    Returns
+    ----------
+    nump.ndarray
+        (4,4) numpy array containing the transformation
+    """
     with open(dat_file) as f:
         d = f.readlines()[4:-1]
 
         return np.array([[float(s) for s in dd.split() if s] for dd in d])
+
+
+def random_timeseries(intercept, volatility, nr):
+    """random_timeseries
+
+    Create a random timecourse by multiplying an intercept with a random Gaussian distribution.
+
+    Parameters
+    ----------
+    intercept: float
+        starting point of timecourse
+    volatility: float
+        this factor is multiplied with the Gaussian distribution before multiplied with the intercept
+    nr: int
+        length of timecourse 
+
+    Returns
+    ----------
+    numpy.ndarray
+        array of length `nr`
+
+    Example
+    ----------
+    >>> from linescanning import utils
+    >>> ts = utils.random_timeseries(1.2, 0.5, 100)
+
+    Notes
+    ----------
+    Source: https://stackoverflow.com/questions/67977231/how-to-generate-random-time-series-data-with-noise-in-python-3
+    """
+    time_series = [intercept, ]
+    for _ in range(nr):
+        time_series.append(time_series[-1] + intercept * random.gauss(0,1) * volatility)
+    return np.array(time_series[:-1])
+
+
+class LazyPlot():
+
+    def __init__(self, ts, error=None, error_alpha=0.3, x_label=None, y_label=None, title=None, xkcd=False, color=None, figsize=(12, 5), cmap='viridis', save_as=None,  labels=None, font_size=12, add_hline=None, add_vline=None):
+        """__init__
+
+        Class for plotting because I'm lazy and I don't want to go through the `matplotlib` motion everything I quickly want to visualize something. This class makes that a lot easier. It allows single inputs, lists with multiple timecourses, labels, error shadings, and much more.
+
+        Parameters
+        ----------
+        ts: list, numpy.ndarray
+            Input data. Can either be a single list, or a list of multiple numpy arrays. If you want labels, custom colors, or error bars, these inputs must come in lists of similar length as `ts`!
+        error: list, numpy.ndarray, optional
+            Error data with the same length/shape as the input timeseries, by default None. Can be either a numpy.ndarray for 1 timeseries, or a list of numpy.ndarrays for multiple timeseries
+        error_alpha: float, optional
+            Opacity level for error shadings, by default 0.3
+        x_label: str, optional
+            Label of x-axis, by default None
+        y_label: str, optional
+            Label of y-axis, by default None
+        labels: str, list, optional
+            String (if 1 timeseries) or list (with the length of `ts`) of colors, by default None. Labels for the timeseries to be used in the legend
+        title: str, optional
+            Plot title, by default None
+        xkcd: bool, optional
+            Plot the figre in XKCD-style (cartoon), by default False
+        color: str, list, optional
+            String (if 1 timeseries) or list (with the length of `ts`) of colors, by default None. If nothing is specified, we'll use `cmap` to create a color palette
+        cmap: str, optional
+            Color palette to use for colors if no individual colors are specified, by default 'viridis'
+        figsize: tuple, optional
+            Figure dimensions as per usual matplotlib conventions, by default (12,5)
+        save_as: str, optional
+            Save the plot, by default None. If you want to use figures in Inkscape, save them as PDFs to retain high resolution
+        font_size: int, optional
+            Font size of titles and axis labels, by default 12
+        add_hline: dict, optional
+            Dictionary for a horizontal line through the plot, by default None. Collects the following items:
+
+            >>> add_hline = {'pos' 0,       # position
+            >>>              'color': 'k',  # color
+            >>>              'lw': 1,       # linewidth
+            >>>              'ls': '--'}    # linestyle
+        add_vline: [type], optional
+            Dictionary for a vertical line through the plot, by default None. Same keys as `add_hline`
+
+        Example
+        ----------
+        >>> # create a bunch of timeseries
+        >>> from linescanning import utils
+        >>> ts = utils.random_timeseries(1.2, 0.0, 100)
+        >>> ts1 = utils.random_timeseries(1.2, 0.3, 100)
+        >>> ts2 = utils.random_timeseries(1.2, 0.5, 100)
+        >>> ts3 = utils.random_timeseries(1.2, 0.8, 100)
+        >>> ts4 = utils.random_timeseries(1.2, 1, 100)
+        
+        >>> # plot 1 timecourse
+        >>> glm.LazyPlot(ts2, figsize=(20, 5))
+        <linescanning.glm.LazyPlot at 0x7f839b0289d0>
+
+        >>> # plot multiple timecourses, add labels, and save file
+        >>> glm.LazyPlot([ts, ts1, ts2, ts3, ts4], figsize=(20, 5), save_as="/mnt/d/FSL/shared/spinoza/programs/project_repos/PlayGround/results/test_LazyPlot.pdf", labels=['vol=0', 'vol=0.3', 'vol=0.5', 'vol=0.8', 'vol=1.0'])
+        <linescanning.glm.LazyPlot at 0x7f839b2177c0>
+
+        >>> # add horizontal line at y=0
+        >>> hline = {'pos': 0, 'color': 'k', 'lw': 0.5, 'ls': '--'}
+        >>> >>> glm.LazyPlot(ts2, figsize=(20, 5), add_hline=hline)
+        <linescanning.glm.LazyPlot at 0x7f839b053580>
+
+        >>> # add shaded error bars
+        >>> from scipy.stats import sem
+        >>> stack = np.hstack((ts1[...,np.newaxis],ts2[...,np.newaxis],ts4[...,np.newaxis])) # make some stack
+        >>> avg = stack.mean(axis=-1) # calculate mean
+        >>> err = sem(stack, axis=-1) # calculate error
+        >>> glm.LazyPlot(avg, figsize=(20, 5), error=err)
+        <linescanning.glm.LazyPlot at 0x7f839b0d5220>
+        """
+
+        self.array = ts
+        self.error = error
+        self.error_alpha = error_alpha
+        self.x_label = x_label
+        self.y_label = y_label
+        self.title = title
+        self.xkcd = xkcd
+        self.color = color
+        self.figsize = figsize
+        self.cmap = cmap
+        self.save_as = save_as
+        self.labels = labels
+        self.font_size = font_size
+        self.add_hline = add_hline
+        self.add_vline = add_vline
+
+        if self.xkcd:
+            with plt.xkcd():
+                self.plot()
+        else:
+            self.plot()
+
+        if save_as:
+            plt.savefig(self.save_as, transparent=True)
+        else:
+            plt.show()
+
+    def plot(self):
+
+        fig, axs = plt.subplots(figsize=self.figsize)
+
+        if isinstance(self.array, list):
+
+            if not isinstance(self.color, list):
+                color_list = sns.color_palette(self.cmap, len(self.array))
+            else:
+                color_list = self.color
+
+            for idx, el in enumerate(self.array):
+                if self.labels:
+                    axs.plot(el, color=color_list[idx], label=self.labels[idx])
+                else:
+                    axs.plot(el, color=color_list[idx])
+
+                if isinstance(self.error, list) or isinstance(self.error, np.ndarray):
+                    yerr = self.error[idx]
+                    if np.isscalar(yerr) or len(yerr) == len(el):
+                        ymin = el - yerr
+                        ymax = el + yerr
+                    elif len(yerr) == 2:
+                        ymin, ymax = yerr
+                    x = np.arange(0, len(el))
+                    axs.fill_between(
+                        x, ymax, ymin, color=self.color_list[idx], alpha=self.error_alpha)
+        else:
+            if not self.color:
+                self.color = sns.color_palette(self.cmap, 1)[0]
+
+            axs.plot(self.array, color=self.color, label=self.labels)
+
+            if isinstance(self.error, list) or isinstance(self.error, np.ndarray):
+                if np.isscalar(self.error) or len(self.error) == len(self.array):
+                    ymin = self.array - self.error
+                    ymax = self.array + self.error
+                elif len(self.error) == 2:
+                    ymin, ymax = self.error
+                x = np.arange(0, len(self.array))
+                axs.fill_between(x, ymax, ymin, color=self.color,
+                                 alpha=self.error_alpha)
+
+        if self.labels:
+            axs.legend(frameon=False)
+
+        if self.x_label:
+            axs.set_xlabel(self.x_label, fontname='Arial',
+                           fontsize=self.font_size)
+
+        if self.y_label:
+            axs.set_ylabel(self.y_label, fontname='Arial',
+                           fontsize=self.font_size)
+
+        if self.title:
+            axs.set_title(self.title, fontname='Arial',
+                          fontsize=self.font_size)
+
+        if self.add_vline:
+            axs.axvline(self.add_vline['pos'], color=self.add_vline['color'],
+                        lw=self.add_vline['lw'], ls=self.add_vline['ls'])
+
+        if self.add_hline:
+            axs.axhline(self.add_hline['pos'], color=self.add_hline['color'],
+                        lw=self.add_hline['lw'], ls=self.add_hline['ls'])
+
+        sns.despine(offset=10)
