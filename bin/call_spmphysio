@@ -8,7 +8,7 @@
 #---------------------------------------------------------------------------------------------------------
 # Create help text
 function Usage {
-		cat <<USAGE
+    cat <<USAGE
 
 ---------------------------------------------------------------------------------------------------
 call_spmphysio
@@ -34,12 +34,12 @@ Usage:
 ---------------------------------------------------------------------------------------------------
 
 USAGE
-		exit 1
+    exit 1
 }
 
 if [[ $# -lt 1 ]] ; then
-	Usage >&2
-	exit 1
+  Usage >&2
+  exit 1
 fi
 
 # Check for subject & session flags
@@ -67,14 +67,14 @@ source call_bashhelper
 #-----------------------------------------------------------------------------
 # Define default SPM-path
 if [[ -z ${SPM} ]]; then
-	if [[ -z ${SPM_PATH} ]]; then
-		echo "ERROR: SPM_PATH-variable is empty. Either define it, or specify an SPM-path with \"-s <path/to/spm>\""
-		exit 1
-	else
-		SPM_PATH=${SPM_PATH}
-	fi
+  if [[ -z ${SPM_PATH} ]]; then
+    echo "ERROR: SPM_PATH-variable is empty. Either define it, or specify an SPM-path with \"-s <path/to/spm>\""
+    exit 1
+  else
+    SPM_PATH=${SPM_PATH}
+  fi
 else
-	SPM_PATH=${SPM}
+  SPM_PATH=${SPM}
 fi
 
 #-----------------------------------------------------------------------------
@@ -108,11 +108,11 @@ fi
 # Create new script
 new_script=$(dirname ${OUTPUT})/spm_physio.m
 if [[ -f ${new_script} ]]; then
-	rm -r ${new_script}
+  rm -r ${new_script}
 fi
 
 if [[ ! -d $(dirname ${OUTPUT}) ]]; then
-	mkdir -p $(dirname ${OUTPUT})
+  mkdir -p $(dirname ${OUTPUT})
 fi
 
 make_physio_script ${SPM_PATH} ${INPUT} ${TR} ${VOLS} ${OUTPUT} ${new_script}
@@ -121,6 +121,6 @@ make_physio_script ${SPM_PATH} ${INPUT} ${TR} ${VOLS} ${OUTPUT} ${new_script}
 call_matlab ${new_script}
 
 if [[ $? -ne 0 ]]; then
-    echo "ERROR: matlab exited with non-zero status"
-    exit 1
+  echo "ERROR: matlab exited with non-zero status"
+  exit 1
 fi
