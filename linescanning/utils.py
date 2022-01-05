@@ -188,39 +188,6 @@ def string2float(string_array):
     return new
 
 
-def get_base_dir():
-    """get_base_dir
-
-    Short function to determine the system where processing on and set a few paths based on that. Relatively obsolete now that we can install the linescanning repository as a pacakage, but I think it's still widely used in the notebooks. Will change that at some point.. Returns the base-directory (where 'projects' and 'programs') should be, and the place ('lin'|'win')
-
-    Example
-    ----------
-    >>> d,p = get_base_dir()
-    >>> d
-    '/mnt/d/FSL/shared/spinoza'
-    >>> p
-    'lin'
-    """
-
-    username = getpass.getuser()
-    if username == "fsluser":
-        base_dir = '/mnt/hgfs/shared/spinoza/'
-        place = "lin"
-
-    elif username == "Jurjen Heij":
-        base_dir = "D:\\FSL\\shared\\spinoza"
-        place = "win"
-
-    elif username == "gjheij":
-        base_dir = "/mnt/d/FSL/shared/spinoza"
-        place = "lin"
-    else:
-        base_dir = "/data1/projects/MicroFunc/Jurjen"
-        place = "spin"
-
-    return base_dir, place
-
-
 def get_module_nr(key_word):
     """get_module_nr
 
