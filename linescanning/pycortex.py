@@ -55,7 +55,7 @@ def set_ctx_path(p=None, opt="update"):
     f.close()
 
 
-def create_ctx_transform(subj, ctx_dir, in_file, warp_name, binarize=False, ctx_type=None, cmap=None):
+def create_ctx_transform(subject, ctx_dir, in_file, warp_name, binarize=False, ctx_type=None, cmap=None):
 
     """create_ctx_transform
 
@@ -89,9 +89,9 @@ def create_ctx_transform(subj, ctx_dir, in_file, warp_name, binarize=False, ctx_
 
     if os.path.isfile(in_file):
 
-        if os.path.exists(opj(ctx_dir, subj, 'transforms', warp_name)):
+        if os.path.exists(opj(ctx_dir, subject, 'transforms', warp_name)):
             print("Found existing transform; using reference.nii.gz")
-            f = opj(ctx_dir, subj, 'warped', warp_name, 'reference.nii.gz')
+            f = opj(ctx_dir, subject, 'warped', warp_name, 'reference.nii.gz')
         else:
 
             if binarize == "True":
@@ -127,12 +127,12 @@ def create_ctx_transform(subj, ctx_dir, in_file, warp_name, binarize=False, ctx_
 
             ident = np.eye(4)
 
-            if os.path.exists(opj(ctx_dir, subj, warp_name)):
+            if os.path.exists(opj(ctx_dir, subject, warp_name)):
                 print(f"Transform directory {warp_name} exist")
                 pass
             else:
                 print(f"Creating transform directory: {warp_name}")
-                cortex.db.save_xfm(subj, warp_name, ident, reference=f)
+                cortex.db.save_xfm(subject, warp_name, ident, reference=f)
 
         if ctx_type:
 
@@ -141,11 +141,11 @@ def create_ctx_transform(subj, ctx_dir, in_file, warp_name, binarize=False, ctx_
 
             if ctx_type == 'Vertex':
                 print(f"Creating vertex ..")
-                f_ctx = cortex.Vertex(f, subject=subj, cmap=cmap)
+                f_ctx = cortex.Vertex(f, subject=subject, cmap=cmap)
 
             elif ctx_type == 'Volume':
                 print(f"Creating volume ..")
-                f_ctx = cortex.Volume(f, subject=subj, cmap=cmap, xfmname=warp_name)
+                f_ctx = cortex.Volume(f, subject=subject, cmap=cmap, xfmname=warp_name)
 
             else:
 
@@ -198,7 +198,7 @@ def get_thickness(thick_map, hemi, vertex_nr):
     return abs(val)
 
 
-def view_maps(subj_nr, cxdir=None, prfdir=None):
+def view_maps(subject, cxdir=None, prfdir=None):
     """view_maps
 
     Create webviewer containing the polar angle maps, best vertices, curvature, etc to gain a better idea of the information in the best vertex and for figure plotting.
@@ -206,7 +206,7 @@ def view_maps(subj_nr, cxdir=None, prfdir=None):
     Parameters
     ----------
     subject: str
-        subject name without 'sub' (e.g., sub-xxx)
+        subject name (e.g., sub-xxx)
     cxdir: str
         path to pycortex dir (e.g., derivatives/pycortex)
     prfdir: str
@@ -218,9 +218,6 @@ def view_maps(subj_nr, cxdir=None, prfdir=None):
 
     if prfdir == None:
         prfdir = os.environ['PRF']
-
-    place = utils.get_base_dir()[1]
-    subject = f'sub-{subj_nr}'
 
     if not os.path.isdir(opj(cxdir, subject)):
         print("  ERROR! pycortex directory does not exist")
@@ -267,7 +264,7 @@ def view_maps(subj_nr, cxdir=None, prfdir=None):
 
     port = random.randint(1024, 65536)
 
-    if place == "spin":
+    if place == "sge":
         cortex.webshow({'curvature': curv_data,
                         'thickness': thick_data,
                         'eccentricity': ecc_v,
@@ -295,7 +292,7 @@ def view_maps(subj_nr, cxdir=None, prfdir=None):
         print(txt)
 
 
-def get_ctxsurfmove(subj):
+def get_ctxsurfmove(subject):
 
     """get_ctxsurfmove
 
@@ -303,7 +300,7 @@ def get_ctxsurfmove(subj):
 
     Parameters
     ----------
-    subj: str
+    subject: str
         subject name (e.g., sub-xxx)
 
     Returns
@@ -316,7 +313,7 @@ def get_ctxsurfmove(subj):
     >>> offset = get_ctxsurfmove("sub-001")
     """
 
-    anat = opj(cortex.database.default_filestore, subj, 'anatomicals', 'raw.nii.gz')
+    anat = opj(cortex.database.default_filestore, subject, 'anatomicals', 'raw.nii.gz')
     if not os.path.exists(anat):
         raise FileNotFoundError(f'Could not find {anat}')
 
