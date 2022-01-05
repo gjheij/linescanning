@@ -75,9 +75,9 @@ def set_threshold(name=None, borders=None, set_default=None):
 
 def target_vertex(subject,
                   deriv=None,
-                  prfdir=None,
-                  cxdir=None,
-                  fsdir=None,
+                  prf_dir=None,
+                  cx_dir=None,
+                  fs_dir=None,
                   task="2R_model-gauss_stage-iter",
                   webshow=True,
                   out=None,
@@ -100,12 +100,12 @@ def target_vertex(subject,
     subject: str
         Subject ID as used in `SUBJECTS_DIR`
     deriv: str, optional
-        Path to derivatives folder of the project. Generally should be the path specified with `DIR_DATA_DERIV` in the bash environment. This option overwrite the individual specification of `prfdir`, `cxdir`, and `fsdir`, and will look up defaults.
-    cxdir: str, optional
+        Path to derivatives folder of the project. Generally should be the path specified with `DIR_DATA_DERIV` in the bash environment. This option overwrite the individual specification of `prf_dir`, `cx_dir`, and `fs_dir`, and will look up defaults.
+    cx_dir: str, optional
         Path to `pycortex`-directory (should be `filestore`, as specified in the pycortex config file)
-    fsdir: str, optional
+    fs_dir: str, optional
         `FreeSurfer` directory (default = SUBJECTS_DIR)
-    prfdir: str, optional
+    prf_dir: str, optional
         `prf` directory in derivatives folder
     task: str, optional
         This tag is used to fetch the `prf_params` file created with `spinoza_fitprfs`. Because we write out both the `gridfit` and the `iterative fit`, we have a slightly more complex tag by default. Can be any set of pRF-parameters that you want, as long as it has the same dimensions as the surfaces created with `FreeSurfer`/`Pycortex`
@@ -138,21 +138,21 @@ def target_vertex(subject,
                 'fs': opj(deriv, 'freesurfer'),
                 'ctx': opj(deriv, 'pycortex')}
 
-        prfdir, fsdir, cxdir = dirs['prf'], dirs['fs'], dirs['ctx']
+        prf_dir, fs_dir, cx_dir = dirs['prf'], dirs['fs'], dirs['ctx']
     else:
-        if not prfdir and not fsdir and not cxdir:
+        if not prf_dir and not fs_dir and not cx_dir:
             raise ValueError("Need the paths to pRF/pycortex/FreeSurfer output. Either specify them separately or specify a derivatives folder. See doc!")
         else:
             # This is mainly for displaying purposes
-            dirs = {'prf': prfdir,
-                    'fs': fsdir,
-                    'ctx': cxdir}
+            dirs = {'prf': prf_dir,
+                    'fs': fs_dir,
+                    'ctx': cx_dir}
 
     print("Using following directories:")
     [print(f" {i}: {dirs[i]}") for i in dirs]
 
     if not out:
-        out = opj(cxdir, subject, 'line_pycortex.csv')
+        out = opj(cx_dir, subject, 'line_pycortex.csv')
 
     #----------------------------------------------------------------------------------------------------------------
     # Read in surface and pRF-data
@@ -162,7 +162,7 @@ def target_vertex(subject,
         return info.VertexInfo(out, subject=subject)
     else:
         if use_prf == True:
-            prf_params = utils.get_file_from_substring(f"task-{task}_desc-prf_params.npy", prfdir)
+            prf_params = utils.get_file_from_substring(f"task-{task}_desc-prf_params.npy", prf_dir)
         else:
             prf_params = None
         
@@ -171,7 +171,7 @@ def target_vertex(subject,
 
         # This thing mainly does everything. See the linescanning/optimal.py file for more information
         print("Combining surface and pRF-estimates in one object")
-        GetBestVertex = CalcBestVertex(subject=subject, fsdir=fsdir, prffile=prf_params, fs_label=roi)
+        GetBestVertex = CalcBestVertex(subject=subject, fs_dir=fs_dir, prffile=prf_params, fs_label=roi)
 
         #----------------------------------------------------------------------------------------------------------------
         # Set the cutoff criteria based on which you'd like to select a vertex
@@ -260,12 +260,12 @@ def target_vertex(subject,
                 webshow = False
         
             if webshow:
-                orig = opj(fsdir, subject, 'mri', 'orig.mgz')
+                orig = opj(fs_dir, subject, 'mri', 'orig.mgz')
                 tkr = transform.ctx2tkr(subject, coord=[GetBestVertex.lh_best_vertex_coord,GetBestVertex.rh_best_vertex_coord])
                 tkr_coords = {'lh': tkr[0], 'rh': tkr[1]}
                 os.system("freeview -v {orig} -f {lh_fid}:edgecolor=green {rh_fid}:edgecolor=green  --ras {x} {y} {z} tkreg 2>/dev/null".format(orig=orig,
-                                                                                                                                                lh_fid=opj(fsdir, subject, 'surf', "lh.fiducial"),
-                                                                                                                                                rh_fid=opj(fsdir, subject, 'surf', "rh.fiducial"),
+                                                                                                                                                lh_fid=opj(fs_dir, subject, 'surf', "lh.fiducial"),
+                                                                                                                                                rh_fid=opj(fs_dir, subject, 'surf', "rh.fiducial"),
                                                                                                                                                 x=round(tkr_coords['lh'][0],2),
                                                                                                                                                 y=round(tkr_coords['lh'][1],2),
                                                                                                                                                 z=round(tkr_coords['lh'][2],2)))
@@ -292,7 +292,7 @@ def target_vertex(subject,
                                 f"lh: {vert[0]}\n",
                                 f"rh: {vert[1]}\n"]
 
-                outF = open(opj(cxdir, subject, "cutoffs.o{ext}".format(ext=os.getpid())), "w")
+                outF = open(opj(cx_dir, subject, "cutoffs.o{ext}".format(ext=os.getpid())), "w")
                 outF.writelines(textList)
                 outF.close()
                 check = True
@@ -306,7 +306,7 @@ def target_vertex(subject,
 
         if prf_params and os.path.exists(prf_params):
             prf_data = np.load(prf_params)
-            prf_bestvertex = opj(cxdir, subject, f'{subject}_desc-prf_params_best_vertices.csv')
+            prf_bestvertex = opj(cx_dir, subject, f'{subject}_desc-prf_params_best_vertices.csv')
 
             prf_right = prf_data[GetBestVertex.surface.lh_surf_data[0].shape[0]:][GetBestVertex.rh_best_vertex]
             prf_left = prf_data[0:GetBestVertex.surface.lh_surf_data[0].shape[0]][GetBestVertex.lh_best_vertex]
@@ -340,8 +340,8 @@ def target_vertex(subject,
             prf_lh = prf.make_prf(prf_stim, size=prf_left[2], mu_x=prf_left[0], mu_y=prf_left[1])
             prf_rh = prf.make_prf(prf_stim, size=prf_right[2], mu_x=prf_right[0], mu_y=prf_right[1])
 
-            prf.plot_prf(prf_lh, vf_extent, save_as=opj(cxdir, subject, f'{subject}_hemi-L_desc-prf_position.pdf'))
-            prf.plot_prf(prf_rh, vf_extent, save_as=opj(cxdir, subject, f'{subject}_hemi-R_desc-prf_position.pdf'))
+            prf.plot_prf(prf_lh, vf_extent, save_as=opj(cx_dir, subject, f'{subject}_hemi-L_desc-prf_position.pdf'))
+            prf.plot_prf(prf_rh, vf_extent, save_as=opj(cx_dir, subject, f'{subject}_hemi-R_desc-prf_position.pdf'))
 
         try:
             lh_bold = np.load(utils.get_file_from_substring("avg_bold_hemi-L.npy", os.path.dirname(prf_params)))
@@ -351,13 +351,13 @@ def target_vertex(subject,
                            x_label="volumes", 
                            y_label="amplitude (z-score)", 
                            font_size=14,
-                           save_as=opj(cxdir, subject, f'{subject}_hemi-L_desc-prf_timecourse.pdf'))
+                           save_as=opj(cx_dir, subject, f'{subject}_hemi-L_desc-prf_timecourse.pdf'))
 
             glm.plot_array(rh_bold[:,GetBestVertex.rh_best_vertex], 
                            x_label="volumes", 
                            y_label="amplitude (z-score)", 
                            font_size=14,
-                           save_as=opj(cxdir, subject, f'{subject}_hemi-R_desc-prf_timecourse.pdf'))
+                           save_as=opj(cx_dir, subject, f'{subject}_hemi-R_desc-prf_timecourse.pdf'))
 
         except:
             print("Could not create timecourse-plots")
@@ -376,7 +376,7 @@ class SurfaceCalc(object):
     ----------
     subject: str
         subject ID as used in `SUBJECTS_DIR`
-    fsdir: str, optional
+    fs_dir: str, optional
         `FreeSurfer` directory (default = SUBJECTS_DIR)
     fs_label: str, optional
         ROI-name to extract the vertex from as per ROIs created with `FreeSurfer`. Default is V1_exvivo.thresh
@@ -390,7 +390,7 @@ class SurfaceCalc(object):
     Embedded in :class:`linescanning.optimal.CalcBestVertex`, so if you can also just call that class and you won't have to run the command in "usage"
     """
 
-    def __init__(self, subject=None, fsdir=None, fs_label="V1_exvivo.thresh"):
+    def __init__(self, subject=None, fs_dir=None, fs_label="V1_exvivo.thresh"):
 
         """Initialize object"""
 
@@ -473,7 +473,7 @@ class SurfaceCalc(object):
         -----------
         subject: str
             subject ID as used in `SUBJECTS_DIR`
-        fsdir: str, optional
+        fs_dir: str, optional
             `FreeSurfer` directory (default = SUBJECTS_DIR)
         fs_label: str, optional
             ROI-name to extract the vertex from as per ROIs created with `FreeSurfer`. Default is V1_exvivo.thresh
@@ -570,13 +570,13 @@ class pRFCalc(object):
 
     """pRFCalc
 
-    This short class deals with the population receptive field modeling output from spinoza_fitprfs and/or call_prfpy. Ideally, the output of these scripts is a numpy array containing the 6 pRF-parameters for each voxel. If you have one of those files, specify it in the `prffile` argument. If, for some reason, you do not have this file, but separate files for each pRF variable (e.g., a file for R2, a file for eccentricitry, and a file for polar angle), make sure they are all in 1 directory and specify that directory in the `prfdir` parameter. The only function of this class is to collect path names and the data arrays containing information about the pRF parameters. It will actually be used in :class:`linescanning.optimal.CalcBestVertex`.
+    This short class deals with the population receptive field modeling output from spinoza_fitprfs and/or call_prfpy. Ideally, the output of these scripts is a numpy array containing the 6 pRF-parameters for each voxel. If you have one of those files, specify it in the `prffile` argument. If, for some reason, you do not have this file, but separate files for each pRF variable (e.g., a file for R2, a file for eccentricitry, and a file for polar angle), make sure they are all in 1 directory and specify that directory in the `prf_dir` parameter. The only function of this class is to collect path names and the data arrays containing information about the pRF parameters. It will actually be used in :class:`linescanning.optimal.CalcBestVertex`.
 
     Parameters
     ----------
     subject: str
         subject ID as used in `SUBJECTS_DIR`
-    prfdir: str, optional
+    prf_dir: str, optional
         Path to pRF-output directory possible containing maps for *variance explained* (desc-R2.npy), *eccentricity* (desc-eccentricity_map.npy), and *polar angle* (desc-polarangle_map.npy) as created with `call_fitprfs` and  `spinoza_fitprfs`
     prffile: str, optional
         Path to a desc-prf_params.npy file containing a 6xn dataframe representing the 6 variables from the pRF-analysis times the amount of TRs (time points). You can either specify this file directly or specify the pRF-directory containing separate files for R2, eccentricity, and polar angle if you do not happen to have the prf parameter file
@@ -592,27 +592,27 @@ class pRFCalc(object):
     """
 
     # Get stuff from SurfaceCalc
-    def __init__(self, subject=None, prffile=None, prfdir=None, ses_nr=1, task="2R"):
+    def __init__(self, subject=None, prffile=None, prf_dir=None, ses_nr=1, task="2R"):
 
         self.subject = subject
         self.session = ses_nr
         self.task_id = task
         self.fname   = f"{self.subject}_ses-{self.session}_task-{self.task_id}"
 
-        if prfdir == None:
-            self.prfdir = os.environ['PRF']
+        if prf_dir == None:
+            self.prf_dir = os.environ['PRF']
         else:
-            self.prfdir = prfdir
+            self.prf_dir = prf_dir
 
         if not prffile or not os.path.exists(prffile):
 
-            if self.prfdir != None:
+            if self.prf_dir != None:
 
                 try:
                     # print(" Load in pRF-estimates")
-                    self.r2_file      = utils.get_file_from_substring("R2", opj(self.prfdir, self.subject))
-                    self.ecc_file     = utils.get_file_from_substring("eccentricity", opj(self.prfdir, self.subject))
-                    self.polar_file   = utils.get_file_from_substring("polar", opj(self.prfdir, self.subject))
+                    self.r2_file      = utils.get_file_from_substring("R2", opj(self.prf_dir, self.subject))
+                    self.ecc_file     = utils.get_file_from_substring("eccentricity", opj(self.prf_dir, self.subject))
+                    self.polar_file   = utils.get_file_from_substring("polar", opj(self.prf_dir, self.subject))
                 except:
                     # print(" Set pRF-estimates to none")
                     self.r2      = None
@@ -661,12 +661,12 @@ class CalcBestVertex(object):
     subject: str
         Subject ID as used in `SUBJECTS_DIR`
     deriv: str, optional
-        Path to derivatives folder of the project. Generally should be the path specified with `DIR_DATA_DERIV` in the bash environment. This option overwrite the individual specification of `prfdir`, `cxdir`, and `fsdir`, and will look up defaults.
-    cxdir: str, optional
+        Path to derivatives folder of the project. Generally should be the path specified with `DIR_DATA_DERIV` in the bash environment. This option overwrite the individual specification of `prf_dir`, `cx_dir`, and `fs_dir`, and will look up defaults.
+    cx_dir: str, optional
         Path to `pycortex`-directory (should be `filestore`, as specified in the pycortex config file)
-    fsdir: str, optional
+    fs_dir: str, optional
         `FreeSurfer` directory (default = SUBJECTS_DIR)
-    prfdir: str, optional
+    prf_dir: str, optional
         `prf` directory in derivatives folder
     prffile: str, optional
         Path to a desc-prf_params.npy file containing a 6xn dataframe representing the 6 variables from the pRF-analysis times the amount of TRs (time points). You can either specify this file directly or specify the pRF-directory containing separate files for R2, eccentricity, and polar angle if you do not happen to have the prf parameter file        
@@ -675,43 +675,43 @@ class CalcBestVertex(object):
 
     Example
     ----------
-    >>> GetBestVertex = CalcBestVertex(subject=subject, fsdir='/path/to/derivatives/freesurfer'), prffile=prf_params)
+    >>> GetBestVertex = CalcBestVertex(subject=subject, fs_dir='/path/to/derivatives/freesurfer'), prffile=prf_params)
     """
 
     def __init__(self, subject=None,
-                 fsdir=None,
-                 cxdir=None,
-                 prfdir=None,
+                 fs_dir=None,
+                 cx_dir=None,
+                 prf_dir=None,
                  prfile=None,
                  fs_label="V1_exvivo.thresh",
                  ses_nr=1,
                  task="2R"):
 
         # set default freesurfer directory
-        if fsdir == None:
-            self.fsdir = os.environ['SUBJECTS_DIR']
+        if fs_dir == None:
+            self.fs_dir = os.environ['SUBJECTS_DIR']
         else:
-            self.fsdir = fsdir
+            self.fs_dir = fs_dir
 
         # set default pRF directory
-        if prfdir == None:
-            self.prfdir = os.environ['PRF']
+        if prf_dir == None:
+            self.prf_dir = os.environ['PRF']
         else:
-            self.prfdir = prfdir
+            self.prf_dir = prf_dir
 
         # set default pycortex directory
-        if cxdir == None:
-            self.cxdir = os.environ['CTX']
+        if cx_dir == None:
+            self.cx_dir = os.environ['CTX']
         else:
-            self.cxdir = cxdir
+            self.cx_dir = cx_dir
 
         self.subject = subject
-        self.surface = SurfaceCalc(subject=self.subject, fsdir=self.fsdir, fs_label=fs_label)
+        self.surface = SurfaceCalc(subject=self.subject, fs_dir=self.fs_dir, fs_label=fs_label)
         self.session = ses_nr
         self.task_id = task
         self.fname   = f"{self.subject}_ses-{self.session}_task-{self.task_id}"
 
-        self.prf = pRFCalc(subject=self.subject, prfdir=self.prfdir, prffile=prffile)
+        self.prf = pRFCalc(subject=self.subject, prf_dir=self.prf_dir, prffile=prffile)
 
     def apply_thresholds(self, r2_thresh=None, ecc_thresh=None, polar_thresh=None, thick_thresh=None, depth_thresh=None):
 
@@ -1008,10 +1008,10 @@ class CalcBestVertex(object):
                         tag = "hemi-R"
                     else:
                         raise ValueError(f"Unknown value {i}..?")
-                    np.save(opj(self.prfdir, self.subject, f'{self.fname}_desc-vertex_{tag}.npy'), getattr(self, f'{i}_best_vertex_map'))
+                    np.save(opj(self.prf_dir, self.subject, f'{self.fname}_desc-vertex_{tag}.npy'), getattr(self, f'{i}_best_vertex_map'))
 
             if hasattr(self, 'lr_best_vertex_map'):
-                np.save(opj(self.prfdir, self.subject, f'{self.fname}_desc-vertex_hemi-LR.npy'), self.lr_best_vertex_map)
+                np.save(opj(self.prf_dir, self.subject, f'{self.fname}_desc-vertex_hemi-LR.npy'), self.lr_best_vertex_map)
 
 
     def smooth_vertexmap(self, kernel=5, concat=True, write_files=True):
@@ -1071,10 +1071,10 @@ class CalcBestVertex(object):
                         tag = "hemi-R"
                     else:
                         raise ValueError(f"Unknown value {i}..?")
-                    np.save(opj(self.prfdir, self.subject, f'{self.fname}_desc-smoothvertex_{tag}.npy'), getattr(self, f'{i}_best_vertex_map_sm'))
+                    np.save(opj(self.prf_dir, self.subject, f'{self.fname}_desc-smoothvertex_{tag}.npy'), getattr(self, f'{i}_best_vertex_map_sm'))
 
             if hasattr(self, 'lr_best_vertex_map'):
-                np.save(opj(self.prfdir, self.subject, f'{self.fname}_desc-smoothvertex_hemi-LR.npy'), self.lr_best_vertex_map_sm)
+                np.save(opj(self.prf_dir, self.subject, f'{self.fname}_desc-smoothvertex_hemi-LR.npy'), self.lr_best_vertex_map_sm)
 
     def vertexinfo(self, hemi="both"):
 
