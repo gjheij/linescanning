@@ -166,7 +166,7 @@ function call_matlab {
     echo
     exit 1
   else
-    if [[ ${PLACE} == "SPINOZA" ]]; then
+    if [[ ${PLACE} == "SGE" ]]; then
       skip_lines=${SKIP_LINES}
     else
       skip_lines=0
@@ -481,7 +481,7 @@ function make_mask_script {
     echo "% Created on `date`. spmBrainMask on INV-2 image"
     echo ""
     echo "clear;"
-    echo "addpath(genpath('${DIR_SCRIPTS}/data'));"
+    echo "addpath(genpath('${DIR_SCRIPTS}/misc'));"
     echo "addpath(genpath('${1}'));"
     echo ""
     echo "niifile = '${2}';"
@@ -542,7 +542,7 @@ function make_cat_script {
 		exit 1
 	fi
 
-	if [[ ${PLACE} == "SPINOZA" ]]; then
+	if [[ ${PLACE} == "SGE" ]]; then
 		CPUs=0
 	else
 		CPUs=0
