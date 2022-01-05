@@ -8,7 +8,7 @@
 #---------------------------------------------------------------------------------------------------------
 # Create help text
 function Usage {
-		cat <<USAGE
+    cat <<USAGE
 
 ---------------------------------------------------------------------------------------------------
 call_spmbias
@@ -32,12 +32,12 @@ Usage:
 ---------------------------------------------------------------------------------------------------
 
 USAGE
-		exit 1
+    exit 1
 }
 
 if [[ $# -lt 1 ]] ; then
-	Usage >&2
-	exit 1
+  Usage >&2
+  exit 1
 fi
 
 # Check for subject & session flags
@@ -55,9 +55,9 @@ INPUT=${@:$OPTIND:1}
 OUTPUT=${@:$OPTIND+1:1}
 
 if [[ "${@}" == *"-d"* ]]; then
-	RM=0
+  RM=0
 else
-	RM=1
+  RM=1
 fi
 
 #-----------------------------------------------------------------------------
@@ -67,30 +67,30 @@ source call_bashhelper
 #-----------------------------------------------------------------------------
 # Define default LOG-path
 if [[ -z ${LOG} ]]; then
-	if [[ -z ${DIR_LOGS} ]]; then
-		LOG_DIR=${PWD}
-	else
-		LOG_DIR=${DIR_LOGS}
-	fi
+  if [[ -z ${DIR_LOGS} ]]; then
+    LOG_DIR=${PWD}
+  else
+    LOG_DIR=${DIR_LOGS}
+  fi
 else
-	LOG_DIR=${LOG}
+  LOG_DIR=${LOG}
 fi
 
 if [[ ! -d ${LOG_DIR} ]]; then
-	mkdir -p ${LOG_DIR}
+  mkdir -p ${LOG_DIR}
 fi
 
 #-----------------------------------------------------------------------------
 # Define default SPM-path
 if [[ -z ${SPM} ]]; then
-	if [[ -z ${SPM_PATH} ]]; then
-		echo "ERROR: SPM_PATH-variable is empty. Either define it, or specify an SPM-path with \"-s <path/to/spm>\""
-		exit 1
-	else
-		SPM_PATH=${SPM_PATH}
-	fi
+  if [[ -z ${SPM_PATH} ]]; then
+    echo "ERROR: SPM_PATH-variable is empty. Either define it, or specify an SPM-path with \"-s <path/to/spm>\""
+    exit 1
+  else
+    SPM_PATH=${SPM_PATH}
+  fi
 else
-	SPM_PATH=${SPM}
+  SPM_PATH=${SPM}
 fi
 
 # if file specified is in current directory, add entire path
@@ -99,41 +99,41 @@ OUTPUT=`fetch_filepath ${OUTPUT}`
 
 ext=`fetch_extension ${INPUT}`
 if [[ ${ext} == "gz" ]]; then
-	in_file=$(dirname ${INPUT})/$(basename ${INPUT} .gz)
-	gunzip -c ${INPUT} > ${in_file}
+  in_file=$(dirname ${INPUT})/$(basename ${INPUT} .gz)
+  gunzip -c ${INPUT} > ${in_file}
 else
-	in_file=${INPUT}
+  in_file=${INPUT}
 fi
 
 #-----------------------------------------------------------------------------
 # Create new script
 new_script=$(dirname ${in_file})/spm_bias.m
 if [[ -f ${new_script} ]]; then
-	rm -r ${new_script}
+  rm -r ${new_script}
 fi
 
 if [[ ! -d $(dirname ${OUTPUT}) ]]; then
-	mkdir -p $(dirname ${OUTPUT})
+  mkdir -p $(dirname ${OUTPUT})
 fi
 
 mask_img=`find $(dirname ${in_file}) -type f -name "m$(basename ${in_file})*" 2>/dev/null`
 if [[ -z ${mask_img} ]]; then
 
-	make_bias_script ${SPM_PATH} ${in_file} ${new_script}
+  make_bias_script ${SPM_PATH} ${in_file} ${new_script}
 
-	# call_matlab = in call_bashhelper
-	call_matlab ${new_script}
+  # call_matlab = in call_bashhelper
+  call_matlab ${new_script}
 
-	if [[ $? -ne 0 ]]; then
-		echo "ERROR: matlab exited with non-zero status"
-		exit 1
-	fi
+  if [[ $? -ne 0 ]]; then
+    echo "ERROR: matlab exited with non-zero status"
+    exit 1
+  fi
 
 fi
 
 if [[ ${RM} -eq 1 ]]; then
-	rm -r $(dirname ${in_file})/c*$(basename ${in_file}) *.mat 2>/dev/null
-	rm -r $(dirname ${in_file})/*seg8.mat 2>/dev/null
+  rm -r $(dirname ${in_file})/c*$(basename ${in_file}) *.mat 2>/dev/null
+  rm -r $(dirname ${in_file})/*seg8.mat 2>/dev/null
   rm -r $(dirname ${in_file})/BiasField*
 fi
 
@@ -146,5 +146,5 @@ if [[ ! -z ${mask_img} ]]; then
     rm -r ${in_file} ${mask_img} ${INPUT}
   else
     mv ${mask_img} ${OUTPUT}
-	fi
+  fi
 fi
