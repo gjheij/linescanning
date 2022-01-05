@@ -69,45 +69,44 @@ fi
 # VARIABLES
 #===================================================================================================
 
-# If you have access to SGE, leave to Spinoza; otherwise change to e.g., HOME
-export PLACE=SPINOZA
+# If you have access to SGE, leave to SGE; otherwise change to e.g., LOCAL
+export PLACE=SGE
 
-# Set matlab paths
-export MRRECON=/packages/matlab/toolbox/MRecon/3.0.541
-export MATLAB_DIR=/packages/matlab/R2020b
-export SPM_PATH=${PATH_HOME}/programs/packages/spm12
-export SKIP_LINES=30 # number of lines to skip during start up
+# MATLAB
+export MRRECON=/packages/matlab/toolbox/MRecon/3.0.541  
+export MATLAB_DIR=/packages/matlab/R2020b               
+export SPM_PATH=${PATH_HOME}/programs/packages/spm12    
+export SKIP_LINES=30                                    
 
-# set your project name and possible task names
+# fMRIPREP
+export MRIQC_SIMG=${PATH_HOME}/programs/packages/mriqc/containers_bids-mriqc--0.15.1.simg
+export FPREP_SIMG=${PATH_HOME}/programs/packages/fmriprep/containers_bids-fmriprep--20.2.5.simg
+export FPREP_OUT_SPACES="fsnative fsaverage MNI152NLin6Asym:res-1"
+export FPREP_BINDING="/data1/projects" # binding directory for singularity image
+export CIFTI=170k # leave empty if you don't want cifti output
+export DO_SYN=1 # set to zero if you do not want additional syn-distortion correction
+
+# PYBEST
+export PYBEST_SPACE="fsnative"
+export PYBEST_NORM="zscore"
+
+# PROJECT
+export DIR_PROJECTS=$(dirname $(dirname ${PATH_HOME}))/projects 
 export PROJECT=hemifield # ANAT_SEG-Raw #URIS-MDD #hemifield
 export TASK_SES1="2R"
 export TASK_SES2="LR"
+export PREFIX="sub-"
 
-# set your project-root folder (folder where PROJECT lives)
-export DIR_PROJECTS=$(dirname $(dirname ${PATH_HOME}))/projects 
-
-# Switch to tell us what type of data was acquired
-## You can have an average of the given acquisitions if desired, but then the first element
-## Should be the 'reference' space
+# DATA TYPE(S)
 declare -a ACQ=("MP2RAGE") # or ("MP2RAGE" "MEMP2RAGE")
+export DATA=${ACQ[0]} # or MP2RAGEME/AVERAGE
 
-# Switch to tell us what the output format should be. "AVERAGE" means average of MP2RAGE and MEMP2RAGE
-export DATA=MP2RAGE # or MP2RAGEME/AVERAGE
-if [[ ${DATA} == "MEMP2RAGE" ]]; then
-  export space="memp2rage"
-elif [[ ${DATA} == "MP2RAGE" ]]; then
-  export space="mp2rage"
-elif [[ ${DATA} == "MPRAGE" ]]; then
-  export space="mprage"  
-elif [[ ${DATA} == "AVERAGE" ]]; then
+# For DATA == AVERAGE we'll need multiple acquisitions
+if [[ ${DATA} == "AVERAGE" ]]; then
   if [[ `echo ${#ACQ[@]}` -ne 2 ]]; then
     echo "Average of what..? \"ACQ\" variable in spinoza_setup has ${#ACQ[@]} items"
     exit 1
   fi
-  export space="average"
-else
-  echo "ERROR: please set correct mode (\"average\" | \"mp2rage\" | \"memp2rage\")"
-  exit 1
 fi
 
 #===================================================================================================
@@ -157,4 +156,8 @@ done
 while IFS= read -r line; do export ${line}; done < ${DIR_SCRIPTS}/misc/acq.txt
 # source ${DIR_SCRIPTS}/bin/utils/acq.txt
 
+# set SSH_KEY for start_ssh
 export SSH_KEY="${HOME}/.ssh/hp_windows"
+
+# source bash helper functions
+source call_bashhelper

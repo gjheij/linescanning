@@ -19,47 +19,44 @@ The path specifications are mainly controlled by the setup file called ``spinoza
 
 .. code:: bash
 
-    # If you have access to SGE, leave to Spinoza; otherwise change to e.g., HOME
-    export PLACE=SPINOZA
-    export MRRECON=/packages/matlab/toolbox/MRecon/3.0.541
-    export MATLAB_DIR=/packages/matlab/R2020b
-    export PATH_HOME=${PATH_HOME}
+    # If you have access to SGE, leave to SGE; otherwise change to e.g., LOCAL
+    export PLACE=SGE
 
-    if [[ ${PLACE} == SPINOZA ]]; then
-        export SKIP_LINES=30
-        export SPM_PATH=${PATH_HOME}/programs/packages/spm12
-    fi
+    # MATLAB
+    export MRRECON=<path to MR-Recon version>       # OPTIONAL! for reconstruction of line data 
+    export MATLAB_DIR=<path to matlab installation> # REQUIRED
+    export SPM_PATH=<path to SPM installation>      # REQUIRED
+    export SKIP_LINES=30                            # OPTINAL! number of lines to skip during start up
 
-    # set your project name and possible task names
-    export PROJECT=hemifield # ANAT_SEG-Raw #URIS-MDD #hemifield
-    export TASK_SES1="2R"
-    export TASK_SES2="LR"
+    # fMRIPREP
+    export MRIQC_SIMG=<path to MRIQC container>     # OPTIONAL; ALWAYS LOOK AT YOUR DATA!
+    export FPREP_SIMG=<path to fMRIprep container>  # REQUIRED (if PLACE=SGE); see https://fmriprep.org/en/1.5.1/singularity.html
+    export FPREP_OUT_SPACES="fsnative fsaverage MNI152NLin6Asym:res-1"
+    export FPREP_BINDING=<binding path>             # REQUIRED (if PLACE=SGE); binding directory for singularity image
+    export CIFTI=170k                               # OPTIONAL; leave empty if you don't want cifti output
+    export DO_SYN=1                                 # OPTIONAL; set to zero if you do not want additional syn-distortion correction
 
-    # set your project-root folder (folder where PROJECT lives)
-    export DIR_PROJECTS=$(dirname $(dirname ${PATH_HOME}))/projects 
+    # PYBEST
+    export PYBEST_SPACE="fsnative"                  # REQUIRED; which space to use for denoising with Pybest
+    export PYBEST_NORM="zscore"                     # OPTIONAL; by default, Pybest z-scores data
 
-    # Switch to tell us what type of data was acquired
-    ## You can have an average of the given acquisitions if desired, but then the first element
-    ## Should be the 'reference' space
-    declare -a ACQ=("MP2RAGE") # or ("MP2RAGE" "MEMP2RAGE")
+    # PROJECT
+    export DIR_PROJECTS=$(dirname $(dirname ${PATH_HOME}))/projects # REQUIRED; path where PROJECT lives
+    export PROJECT=<project name>                                   # REQUIRED; project name
+    export TASK_SES1="2R"                                           # OPTIONAL (but advised); task name ses-1
+    export TASK_SES2="LR"                                           # OPTOINAL; task name ses-2
+    export PREFIX="sub-"                                            # REQUIRED; prefix for subject folders
 
-    # Switch to tell us what the output format should be. "AVERAGE" means average of MP2RAGE and MEMP2RAGE
-    export DATA=MP2RAGE # or MP2RAGEME/AVERAGE
-    if [[ ${DATA} == "MEMP2RAGE" ]]; then
-        export space="memp2rage"
-    elif [[ ${DATA} == "MP2RAGE" ]]; then
-        export space="mp2rage"
-    elif [[ ${DATA} == "MPRAGE" ]]; then
-        export space="mprage"  
-    elif [[ ${DATA} == "AVERAGE" ]]; then
+    # DATA TYPE(S)
+    declare -a ACQ=("MP2RAGE")                                      # REQUIRED; another example = ("MP2RAGE" "MEMP2RAGE") or ("MPRAGE")
+    export DATA=${ACQ[0]}                                           # OPTIONAL; will read first element from ACQ by default
+
+    # For DATA == AVERAGE we'll need multiple acquisitions
+    if [[ ${DATA} == "AVERAGE" ]]; then
         if [[ `echo ${#ACQ[@]}` -ne 2 ]]; then
             echo "Average of what..? \"ACQ\" variable in spinoza_setup has ${#ACQ[@]} items"
             exit 1
         fi
-        export space="average"
-    else
-        echo "ERROR: please set correct mode (\"average\" | \"mp2rage\" | \"memp2rage\")"
-        exit 1
     fi
 
     #===================================================================================================
@@ -89,31 +86,54 @@ The path specifications are mainly controlled by the setup file called ``spinoza
 
 You will have to set a few things yourself:
 
-1) If you have access to a sun-grid engine, leave ``PLACE`` to ``SPINOZA``. Set the ``MATLAB_DIR``:
+1) If you have access to a sun-grid engine, leave ``PLACE`` to ``SGE``. If not, set it to ``LOCAL``:
+   
+.. code:: bash
+
+    # If you have access to SGE, leave to SGE; otherwise change to e.g., LOCAL
+    export PLACE=SGE
+
+2) Set the settings for MATLAB:
 
 .. code:: bash
 
-    $ export PLACE=SPINOZA
+    $ export MRRECON=<path to MRecon installation> # only required if you have actual line data
     $ export MATLAB_DIR=<path to matlab>
     $ export SPM_PATH=<path to spm12>
     $ export SKIP_LINES=30 # number of lines to skip during start up
 
-2) Set your project and task names:
+3) Set the settings for fMRIprep_:
+   
+.. code:: bash
+
+    # fMRIPREP
+    $ export MRIQC_SIMG=<path to MRIQC container>
+    $ export FPREP_SIMG=<path to fMRIprep container> 
+    $ export FPREP_OUT_SPACES="fsnative fsaverage MNI152NLin6Asym:res-1"
+    $ export FPREP_BINDING=<binding path>
+    $ export CIFTI=170k
+    $ export DO_SYN=1  
+
+5) Set the settings for Pybest_:
 
 .. code:: bash
 
-    $ export PROJECT=<your project name>
+    # PYBEST
+    $ export PYBEST_SPACE="fsnative"
+    $ export PYBEST_NORM="zscore"
+
+6) Set project-specific settings:
+
+.. code:: bash
+
+    # PROJECT
+    $ export DIR_PROJECTS=$(dirname $(dirname ${PATH_HOME}))/projects 
+    $ export PROJECT=hemifield
     $ export TASK_SES1="2R"
     $ export TASK_SES2="LR"
+    $ export PREFIX="sub-"
 
-3) Set the path to the projects
-
-.. code:: bash
-
-    $ # set your project-root folder (folder where PROJECT lives)
-    $ export DIR_PROJECTS=<path up until <$PROJECT>
-
-4) Specify your data type(s). 
+7) Specify your data type(s).
    
    * This is to account for a protocol including ``MP2RAGE`` and ``MEMP2RAGE`` where you might want to averge the two acquisitions into ``AVERAGE``. In that case, you'd specify:
 
@@ -153,6 +173,8 @@ You will have to set a few things yourself:
         $ declare -a ACQ=("MEMP2RAGE")
         $ export DATA=MEMP2RAGE
 
+.. attention:: By default, ``DATA`` will be the first element of ``ACQ``!
+
 .. note::
 
     **Example**: Let's say I have the following:
@@ -168,7 +190,7 @@ You will have to set a few things yourself:
     .. code:: bash
 
         # I would then set the following:
-        $ export PLACE=SPINOZA
+        $ export PLACE=SGE
         $ export MATLAB_DIR=/home/user/matlab
         $ export SPM_PATH=/home/user/programs/spm12
         $ export PROJECT='my_first_project'
@@ -176,7 +198,7 @@ You will have to set a few things yourself:
         $ export TASK_SES2="sizeresponse"
         $ export DIR_PROJECTS=/home/user/projects
         $ declare -a ACQ=("MPRAGE")
-        $ export DATA=MPRAGE
+        $ export DATA=${ACQ[0]}
 
 File naming
 ===========================================
@@ -341,18 +363,6 @@ Below is the ``help``-information from the ``master`` script:
     Notes:
     - Module 5 (register T1 to MNI152) and 13 (brain extract T1 with ANTs) are relatively obsolete
         These commands are therefore commented out.
-
-    - The following ensembles are useful to run together:
-        > PRE 02,03,04,06:      conversion, estimation of T1, registration, averaging:
-        > BFC 07,08,09:         work with 2nd inversion = bias field corr, brain extr. & noise level est.
-        > MAS 10,11:            make dura and sagittal sinus masks (employs nighres & ITK-Snap)
-        > SES 13,14,15:         fmriprep and pycortex for line planning session 2
-        > SEG 16,17,18:         tissue segmentation with fmriprep, FAST, nd MGDM
-        > CTX 19,20,21,22:      nighres modules for cortex reconstruction and layering
-        > GDH 14,19,20,21,22,23 run the iterative segmentation pipeline similar to G. de Hollander's
-        >
-        > ALL:                  run all modules; 02,03,04,06,07,08,09,10,11,12,14,15,16,17,18,19,20,21,22
-
     - Time = approximate run time per subject > Run time of total pipeline is about 1hr30 on SGE
     - There are two modes we can run this pipeline in, to be specified in the setup:
         a session where we have both MP2RAGE and MP2RAGEME data, and a solo MP2RAGE mode. This can be
