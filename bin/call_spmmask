@@ -135,12 +135,12 @@ fi
 if [[ ${ext} == "gz" ]]; then
   mask_img=`find $(dirname ${in_file}) -type f -name "mask*" 2>/dev/null`
   if [[ ! -z ${mask_img} ]]; then
-      gzip -c ${mask_img} > ${OUTPUT} 2>/dev/null
+    gzip -c ${mask_img} > ${OUTPUT} 2>/dev/null
 
-      # set qformcode to 1 (prefered by nighres)
-      if [[ `fslval ${OUTPUT} qform_code` -ne 1 ]]; then
-          fslorient -setqformcode 1 ${OUTPUT}
-      fi
+    # set qformcode to 1 (prefered by nighres)
+    if [[ `fslval ${OUTPUT} qform_code` -ne 1 ]]; then
+        fslorient -setqformcode 1 ${OUTPUT}
+    fi
   fi
   rm -r ${in_file}
 fi
