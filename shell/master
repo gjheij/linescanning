@@ -169,18 +169,6 @@ Available modules:                                     Script                   
 Notes:
   - Module 5 (register T1 to MNI152) and 13 (brain extract T1 with ANTs) are relatively obsolete
     These commands are therefore commented out.
-
-  - The following ensembles are useful to run together:
-    > PRE 02,03,04,06:      conversion, estimation of T1, registration, averaging:
-    > BFC 07,08,09:         work with 2nd inversion = bias field corr, brain extr. & noise level est.
-    > MAS 10,11:            make dura and sagittal sinus masks (employs nighres & ITK-Snap)
-    > SES 13,14,15:         fmriprep and pycortex for line planning session 2
-    > SEG 16,17,18:         tissue segmentation with fmriprep, FAST, nd MGDM
-    > CTX 19,20,21,22:      nighres modules for cortex reconstruction and layering
-    > GDH 14,19,20,21,22,23 run the iterative segmentation pipeline similar to G. de Hollander's
-    >
-    > ALL:                  run all modules; 02,03,04,06,07,08,09,10,11,12,14,15,16,17,18,19,20,21,22
-
   - Time = approximate run time per subject > Run time of total pipeline is about 1hr30 on SGE
   - There are two modes we can run this pipeline in, to be specified in the setup:
     a session where we have both MP2RAGE and MP2RAGEME data, and a solo MP2RAGE mode. This can be
@@ -277,13 +265,6 @@ fi
 
 call_loadsetup
 
-
-#---------------------------------------------------------------------------------------------------------
-### Input anatomies subjects:
-## ANAT_SEG-Raw:
-subject="sub-${SUB}"
-input_anat=${SUBJECTS_DIR}/${subject}/mri/rawavg.nii.gz
-
 #---------------------------------------------------------------------------------------------------
 # STEP 00: Optimal line planning procedure with registration of anat ses-1 to ms ses-2
 module=00
@@ -343,12 +324,12 @@ if [[ $? -eq 0 ]]; then
   else
     OW=""
   fi
-
+  
+  subject=${PREFIX}${SUB}
   spinoza_lineplanning ${OW} \
                        -s ${subject} \
                        -n ${ses_nr} \
                        -i ${DIR_DATA_SOURCE}/${subject}/ses-${ses_nr}/planning \
-                       -a ${input_anat} \
                        -p ${DIR_DATA_DERIV}/pycortex/${subject}/line_pycortex.csv \
                        -h ${HEMI}
 
@@ -1234,6 +1215,13 @@ if [[ $? -eq 0 ]]; then
     SUBJECT="-s ${SUB}"
   fi
 
+  if [[ -z ${SES} ]]; then
+    # Going to assume ses-1 here
+    SESSION="-n 1"
+  else
+    SESSION="-n ${SES}"
+  fi
+
   if [[ -z ${VERTICES} ]]; then
     VERT=""
   else
@@ -1248,12 +1236,12 @@ if [[ $? -eq 0 ]]; then
   fi
 
   if [[ ! -z ${KWARGS} ]]; then
-    KWARGS="-n"
+    KWARGS="-f"
   else
     KWARGS=${KWARGS}
   fi      
 
-  spinoza_bestvertex ${SUBJECT} ${VERT} ${KWARGS} ${OW} ${DIR_DATA_HOME} ${DIR_DATA_DERIV} "V1"
+  spinoza_bestvertex ${SUBJECT} ${SESSION} ${VERT} ${KWARGS} ${OW} ${DIR_DATA_HOME} ${DIR_DATA_DERIV} "V1_exvivo.thresh"
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_bestvertex exited with non-zero status"
