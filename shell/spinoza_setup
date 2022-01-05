@@ -8,20 +8,6 @@ export PATH_HOME=${PATH_HOME}
 
 if [[ $1 == "setup" ]]; then
 
-  echo
-  echo "---------------------------------------------------------------------------------------------------------"
-  echo "Welcome to the linescanning-repository!"
-  echo
-  echo "Execute the following steps to setup the repository:"
-  echo " 1) Hit \"master\" in the terminal; if all went well this should bring up the help-menu"
-  echo " 2) Hit \"cd $(dirname ${REPO_DIR})\""
-  echo " 3) If you have sudo-right, do \"sudo python setup.py develop\", if not: \"python setup.py develop --user\""
-  echo " 4) Enter \"ipython\" and then \"from linescanning import *\". No error means SUCCESS!"
-  echo " 5) Go to line 87 and specify where your projects are. Default is set to:"
-  echo "    \"${PATH_HOME}/projects\""
-  echo "---------------------------------------------------------------------------------------------------------"
-  echo
-
   # ignore permission changes in git
   git config core.fileMode false
 
@@ -124,6 +110,7 @@ export DERIVATIVES=${DIR_DATA_DERIV}
 export MASKS=${DIR_DATA_DERIV}/manual_masks
 export ANTS=${DIR_DATA_DERIV}/ants
 export FS=${DIR_DATA_DERIV}/freesurfer
+export SUBJECTS_DIR=${FS}
 export ANTS=${DIR_DATA_DERIV}/ants
 export AVG=${DIR_DATA_DERIV}/average
 export MASKED_AVG=${DIR_DATA_DERIV}/masked_average
