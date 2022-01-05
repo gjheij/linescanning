@@ -22,6 +22,7 @@ import os
 import sys
 sys.path.insert(0, os.path.abspath('../'))
 os.makedirs(os.path.join(os.path.expanduser('~'), ".config"), exist_ok=True)
+os.system("conda install -c conda-forge -y nbsphinx")
 
 # -- General configuration ------------------------------------------------
 
@@ -189,6 +190,6 @@ texinfo_documents = [
 ]
 
 MOCK_MODULES = ['pycortex', 'nitime', 'nitime.timeseries', 'nitime.analysis',
-                'nighres.parcellation.massp', 'prfpy', 'prfpy.fit', 'prfpy.model', 'seaborn', 'yaml', 'nbsphinx']
+                'nighres.parcellation.massp', 'prfpy', 'prfpy.fit', 'prfpy.model', 'seaborn', 'yaml']
 for mod_name in MOCK_MODULES:
     sys.modules[mod_name] = mock.Mock()
