@@ -76,10 +76,7 @@ fi
 source call_bashhelper
 
 # if file specified is in current directory, add entire path
-# if file specified is in current directory, add entire path
 INPUT=`fetch_filepath ${INPUT}`
-
-# if file specified is in current directory, add entire path
 OUTPUT=`fetch_filepath ${OUTPUT}`
 
 ext=`fetch_extension ${INPUT}`
@@ -88,11 +85,6 @@ if [[ ${ext} == "gz" ]]; then
 	gunzip -c ${INPUT} > ${in_file}
 else
 	in_file=${INPUT}
-fi
-
-# if file specified is in current directory, add entire path
-if [[ ${in_file} == *"./"* ]]; then
-	in_file=${PWD}/$(basename ${in_file})
 fi
 
 #-----------------------------------------------------------------------------
