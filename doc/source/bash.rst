@@ -509,9 +509,11 @@ Below the help information for each module, which can also be called with:
                     tex1.csv) so that a new line_pycortex.csv-file is created. Given that the original
                     file is NOT deleted, I consider this a soft-overwrite mode. You can always manual-
                     ly delete unwanted/unused files.
-    -n              prevent FreeView from opening while verifying the location. ONLY do this if you
+    -f              prevent FreeView from opening while verifying the location. ONLY do this if you
                     already know the position. Generally only used for debugging purposes.
     -s <subject>    subject ID as used throughout the pipeline without prefix (e.g., sub-001 > 001)
+    -n <session>    session ID used to extract the correct pRF-parameters. Will combined with <deriva-
+                    tives>/prf/ses-<session>
     -v <vertices>   manually specify two vertices to use instead of having the program look for it. 
                     The format is important here and should always be: "<vertex in lh>,<vertex in rh>".
                     Always try to specify two vertices; doesn't matter too much if one is not relevant
@@ -520,20 +522,21 @@ Below the help information for each module, which can also be called with:
     <derivatives>   Derivatives folder containing the output from pycortex and pRF-fitting. Looks for 
                     <derivatives>/freesurfer, <derivatives>/pycortex, and <derivatives>/prf for the 
                     surface reconstruction, pycortex-import, and pRF-data, respectively
-    <ROI>           Region-of-interest to use. Still underdeveloped and set to V1 by default, but as 
-                    of now it doesn't do much in the script. Eventually you will be able to specify
-                    a FreeSurfer-named label-file to use to look for your vertex.
+    <ROI>           Region-of-interest to use. Should be a FreeSurfer-named label-file or a custom
+                    file in the format of FreeSurfer label-file: you could for instance draw an ROI
+                    in volume-space in FreeView, convert that to a label ("mri_vol2label") and insert
+                    that to look for a vertex (might be useful for finding a mask representing indi-
+                    vidual fingers when the motor cortex mask from FreeSurfer is to coarse. UNTESTED)
 
     Usage:
     spinoza_bestvertex <-s sub> <-v "lh,rh"> <sourcedata> <derivatives> <ROI>
 
     Example:
-    spinoza_bestvertex $DIR_DATA_HOME $DIR_DATA_DERIV V1
-    spinoza_bestvertex -s 001 $DIR_DATA_HOME $DIR_DATA_DERIV V1
-    spinoza_bestvertex -s 001 -v "1957,8753" $DIR_DATA_HOME $DIR_DATA_DERIV V1
+    spinoza_bestvertex $DIR_DATA_HOME $DIR_DATA_DERIV V1_exvivo.thresh
+    spinoza_bestvertex -s 001 $DIR_DATA_HOME $DIR_DATA_DERIV V1_exvivo.thresh
+    spinoza_bestvertex -s 001 -v "1957,8753" $DIR_DATA_HOME $DIR_DATA_DERIV V1_exvivo.thresh
 
     Notes:
-    - Has the '-s' switche to specify a particular subject
     - Has a '-v' switch to specify your own vertices; mind the format!! "lh,rh"
     - Both these switches are optional and can be controlled with the master-script
 
