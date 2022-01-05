@@ -57,6 +57,7 @@ External Dependencies
    For python packages that are currently in development (e.g., pRFpy_, Nideconv_, Pycortex_) or require special attention (e.g., Nighres_), it is advisable to create a separate folder like ``packages`` locally, ``git clone`` the packages into this directory, and run ``pip install -e .`` in the individual packages (should the respective packages allow this procedure). That could look something like:
 
    .. code:: bash
+      
          $ tree ${PATH_HOME}/programs/packages
          packages
          ├── prfpy
