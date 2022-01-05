@@ -5,7 +5,6 @@ from linescanning import utils
 import pandas as pd
 
 def correct_angle(x, verbose=False, only_angles=True):
-
     """correct_angle
 
     This function converts the angles obtained with normal2angle to angles that we can use on the scanner. The scanner doesn't like angles >45 degrees. If inserted, it will flip  all kinds of parameters such as slice orientation and foldover.
@@ -235,7 +234,6 @@ def correct_angle(x, verbose=False, only_angles=True):
 
 
 def normal2angle(normal, unit="deg", system="RAS", return_axis=['x','y','z']):
-
     """normal2angle
 
     Convert the normal vector to angles representing the angle with the x,y,z axis. This can be done by taking the arc cosine over the dot product of the normal vector and a vector representing the axis of interest. E.g., the vector for x would be [1,0,0], for y it would be [0,1,0], and for z it would be [0,0,1]. Using these vector representations of the axis we can calculate the angle between these vectors and the normal vector. This results in radians, so we convert it to degrees by multiplying it with 180/pi.
@@ -305,7 +303,6 @@ def normal2angle(normal, unit="deg", system="RAS", return_axis=['x','y','z']):
 
 
 def get_console_settings(angles, hemi, idx, z_axis_meaning="Y"):
-
     """get_console_settings
 
     Function that outputs what is to be inserted in the MR console. This function is the biggest source of misery during my PhD so far. Needs thorough investigation. The idea is pretty simple: we have a set of angles obtained from normal2angle, we have converted them to angles that the scanner can understand (i.e., angles <45 degrees), and now we need to derive which ones to use in order to place the line along the normal vector.
@@ -421,7 +418,6 @@ def get_console_settings(angles, hemi, idx, z_axis_meaning="Y"):
 
 
 def rotate_normal(norm, xfm, system="RAS"):
-
     """rotate_normal
 
     Applies the rotation part of an affine matrix to the normal vectorself.
