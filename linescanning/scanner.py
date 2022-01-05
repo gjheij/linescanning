@@ -27,6 +27,17 @@ class Scanner(object):
         hemisphere you're interested in. Should be 'right' or 'left'. It will do all operations on both hemispheres anyway, but only print the actual values you need to insert in the MR console for the specified hemisphere
     fs_dir: str
         path to FreeSurfer directory; will default to SUBJECTS_DIR if left empty.
+    ses: str
+        session ID of new session. Generally this will be `ses-2`, pointing to a line-scanning session. Should be >1
+    print_to_console: bool
+        boolean whether to print the translation/rotations that should be inserted in the console to the terminal. Can be turned off for debugging reasons
+    debug: bool
+        boolean for debugging mode; if True, we'll print more information about the (converted) angles/normal vectors
+
+    Returns
+    ----------
+    Attr
+        sets attributes in an instantiation of `scanner.Scanner` and will lead to printing of information for the MR-console (if `print_to_console=True`)
 
     Example
     ----------
