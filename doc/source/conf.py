@@ -40,7 +40,8 @@ extensions = ['sphinx.ext.autodoc',
               'sphinx.ext.ifconfig',
               'sphinx.ext.napoleon',
               'sphinx.ext.viewcode',
-              'sphinx.ext.githubpages']
+              'sphinx.ext.githubpages',
+              "nbsphinx"]
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -68,7 +69,7 @@ author = 'Tomas Knapen, Jurjen Heij'
 # # The full version, including alpha/beta/rc tags.
 # release = '0.1.dev0'
 currentdir = os.path.abspath(os.path.dirname(__file__))
-ver_file = os.path.join(currentdir, '../..', project, 'version.py')
+ver_file = os.path.join(currentdir, '../../', project, 'version.py')
 with open(ver_file) as f:
     exec(f.read())
 source_version = __version__
@@ -130,7 +131,6 @@ html_static_path = ['../_static']
 #         'searchbox.html',
 #     ]
 # }
-
 
 # -- Options for HTMLHelp output ------------------------------------------
 

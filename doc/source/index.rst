@@ -18,11 +18,20 @@ Contents
 
 .. toctree::
    :maxdepth: 3
+   :caption: Getting started
 
    installation
    usage
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Example gallery
+
+   examples/lazyplot
+   
+.. toctree::
+   :maxdepth: 2
+   :caption: Reference
+
    bash
    classes/index
-
-
-
