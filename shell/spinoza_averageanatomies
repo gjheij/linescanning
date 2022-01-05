@@ -58,11 +58,11 @@ SESSION=${@:$OPTIND+2:1}
 
 if [[ -z ${sub} ]]; then
   # loop through subjects
-  search="${INPUT}/sub-*"
+  search="${INPUT}/${PREFIX}*"
 else
   # do for 1 subject
   sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
-  search="${INPUT}/sub-${sub_nr}"
+  search="${INPUT}/${PREFIX}${sub_nr}"
 fi
 
 #-----------------------------------------------------------------------------
@@ -83,7 +83,7 @@ echo "==========================================================================
 for dir in ${search}; do
 
   if [[ ! -d ${INPUT} ]]; then
-    echo "  `basename ${dir}`: Could not find input directory"
+    echo "`basename ${dir}`: Could not find input directory"
 		continue
   fi
 
@@ -126,16 +126,16 @@ for dir in ${search}; do
 
       if [[ ! -z ${in_1} && ! -z ${in_2} ]]; then
 
-        echo "  Calculate mean over `basename ${in_1}` and `basename ${in_2}`"
+        echo "Calculate mean over `basename ${in_1}` and `basename ${in_2}`"
         call_calculatemean ${in_1} ${in_2} ${out}
 
       else
         if [[ -z ${in_1} ]]; then
-          echo "  Couldn't find ANTs registered ${i} image"
+          echo "ERROR in `basename ${0}`: Couldn't find ANTs registered ${i} image"
         elif [[ -z ${in_2} ]]; then
-          echo "  Couldn't pymp2rage ${i} image"
+          echo "ERROR in `basename ${0}`: Couldn't pymp2rage ${i} image"
         else
-          echo "  Missing both ANTs registered and pymp2rage image"
+          echo "ERROR in `basename ${0}`: Missing both ANTs registered and pymp2rage image"
         fi
         continue
       fi
@@ -145,7 +145,7 @@ for dir in ${search}; do
         # check if registration induced NANs
         NAN=`fslstats ${out} -R | awk '{print $1}'`
         if [[ ${NAN} == "-nan" ]]; then
-          echo "  Found NANs, replacing these values with zeroes"
+          echo "Found NaNs, replacing these values with zeroes"
           fslmaths ${out} -nan ${out}
         fi
 
@@ -159,7 +159,7 @@ for dir in ${search}; do
             max=${MAX[1]}
           fi
 
-          echo "  Rescaling to [0, ${max}] with ImageMath"
+          echo "Rescaling to [0, ${max}] with ImageMath"
           call_rescale ${out} 0 ${max}
 
         fi
@@ -168,7 +168,7 @@ for dir in ${search}; do
 
     else
 
-      echo "  `basename ${out}` already present"
+      echo "`basename ${out}` already present"
 
     fi
 

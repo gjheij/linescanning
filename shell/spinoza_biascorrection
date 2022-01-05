@@ -17,7 +17,7 @@ tags specified in the third argument (not necessarily case sensitive).
 If the second inversion time image was specified, it will look automatically for the magnitude image
 and not the phase image. In addition to the flag specified in the third argument, the find command
 will also include whatever is in the ACQ1-variable. Usually this will be MP2RAGE, so make sure these
-files have been named sub-xxx_acq-MP2RAGE_T1w or something alike. This should have happened automati-
+files have been named ""xxx_acq-MP2RAGE_T1w or something alike. This should have happened automati-
 cally if you have run spinoza_scanner2bids prior.
 
 Usage:
@@ -62,11 +62,11 @@ MODALITY=${@:$OPTIND+2:1}
 
 if [[ -z ${sub} ]]; then
   # loop through subjects
-  search="${INPUT}/sub-*"
+  search="${INPUT}/${PREFIX}*"
 else
   # do for 1 subject
   sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
-  search="${INPUT}/sub-${sub_nr}"
+  search="${INPUT}/${PREFIX}${sub_nr}"
 fi
 
 #-----------------------------------------------------------------------------

@@ -20,7 +20,7 @@ Usage:
   spinoza_denoising <-s sub> <-n ses> <fmriprep directory> <pybest output directory>
 
 Arguments:
-  <-s sub>            digit subject number following 'sub-'
+  <-s sub>            digit subject number following '${PREFIX}'
   <-n ses>            integer session number following 'ses-'
   <project root>      base directory containing the derivatives and the subject's folders.
   <derivatives>       path to the derivatives folder
@@ -65,11 +65,11 @@ DENOISE=${@:$OPTIND+1:1}
 
 if [[ -z ${sub} ]]; then
   # loop through subjects
-  search="${FPREP}/sub-*"
+  search="${FPREP}/${PREFIX}*"
 else
   # do for 1 subject
   sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
-  search="${FPREP}/sub-${sub_nr}"
+  search="${FPREP}/${PREFIX}${sub_nr}"
 fi
 
 #-----------------------------------------------------------------------------
@@ -117,7 +117,7 @@ for dir in ${search}; do
       echo "**************************************** Processing `basename ${dir}` ***************************************"
 
       # We need to specify a setup script with the variables if we want to qsub this job
-      if [[ ${PLACE} == "SPINOZA" ]]; then
+      if [[ ${PLACE} == "SGE" ]]; then
         job="qsub -pe smp 10"
         job="bash"
         in_setup="-v ${DIR_SCRIPTS}/shell/spinoza_setup"
@@ -129,15 +129,24 @@ for dir in ${search}; do
 
       echo "Running pybest denoising"
 
+      # check if spinoza_setup contains PYBEST_SPACE and PYBEST_NORM
+      if [[ -z ${PYBEST_SPACE} ]]; then
+        PYBEST_SPACE="fsnative"
+      fi
+
+      if [[ -z ${PYBEST_SPACE} ]]; then
+        PYBEST_NORM="zscore"
+      fi
+
       # full path is needed for qsub
       ${job} ${DIR_SCRIPTS}/bin/call_pybest \
         -r $(basename ${dir} | cut -d'-' -f2) \
         -n "${nr}" \
         -o ${DENOISE} \
-        -s "fsnative" \
+        -s ${PYBEST_SPACE} \
         -f ${FPREP} ${in_setup} \
         -c ${cpu} \
-        -z "zscore"
+        -z ${PYBEST_NORM}
 
       if [[ $? != 0 ]]; then
         echo

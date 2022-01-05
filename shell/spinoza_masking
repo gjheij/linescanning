@@ -14,7 +14,7 @@ spinoza_masking
 
 Mask out the dura and skull from the T1-image to reduce noise. It follow Gilles' masking procedure,
 by setting the contents of dura ('outside') and other masks ('inside') to zero. The idea is to run
-this, run fMRIprep, check segmentations, manually edit it as "sub-xxx_ses-1_acq-MP2RAGE_desc-manual
+this, run fMRIprep, check segmentations, manually edit it as "${PREFIX}xxx_ses-1_acq-MP2RAGE_desc-manual
 wmseg" or something alike. These 'manualseg' will be taken as 'inside' to boost areas that were not
 counted as brain.
 
@@ -73,11 +73,11 @@ SKULL=${@:$OPTIND+3:1}
 
 if [[ -z ${sub} ]]; then
   # loop through subjects
-  search="${INPUT}/sub-*"
+  search="${INPUT}/${PREFIX}*"
 else
   # do for 1 subject
   sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
-  search="${INPUT}/sub-${sub_nr}"
+  search="${INPUT}/${PREFIX}${sub_nr}"
 fi
 
 #-----------------------------------------------------------------------------

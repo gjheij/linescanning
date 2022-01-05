@@ -56,11 +56,11 @@ MASKS=${@:$OPTIND+3:1}
 
 if [[ -z ${sub} ]]; then
   # loop through subjects
-  search="${T1W}/sub-*"
+  search="${T1W}/${PREFIX}*"
 else
   # do for 1 subject
   sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
-  search="${T1W}/sub-${sub_nr}"
+  search="${T1W}/${PREFIX}${sub_nr}"
 fi
 
 #-----------------------------------------------------------------------------

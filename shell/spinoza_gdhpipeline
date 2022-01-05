@@ -72,11 +72,11 @@ Usage:
   spinoza_gdhpipeline -s <sub ID> -t <mgdm dir> -f <fprep dir> -r <fs dir> -m <mask dir> -w <wf dir>
 
 Example:
-  spinoza_gdhpipeline -s sub-001
-  spinoza_gdhpipeline -s sub-001 -t /path/to/mdgm -p pial -i n (don't overwrite brainmask)
-  spinoza_gdhpipeline -s sub-001 -r n -f n (skip FreeSurfer & fMRIprep)
-  spinoza_gdhpipeline -s sub-001 -r n -f n -z n (run call_gdhmgdm only)
-  spinoza_gdhpipeline -s sub-001 -f n -z n -y n (only inject manual edits and re-run FreeSurfer)
+  spinoza_gdhpipeline -s ${PREFIX}001
+  spinoza_gdhpipeline -s ${PREFIX}001 -t /path/to/mdgm -p pial -i n (don't overwrite brainmask)
+  spinoza_gdhpipeline -s ${PREFIX}001 -r n -f n (skip FreeSurfer & fMRIprep)
+  spinoza_gdhpipeline -s ${PREFIX}001 -r n -f n -z n (run call_gdhmgdm only)
+  spinoza_gdhpipeline -s ${PREFIX}001 -f n -z n -y n (only inject manual edits and re-run FreeSurfer)
 
 ---------------------------------------------------------------------------------------------------
 
@@ -529,7 +529,7 @@ fi
 if [[ ${RUN_POSTMGDM} != "n" ]]; then
   # Because the output of call_gdhmgdm is the same as spinoza_segmentmgdm, we can safely run
   # spinoza_extractregions and spinoza_cortexreconstruction
-  if [[ ${PLACE} == "SPINOZA" ]]; then
+  if [[ ${PLACE} == "SGE" ]]; then
     echo "Re-running post-edit Nighres segmentations and pRF-analyses"
     qsub -N post_gdh_nighres -wd ${DIR_LOGS} ${DIR_SCRIPTS}/shell/master -m ${region},${cruise} -s $(basename ${subject} | cut -d'-' -f2) # overwrite is default for nighres modules
     qsub -N post_gdh_prf -wd ${DIR_LOGS} ${DIR_SCRIPTS}/shell/master -m ${denoise},${prf} -s $(basename ${subject} | cut -d'-' -f2) -o y # explicitly set to overwrite for denoising/prf-fitting

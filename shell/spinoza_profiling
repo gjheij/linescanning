@@ -20,7 +20,7 @@ Usage:
                     <file>
 
 Arguments:
-  <-s sub>    digit subject number following 'sub-'
+  <-s sub>    digit subject number following '${PREFIX}'
   <-n ses>    integer session number following 'ses-'
   <nighres>   parent directory containing the output files of Nighres
                 - <nighres>/<subject>/<session>/layering/*boundaries*
@@ -64,11 +64,11 @@ TAG=${@:$OPTIND+2:1}
 
 if [[ -z ${sub} ]]; then
   # loop through subjects
-  search="${NIGHRES}/sub-*"
+  search="${NIGHRES}/${PREFIX}*"
 else
   # do for 1 subject
   sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
-  search="${NIGHRES}/sub-${sub_nr}"
+  search="${NIGHRES}/${PREFIX}${sub_nr}"
 fi
 
 #-----------------------------------------------------------------------------

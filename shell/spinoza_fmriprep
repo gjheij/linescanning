@@ -94,11 +94,11 @@ T2=${@:$OPTIND+2:1}
 
 if [[ -z ${sub} ]]; then
   # loop through subjects
-  search="${INPUT}/sub-*"
+  search="${INPUT}/${PREFIX}*"
 else
   # do for 1 subject
   sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
-  search="${INPUT}/sub-${sub_nr}"
+  search="${INPUT}/${PREFIX}${sub_nr}"
 fi
 
 if [[ -z ${mode} ]]; then
@@ -197,7 +197,7 @@ for dir in ${search}; do
   #   fi
   # fi
 
-  if [[ ${PLACE} == "SPINOZA" ]]; then
+  if [[ ${PLACE} == "SGE" ]]; then
 
     # qsub wants full paths, also for exectuble scripts
     workdir=${PATH_HOME}/programs/packages/fmriprep/${PROJECT}
@@ -225,7 +225,7 @@ for dir in ${search}; do
       -s $(basename ${dir} | cut -d'-' -f2) \
       -m ${MODE} \
       -c "SGE" \
-      -b "/data1/projects" \
+      -b ${FPREP_BINDING} \
       -r ${INPUT} \
       -d ${OUTPUT} \
       -w ${workdir} \
@@ -240,13 +240,13 @@ for dir in ${search}; do
 
     # call_fmriprep -s $(basename ${dir} | cut -d'-' -f2) -m ${MODE} -c "SGE" -r ${INPUT}
 
-  elif [[ ${PLACE} == "HOME" ]]; then
+  elif [[ ${PLACE} == "LOCAL" ]]; then
 
     call_fmriprep -s $(basename ${dir} | cut -d'-' -f2) -m ${MODE} -c "local" -r ${INPUT}
 
   else
 
-    echo " Unrecognized location specified."
+    echo "ERROR in `basename ${0}`: Unrecognized location \"${PLACE}\" specified. Change PLACE-variable to \"LOCAL\" or \"SGE\" in spinoza_setup"
     exit 1
 
   fi

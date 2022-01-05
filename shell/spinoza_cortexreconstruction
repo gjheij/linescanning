@@ -16,7 +16,7 @@ Usage:
   spinoza_cortexreconstruction <project root dir> <prob seg dir> <region> <overwrite>
 
 Arguments:
-  <-s sub>    digit subject number following 'sub-'
+  <-s sub>    digit subject number following '${PREFIX}'
   <-n ses>    integer session number following 'ses-'
   <-o>        overwrite mode active
   <project>   parent directory containing the sub-xxx folders
@@ -26,7 +26,7 @@ Arguments:
 
 Example:
   spinoza_cortexreconstruction $PROBSEGS $CRUISE cerebrum
-  spinoza_cortexreconstruction -s sub-001 -n 1 -o $PROBSEGS $CRUISE cerebellum
+  spinoza_cortexreconstruction -s ${PREFIX}001 -n 1 -o $PROBSEGS $CRUISE cerebellum
 
 Notes:
   - Has overwrite mode to run the pipeline like G. de Hollander's one
@@ -72,11 +72,11 @@ REGION=${@:$OPTIND+2:1}
 
 if [[ -z ${sub} ]]; then
   # loop through subjects
-  search="${INPUT}/sub-*"
+  search="${INPUT}/${PREFIX}*"
 else
   # do for 1 subject
   sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
-  search="${INPUT}/sub-${sub_nr}"
+  search="${INPUT}/${PREFIX}${sub_nr}"
 fi
 
 #-----------------------------------------------------------------------------

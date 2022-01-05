@@ -33,14 +33,14 @@ Notes:
   Assumes that you ran spinoza_newBIDSsession with the following data structure:
   > PROJECT
     > sourcedata
-      > sub-001
+      > ${PREFIX}001
         > ses-1
           > .PAR
           > .REC
 
   Converts to:
   > PROJECT
-    > sub-001
+    > ${PREFIX}001
       > ses-x
         > anat
         > func
@@ -77,10 +77,10 @@ SES_NR=${@:$OPTIND+2:1}
 
 if [[ -z ${sub} ]]; then
   # loop through subjects
-  search="${SOURCEDATA}/sub-*"
+  search="${SOURCEDATA}/${PREFIX}*"
 else
   # do for 1 subject
-  search="${SOURCEDATA}/sub-${sub}"
+  search="${SOURCEDATA}/${PREFIX}${sub}"
 fi
 
 # if we're dealing with a pRF session, we can specify the number with the -n flag (-x flag in master command)

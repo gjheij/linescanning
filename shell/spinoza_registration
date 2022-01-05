@@ -70,10 +70,10 @@ INIT=${@:$OPTIND+3:1}
 
 if [[ -z ${sub} ]]; then
   # loop through subjects
-  search="${INPUT}/sub-*"
+  search="${INPUT}/${PREFIX}*"
 else
   # do for 1 subject
-  search="${INPUT}/sub-${sub}"
+  search="${INPUT}/${PREFIX}${sub}"
 fi
 
 if [[ -z ${TYPE} ]]; then
@@ -134,7 +134,7 @@ for dir in ${search}; do
     txt="Registering ${ACQ1^^}-T1w to MNI152 template"
     suffix=MNI152NLin6Asym
     fixed=${FSLDIR}/data/standard/MNI152_T1_1mm.nii.gz
-    moving=`find "${INPUTDIR}" -type f \( -iname "*${space^^}*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
+    moving=`find "${INPUTDIR}" -type f \( -iname "*${DATA}*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
     ext="from-MNI152Nlin6Asym_to-subject_desc-"
     output=${OUTPUTDIR}/$(basename ${moving} _T1w.nii.gz)_space-${suffix}_T1w.nii.gz
   else
@@ -188,7 +188,7 @@ for dir in ${search}; do
           type_reg="rigid"
         fi
 
-        if [[ ${PLACE} == SPINOZA ]]; then
+        if [[ ${PLACE} == "SGE" ]]; then
           job="qsub -wd ${DIR_LOGS} -N reg_${sub_id} ${DIR_SCRIPTS}/bin/call_antsregistration"
           wait_for=1
         else

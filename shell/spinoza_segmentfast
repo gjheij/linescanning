@@ -65,10 +65,10 @@ FSL=${@:$OPTIND+1:1}
 
 if [[ -z ${sub} ]]; then
   # loop through subjects
-  search="${SKULL}/sub-*"
+  search="${SKULL}/${PREFIX}*"
 else
   # do for 1 subject
-  search="${SKULL}/sub-${sub}"
+  search="${SKULL}/${PREFIX}${sub}"
 fi
 
 #-----------------------------------------------------------------------------

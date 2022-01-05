@@ -32,7 +32,6 @@ Usage:
   spinoza_lineplanning  -s <subject ID>
                         -n <session ID>
                         -i <path to raw session 2 anatomy>
-                        -a <path to session 1 anatomy>
                         -p <path to file containing the orientation of the line>
                         -h <which hemisphere> (left | right)
                         -o <overwrite point files> (omit if we should not overwrite)
@@ -59,7 +58,7 @@ fi
 
 # Allocate input arguments to variables
 #
-while getopts uos:i:a:p:h:n: argument
+while getopts uos:i:p:h:n: argument
 do
     case ${argument} in
       s)  subject=${OPTARG}
@@ -67,8 +66,6 @@ do
       n)  session=${OPTARG}
             ;;            
       i)  nifti=${OPTARG}
-            ;;
-      a)  anat_session1=${OPTARG}
             ;;
       p)  ctxfile=${OPTARG}
             ;;

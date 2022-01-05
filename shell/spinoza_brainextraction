@@ -70,11 +70,11 @@ SOFTWARE=${@:$OPTIND+3:1}
 
 if [[ -z ${sub} ]]; then
   # loop through subjects
-  search="${INPUT}/sub-*"
+  search="${INPUT}/${PREFIX}*"
 else
   # do for 1 subject
   sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
-  search="${INPUT}/sub-${sub_nr}"
+  search="${INPUT}/${PREFIX}${sub_nr}"
 fi
 
 if [[ ${SOFTWARE,,} != "ants" ]] && [[ ${SOFTWARE,,} != "fsl" ]] && [[ ${SOFTWARE,,} != "cat12" ]]; then

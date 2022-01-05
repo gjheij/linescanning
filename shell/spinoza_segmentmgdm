@@ -13,8 +13,8 @@ function Usage {
 spinoza_segmentmgdm
 
 Tissue segmentation using nighres' MGDM. It assumes that you've run module from this pipeline before,
-so that you're directory structure is like derivatives/<process>/sub-xxx/ses-x. For this script, you
-need to give the path to the skullstripped directory up until sub-xxx, the output mgdm directory,
+so that you're directory structure is like derivatives/<process>/${PREFIX}xxx/ses-x. For this script, you
+need to give the path to the skullstripped directory up until ${PREFIX}xxx, the output mgdm directory,
 and the directory containing masks that are used to filter out stuff in the MGDM segmentation.
 
 By default, it's set to overwrite existing files in order to be able to iterate over the structural
@@ -89,11 +89,11 @@ MASKS=${@:$OPTIND+2:1}
 
 if [[ -z ${sub} ]]; then
   # loop through subjects
-  search="${INPUT}/sub-*"
+  search="${INPUT}/${PREFIX}*"
 else
   # do for 1 subject
   sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
-  search="${INPUT}/sub-${sub_nr}"
+  search="${INPUT}/${PREFIX}${sub_nr}"
 fi
 
 #-----------------------------------------------------------------------------

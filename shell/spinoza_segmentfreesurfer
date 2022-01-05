@@ -20,20 +20,20 @@ General approach for segmentation:
   - Fix skullstrip:   call_freesurfer -s <subj ID> -o gcut                    ~10 minutes
   - Run autorecon2:   call_freesurfer -s <subj ID> -r 2                       ~few hours
   - Fix errors with:
-      - norm; then run call_freesurfer -s sub-001 -r 23 -e cp                 ~few hours
-      - pia;  then run call_freesurfer -s sub-001 -r 23 -e pial               ~few hours
+      - norm; then run call_freesurfer -s ${PREFIX}001 -r 23 -e cp                 ~few hours
+      - pia;  then run call_freesurfer -s ${PREFIX}001 -r 23 -e pial               ~few hours
 
 You can specify in which directory to look for anatomical scans in the first argument. Usually,
-this is one of the following options: DIR_DATA_HOME if we should use the T1w in the project/sub-xxx
+this is one of the following options: DIR_DATA_HOME if we should use the T1w in the project/${PREFIX}xxx
 /anat directory, or DIR_DATA_DERIV/pymp2rage to use T1w-images derived from pymp2rage, or DIR_DATA_
 DERIV/masked_mp2rage to use T1w-images where the dura and sagittal sinus are masked out (should be
-default!). In any case, it assumes that the file is in YOURINPUT/sub-xxx/ses-1/. If the input is
+default!). In any case, it assumes that the file is in YOURINPUT/${PREFIX}xxx/ses-1/. If the input is
 equal to the DIR_DATA_HOME variable, this will be recognize and 'anat' will be appended to YOURINPUT
-/sub-xxx/ses-1/anat.
+/${PREFIX}xxx/ses-1/anat.
 
 You can also specify a directory where the T2-weighted image is located. Do this the same way as de-
-scribed above. To you path, sub-xxx/ses-x will be appended if the input path is not equal to DIR_DATA
-_HOME. Again, if it is, sub-xxx/ses-x/anat will be appended as well.
+scribed above. To you path, ${PREFIX}xxx/ses-x will be appended if the input path is not equal to DIR_DATA
+_HOME. Again, if it is, ${PREFIX}xxx/ses-x/anat will be appended as well.
 
 Usage:
   spinoza_freesurfer <-s sub> <-n ses> <directory with anats> <stage> <T2-directory>
@@ -73,11 +73,11 @@ T2=${@:$OPTIND+2:1}
 
 if [[ -z ${sub} ]]; then
   # loop through subjects
-  search="${T1}/sub-*"
+  search="${T1}/${PREFIX}*"
 else
   # do for 1 subject
   sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
-  search="${T1}/sub-${sub_nr}"
+  search="${T1}/${PREFIX}${sub_nr}"
 fi
 
 #-----------------------------------------------------------------------------

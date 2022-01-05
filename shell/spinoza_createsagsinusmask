@@ -65,11 +65,11 @@ SOFTWARE=${@:$OPTIND+2:1}
 
 if [[ -z ${sub} ]]; then
   # loop through subjects
-  search="${ANAT}/sub-*"
+  search="${ANAT}/${PREFIX}*"
 else
   # do for 1 subject
   sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
-  search="${ANAT}/sub-${sub_nr}"
+  search="${ANAT}/${PREFIX}${sub_nr}"
 fi
 
 #-----------------------------------------------------------------------------

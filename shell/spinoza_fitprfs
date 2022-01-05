@@ -23,7 +23,7 @@ Usage:
   spinoza_fitprfs <-s sub> <-n ses> <prf dir> <pybest dir> <png dir>
 
 Arguments:
-  <-s sub>       digit subject number following 'sub-'
+  <-s sub>       digit subject number following '${PREFIX}'
   <-n ses>       integer session number following 'ses-'
   <-m model>     'gauss' or 'norm' for the type of model to use for the fitting
   <-g grid>      only run grid fit, skip iterative fit
@@ -78,10 +78,10 @@ PNG=${@:$OPTIND+2:1}
 
 if [[ -z ${sub} ]]; then
   # loop through subjects
-  search="${DENOISE}/sub-*"
+  search="${DENOISE}/${PREFIX}*"
 else
   # do for 1 subject
-  search="${DENOISE}/sub-${sub}"
+  search="${DENOISE}/${PREFIX}${sub}"
 fi
 
 if [[ "${@}" == *"-g"* ]]; then
@@ -202,7 +202,7 @@ for dir in ${search}; do
       fi
 
       # We need to specify a setup script with the variables if we want to qsub this job
-      if [[ ${PLACE} != "SPINOZA" ]]; then
+      if [[ ${PLACE} != "SGE" ]]; then
         job="python"
       else
         job="qsub -wd ${prf_dir} -N $(basename ${dir})_gauss"
@@ -212,12 +212,12 @@ for dir in ${search}; do
       export DISPLAY=:0
       ${job} ${DIR_SCRIPTS}/bin/call_prf \
         -s "$(basename ${dir} | cut -d'-' -f2)" \
-        -n "${nr}" \
-        -t "${TASK_SES1}" \
-        -o "${prf_dir}" \
-        -i "${pybest_dir}/denoising" \
-        -p "${PNGS}" \
-        -m "${use_model}" \
+        -n ${nr} \
+        -t ${TASK_SES1} \
+        -o ${prf_dir} \
+        -i ${pybest_dir}/denoising \
+        -p ${PNGS} \
+        -m ${use_model} \
         ${grid_flag} # empty if iterfit, '-g' if grid_only -eq 1
 
     else
