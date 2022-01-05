@@ -26,9 +26,11 @@ Args:
                   tex1.csv) so that a new line_pycortex.csv-file is created. Given that the original
                   file is NOT deleted, I consider this a soft-overwrite mode. You can always manual-
                   ly delete unwanted/unused files.
-  -n              prevent FreeView from opening while verifying the location. ONLY do this if you
+  -f              prevent FreeView from opening while verifying the location. ONLY do this if you
                   already know the position. Generally only used for debugging purposes.
-  -s <subject>    subject ID as used throughout the pipeline without prefix (e.g., sub-001 > 001)
+  -s <subject>    subject ID as used throughout the pipeline without prefix (e.g., 001 > 001)
+  -n <session>    session ID used to extract the correct pRF-parameters. Will combined with <deriva-
+                  tives>/prf/ses-<session>
   -v <vertices>   manually specify two vertices to use instead of having the program look for it. 
                   The format is important here and should always be: "<vertex in lh>,<vertex in rh>".
                   Always try to specify two vertices; doesn't matter too much if one is not relevant
@@ -37,20 +39,21 @@ Args:
   <derivatives>   Derivatives folder containing the output from pycortex and pRF-fitting. Looks for 
                   <derivatives>/freesurfer, <derivatives>/pycortex, and <derivatives>/prf for the 
                   surface reconstruction, pycortex-import, and pRF-data, respectively
-  <ROI>           Region-of-interest to use. Still underdeveloped and set to V1 by default, but as 
-                  of now it doesn't do much in the script. Eventually you will be able to specify
-                  a FreeSurfer-named label-file to use to look for your vertex.
+  <ROI>           Region-of-interest to use. Should be a FreeSurfer-named label-file or a custom
+                  file in the format of FreeSurfer label-file: you could for instance draw an ROI
+                  in volume-space in FreeView, convert that to a label ("mri_vol2label") and insert
+                  that to look for a vertex (might be useful for finding a mask representing indi-
+                  vidual fingers when the motor cortex mask from FreeSurfer is to coarse. UNTESTED)
 
 Usage:
   spinoza_bestvertex <-s sub> <-v "lh,rh"> <sourcedata> <derivatives> <ROI>
 
 Example:
-  spinoza_bestvertex $DIR_DATA_HOME $DIR_DATA_DERIV V1
-  spinoza_bestvertex -s 001 $DIR_DATA_HOME $DIR_DATA_DERIV V1
-  spinoza_bestvertex -s 001 -v "1957,8753" $DIR_DATA_HOME $DIR_DATA_DERIV V1
+  spinoza_bestvertex $DIR_DATA_HOME $DIR_DATA_DERIV V1_exvivo.thresh
+  spinoza_bestvertex -s 001 $DIR_DATA_HOME $DIR_DATA_DERIV V1_exvivo.thresh
+  spinoza_bestvertex -s 001 -v "1957,8753" $DIR_DATA_HOME $DIR_DATA_DERIV V1_exvivo.thresh
 
 Notes:
-  - Has the '-s' switche to specify a particular subject
   - Has a '-v' switch to specify your own vertices; mind the format!! "lh,rh"
   - Both these switches are optional and can be controlled with the master-script
 
@@ -60,15 +63,18 @@ USAGE
     exit 1
 }
 
-# Check for subject flag
-while getopts nos:v: argument
+#-----------------------------------------------------------------------------
+# Deal with arguments
+while getopts fos:v:n: argument
 do
-    case ${argument} in
-      s)  sub=${OPTARG}
-            ;;
-      v)  vert=${OPTARG}
-              ;;            
-    esac
+  case ${argument} in
+    s)  sub=${OPTARG}
+          ;;
+    n)  ses=${OPTARG}
+          ;;          
+    v)  vert=${OPTARG}
+            ;;            
+  esac
 done
 
 if [[ $# -lt 2 ]] ; then
@@ -76,16 +82,19 @@ if [[ $# -lt 2 ]] ; then
   exit 1
 fi
 
+# this deals with the fact that we might have flags before positional arguments
 BASE=${@:$OPTIND:1}
 DERIV=${@:$OPTIND+1:1}
+ROI=${@:$OPTIND+2:1}
 
+# check if we should loop through subjects or do it for 1 subject only
 if [[ -z ${sub} ]]; then
   # loop through subjects
-  search="${BASE}/sub-*"
+  search="${BASE}/${PREFIX}*"
 else
   # do for 1 subject
   sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
-  search="${BASE}/sub-${sub_nr}"
+  search="${BASE}/${PREFIX}${sub_nr}"
 fi
 
 # force overwrite (default = yes); no saves time while debugging. Just leave it empty..
@@ -97,7 +106,7 @@ else
 fi
 
 # disable FreeView
-if [[ "${@}" == *"-n"* ]]; then
+if [[ "${@}" == *"-f"* ]]; then
   FREEVIEW=0
 else
   FREEVIEW=1
@@ -121,10 +130,29 @@ echo "==========================================================================
 
 for dir in ${search}; do
 
+  # check if we got a session number. Necessary to extract the correct pRF-parameters should we want to include that
+  if [[ -z ${ses} ]]; then
+    base="$(basename ${dir})"
+    base_dir=${base}
+  else
+    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
+    base="$(basename ${dir})_ses-${nr}"
+    base_dir=$(basename ${dir})/ses-${nr}
+  fi
+
+  # set the paths
+  fs_dir=${DERIV}/freesurfer/$(basename ${dir})
+  cx_dir=${DERIV}/pycortex/$(basename ${dir})
+  prf_dir=${DERIV}/prf/${base_dir}
+
+  # make the pycortex directory if it doesn't exists; the others should exists already. If not, it will complain about it below
   if [[ ! -d ${DERIV}/pycortex ]]; then
     mkdir -p ${DERIV}/pycortex
   fi
 
+  # never really delete a line_pycortex file, but rename numerically, so that the highest number is the oldest file.
+  # The file without any numbering will be the most recent one and also the one that will be used; unless otherwise
+  # specified in the master script
   line_orientation_file=${DERIV}/pycortex/$(basename ${dir})/line_pycortex.csv
   if [[ ${OW} -eq 1 ]]; then
     if [[ -f ${line_orientation_file} ]]; then
@@ -134,30 +162,38 @@ for dir in ${search}; do
     fi
   fi
 
+  # start process
   if [[ ! -f ${line_orientation_file} ]]; then
 
-    if [[ ! -d ${DERIV}/freesurfer/$(basename ${dir}) ]]; then
-      echo "  `basename ${dir}`: No FreeSurfer directory found. Make sure to run that first"
+    if [[ ! -d ${fs_dir} ]]; then
+      echo "`basename ${dir}`: No FreeSurfer directory found. Make sure to run that first"
       continue
     fi
 
-    if [[ ! -d ${DERIV}/prf/$(basename ${dir}) ]]; then
-      echo "  `basename ${dir}`: No pRF directory found. Make sure to run that first"
+    if [[ ! -d ${prf_dir} ]]; then
+      echo "`basename ${dir}`: No pRF directory found > \"${prf_dir}\""
       continue
     fi
 
     echo
     echo "**************************************** Processing `basename ${dir}` ***************************************"
     echo "Creating line_pycortex.csv file"
-
+    
+    # set the call_pycortex2 '-v' flag  if we want manually selected vertices
     if [[ ! -z ${vert} ]]; then
       man_verts="-v [${vert}]"
     else
       man_verts=""
     fi
 
-    # set some defaults
-    roi="V1_exvivo.thresh"
+    # set default ROI if not specified
+    if [[ -z ${ROI} ]]; then
+      roi="V1_exvivo.thresh"
+    else
+      roi=${ROI}
+    fi
+    
+    # set the default task for pRF parameters
     task="${TASK_SES1}_model-gauss_stage-iter"
     
     # use the --use-prf flag if the roi = V1. Otherwise exclude pRFs in the selecting of the vertex
@@ -167,13 +203,22 @@ for dir in ${search}; do
       use_prfs="--use-prf"
     fi
 
+    # set the call_pycortex2 flag for skipping FreeView
     if [[ ${FREEVIEW} -eq 0 ]]; then
       OPEN_FV="-f"
     else
       OPEN_FV=""
     fi
 
-    call_pycortex2 ${OPEN_FV} -s $(basename ${dir}) ${man_verts} -r ${roi} -t ${task} ${use_prfs} -o ${line_orientation_file}
+    call_pycortex2 ${OPEN_FV} ${man_verts} \
+      -s $(basename ${dir}) 
+      --fs ${fs_dir} \
+      --cx ${cx_dir} \
+      --prf ${prf_dir} \
+      -r ${roi} \
+      -t ${task} \
+      ${use_prfs} \
+      -o ${line_orientation_file}
 
     if [[ $? != 0 ]]; then
       echo

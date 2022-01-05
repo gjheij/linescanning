@@ -87,9 +87,13 @@ Notes:
     use_prf     = 1
     verts       = None
     open_fv     = 1
+    deriv       = None
+    fs_dir      = None
+    cx_dir      = None
+    prf_dir     = None
 
     try:
-        opts = getopt.getopt(argv,"fuhd:s:t:r:o:b:v:",["help", "deriv=", "task=", "sub=", "roi=", "out=", "fs=", "ctx=", "prf=", "vert=", "use-prf", "--freeview"])[0]
+        opts = getopt.getopt(argv,"fuhd:s:t:r:o:b:v:",["help", "deriv=", "task=", "sub=", "roi=", "out=", "fs=", "cx=", "prf=", "vert=", "use-prf", "freeview"])[0]
     except getopt.GetoptError:
         print("ERROR IN ARGUMENT HANDLING!")
         print(main.__doc__)
@@ -107,6 +111,12 @@ Notes:
             out = arg
         elif opt in ("-d", "--deriv"):
             deriv = arg
+        elif opt in ("--fs"):
+            fs_dir = arg
+        elif opt in ("--cx"):
+            cx_dir = arg
+        elif opt in ("--prf"):
+            prf_dir = arg
         elif opt in ("-u", "--use-prf"):
             use_prf = 1
         elif opt in ("-t", "--task"):
@@ -145,14 +155,38 @@ Notes:
     else:
         open_fv = False
 
-    optimal.target_vertex(subject, 
-                          deriv=deriv,
-                          task=task, 
-                          vert=verts,
-                          use_prf=use_prf,
-                          out=out,
-                          roi=roi,
-                          webshow=open_fv)
+    # when including pRF-parameters, use individual directories as pRF-directory has an additional 'ses-' directory that's unaccounted for when looking for defaults
+    if use_prf:
+        if not fs_dir:
+            fs_dir = os.environ['SUBJECTS_DIR']
+
+        if not cx_dir:
+            raise ValueError("Pycortex directory not specified. Use '--cx <path to pycortex directory>'")
+
+        if not prf_dir:
+            raise ValueError("pRF-directory not specified. Use '--prf <path to pycortex directory>'")
+
+        optimal.target_vertex(subject,
+                              fs_dir=fs_dir,
+                              cx_dir=cx_dir,
+                              prf_dir=prf_dir,
+                              task=task, 
+                              vert=verts,
+                              use_prf=use_prf,
+                              out=out,
+                              roi=roi,
+                              webshow=open_fv)
+    
+    else:
+        # using 'deriv=deriv' should work fine if 'use_prf=False'
+        optimal.target_vertex(subject,
+                              deriv=deriv,
+                              task=task,
+                              vert=verts,
+                              use_prf=use_prf,
+                              out=out,
+                              roi=roi,
+                              webshow=open_fv)
 
 if __name__ == "__main__":
     main(sys.argv[1:])
