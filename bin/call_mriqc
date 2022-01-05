@@ -148,7 +148,7 @@ fi
 #-----------------------------------------------------------------------------
 # Set default container if none specified
 if [[ -z ${IMG} ]]; then
-	mriqc_container=/data1/projects/MicroFunc/Jurjen/programs/packages/mriqc/containers_bids-mriqc--0.15.1.simg
+	mriqc_container=${MRIQC_SIMG}
 	# mriqc_container=/data1/projects/MicroFunc/Jurjen/programs/packages/mriqc/containers_bids-mriqc--21.0.0rc2.simg
 else
 	mriqc_container=${IMG}

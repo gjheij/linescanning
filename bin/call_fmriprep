@@ -87,6 +87,9 @@ if [[ $# -lt 1 ]] ; then
 fi
 
 #-----------------------------------------------------------------------------
+source call_bashhelper # gives access to default fMRIprep container
+
+#-----------------------------------------------------------------------------
 if [[ -z ${subj_ID} ]]; then
   echo "Need at least a subject ID!"
   Usage >&2
@@ -156,12 +159,32 @@ fi
 #-----------------------------------------------------------------------------
 # Set default config file if none specified
 if [[ -z ${CONFIG} ]]; then
-  cfile=${DIR_SCRIPTS}/data/fmriprep_config.json
+  cfile=${DIR_SCRIPTS}/misc/fmriprep_config.json
 else
   cfile=${CONFIG}
 fi
 
+#-----------------------------------------------------------------------------
+# Check if we need to output CIFTIs
+if [[ -z ${CIFTI} ]]; then
+  cifti_flag=""
+else
+  cifti_flag="--cifti-output ${CIFTI}"
+fi
 
+#-----------------------------------------------------------------------------
+# Check if we need to output CIFTIs
+if [[ -z ${DO_SYN} ]]; then
+  syn_flag="--use-syn-sdc"
+else
+  if [[ ${DO_SYN} -eq 1 ]]; then
+    syn_flag="--use-syn-sdc"
+  else
+    syn_flag=""
+  fi
+fi
+
+#-----------------------------------------------------------------------------
 #Run fmriprep
 if [ ${system} == "SGE" ]; then
 
@@ -177,7 +200,7 @@ if [ ${system} == "SGE" ]; then
   #-----------------------------------------------------------------------------
   # Set default container if none specified
   if [[ -z ${IMG} ]]; then
-    fprep_container=${PATH_HOME}/programs/packages/fmriprep/containers_bids-fmriprep--20.2.5.simg
+    fprep_container=${FPREP_SIMG}
   else
     fprep_container=${IMG}
   fi
@@ -198,8 +221,8 @@ if [ ${system} == "SGE" ]; then
       --skip-bids-validation \
       --md-only-boilerplate \
       --fs-license-file ${license} \
-      --output-spaces fsnative fsaverage MNI152NLin6Asym:res-1 \
-      --cifti-output 170k \
+      --output-spaces ${FPREP_OUT_SPACES} \
+      ${cifti_flag} \
       --anat-only \
       --nthreads ${nthreads} \
       --bids-filter-file ${cfile} \
@@ -215,9 +238,9 @@ if [ ${system} == "SGE" ]; then
       --skip-bids-validation \
       --md-only-boilerplate \
       --fs-license-file ${license} \
-      --output-spaces fsnative fsaverage MNI152NLin6Asym:res-1 \
-      --cifti-output 170k \
-      --use-syn-sdc \
+      --output-spaces ${FPREP_OUT_SPACES} \
+      ${cifti_flag} \
+      ${syn_flag} \
       --bids-filter-file ${cfile} \
       --nthreads ${nthreads} \
       --stop-on-first-crash \
@@ -237,7 +260,9 @@ elif [[ ${system} == "local" ]]; then
       --skip-bids-validation \
       --md-only-boilerplate \
       --fs-license-file ${license} \
-      --output-spaces fsnative \
+      --output-spaces ${FPREP_OUT_SPACES} \
+      ${cifti_flag} \
+      ${syn_flag} \
       --stop-on-first-crash \
       --anat-only \
       -w ${work}
@@ -252,7 +277,9 @@ elif [[ ${system} == "local" ]]; then
       --skip-bids-validation \
       --md-only-boilerplate \
       --fs-license-file ${license} \
-      --output-spaces fsnative \
+      --output-spaces ${FPREP_OUT_SPACES} \
+      ${cifti_flag} \
+      ${syn_flag} \      
       --stop-on-first-crash \
       -w ${work}
 
