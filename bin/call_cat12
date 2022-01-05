@@ -190,7 +190,7 @@ fi
 if [[ -d ${OUTPUT}/mri ]]; then
   echo "Copying header from input image"
   for i in ${OUTPUT}/mri/*; do
-      fslcpgeom ${INPUT} ${i}
+    fslcpgeom ${INPUT} ${i}
   done
 fi
 
