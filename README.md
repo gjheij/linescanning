@@ -16,6 +16,6 @@ Documentation for this package can be found at [readthedocs](https://linescannin
 - [x] Docstrings in numpy format.
 - [x] PEP8 - please set your editor to autopep8 on save!
 - [ ] Write docs for glm.py
-- [ ] Sphinx doesn't show source code for python (`FileNotFoundError: [Errno 2] No such file or directory: '/home/docs/.config/pycortex'`)
+- [x] Sphinx doesn't show source code for python (`FileNotFoundError: [Errno 2] No such file or directory: '/home/docs/.config/pycortex'`)
 - [ ] Explore options to streamline code
 - [ ] Examples of applications for package (integration of pycortex & pRFpy)
