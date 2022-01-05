@@ -5,7 +5,7 @@ Installation
 ------------
 You can install *LineScanning* within a `Manually Prepared Environment (Python 3.7+)`_. The workflow to install *LineScanning* is as follows. 
 
-Download the repository from ``github``:
+Download the repository from ``github`` (see **TIP** below on what ``<some directory>`` could be!):
 
 .. code:: bash
 
@@ -18,7 +18,7 @@ Setup the environment for ``bash``:
 
    $ bash <some directory>/linescanning/shell/spinoza_setup setup
 
-This will print out a set of instructions that are executed under the hood; it makes sure the setup file is loaded in your ``.bash_profile`` each time you start a new a new terminal and makes the scripts inside the repository executable similar to how *FSL* works. Setup the ``python`` environment. Edit the *environment.yml* file to your liking (e.g., paths and environment name) and execute the following commands:
+This makes sure the setup file is loaded in your ``.bash_profile`` each time you start a new a new terminal and makes the scripts inside the repository executable similar to how *FSL* works. Setup the ``python`` environment. Edit the *environment.yml* file to your liking (e.g., paths and environment name) and execute the following commands:
 
 .. code:: bash
 
