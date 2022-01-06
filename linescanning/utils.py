@@ -1449,8 +1449,10 @@ class LazyPlot():
 
         if self.xkcd:
             with plt.xkcd():
+                self.fontname = "Humor Sans"
                 self.plot()
         else:
+            self.fontname = "Arial"
             self.plot()
 
         if save_as:
@@ -1498,30 +1500,24 @@ class LazyPlot():
                 elif len(self.error) == 2:
                     ymin, ymax = self.error
                 x = np.arange(0, len(self.array))
-                axs.fill_between(x, ymax, ymin, color=self.color,
-                                 alpha=self.error_alpha)
+                axs.fill_between(x, ymax, ymin, color=self.color, alpha=self.error_alpha)
 
         if self.labels:
             axs.legend(frameon=False)
 
         if self.x_label:
-            axs.set_xlabel(self.x_label, fontname='Arial',
-                           fontsize=self.font_size)
+            axs.set_xlabel(self.x_label, fontname=self.fontname, fontsize=self.font_size)
 
         if self.y_label:
-            axs.set_ylabel(self.y_label, fontname='Arial',
-                           fontsize=self.font_size)
+            axs.set_ylabel(self.y_label, fontname=self.fontname, fontsize=self.font_size)
 
         if self.title:
-            axs.set_title(self.title, fontname='Arial',
-                          fontsize=self.font_size)
+            axs.set_title(self.title, fontname=self.fontname, fontsize=self.font_size)
 
         if self.add_vline:
-            axs.axvline(self.add_vline['pos'], color=self.add_vline['color'],
-                        lw=self.add_vline['lw'], ls=self.add_vline['ls'])
+            axs.axvline(self.add_vline['pos'], color=self.add_vline['color'], lw=self.add_vline['lw'], ls=self.add_vline['ls'])
 
         if self.add_hline:
-            axs.axhline(self.add_hline['pos'], color=self.add_hline['color'],
-                        lw=self.add_hline['lw'], ls=self.add_hline['ls'])
+            axs.axhline(self.add_hline['pos'], color=self.add_hline['color'], lw=self.add_hline['lw'], ls=self.add_hline['ls'])
 
         sns.despine(offset=10)
