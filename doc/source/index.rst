@@ -28,6 +28,7 @@ Contents
    :caption: Example gallery
 
    examples/lazyplot
+   examples/genericglm
    
 .. toctree::
    :maxdepth: 2
