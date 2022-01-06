@@ -30,13 +30,36 @@ class GenericGLM:
     TR: float
         repetition time of acquisition
     osf: [type], optional
-        Oversampling factor used to account for decimal onset times, by default None    
+        Oversampling factor used to account for decimal onset times, by default None. The larger this factor, the more accurate decimal onset times will be processed, but also the bigger your upsampled convolved becomes, which means convolving will take longer.   
     type: str, optional
         Use block design of event-related design, by default 'event'. If set to 'block', `block_length` is required.
     block_length: int, optional
         Duration of block in seconds, by default None
     amplitude: int, list, optional
         Amplitude to be used when creating the stimulus vector, by default None. If nothing is specified, the amplitude will be set to '1', like you would in a regular FSL 1-/3-column file. If you want variable amplitudes for different events for in a simulation, you can specify a list with an equal length to the number of events present in `onset_df`.
+    regressors: pandas.DataFrame, numpy.ndarray, optional
+        Add a bunch of regressors to the design
+    make_figure: bool, optional
+        Create overview figure of HRF, stimulus vector, and convolved stimulus vector, by default False
+    scan_length: int
+        number of volumes in `data` (= `scan_length` in :func:`linescanning.glm.make_stimulus_vector`)        
+    xkcd: bool, optional
+        Plot the figre in XKCD-style (cartoon), by default False    
+    plot_vox: int, optional
+        Instead of plotting the best-fitting voxel, specify which voxel to plot the timecourse and fit of, by default None
+    plot_event: str, int, list, optional
+        If a larger design matrix was inputted with multiple events, you can specify here the name of the event you'd like to plot the betas from. It also accepts a list of indices of events to plot, so you could plot the first to events by specifying `plot_event=[1,2]`. Remember, the 0th index is the intercept! By default we'll plot the event right after the intercept
+
+    Returns
+    ----------
+    numpy.ndarray
+        numpy array of shape (<events + regressors>, <voxels>) representing the betas
+
+    numpy.ndarray
+        numpy array of shape (<time>, <events + regressors>) representing the design matrix
+
+    matplotlib.pyplot
+        plots along the process if `make_figure=True`        
 
     Example
     ----------
@@ -73,25 +96,41 @@ class GenericGLM:
     >>> fitting = GenericGLM(onsets, data.values, TR=func.TR, osf=1000)
     """
     
-    def __init__(onsets, data, hrf_pars=None, TR=None, osf=1, exp_type='event', block_length=None, amplitude=None):
+    def __init__(self, onsets, data, hrf_pars=None, TR=None, osf=1, exp_type='event', block_length=None, amplitude=None, regressors=None, make_figure=False, xkcd=False, plot_event=[1, 2], plot_vox=None, verbose=False):
         
         # %%
         # instantiate 
         self.onsets         = onsets
-        self.data           = data
         self.hrf_pars       = hrf_pars
         self.TR             = TR
         self.osf            = osf
         self.exp_type       = exp_type
         self.block_length   = block_length
         self.amplitude      = amplitude
+        self.regressors     = regressors
+        self.make_figure    = make_figure
+        self.xkcd           = xkcd
+        self.plot_event     = plot_event
+        self.plot_vox       = plot_vox
+        self.verbose        = verbose
 
+        if isinstance(data, np.ndarray):
+            self.data = data.copy()
+        elif isinstance(data, pd.DataFrame):
+            self.data = data.values
+        else:
+            raise ValueError("Data must be 'np.ndarray' or 'pandas.DataFrame'")
         # %%
         # make the stimulus vectors
+        if verbose:
+            print("Creating stimulus vector(s)")
         self.stims = make_stimulus_vector(self.onsets, scan_length=self.data.shape[0], osf=self.osf, type=self.exp_type)
 
         # %%
         # define HRF
+        if verbose:
+            print("Defining HRF")
+
         dt = 1/self.osf
         self.time_points = np.linspace(0, 25, np.rint(float(25)/dt).astype(int))
 
@@ -100,13 +139,34 @@ class GenericGLM:
         else:
             self.hrf = double_gamma(self.time_points, lag=6)
         
+
         # %%
         # convolve stimulus vectors
-        self.convolved_vectors = convolve_hrf(self.hrf, self.stims, osf=self.osf, num_points=self.data.shape[0])
-        
+        if verbose:
+            print("Convolve stimulus vectors with HRF")
+
+        self.stims_convolved = convolve_hrf(self.hrf, self.stims, make_figure=self.make_figure, xkcd=self.xkcd)
+
+        if self.osf > 1:
+            if verbose:
+                print("Resample convolved stimulus vectors")
+            self.stims_convolved_resampled = resample_stim_vector(self.stims_convolved, self.data.shape[0])
+        else:
+            self.stims_convolved_resampled = self.stims_convolved.copy()
+
+        # %%
+        # finalize design matrix (with regressors)
+        if verbose:
+            print("Creating design matrix")
+
+        self.design = first_level_matrix(self.stims_convolved_resampled, regressors=self.regressors)
+
         # %%
         # Fit all
-        self.betas, self.X_conv = fit_first_level(self.convolved_vectors, self.data.values)
+        if verbose:
+            print("Running fit")
+
+        self.betas, self.X_conv = fit_first_level(self.design, self.data, make_figure=self.make_figure, xkcd=self.xkcd, plot_vox=self.plot_vox, plot_event=self.plot_event)
 
 
 def double_gamma(x, lag=6, a2=12, b1=0.9, b2=0.9, c=0.35, scale=True):
@@ -265,7 +325,7 @@ def make_stimulus_vector(onset_df, scan_length=None, TR=0.105, osf=None, type='e
     return stim_vectors
 
 
-def convolve_hrf(hrf, stim_v, make_figure=False, osf=None, scan_length=None, xkcd=False, add_array1=None, add_array2=None, regressors=None):
+def convolve_hrf(hrf, stim_v, make_figure=False, xkcd=False, add_array1=None, add_array2=None):
     """convolve_hrf
 
     Convolve :func:`linescanning.glm.double_gamma` with :func:`linescanning.glm.make_stimulus_vector`. There's an option to plot the result in a nice overview figure, though python-wise it's not the prettiest.. 
@@ -274,8 +334,8 @@ def convolve_hrf(hrf, stim_v, make_figure=False, osf=None, scan_length=None, xkc
     ----------
     hrf: numpy.ndarray
         HRF across given timepoints with shape (,`x.shape[0]`)
-    stim_v: [type]
-        Stimulus vector as per :func:`linescanning.glm.make_stimulus_vector`
+    stim_v: numpy.ndarray, list
+        Stimulus vector as per :func:`linescanning.glm.make_stimulus_vector` or numpy array containing one stimulus vector (e.g., a *key* from :func:`linescanning.glm.make_stimulus_vector`)
     make_figure: bool, optional
         Create overview figure of HRF, stimulus vector, and convolved stimulus vector, by default False
     osf: [type], optional
@@ -340,28 +400,32 @@ def convolve_hrf(hrf, stim_v, make_figure=False, osf=None, scan_length=None, xkc
         sns.despine(offset=10)
 
     # convolve stimulus vectors
-    convolved_vectors = {}
-    for ii in list(stim_v.keys()):
-        convolved_vectors[ii] = np.convolve(stim_v[ii], hrf, 'full')[:stim_v[ii].shape[0]]
-
-        # resample if osf was larger than 1. If 1, we can use the vector as is
-        if osf > 1:
-            convolved_vectors[ii] = resample_stim_vector(
-                convolved_vectors[ii], scan_length)
-
+    if isinstance(stim_v, np.ndarray):
+        convolved_stim_vector = np.convolve(stim_v, hrf, 'full')[:stim_v.shape[0]]
         if make_figure:
             if xkcd:
                 with plt.xkcd():
-                    plot(stim_v[ii], hrf, convolved_vectors[ii], add_array1=add_array1, add_array2=add_array2)
+                    plot(stim_v, hrf, convolved_stim_vector, add_array1=add_array1, add_array2=add_array2)
             else:
-                plot(stim_v[ii], hrf, convolved_vectors[ii])
+                plot(stim_v, hrf, convolved_stim_vector)
             plt.show()
 
-    df_stim = pd.DataFrame(convolved_vectors)
-    if regresssors:
-        return pd.concat([df_stim, regressors], axis=1)
+    elif isinstance(stim_v, dict):
+        convolved_stim_vector = {}
+        for event in list(stim_v.keys()):
+            convolved_stim_vector[event] = np.convolve(stim_v[event], hrf, 'full')[:stim_v[event].shape[0]]
+            
+            if make_figure:
+                if xkcd:
+                    with plt.xkcd():
+                        plot(stim_v[event], hrf, convolved_stim_vector[event])
+                else:
+                    plot(stim_v[event], hrf, convolved_stim_vector[event])
+                plt.show()
     else:
-        return df_stim
+        raise ValueError("Data must be 'np.ndarray' or 'dict'")
+
+    return convolved_stim_vector
 
 
 def resample_stim_vector(convolved_array, scan_length, interpolate='nearest'):
@@ -371,7 +435,7 @@ def resample_stim_vector(convolved_array, scan_length, interpolate='nearest'):
 
     Parameters
     ----------
-    convolved_array: numpy.ndarray
+    convolved_array: dict, numpy.ndarray
         oversampled convolved stimulus vector as per :func:`linescanning.glm.convolve_hrf`
     scan_length: int
         number of volumes in `data` (= `scan_length` in :func:`linescanning.glm.make_stimulus_vector`)
@@ -380,7 +444,7 @@ def resample_stim_vector(convolved_array, scan_length, interpolate='nearest'):
 
     Returns
     ----------
-    numpy.ndarray
+    dict, numpy.ndarray
         convolved stimulus vector in time domain that matches the fMRI acquisition
 
     Example
@@ -389,22 +453,62 @@ def resample_stim_vector(convolved_array, scan_length, interpolate='nearest'):
     >>> convolved_stim_vector_left_ds = resample_stim_vector(convolved_stim_vector_left, <`scan_length`>)
     """
 
-    interpolated = interp1d(np.arange(len(convolved_array)), convolved_array, kind=interpolate, axis=0, fill_value='extrapolate')
-    downsampled = interpolated(np.linspace(0, len(convolved_array), scan_length))
+    if isinstance(convolved_array, np.ndarray):
+        interpolated = interp1d(np.arange(len(convolved_array)), convolved_array, kind=interpolate, axis=0, fill_value='extrapolate')
+        downsampled = interpolated(np.linspace(0, len(convolved_array), scan_length))
+    elif isinstance(convolved_array, dict):
+        downsampled = {}
+        for event in list(convolved_array.keys()):
+            interpolated = interp1d(np.arange(len(convolved_array[event])), convolved_array[event], kind=interpolate, axis=0, fill_value='extrapolate')
+            downsampled[event] = interpolated(np.linspace(0, len(convolved_array[event]), scan_length))
+    else:
+        raise ValueError("Data must be 'np.ndarray' or 'dict'")
 
     return downsampled
 
 
-def fit_first_level(stim_vector, voxel_signal, make_figure=False, copes=None, xkcd=False, plot_vox=None):
+def first_level_matrix(stims_dict, regressors=None, add_intercept=True, names=None):
+
+    # make dataframe of stimulus vectors
+    if isinstance(stims_dict, np.ndarray):
+        if names:
+            stims = pd.DataFrame(stims_dict, columns=names)
+        else:
+            stims = pd.DataFrame(stims_dict, columns=[f'event {ii}' for ii in range(stims_dict.shape[-1])])
+    elif isinstance(stims_dict, dict):
+        stims = pd.DataFrame(stims_dict)
+    else:
+        raise ValueError("Data must be 'np.ndarray' or 'dict'")
+
+    # check if we should add intercept
+    if add_intercept:
+        intercept = np.ones((stims.shape[0], 1))
+        intercept_df = pd.DataFrame(intercept, columns=['intercept'])
+        X_matrix = pd.concat([intercept_df, stims], axis=1)
+    else:
+        X_matrix = stims.copy()
+
+    # check if we should add regressors
+    if isinstance(regressors, np.ndarray):
+        regressors_df = pd.DataFrame(regressors, columns=[f'regressor {ii}' for ii in range(regressors.shape[-1])])
+        return pd.concat([X_matrix, regressors_df], axis=1)
+    elif isinstance(regressors, dict):
+        regressors_df = pd.DataFrame(regressors_df)
+        return pd.concat([X_matrix, regressors_df], axis=1)
+    else:
+        return X_matrix
+
+
+def fit_first_level(stim_vector, data, make_figure=False, copes=None, xkcd=False, plot_vox=None, plot_event=1):
     """fit_first_level
 
     First level models are, in essence, linear regression models run at the level of a single session or single subject. The model is applied on a voxel-wise basis, either on the whole brain or within a region of interest. The  timecourse of each voxel is regressed against a predicted BOLD response created by convolving the haemodynamic response function (HRF) with a set of predictors defined within the design matrix (source: https://nilearn.github.io/glm/first_level_model.html)
 
     Parameters
     ----------
-    stim_vector: numpy.ndarray
-        output from :func:`linescanning.glm.resample_stim_vector`; convolved stimulus vector in fMRI-acquisition time domain
-    voxel_signal: numpy.ndarray
+    stim_vector: pandas.DataFrame, numpy.ndarray
+        either the output from :func:`linescanning.glm.resample_stim_vector` (convolved stimulus vector in fMRI-acquisition time domain) or a pandas.DataFrame containing the full design matrix as per the output of :func:`linescanning.glm.first_level_matrix`.s
+    data: numpy.ndarray
         <time,voxels> numpy array; same input as **data** from :func:`linescanning.glm.make_stimulus_vector`
     make_figure: bool, optional
         Create a figure of best-voxel fit, by default False
@@ -414,6 +518,8 @@ def fit_first_level(stim_vector, voxel_signal, make_figure=False, copes=None, xk
         Plot the figre in XKCD-style (cartoon), by default False
     plot_vox: int, optional
         Instead of plotting the best-fitting voxel, specify which voxel to plot the timecourse and fit of, by default None
+    plot_event: str, int, list, optional
+        If a larger design matrix was inputted with multiple events, you can specify here the name of the event you'd like to plot the betas from. It also accepts a list of indices of events to plot, so you could plot the first to events by specifying `plot_event=[1,2]`. Remember, the 0th index is the intercept! By default we'll plot the event right after the intercept
 
     Returns
     ----------
@@ -426,40 +532,41 @@ def fit_first_level(stim_vector, voxel_signal, make_figure=False, copes=None, xk
     Example
     ----------
     >>> from linescanning.glm import fit_first_level
-    >>> betas_left,x_conv_left = fit_first_level(convolved_stim_vector_left_ds, data, make_figure=True, xkcd=True)
+    >>> betas_left,x_conv_left = fit_first_level(convolved_stim_vector_left_ds, data, make_figure=True, xkcd=True) # plots first event
+    >>> betas_left,x_conv_left = fit_first_level(convolved_stim_vector_left_ds, data, make_figure=True, xkcd=True, plot_events=[1,2]) # plots first two events
     """
 
-    if stim_vector.ndim == 1:
-        # Add back a singleton axis (which was removed before downsampling)
-        # otherwise stacking will give an error
-        stim_vector = stim_vector[:, np.newaxis]
+    # add intercept if input is simple numpy array. 
+    if isinstance(stim_vector, np.ndarray):
+        if stim_vector.ndim == 1:
+            stim_vector = stim_vector[:, np.newaxis]
 
-    if voxel_signal.ndim == 1:
-        # Add back a singleton axis (which was removed before downsampling)
-        # otherwise stacking will give an error
-        voxel_signal = voxel_signal[:, np.newaxis]
+        if data.ndim == 1:
+            data = data[:, np.newaxis]
 
-    if stim_vector.shape[0] != voxel_signal.shape[0]:
-        stim_vector = stim_vector[:voxel_signal.shape[0],:]
+        if stim_vector.shape[0] != data.shape[0]:
+            stim_vector = stim_vector[:data.shape[0],:]
 
-    # create design matrix with intercept
-    intercept = np.ones((stim_vector.shape[0], 1))
-    intercept_df = pd.DataFrame(intercept, columns=['intercept'])
-    X_matrix = pd.concat([intercept_df, stim_vector], axis=1)
-    X_conv = X_matrix.values
-    print(X_conv.shape)
+        # create design matrix with intercept
+        intercept = np.ones((data.shape[0], 1))
+        intercept_df = pd.DataFrame(intercept, columns=['intercept'])
+        X_matrix = pd.concat([intercept_df, stim_vector], axis=1)
+    else:
+        # everything should be ready to go if 'first_level_matrix' was used
+        X_matrix = stim_vector.copy()
+        intercept = np.ones((data.shape[0], 1))
 
-    if copes is None:
+    X_conv = X_matrix.values.copy()
+
+    if copes == None:
         C = np.identity(X_conv.shape[1])
 
-    # print(voxel_signal.shape)
-
     # np.linalg.pinv(X) = np.inv(X.T @ X) @ X
-    betas_conv  = np.linalg.inv(X_conv.T @ X_conv) @ X_conv.T @ voxel_signal
+    betas_conv  = np.linalg.inv(X_conv.T @ X_conv) @ X_conv.T @ data
 
     # calculate some other relevant parameters
     cope        = C @ betas_conv
-    r           = voxel_signal - X_conv@betas_conv
+    r           = data - X_conv@betas_conv
     dof         = X_conv.shape[0] - np.linalg.matrix_rank(X_conv)
     sig2        = np.sum(r**2,axis=0)/dof
     varcope     = np.outer(C@np.diag(np.linalg.inv(X_conv.T@X_conv))@C.T,sig2)
@@ -480,25 +587,49 @@ def fit_first_level(stim_vector, voxel_signal, make_figure=False, copes=None, xk
 
     if make_figure:
 
+        # you can specify to plot multiple events!
+        if isinstance(plot_event, int):
+            # get the correct stimulus vector and betas for that vector
+            use_stim = X_conv[:,plot_event][...,np.newaxis]
+            beta = np.array((1, betas_conv[plot_event, best_vox]))
+
+            # to avoid annoying indexing, add intercept here again
+            conv = np.hstack((intercept, use_stim))
+            signals = [data[:, best_vox], conv@beta]
+            labels = ['True signal', 'Event signal']
+        elif isinstance(plot_event, list):
+            signals = [data[:, best_vox]]
+            labels = ['True signal']
+            for ii in plot_event:
+                # get the correct stimulus vector and betas for that vector
+                use_stim = X_conv[:,ii][...,np.newaxis]
+                beta = np.array((1, betas_conv[ii, best_vox]))
+
+                # to avoid annoying indexing, add intercept here again
+                conv = np.hstack((intercept, use_stim))
+
+                signals.append(conv@beta)
+                labels.append(f'Event {ii}')
+        else:
+            raise NotImplementedError("Im lazy.. Please use indexing for now")
+
         if xkcd:
-            # with plt.xkcd():
-            #     plot(voxel_signal[:,best_vox], X_conv, betas_conv[:,best_vox])
-            num_stims
-            utils.LazyPlot([voxel_signal[:, best_vox], X_conv@betas_conv[:,best_vox]],
+            utils.LazyPlot(signals,
                            y_label="Activity (A.U.)",
                            x_label="volumes",
                            title=f"Model fit vox {best_vox}",
-                           labels=['True signal', 'Event signal'],
+                           labels=labels,
                            figsize=(20,5),
+                           font_size=20,
                            xkcd=True)
 
         else:
-            utils.LazyPlot([voxel_signal[:, best_vox], X_conv@betas_conv[:, best_vox]],
+            utils.LazyPlot(signals,
                            y_label="Activity (A.U.)",
                            x_label="volumes",
                            title=f"Model fit vox {best_vox}",
-                           labels=['True signal', 'Event signal'],
-                           figsize=(20,5))
+                           labels=labels,
+                           figsize=(20,5),
+                           font_size=20)
 
     return betas_conv,X_conv
-
