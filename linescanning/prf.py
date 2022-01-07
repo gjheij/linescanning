@@ -1043,7 +1043,7 @@ def generate_model_params(model='gauss', dm=None, TR=1.5, outputdir=None, settin
     if settings != None:
         yml_file = settings
     else:
-        yml_file = utils.get_file_from_substring("prf_analysis", opj(os.environ['DIR_SCRIPTS'], 'data'))
+        yml_file = utils.get_file_from_substring("prf_analysis", opj(os.path.dirname(os.path.dirname(utils.__file__)), 'misc'))
 
     with open(yml_file) as file:
         
