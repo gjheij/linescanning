@@ -1521,3 +1521,34 @@ class LazyPlot():
             axs.axhline(self.add_hline['pos'], color=self.add_hline['color'], lw=self.add_hline['lw'], ls=self.add_hline['ls'])
 
         sns.despine(offset=10)
+
+
+def squeeze_generic(a, axes_to_keep):
+    """squeeze_generic
+
+    Numpy squeeze implementation keeping <axes_to_keep> dimensions.
+
+    Parameters
+    ----------
+    a: numpy.ndarray
+        array to be squeezed
+    axes_to_keep: tuple, range
+        tuple of axes to keep from original input
+
+    Returns
+    ----------
+    numpy.ndarray
+        `axes_to_keep` from `a`
+
+    Example
+    ----------
+    >>> a = np.random.rand(3,5,1)
+    >>> squeeze_generic(a, axes_to_keep=range(2)).shape
+    (3, 5)
+
+    Notes
+    ----------
+    From: https://stackoverflow.com/questions/57472104/is-it-possible-to-squeeze-all-but-n-dimensions-using-numpy
+    """
+    out_s = [s for i, s in enumerate(a.shape) if i in axes_to_keep or s != 1]
+    return a.reshape(out_s)
