@@ -1124,7 +1124,6 @@ def generate_model_params(model='gauss', dm=None, TR=1.5, outputdir=None, settin
 
 
 class pRFmodelFitting(): 
-
     """pRFmodelFitting
 
     Main class to perform all the pRF-fitting. As of now, the Gaussian and Divisive Normalization models are implemented. For each model, an analysis-file is produced an stored in <output_dir> for later reference.
@@ -1517,59 +1516,59 @@ def find_most_similar_prf(reference_prf, look_in_params, verbose=False, return_n
 
 
 class SizeResponse():
+    """SizeResponse
 
+    Perform size-response related operations given a pRF-stimulus/parameters. Simulate the pRF-response using a set of growing stimuli using :func:`linescanning.prf.make_stims`, create size response functions, and find stimulus sizes that best reflect the difference between two given SR-curves. Only needs a *prfpy.stimulus.PRFStimulus2D*-object and a set of parameters derived from a Divisive Normalization model.
+
+    Parameters
+    ----------
+    prf_stim: prfpy.stimulus.PRFStimulus2D
+        Object describing the nature of the stimulus
+    params: numpy.ndarray
+        array with shape (10,) as per the output of a Divisive Normalization fit operation.
+
+    Example
+    ----------
+    >>> from linescanning import utils
+    >>> # Collect subject-relevant information in class
+    >>> subject = "sub-001"
+    >>> hemi = "lh"
+    >>> #
+    >>> if hemi == "lh":
+    >>>     hemi_tag = "hemi-L"
+    >>> elif hemi == "rh":
+    >>>     hemi_tag = "hemi-R"
+    >>> #
+    >>> subject_info = utils.CollectSubject(subject, derivatives=opj('<path_to_project>', 'derivatives'), settings='recent', hemi="lh")
+    >>> #
+    >>> # Get and plot fMRI signal
+    >>> data_fn = utils.get_file_from_substring(f"avg_bold_{hemi_tag}.npy", subject_info.prfdir)
+    >>> data = np.load(data_fn)[...,subject_info.return_target_vertex(hemi=hemi)]
+    >>> #
+    >>> # insert old parameters
+    >>> insert_params =(np.array(subject_info.target_params)[np.newaxis,...],"gauss+iter")
+    >>> #
+    >>> # initiate class
+    >>> fitting = prf.pRFmodelFitting(data[...,np.newaxis].T, 
+    >>>                               design_matrix=subject_info.design_matrix, 
+    >>>                               TR=subject_info.settings['TR'], 
+    >>>                               model="norm", 
+    >>>                               stage="grid", 
+    >>>                               old_params=insert_params, 
+    >>>                               verbose=False, 
+    >>>                               output_dir=subject_info.prfdir, 
+    >>>                               nr_jobs=1)
+    >>> #
+    >>> # fit
+    >>> fitting.fit()
+    >>> #
+    >>> new_params = fitting.norm_grid[0]
+    >>> #
+    >>> # size response functionsf
+    >>> SR = prf.SizeResponse(fitting.prf_stim, new_params)        
+    """
+    
     def __init__(self, prf_stim, params):
-        """SizeResponse
-
-        Perform size-response related operations given a pRF-stimulus/parameters. Simulate the pRF-response using a set of growing stimuli using :func:`linescanning.prf.make_stims`, create size response functions, and find stimulus sizes that best reflect the difference between two given SR-curves. Only needs a *prfpy.stimulus.PRFStimulus2D*-object and a set of parameters derived from a Divisive Normalization model.
-
-        Parameters
-        ----------
-        prf_stim: prfpy.stimulus.PRFStimulus2D
-            Object describing the nature of the stimulus
-        params: numpy.ndarray
-            array with shape (10,) as per the output of a Divisive Normalization fit operation.
-
-        Example
-        ----------
-        >>> from linescanning import utils
-        >>> # Collect subject-relevant information in class
-        >>> subject = "sub-001"
-        >>> hemi = "lh"
-        >>> #
-        >>> if hemi == "lh":
-        >>>     hemi_tag = "hemi-L"
-        >>> elif hemi == "rh":
-        >>>     hemi_tag = "hemi-R"
-        >>> #
-        >>> subject_info = utils.CollectSubject(subject, derivatives=opj('<path_to_project>', 'derivatives'), settings='recent', hemi="lh")
-        >>> #
-        >>> # Get and plot fMRI signal
-        >>> data_fn = utils.get_file_from_substring(f"avg_bold_{hemi_tag}.npy", subject_info.prfdir)
-        >>> data = np.load(data_fn)[...,subject_info.return_target_vertex(hemi=hemi)]
-        >>> #
-        >>> # insert old parameters
-        >>> insert_params =(np.array(subject_info.target_params)[np.newaxis,...],"gauss+iter")
-        >>> #
-        >>> # initiate class
-        >>> fitting = prf.pRFmodelFitting(data[...,np.newaxis].T, 
-        >>>                               design_matrix=subject_info.design_matrix, 
-        >>>                               TR=subject_info.settings['TR'], 
-        >>>                               model="norm", 
-        >>>                               stage="grid", 
-        >>>                               old_params=insert_params, 
-        >>>                               verbose=False, 
-        >>>                               output_dir=subject_info.prfdir, 
-        >>>                               nr_jobs=1)
-        >>> #
-        >>> # fit
-        >>> fitting.fit()
-        >>> #
-        >>> new_params = fitting.norm_grid[0]
-        >>> #
-        >>> # size response functionsf
-        >>> SR = prf.SizeResponse(fitting.prf_stim, new_params)        
-        """
 
         self.prf_stim = prf_stim
         self.n_pix = self.prf_stim.design_matrix.shape[0]

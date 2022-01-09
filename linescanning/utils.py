@@ -1652,36 +1652,36 @@ def find_intersection(xx, curve1, curve2):
 
 
 class CollectSubject:
+    """CollectSubject
+
+    Simple class to fetch pRF-related settings given a subject. Collects the design matrix, settings, and target vertex information. The `ses`-flag decides from which session the pRF-parameters to be used. You can either specify an *analysis_yaml* file containing information about a pRF-analysis, or specify *settings='recent'* to fetch the most recent analysis file in the pRF-directory of the subject. The latter is generally fine if you want information about the stimulus.
+
+    Parameters
+    ----------
+    subject: str
+        subject ID as used throughout the pipeline
+    derivatives: str, optional
+        Derivatives directory, by default None. 
+    cx_dir: str, optional
+        path to subject-specific pycortex directory
+    prf_dir: str, optional
+        subject-specific pRF directory, by default None. `derivatives` will be ignore if this flag is used
+    ses: int, optional
+        Source session of pRF-parameters to use, by default 1
+    analysis_yaml: str, optional
+        String pointing to an existing file, by default None. 
+    hemi: str, optional
+        Hemisphere to extract target vertex from, by default "lh"
+    settings: str, optional
+        Fetch most recent settings file rather than `analysis_yaml`, by default None. 
+
+    Example
+    ----------
+    >>> from linescanning import utils
+    >>> subject_info = utils.CollectSubject(subject, derivatives=<path_to_derivatives>, settings='recent', hemi="lh")
+    """
 
     def __init__(self, subject, derivatives=None, cx_dir=None, prf_dir=None, ses=1, analysis_yaml=None, hemi="lh", settings=None):
-        """CollectSubject
-
-        Simple class to fetch pRF-related settings given a subject. Collects the design matrix, settings, and target vertex information. The `ses`-flag decides from which session the pRF-parameters to be used. You can either specify an *analysis_yaml* file containing information about a pRF-analysis, or specify *settings='recent'* to fetch the most recent analysis file in the pRF-directory of the subject. The latter is generally fine if you want information about the stimulus.
-
-        Parameters
-        ----------
-        subject: str
-            subject ID as used throughout the pipeline
-        derivatives: str, optional
-            Derivatives directory, by default None. 
-        cx_dir: str, optional
-            path to subject-specific pycortex directory
-        prf_dir: str, optional
-            subject-specific pRF directory, by default None. `derivatives` will be ignore if this flag is used
-        ses: int, optional
-            Source session of pRF-parameters to use, by default 1
-        analysis_yaml: str, optional
-            String pointing to an existing file, by default None. 
-        hemi: str, optional
-            Hemisphere to extract target vertex from, by default "lh"
-        settings: str, optional
-            Fetch most recent settings file rather than `analysis_yaml`, by default None. 
-
-        Example
-        ----------
-        >>> from linescanning import utils
-        >>> subject_info = utils.CollectSubject(subject, derivatives=<path_to_derivatives>, settings='recent', hemi="lh")
-        """
 
         self.subject = subject
         self.derivatives = derivatives
