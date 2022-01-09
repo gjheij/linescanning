@@ -2,6 +2,10 @@ import cortex
 import csv
 import getpass
 import json
+from scipy.io.matlab.mio5 import _has_struct
+
+from scipy.misc.common import derivative
+from . import prf
 import matplotlib.colors as mcolors
 import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
@@ -12,17 +16,21 @@ from nitime.timeseries import TimeSeries
 from nitime.analysis import SpectralAnalyzer, FilterAnalyzer, NormalizationAnalyzer
 import numpy as np
 import os
+from numpy.lib.arraysetops import isin
 import pandas as pd
 from PIL import ImageColor
 from prfpy import gauss2D_iso_cart
+from prfpy import stimulus
 import random
 from re import I
 from scipy import io
 from scipy.interpolate import interp1d
 from scipy.signal import detrend
 import seaborn as sns
+from shapely import geometry
 import subprocess
 import warnings
+import yaml
 
 opj = os.path.join
 pd.options.mode.chained_assignment = None # disable warning thrown by string2float
@@ -160,6 +168,21 @@ def replace_string(fn, str1, str2, fn_sep='_'):
 
     return new_filename
 
+
+def convert2unit(v, method="np"):
+    """convert vector to unit vector"""
+    import numpy as np
+
+    if method.lower() == "np":
+        v_hat = v / np.linalg.norm(v)
+        return v_hat
+    elif method.lower() == "mesh":
+        # https://sites.google.com/site/dlampetest/python/calculating-normals-of-a-triangle-mesh-using-numpy
+        lens = np.sqrt( v[:,0]**2 + v[:,1]**2 + v[:,2]**2 )
+        v[:,0] /= lens
+        v[:,1] /= lens
+        v[:,2] /= lens
+        return v
 
 def string2float(string_array):
     """string2float
@@ -1288,10 +1311,9 @@ class ParseGiftiFile():
 def filter_for_nans(array):
     """filter out NaNs from an array"""
 
-    try:
-        if np.isnan(array).any():
-            return np.nan_to_num(array)
-    except:
+    if np.isnan(array).any():
+        return np.nan_to_num(array)
+    else:
         return array
 
 def find_max_val(array):
@@ -1356,7 +1378,7 @@ def random_timeseries(intercept, volatility, nr):
 
 class LazyPlot():
 
-    def __init__(self, ts, error=None, error_alpha=0.3, x_label=None, y_label=None, title=None, xkcd=False, color=None, figsize=(12, 5), cmap='viridis', save_as=None,  labels=None, font_size=12, add_hline=None, add_vline=None):
+    def __init__(self, ts, xx=None, error=None, error_alpha=0.3, x_label=None, y_label=None, title=None, xkcd=False, color=None, figsize=(12, 5), cmap='viridis', save_as=None,  labels=None, font_size=12, add_hline=None, add_vline=None, line_width=1, axs=None):
         """__init__
 
         Class for plotting because I'm lazy and I don't want to go through the `matplotlib` motion everything I quickly want to visualize something. This class makes that a lot easier. It allows single inputs, lists with multiple timecourses, labels, error shadings, and much more.
@@ -1365,6 +1387,8 @@ class LazyPlot():
         ----------
         ts: list, numpy.ndarray
             Input data. Can either be a single list, or a list of multiple numpy arrays. If you want labels, custom colors, or error bars, these inputs must come in lists of similar length as `ts`!
+        xx: list, numpy.ndarray, optional
+            X-axis array
         error: list, numpy.ndarray, optional
             Error data with the same length/shape as the input timeseries, by default None. Can be either a numpy.ndarray for 1 timeseries, or a list of numpy.ndarrays for multiple timeseries
         error_alpha: float, optional
@@ -1396,9 +1420,14 @@ class LazyPlot():
             >>>              'color': 'k',  # color
             >>>              'lw': 1,       # linewidth
             >>>              'ls': '--'}    # linestyle
+            You can get the settings above by specifying *add_hline='defaults'*
         add_vline: [type], optional
             Dictionary for a vertical line through the plot, by default None. Same keys as `add_hline`
-
+        line_width: int, list, optional
+            Line widths for either all graphs (then *int*) or a *list* with the number of elements as requested graphs, default = 1.
+        axs: <AxesSubplot:>, optional
+            Matplotlib axis to store the figure on
+            
         Example
         ----------
         >>> # create a bunch of timeseries
@@ -1432,6 +1461,7 @@ class LazyPlot():
         """
 
         self.array = ts
+        self.xx = xx
         self.error = error
         self.error_alpha = error_alpha
         self.x_label = x_label
@@ -1446,6 +1476,8 @@ class LazyPlot():
         self.font_size = font_size
         self.add_hline = add_hline
         self.add_vline = add_vline
+        self.axs = axs
+        self.line_width = line_width
 
         if self.xkcd:
             with plt.xkcd():
@@ -1457,12 +1489,13 @@ class LazyPlot():
 
         if save_as:
             plt.savefig(self.save_as, transparent=True)
-        else:
-            plt.show()
 
     def plot(self):
 
-        fig, axs = plt.subplots(figsize=self.figsize)
+        if self.axs == None:
+            fig, axs = plt.subplots(figsize=self.figsize)
+        else:
+            axs = self.axs
 
         if isinstance(self.array, list):
 
@@ -1470,12 +1503,31 @@ class LazyPlot():
                 color_list = sns.color_palette(self.cmap, len(self.array))
             else:
                 color_list = self.color
+                if len(color_list) != len(self.array):
+                    raise ValueError(f"Length color list {len(color_list)} does not match length of data list ({len(self.array)}")
 
             for idx, el in enumerate(self.array):
-                if self.labels:
-                    axs.plot(el, color=color_list[idx], label=self.labels[idx])
+
+                if isinstance(self.line_width, list):
+                    if len(self.line_width) != len(self.array):
+                        raise ValueError(f"Length of line width lenghts {len(self.line_width)} does not match length of data list ({len(self.array)}")
+                        
+                    use_width=self.line_width[idx]
+                elif isinstance(self.line_width, int):
+                    use_width=self.line_width
                 else:
-                    axs.plot(el, color=color_list[idx])
+                    use_width=""
+
+                # decide on x-axis
+                if not isinstance(self.xx, np.ndarray) and not isinstance(self.xx, list):
+                    x = np.arange(0, len(el))
+                else:
+                    x = self.xx.copy()
+
+                if self.labels:
+                    axs.plot(x, el, color=color_list[idx], label=self.labels[idx], lw=use_width)
+                else:
+                    axs.plot(x, el, color=color_list[idx], lw=use_width)
 
                 if isinstance(self.error, list) or isinstance(self.error, np.ndarray):
                     yerr = self.error[idx]
@@ -1491,7 +1543,13 @@ class LazyPlot():
             if not self.color:
                 self.color = sns.color_palette(self.cmap, 1)[0]
 
-            axs.plot(self.array, color=self.color, label=self.labels)
+            # decide on x-axis
+            if not isinstance(self.xx, np.ndarray) and not isinstance(self.xx, list):
+                x = np.arange(0, len(self.array))
+            else:
+                x = self.xx.copy()
+
+            axs.plot(x, self.array, color=self.color, label=self.labels, lw=self.line_width)
 
             if isinstance(self.error, list) or isinstance(self.error, np.ndarray):
                 if np.isscalar(self.error) or len(self.error) == len(self.array):
@@ -1515,9 +1573,15 @@ class LazyPlot():
             axs.set_title(self.title, fontname=self.fontname, fontsize=self.font_size)
 
         if self.add_vline:
+            if self.add_vline == "defaults":
+                self.add_vline={'pos': 0, 'color': 'k', 'ls': 'dashed', 'lw': 0.5}
+
             axs.axvline(self.add_vline['pos'], color=self.add_vline['color'], lw=self.add_vline['lw'], ls=self.add_vline['ls'])
 
         if self.add_hline:
+            if self.add_hline == "defaults":
+                self.add_hline={'pos': 0, 'color': 'k', 'ls': 'dashed', 'lw': 0.5}
+
             axs.axhline(self.add_hline['pos'], color=self.add_hline['color'], lw=self.add_hline['lw'], ls=self.add_hline['ls'])
 
         sns.despine(offset=10)
@@ -1552,3 +1616,124 @@ def squeeze_generic(a, axes_to_keep):
     """
     out_s = [s for i, s in enumerate(a.shape) if i in axes_to_keep or s != 1]
     return a.reshape(out_s)
+
+
+def find_intersection(xx, curve1, curve2):
+    """find_intersection
+
+    Find the intersection coordinates given two functions using `Shapely`.
+
+    Parameters
+    ----------
+    xx: numpy.ndarray
+        array describing the x-axis values
+    curve1: numpy.ndarray
+        array describing the first curve
+    curve2: numpy.ndarray
+        array describing the first curve
+
+    Returns
+    ----------
+    tuple
+        x,y coordinates where *curve1* and *curve2* intersect
+
+    Example
+    ----------
+    See [refer to linescanning.prf.SizeResponse.find_stim_sizes]
+    """
+
+    first_line = geometry.LineString(np.column_stack((xx, curve1)))
+    second_line = geometry.LineString(np.column_stack((xx, curve2)))
+    intersection = first_line.intersection(second_line)
+
+    x_coord, y_coord = geometry.LineString(intersection).xy[0]
+
+    return (x_coord, y_coord)
+
+
+class CollectSubject:
+
+    def __init__(self, subject, derivatives=None, cx_dir=None, prf_dir=None, ses=1, analysis_yaml=None, hemi="lh", settings=None):
+        """CollectSubject
+
+        Simple class to fetch pRF-related settings given a subject. Collects the design matrix, settings, and target vertex information. The `ses`-flag decides from which session the pRF-parameters to be used. You can either specify an *analysis_yaml* file containing information about a pRF-analysis, or specify *settings='recent'* to fetch the most recent analysis file in the pRF-directory of the subject. The latter is generally fine if you want information about the stimulus.
+
+        Parameters
+        ----------
+        subject: str
+            subject ID as used throughout the pipeline
+        derivatives: str, optional
+            Derivatives directory, by default None. 
+        cx_dir: str, optional
+            path to subject-specific pycortex directory
+        prf_dir: str, optional
+            subject-specific pRF directory, by default None. `derivatives` will be ignore if this flag is used
+        ses: int, optional
+            Source session of pRF-parameters to use, by default 1
+        analysis_yaml: str, optional
+            String pointing to an existing file, by default None. 
+        hemi: str, optional
+            Hemisphere to extract target vertex from, by default "lh"
+        settings: str, optional
+            Fetch most recent settings file rather than `analysis_yaml`, by default None. 
+
+        Example
+        ----------
+        >>> from linescanning import utils
+        >>> subject_info = utils.CollectSubject(subject, derivatives=<path_to_derivatives>, settings='recent', hemi="lh")
+        """
+
+        self.subject = subject
+        self.derivatives = derivatives
+        self.cx_dir = cx_dir
+        self.prf_dir = prf_dir
+        self.prf_ses = ses
+        self.hemi = hemi
+
+        # set pRF directory
+        if self.prf_dir == None:
+            if derivatives != None:
+                self.prf_dir = opj(self.derivatives, 'prf', self.subject, f'ses-{self.prf_ses}')
+
+        # get design matrix, vertex info, and analysis file
+        self.design_fn = get_file_from_substring("vis_design.mat", self.prf_dir)
+        self.design_matrix = io.loadmat(self.design_fn)['stim']
+        self.vert_fn = get_file_from_substring("best_vertices.csv", self.cx_dir)
+
+        if self.vert_fn != "":
+            self.vert_info = VertexInfo(infofile=self.vert_fn, subject=self.subject)
+        else:
+            raise FileNotFoundError(f"Could not find 'best_vertices.csv' in {self.cxdir}")
+
+        self.analysis_yaml = analysis_yaml
+
+        # load specific analysis file
+        if self.analysis_yaml != None:
+            self.settings = yaml.safe_load(self.analysis_yaml)
+
+            with open(self.analysis_yaml) as file:
+                self.settings = yaml.safe_load(file)            
+        
+        # load the most recent analysis file. This is fine for screens/stimulus information
+        if settings == "recent":
+            analysis_yaml = opj(self.prf_dir, sorted([ii for ii in os.listdir(self.prf_dir) if "desc-settings" in ii])[-1])
+
+            with open(analysis_yaml) as file:
+                self.settings = yaml.safe_load(file)
+        
+        # fetch target vertex parameters
+        self.target_params = self.return_prf_params(hemi=self.hemi)
+
+        # create pRF if settings were specified
+        if hasattr(self, "settings"):
+            self.prf_stim = stimulus.PRFStimulus2D(screen_size_cm=self.settings['screen_size_cm'], screen_distance_cm=self.settings['screen_distance_cm'], design_matrix=self.design_matrix,TR=self.settings['TR'])
+            self.prf_array = prf.make_prf(self.prf_stim, size=self.target_params[2], mu_x=self.target_params[0], mu_y=self.target_params[1])
+
+
+    def return_prf_params(self, hemi="lh"):
+        """return pRF parameters from :class:`linescanning.utils.VertexInfo`"""
+        return self.vert_info.get('prf', hemi=hemi)
+
+    def return_target_vertex(self, hemi="lh"):
+        """return the vertex ID of target vertex"""
+        return self.vert_info.get('index', hemi=hemi)
