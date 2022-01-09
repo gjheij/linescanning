@@ -1,6 +1,8 @@
 import ast
 from datetime import datetime, timedelta
 from joblib.externals.cloudpickle.cloudpickle import instance
+from numpy.lib.arraysetops import isin
+from scipy.io.matlab.mio5 import _has_struct
 from linescanning import utils
 import math
 import matplotlib.image as mpimg
@@ -15,6 +17,7 @@ from prfpy.fit import Iso2DGaussianFitter, Norm_Iso2DGaussianFitter
 from prfpy.model import Iso2DGaussianModel, Norm_Iso2DGaussianModel
 import random
 from scipy.ndimage import rotate
+from scipy import signal
 import seaborn as sns
 import subprocess
 import time
@@ -356,7 +359,7 @@ def make_prf(prf_object, mu_x=0, mu_y=0, size=None):
     return prf
 
 
-def plot_prf(prf,vf_extent, return_axis=False, save_as=None):
+def plot_prf(prf,vf_extent, return_axis=False, save_as=None, ax=None):
 
     """
     plot_prf
@@ -375,7 +378,9 @@ def plot_prf(prf,vf_extent, return_axis=False, save_as=None):
     matplotlib.pyplot plot
     """
 
-    fig, ax = plt.subplots()
+    if ax == None:
+        ax = plt.gca()
+
     ax.axvline(0, color='white', linestyle='dashed', lw=0.5)
     ax.axhline(0, color='white', linestyle='dashed', lw=0.5)
     im = ax.imshow(np.squeeze(prf, axis=0), extent=vf_extent+vf_extent, cmap='magma')
@@ -1050,7 +1055,7 @@ def generate_model_params(model='gauss', dm=None, TR=1.5, outputdir=None, settin
         data = yaml.safe_load(file)
 
         prf_stim = stimulus.PRFStimulus2D(screen_size_cm=data['screen_size_cm'],
-                                          screen_distance_cm=data['screen_size_cm'],
+                                          screen_distance_cm=data['screen_distance_cm'],
                                           design_matrix=dm,
                                           TR=TR)
 
@@ -1142,6 +1147,11 @@ class pRFmodelFitting():
         basename for output files; should be something like <subject>_<ses-?>_<task-?>
     write_files: bool
         save files (True) or not (False). Should be used in combination with <output_dir> and <output_base>
+    old_params: tuple, optional
+        A tuple of a numpy.ndarray and string describing the nature of the old parameters. Can be inserted at any stage of the fitting. Generally you'd insert Gaussian iterfit parameters before fitting the normalization model.
+
+        >>> old_params = (<voxels, parameters>, 'gauss+iter')
+        >>> old_params = (<voxels, parameters>, 'gauss+grid')
     hrf: np.ndarray
         <1,time_points> describing the HRF. Can be created with :func:`linescanning.glm.double_gamma`, then add an
         axis before the timepoints:
@@ -1168,9 +1178,12 @@ class pRFmodelFitting():
                  output_dir=None, 
                  write_files=False, 
                  output_base=None,
+                 old_params=None,
                  verbose=True,
                  hrf=None,
-                 settings=None):
+                 settings=None,
+                 nr_jobs=1000,
+                 prf_stim=None):
     
 
         self.data           = data
@@ -1184,6 +1197,8 @@ class pRFmodelFitting():
         self.settings_fn    = settings
         self.verbose        = verbose
         self.hrf            = hrf
+        self.old_params     = old_params
+        self.nr_jobs        = nr_jobs
 
         #----------------------------------------------------------------------------------------------------------------------------------------------------------
         # Fetch the settings
@@ -1193,8 +1208,9 @@ class pRFmodelFitting():
                                                                                  TR=self.TR,
                                                                                  settings=self.settings_fn)
 
-        if verbose:
-            print(f"Using settings file: {self.settings_file}")
+        if isinstance(self.settings_fn, str):
+            if verbose:
+                print(f"Using settings file: {self.settings_fn}")
     
         if self.model.lower() != "gauss" and self.model.lower() != "norm":
             raise ValueError(f"Model specification needs to be either 'gauss' or 'norm'; got {model}.")
@@ -1212,78 +1228,90 @@ class pRFmodelFitting():
 
 
     def fit(self):
+
         ## Initiate fitter
-        ### add check whether we need to transpose data
-        self.gaussian_fitter = Iso2DGaussianFitter(data=self.data, model=self.gaussian_model, fit_css=False)
-        
-        if self.verbose:
-            print("Starting gauss grid fit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S'))
+        # check whether we got old parameters so we can skip Gaussian fit:
+        if not isinstance(self.old_params, tuple):
 
-        ## start grid fit
-        start = time.time()
-        self.gaussian_fitter.grid_fit(ecc_grid=self.settings['grids']['eccs'],
-                                    polar_grid=self.settings['grids']['polars'],
-                                    size_grid=self.settings['grids']['sizes'],
-                                    pos_prfs_only=self.settings['pos_prfs_only'])
-        
-        elapsed = (time.time() - start)
+            ### add check whether we need to transpose data
+            self.gaussian_fitter = Iso2DGaussianFitter(data=self.data, model=self.gaussian_model, fit_css=False)
+            
+            if self.verbose:
+                print("Starting gauss grid fit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S'))
 
-        if self.verbose:
-            print("Gaussian gridfit completed at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+
-                    ". voxels/vertices above "+str(self.settings['rsq_threshold'])+": "+str(np.sum(self.gaussian_fitter.gridsearch_params[:, -1]>self.settings['rsq_threshold']))+" out of "+
-                    str(self.gaussian_fitter.data.shape[0]))
-            print(f"Gridfit took {str(timedelta(seconds=elapsed))}")
-            print("Mean rsq>"+str(self.settings['rsq_threshold'])+": "+str(np.mean(self.gaussian_fitter.gridsearch_params[self.gaussian_fitter.gridsearch_params[:, -1]>self.settings['rsq_threshold'], -1])))
-        
-        self.gauss_grid = utils.filter_for_nans(self.gaussian_fitter.gridsearch_params)
-        if self.write_files:
-            self.save_params(model="gauss", stage="grid", verbose=self.verbose, output_dir=self.output_dir, output_base=self.output_base)
-
-        #----------------------------------------------------------------------------------------------------------------------------------------------------------
-        # Check if we should do Gaussian iterfit
-
-        ## Run iterative fit with Gaussian model
-        if self.stage == "grid+iter":
-
+            ## start grid fit
             start = time.time()
-            print("Starting gauss iterfit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S'))
-
-            self.gauss_bounds = [tuple(self.settings['bounds']['x']),              # x
-                                 tuple(self.settings['bounds']['y']),               # y
-                                 tuple(self.settings['bounds']['size']),            # prf size
-                                 tuple(self.settings['bounds']['prf_ampl']),        # prf amplitude
-                                 tuple(self.settings['bounds']['bold_bsl'])]        # bold baseline    
-
-            self.gaussian_fitter.iterative_fit(rsq_threshold=self.settings['rsq_threshold'],
-                                            bounds=self.gauss_bounds)
-
+            self.gaussian_fitter.grid_fit(ecc_grid=self.settings['grids']['eccs'],
+                                        polar_grid=self.settings['grids']['polars'],
+                                        size_grid=self.settings['grids']['sizes'],
+                                        pos_prfs_only=self.settings['pos_prfs_only'])
+            
             elapsed = (time.time() - start)
 
             if self.verbose:
-                print("Gaussian iterfit completed at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+". Mean rsq>"+str(self.settings['rsq_threshold'])+": "+str(np.mean(self.gaussian_fitter.iterative_search_params[self.gaussian_fitter.rsq_mask, -1])))
-                print(f"Iterfit took {str(timedelta(seconds=elapsed))}")
+                print("Gaussian gridfit completed at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+
+                        ". voxels/vertices above "+str(self.settings['rsq_threshold'])+": "+str(np.sum(self.gaussian_fitter.gridsearch_params[:, -1]>self.settings['rsq_threshold']))+" out of "+
+                        str(self.gaussian_fitter.data.shape[0]))
+                print(f"Gridfit took {str(timedelta(seconds=elapsed))}")
+                print("Mean rsq>"+str(self.settings['rsq_threshold'])+": "+str(np.mean(self.gaussian_fitter.gridsearch_params[self.gaussian_fitter.gridsearch_params[:, -1]>self.settings['rsq_threshold'], -1])))
             
-            self.gauss_iter = utils.filter_for_nans(self.gaussian_fitter.iterative_search_params)
+            self.gauss_grid = utils.filter_for_nans(self.gaussian_fitter.gridsearch_params)
             if self.write_files:
-                self.save_params(model="gauss", stage="iter", verbose=self.verbose, output_dir=self.output_dir, output_base=self.output_base)
+                self.save_params(model="gauss", stage="grid", verbose=self.verbose, output_dir=self.output_dir, output_base=self.output_base)
+
+            #----------------------------------------------------------------------------------------------------------------------------------------------------------
+            # Check if we should do Gaussian iterfit        
+            ## Run iterative fit with Gaussian model
+            if self.stage == "grid+iter":
+
+                start = time.time()
+                if self.verbose:
+                    print("Starting gauss iterfit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S'))
+
+                self.gauss_bounds = [tuple(self.settings['bounds']['x']),              # x
+                                    tuple(self.settings['bounds']['y']),               # y
+                                    tuple(self.settings['bounds']['size']),            # prf size
+                                    tuple(self.settings['bounds']['prf_ampl']),        # prf amplitude
+                                    tuple(self.settings['bounds']['bold_bsl'])]        # bold baseline    
+
+                self.gaussian_fitter.iterative_fit(rsq_threshold=self.settings['rsq_threshold'], bounds=self.gauss_bounds)
+
+                elapsed = (time.time() - start)
+
+                if self.verbose:
+                    print("Gaussian iterfit completed at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+". Mean rsq>"+str(self.settings['rsq_threshold'])+": "+str(np.mean(self.gaussian_fitter.iterative_search_params[self.gaussian_fitter.rsq_mask, -1])))
+                    print(f"Iterfit took {str(timedelta(seconds=elapsed))}")
+                
+                self.gauss_iter = utils.filter_for_nans(self.gaussian_fitter.iterative_search_params)
+                if self.write_files:
+                    self.save_params(model="gauss", stage="iter", verbose=self.verbose, output_dir=self.output_dir, output_base=self.output_base)
 
         #----------------------------------------------------------------------------------------------------------------------------------------------------------
         # Check if we should do DN-model
-        if self.model.lower() == "norm":
+        if self.model.lower() == "norm":            
+
+            if isinstance(self.old_params, tuple):
+                if self.old_params[-1] == "gauss+iter":
+                    self.old_params_arr = self.old_params[0]
+                    
+                    if self.verbose:
+                        print(f"Using old parameters: {self.old_params_arr}")
+            else:
+                self.old_params_arr = self.gaussian_fitter.iterative_search_params
             
             ## Define settings/grids/fitter/bounds etcs
-            settings, settings_file = generate_model_params(model='norm', dm=self.design_matrix, outputdir=self.output_dir)
-            print(f"Using settings file: {settings_file}")
-
-            self.old_params_arr = self.gaussian_fitter.iterative_search_params
+            settings, settings_file, self.prf_stim = generate_model_params(model='norm', dm=self.design_matrix, outputdir=self.output_dir)
+            
+            if self.verbose:
+                print(f"Using settings file: {settings_file}")
 
             # make n_units x 4 array, with X,Y,size,r2
             self.old_params_filt = np.hstack((self.old_params_arr[:,:3], self.old_params_arr[:,-1][...,np.newaxis]))
 
             self.norm_model = Norm_Iso2DGaussianModel(stimulus=self.prf_stim,
-                                                    filter_predictions=self.settings['filter_predictions'],
-                                                    filter_type='sg',
-                                                    filter_params={'window_length': self.settings['filter_window_length'], 'polyorder': self.settings['filter_polyorder']})
+                                                      filter_predictions=self.settings['filter_predictions'],
+                                                      filter_type='sg',
+                                                      filter_params={'window_length': self.settings['filter_window_length'], 'polyorder': self.settings['filter_polyorder']})
 
             self.norm_fitter = Norm_Iso2DGaussianFitter(self.norm_model, self.data)
 
@@ -1301,16 +1329,19 @@ class pRFmodelFitting():
                                 tuple(settings['bounds']['surr_size']),       # surround size
                                 tuple(settings['bounds']['neur_bsl']),        # neural baseline
                                 tuple(settings['bounds']['surr_bsl'])]        # surround baseline
-
+            # self.norm_bounds = None
             #----------------------------------------------------------------------------------------------------------------------------------------------------------
             ## Start grid fit
             start = time.time()
-            print("Starting norm grid fit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S'))
+            if self.verbose:
+                print("Starting norm grid fit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S'))
+
             self.norm_fitter.grid_fit(self.surround_amplitude_grid, 
-                                    self.surround_size_grid, 
-                                    self.neural_baseline_grid,
-                                    self.surround_baseline_grid, 
-                                    gaussian_params=self.old_params_filt)
+                                      self.surround_size_grid, 
+                                      self.neural_baseline_grid,
+                                      self.surround_baseline_grid, 
+                                      gaussian_params=self.old_params_filt,
+                                      n_batches=self.nr_jobs)
 
             elapsed = (time.time() - start)
 
@@ -1331,8 +1362,8 @@ class pRFmodelFitting():
                     print("Starting norm iterfit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S'))
 
                 self.norm_fitter.iterative_fit(rsq_threshold=settings['rsq_threshold'],
-                                            bounds=self.norm_bounds,
-                                            starting_params=self.norm_fitter.gridsearch_params)
+                                               bounds=self.norm_bounds,
+                                               starting_params=self.norm_fitter.gridsearch_params)
                 
                 elapsed = (time.time() - start)  
                 print("Norm iterfit completed at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+". Mean rsq>"+str(settings['rsq_threshold'])+": "+str(np.mean(self.norm_fitter.iterative_search_params[self.norm_fitter.rsq_mask, -1])))
@@ -1484,5 +1515,165 @@ def find_most_similar_prf(reference_prf, look_in_params, verbose=False, return_n
     else:
         return xysize_par[:return_nr]
 
+
+class SizeResponse():
+
+    def __init__(self, prf_stim, params):
+        """SizeResponse
+
+        Perform size-response related operations given a pRF-stimulus/parameters. Simulate the pRF-response using a set of growing stimuli using :func:`linescanning.prf.make_stims`, create size response functions, and find stimulus sizes that best reflect the difference between two given SR-curves. Only needs a *prfpy.stimulus.PRFStimulus2D*-object and a set of parameters derived from a Divisive Normalization model.
+
+        Parameters
+        ----------
+        prf_stim: prfpy.stimulus.PRFStimulus2D
+            Object describing the nature of the stimulus
+        params: numpy.ndarray
+            array with shape (10,) as per the output of a Divisive Normalization fit operation.
+
+        Example
+        ----------
+        >>> from linescanning import utils
+        >>> # Collect subject-relevant information in class
+        >>> subject = "sub-001"
+        >>> hemi = "lh"
+        >>> #
+        >>> if hemi == "lh":
+        >>>     hemi_tag = "hemi-L"
+        >>> elif hemi == "rh":
+        >>>     hemi_tag = "hemi-R"
+        >>> #
+        >>> subject_info = utils.CollectSubject(subject, derivatives=opj('<path_to_project>', 'derivatives'), settings='recent', hemi="lh")
+        >>> #
+        >>> # Get and plot fMRI signal
+        >>> data_fn = utils.get_file_from_substring(f"avg_bold_{hemi_tag}.npy", subject_info.prfdir)
+        >>> data = np.load(data_fn)[...,subject_info.return_target_vertex(hemi=hemi)]
+        >>> #
+        >>> # insert old parameters
+        >>> insert_params =(np.array(subject_info.target_params)[np.newaxis,...],"gauss+iter")
+        >>> #
+        >>> # initiate class
+        >>> fitting = prf.pRFmodelFitting(data[...,np.newaxis].T, 
+        >>>                               design_matrix=subject_info.design_matrix, 
+        >>>                               TR=subject_info.settings['TR'], 
+        >>>                               model="norm", 
+        >>>                               stage="grid", 
+        >>>                               old_params=insert_params, 
+        >>>                               verbose=False, 
+        >>>                               output_dir=subject_info.prfdir, 
+        >>>                               nr_jobs=1)
+        >>> #
+        >>> # fit
+        >>> fitting.fit()
+        >>> #
+        >>> new_params = fitting.norm_grid[0]
+        >>> #
+        >>> # size response functionsf
+        >>> SR = prf.SizeResponse(fitting.prf_stim, new_params)        
+        """
+
+        self.prf_stim = prf_stim
+        self.n_pix = self.prf_stim.design_matrix.shape[0]
+        self.params = params
+        self.params_df = self.parse_normalization_parameters(self.params)
+
+        # define visual field in degree of visual angle
+        self.ss_deg = 3.0 * np.degrees(np.arctan(self.prf_stim.screen_size_cm /(2.0*self.prf_stim.screen_distance_cm)))
+        self.x = np.linspace(-self.ss_deg/2, self.ss_deg/2, self.n_pix)
+
+
+    def make_stimuli(self, factor=4):
+        """create stimuli for Size-Response curve simulation. See :func:`linescanning.prf.make_stims`"""
+        # create stimuli
+        self.stims_fill, self.stims_fill_sizes = make_stims(self.n_pix, self.prf_stim, factr=factor)
+    
+
+    def parse_normalization_parameters(self, params):
+        """store the Divisive Normalization model parameters in a DataFrame"""
+        params_dict = {"x": [params[0]], "y": [params[1]], "A": [params[3]], "B": [params[-3]/params[3]], "C": [params[5]], "D": [params[-2]], "ss": [params[6]], "r2": [params[-1]], "size": [params[2]], "norm": [params[6]/params[3]]}
+
+        return pd.DataFrame(params_dict)
+
+    
+    def make_sr_function(self, center_prf=True, scale_factor=None, normalize=True):
+        """create Size-Response function. If you want to ignore the actual location of the pRF, set `center_prf=True`. You can also scale the pRF-size with a factor `scale_factor`, for instance if you want to simulate pRF-sizes across depth."""
+        if center_prf:
+            mu_x = self.params_df['x'][0]
+            mu_y = self.params_df['y'][0]
+        else:
+            mu_x, mu_y = 0,0
+
+        if scale_factor != None:
+            prf_size = self.params_df['size'][0]*scale_factor
+        else:
+            prf_size = self.params_df['size'][0]
+
+        func = norm_2d_sr_function(self.params_df['A'][0], self.params_df['B'][0], self.params_df['C'][0], self.params_df['D'][0], prf_size, self.params_df['ss'][0], self.x, self.x, self.stims_fill, mu_x=mu_x, mu_y=mu_y)
+
+        if normalize:
+            return func / func.max()
+        else:
+            return func
+
+    def find_stim_sizes(self, curve1, curve2):
+        """find_stim_sizes
+
+        Function to fetch the stimulus sizes that optimally disentangle the responses of two pRFs given the Size-Response curves. Starts by finding the maximum response for each curve, then finds the intersect, then finds the stimulus sizes before and after the intersect where the response difference is largest.
+
+        Parameters
+        ----------
+        curve1: numpy.ndarray
+            Array representing the first SR-curve (as per output for :func:`linescanning.prf.SizeResponse.make_sr_function`)
+        curve2: numpy.ndarray
+            Array representing the second SR-curve (as per output for :func:`linescanning.prf.SizeResponse.make_sr_function`)
+
+        Returns
+        ----------
+        numpy.ndarray
+            array containing the optimal stimulus sizes as per :func:`linescanning.prf.SizeResponse.make_stims`
+
+        Example
+        ----------
+        >>> # follows up on example in *linescanning.prf.SizeResponse*
+        >>> SR.make_stimuli()
+        >>> sr_curve1 = SR.make_sr_function(center_prf=True)
+        >>> sr_curve2 = SR.make_sr_function(center_prf=True, scale_factor=0.8) # decrease pRF size of second pRF by 20%
+        >>> use_stim_sizes = SR.find_stim_sizes(sr_curve1, sr_curve2)
+        """
+
+        # find the peaks of individual curves
+        sr_diff = curve1-curve2
+        size_indices = signal.find_peaks(abs(sr_diff))[0]
+        size_indices = np.append(size_indices, 
+                                 np.array((utils.find_max_val(curve1)[0],
+                                           utils.find_max_val(curve2)[0])))
+
+        # append sizes of max of curves
+        use_stim_sizes = []
+        for size_index in size_indices:
+            use_stim_sizes.append(self.stims_fill_sizes[size_index])
+
+        # find intersection of curves
+        x_size, y_size = utils.find_intersection(self.stims_fill_sizes, curve1, curve2)
+        use_stim_sizes.append(y_size)
+        use_stim_sizes.sort()
+
+        return use_stim_sizes
+
+
+    def plot_stim_size(self, stim_size, vf_extent=[-5,-5], ax=None):
+        """plot output of :func:`linescanning.prf.SizeResponse.find_stim_sizes`"""
+
+        if ax == None:
+            fig,ax = plt.subplots(figsize=(6,6))
+
+        stim_ix = utils.find_nearest(self.stims_fill_sizes, stim_size)[0]
+        cmap_blue = utils.make_binary_cm((8,178,240))
+
+        im = ax.imshow(self.stims_fill[stim_ix], extent=vf_extent+vf_extent, cmap=cmap_blue)
+        ax.axvline(0, color='k', linestyle='dashed', lw=0.5)
+        ax.axhline(0, color='k', linestyle='dashed', lw=0.5)
+        ax.axis('off')
+        patch = patches.Circle((0,0), radius=vf_extent[-1], transform=ax.transData)
+        im.set_clip_path(patch)
 
 
