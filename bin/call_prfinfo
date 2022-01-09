@@ -27,8 +27,11 @@ Args:
                         'lh' or 'rh', as numpy array is stacked left hemi first, then right hemi
                         (default = lh)
 
+    -d <prf dir>        str:
+                        path to pRF-directory; will default to derivatives/prf/<subject>
+
     -p <prf_file>       str:
-                        if left empty, will default to derivatives/prf/<subject>/*desc-prf_params.npy
+                        if left empty, will default to derivatives/prf/<subject>/<ses-1>/*desc-prf_params.npy
 
 Outputs
     array of pRF-parameters of requested vertex
@@ -42,10 +45,11 @@ Example:
     subject     = None
     vertex      = None
     prf_info    = None
+    prf_dir     = None
     hemi        = 'lh'
 
     try:
-        opts = getopt.getopt(argv,"qs:v:p:h:",["subject=", "vertex=", "prf=", "hemi="])[0]
+        opts = getopt.getopt(argv,"qs:v:p:h:d:",["subject=", "prfdir=", "vertex=", "prf=", "hemi="])[0]
     except getopt.GetoptError:
         print(main.__doc__)
         sys.exit(2)
@@ -58,6 +62,8 @@ Example:
             subject = arg
         elif opt in ("-v", "--vertex"):
             vertex = int(arg)
+        elif opt in ("-d", "--prfdir"):
+            prf_dir = int(arg)
         elif opt in ("-p", "--prf"):
             prf_info = arg  
         elif opt in ("-h", "--hemi"):
@@ -68,13 +74,16 @@ Example:
         print(main.__doc__)
         sys.exit()
 
+    if not prf_dir:
+        prf_dir = opj(os.environ['PRF'], subject, 'ses-1')
+
     if not prf_info:
-        prf_info = get_file_from_substring('desc-prf_params', opj(os.environ['PRF'], subject))
+        prf_info = get_file_from_substring('desc-prf_params', prf_dir)
     
     info = np.load(prf_info)
 
     if hemi == "rh":
-        tmp = get_file_from_substring("desc-avg_bold_hemi-L.npy", opj(os.environ['PRF'], subject))
+        tmp = get_file_from_substring("desc-avg_bold_hemi-L.npy", prf_dir)
         vertex = np.load(tmp).shape[-1]+vertex
 
     vert_info = info[vertex,:]
