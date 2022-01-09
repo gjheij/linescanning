@@ -141,8 +141,8 @@ for dir in ${search}; do
   fi
 
   # set the paths
-  fs_dir=${DERIV}/freesurfer/$(basename ${dir})
-  cx_dir=${DERIV}/pycortex/$(basename ${dir})
+  fs_dir=${DERIV}/freesurfer
+  cx_dir=${DERIV}/pycortex
   prf_dir=${DERIV}/prf/${base_dir}
 
   # make the pycortex directory if it doesn't exists; the others should exists already. If not, it will complain about it below
@@ -205,13 +205,13 @@ for dir in ${search}; do
 
     # set the call_pycortex2 flag for skipping FreeView
     if [[ ${FREEVIEW} -eq 0 ]]; then
-      OPEN_FV="-f"
+      OPEN_FV="--no-freeview"
     else
       OPEN_FV=""
     fi
 
-    call_pycortex2 ${OPEN_FV} ${man_verts} \
-      -s $(basename ${dir}) 
+    call_targetvertex ${OPEN_FV} ${man_verts} \
+      -s $(basename ${dir}) \
       --fs ${fs_dir} \
       --cx ${cx_dir} \
       --prf ${prf_dir} \
