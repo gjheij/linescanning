@@ -17,7 +17,7 @@ def main(argv):
 
     """
 ---------------------------------------------------------------------------------------------------
-call_pycortex2 (object oriented version of call_pycortex with more properties to use in selection)
+call_targetvertex
 
 This script calculates the orientation of the line in the first session anatomy based on the sur-
 faces as outputted by FreeSurfer and later also the pRF-maps. Eventually it will create a csv-file
@@ -57,9 +57,9 @@ Outputs:
     orientation of the line in the first session anatomy
 
 Examples:
-    call_pycortex2 -s sub-001 -d /dir/to/derivatives -o pycortex/sub-001/line_pycortex.csv -b 1
-    call_pycortex2 -s sub-001 --fs /path/freesurfer --ctx /path/pycortex --prf /path/prf
-    call_pycortex2 -s sub-001 -d /dir/to/derivatives -u
+    call_targetvertex -s sub-001 -d /dir/to/derivatives -o pycortex/sub-001/line_pycortex.csv -b 1
+    call_targetvertex -s sub-001 --fs /path/freesurfer --ctx /path/pycortex --prf /path/prf
+    call_targetvertex -s sub-001 -d /dir/to/derivatives -u
 
 Notes:
     - You only need to specify the paths up until the sub-xxx, assuming a BIDS-like structure
@@ -84,7 +84,7 @@ Notes:
     task        = f"{os.environ['TASK_SES1']}_model-gauss_stage-iter"
     out         = None
     roi         = "V1_exvivo.thresh"
-    use_prf     = 1
+    use_prf     = 0
     verts       = None
     open_fv     = 1
     deriv       = None
@@ -93,7 +93,7 @@ Notes:
     prf_dir     = None
 
     try:
-        opts = getopt.getopt(argv,"fuhd:s:t:r:o:b:v:",["help", "deriv=", "task=", "sub=", "roi=", "out=", "fs=", "cx=", "prf=", "vert=", "use-prf", "freeview"])[0]
+        opts = getopt.getopt(argv,"fuhd:s:t:r:o:b:v:",["help", "deriv=", "task=", "sub=", "roi=", "out=", "fs=", "cx=", "prf=", "vert=", "use-prf", "no-freeview"])[0]
     except getopt.GetoptError:
         print("ERROR IN ARGUMENT HANDLING!")
         print(main.__doc__)
@@ -121,11 +121,10 @@ Notes:
             use_prf = 1
         elif opt in ("-t", "--task"):
             task = arg
-        elif opt in ("-f", "--freeview"):
+        elif opt in ("-f", "--no-freeview"):
             open_fv = 0
         elif opt in ("--vert"):
             verts = arg
-
     if len(argv) < 1:
         print("\nNEED AT LEAST A SUBJECT ID")
         print(main.__doc__)
@@ -154,7 +153,7 @@ Notes:
         open_fv = True
     else:
         open_fv = False
-
+        
     # when including pRF-parameters, use individual directories as pRF-directory has an additional 'ses-' directory that's unaccounted for when looking for defaults
     if use_prf:
         if not fs_dir:
