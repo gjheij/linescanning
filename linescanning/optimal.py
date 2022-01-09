@@ -10,13 +10,12 @@ from linescanning import (
     transform, 
     utils
     )
+import matplotlib.pyplot as plt
 import nibabel as nb
 import numpy as np
 import os
 import pandas as pd
-from prfpy import stimulus
 import random
-from scipy.io import loadmat
 import warnings
 
 warnings.filterwarnings('ignore')
@@ -56,7 +55,7 @@ def set_threshold(name=None, borders=None, set_default=None):
     # set threshold for 'name'
     while True:
         try:
-            val = float(input(f" {name} [def = {int(set_default)}]:   ") or set_default)
+            val = float(input(f" {name} [def = {int(set_default)}]: \t") or set_default)
         except ValueError:
             print(" Please enter a number")
             continue
@@ -184,7 +183,7 @@ def target_vertex(subject,
                 # get user input with set_threshold > included the possibility to have only pRF or structure only!
                 if hasattr(GetBestVertex, 'prf'):
                     ecc_val     = set_threshold(name="eccentricity", borders=(0,15), set_default=round(min(GetBestVertex.prf.ecc)))
-                    r2_val      = set_threshold(name="r2", borders=(0,1), set_default=round(min(GetBestVertex.prf.r2)))
+                    r2_val      = set_threshold(name="r2 (variance)", borders=(0,1), set_default=round(min(GetBestVertex.prf.r2)))
                     pol_val_lh  = set_threshold(name="polar angle lh", borders=(0,np.pi), set_default=round(np.pi))
                     pol_val_rh  = set_threshold(name="polar angle rh", borders=(-np.pi,0), set_default=round(-np.pi))
                     pol_val     = [pol_val_lh,pol_val_rh]
@@ -194,7 +193,7 @@ def target_vertex(subject,
                     pol_val     = 0
 
                 if hasattr(GetBestVertex, 'surface'):
-                    thick_val   = set_threshold(name="thickness", borders=(0,5), set_default=max(GetBestVertex.surface.thickness.data))
+                    thick_val   = set_threshold(name="thickness (mm)", borders=(0,5), set_default=max(GetBestVertex.surface.thickness.data))
                     depth_val   = set_threshold(name="sulcal depth", set_default=round(min(GetBestVertex.surface.depth.data)))
                 else:
                     thick_val   = 0
@@ -332,35 +331,37 @@ def target_vertex(subject,
             print(" writing {file}".format(file=prf_bestvertex))
             
             # load pRF-experiment details
-            vf_extent = [-5, 5]
-            design_fn = utils.get_file_from_substring("vis_design.mat", opj(os.environ['DIR_DATA_HOME'], 'code'))
-            design_matrix = loadmat(design_fn)
+            for hemi in ["lh", "rh"]:
+                if hemi == "lh":
+                    hemi_tag = "hemi-L"
+                elif hemi == "rh":
+                    hemi_tag = "hemi-R"
 
-            prf_stim = stimulus.PRFStimulus2D(screen_size_cm=70, screen_distance_cm=225, design_matrix=design_matrix['stim'],TR=1.5)
-            prf_lh = prf.make_prf(prf_stim, size=prf_left[2], mu_x=prf_left[0], mu_y=prf_left[1])
-            prf_rh = prf.make_prf(prf_stim, size=prf_right[2], mu_x=prf_right[0], mu_y=prf_right[1])
+                # fetch subject's pRF-stuff
+                subject_info = utils.CollectSubject(subject, cx_dir=opj(cx_dir, subject), prf_dir=prf_dir, settings='recent', hemi=hemi)
 
-            prf.plot_prf(prf_lh, vf_extent, save_as=opj(cx_dir, subject, f'{subject}_hemi-L_desc-prf_position.pdf'))
-            prf.plot_prf(prf_rh, vf_extent, save_as=opj(cx_dir, subject, f'{subject}_hemi-R_desc-prf_position.pdf'))
+                # initiate figure
+                fig = plt.figure(constrained_layout=True, figsize=(20,5))
+                gs00 = fig.add_gridspec(1,2, width_ratios=[10,20])
 
-        try:
-            lh_bold = np.load(utils.get_file_from_substring("avg_bold_hemi-L.npy", os.path.dirname(prf_params)))
-            rh_bold = np.load(utils.get_file_from_substring("avg_bold_hemi-R.npy", os.path.dirname(prf_params)))
+                # add pRF-plot
+                ax1 = fig.add_subplot(gs00[0])
+                prf.plot_prf(subject_info.prf_array, subject_info.settings['vf_extent'], ax=ax1)
+                
+                # create timecourse plot
+                ax2 = fig.add_subplot(gs00[1])
+                bold = np.load(utils.get_file_from_substring(f"avg_bold_{hemi_tag}.npy", os.path.dirname(prf_params)))
+                vert = getattr(GetBestVertex, f"{hemi}_best_vertex")
+                utils.LazyPlot(bold[:,vert], 
+                               x_label="volumes", 
+                               y_label="amplitude (z-score)", 
+                               font_size=14,
+                               line_width=2,
+                               color="#53107B",
+                               add_hline='defaults',
+                               axs=ax2)
 
-            glm.plot_array(lh_bold[:,GetBestVertex.lh_best_vertex], 
-                           x_label="volumes", 
-                           y_label="amplitude (z-score)", 
-                           font_size=14,
-                           save_as=opj(cx_dir, subject, f'{subject}_hemi-L_desc-prf_timecourse.pdf'))
-
-            glm.plot_array(rh_bold[:,GetBestVertex.rh_best_vertex], 
-                           x_label="volumes", 
-                           y_label="amplitude (z-score)", 
-                           font_size=14,
-                           save_as=opj(cx_dir, subject, f'{subject}_hemi-R_desc-prf_timecourse.pdf'))
-
-        except:
-            print("Could not create timecourse-plots")
+                fig.savefig(opj(cx_dir, subject, f'{subject}_{hemi_tag}_desc-prf_info.pdf'))
 
         print("Done")
         return GetBestVertex
@@ -407,7 +408,7 @@ class SurfaceCalc(object):
             # import subject from freesurfer (will have the same names)
             cortex.freesurfer.import_subj(fs_subject=self.subject,
                                             cx_subject=self.subject,
-                                            freesurfer_subject_dir=self.fs_path,
+                                            freesurfer_subject_dir=self.fs_dir,
                                             whitematter_surf='smoothwm')
 
         self.curvature = cortex.db.get_surfinfo(self.subject, type="curvature")
@@ -424,7 +425,7 @@ class SurfaceCalc(object):
 
         # try:
         setattr(self, 'roi_label', fs_label.replace('.', '_'))
-        tmp = self.read_fs_label(subject=self.subject, fs_path=self.fs_path, fs_label=fs_label, hemi="both")
+        tmp = self.read_fs_label(subject=self.subject, fs_dir=self.fs_dir, fs_label=fs_label, hemi="both")
         setattr(self, f'lh_{self.roi_label}', tmp['lh'])
         setattr(self, f'rh_{self.roi_label}', tmp['rh'])
 
@@ -464,7 +465,7 @@ class SurfaceCalc(object):
         setattr(self, 'rh_surf_sm', self.rh_surf.smooth(self.curvature.data[self.lh_surf_data[0].shape[0]:], factor=kernel, iterations=nr_iter))
 
     @staticmethod
-    def read_fs_label(subject, fs_path=None, fs_label=None, hemi="both"):
+    def read_fs_label(subject, fs_dir=None, fs_label=None, hemi="both"):
         """read_fs_label
 
         read a freesurfer label file (name must match with file in freesurfer directory)
@@ -492,17 +493,17 @@ class SurfaceCalc(object):
         # # dots are annoying in attributes, to replace them with underscores; won't fail if there aren't any present
         # setattr(self, 'roi_label', fs_label.replace('.', '_'))
 
-        # print("reading {}".format(opj(self.fs_path, self.subject, 'label', f'{fs_label}.label')))
+        # print("reading {}".format(opj(self.fs_dir, self.subject, 'label', f'{fs_label}.label')))
         if hemi == "both":
-            return {'lh': nb.freesurfer.io.read_label(opj(fs_path, subject, 'label', f'lh.{fs_label}.label'), read_scalars=False),
-                    'rh': nb.freesurfer.io.read_label(opj(fs_path, subject, 'label', f'rh.{fs_label}.label'), read_scalars=False)}
-            # [setattr(self, f'{i}_{self.roi_label}', nb.freesurfer.io.read_label(opj(self.fs_path, self.subject, 'label', f'{i}.{fs_label}.label'), read_scalars=False)) for i in ['lh','rh']]
+            return {'lh': nb.freesurfer.io.read_label(opj(fs_dir, subject, 'label', f'lh.{fs_label}.label'), read_scalars=False),
+                    'rh': nb.freesurfer.io.read_label(opj(fs_dir, subject, 'label', f'rh.{fs_label}.label'), read_scalars=False)}
+            # [setattr(self, f'{i}_{self.roi_label}', nb.freesurfer.io.read_label(opj(self.fs_dir, self.subject, 'label', f'{i}.{fs_label}.label'), read_scalars=False)) for i in ['lh','rh']]
 
         else:
             if hemi.lower() != "lh" and hemi.lower() != "rh":
                 raise ValueError(f"Hemisphere should be one of 'both', 'lh', or 'rh'; not {hemi}")
             else:
-                label_file = opj(fs_path, subject, 'label', f'{hemi}.{fs_label}.label')
+                label_file = opj(fs_dir, subject, 'label', f'{hemi}.{fs_label}.label')
                 # setattr(self, f'{hemi}_{self.roi_label}', nb.freesurfer.io.read_label(label_file, read_scalars=False))
                 return {hemi: nb.freesurfer.io.read_label(label_file, read_scalars=False)}
     
@@ -682,7 +683,7 @@ class CalcBestVertex(object):
                  fs_dir=None,
                  cx_dir=None,
                  prf_dir=None,
-                 prfile=None,
+                 prffile=None,
                  fs_label="V1_exvivo.thresh",
                  ses_nr=1,
                  task="2R"):
