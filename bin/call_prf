@@ -50,7 +50,9 @@ Arguments:
   -m (--model)  <model type>      standard Gaussian model or Normalization model (for now)
   -x (--params) <gaussian params> path to numpy array containing old parameters of Gaussian model
                                   to use for the Normalization model
-  -g (--grid)   < grid only>      only run a grid-fit with the specified model
+  -g (--grid)   <grid only>       only run a grid-fit with the specified model
+  -u (--space)  <fit space>       default is set as PYBEST_SPACE in spinoza_setup
+    
 Example:
   call_prf -s 001 -n 1 -t 2R -o /path/derivatives/prf -i /path/to/pybest/sub-001 -p /path/png
   call_prf --sub 001 --ses 1 --task 2R --out /path/derivatives/prf --in /path/to/pybest/sub-001
@@ -67,9 +69,10 @@ Example:
     png_dir     = ''
     model       = "gauss"
     grid_only   = False
+    space       = "fsnative"
 
     try:
-        opts = getopt.getopt(argv,"ghs:n:t:o:i:p:m:x:",["sub=", "model=", "ses=", "task=", "out=", "in=", "png=", "params="])[0]
+        opts = getopt.getopt(argv,"ghs:n:t:o:i:p:m:x:u:",["sub=", "model=", "ses=", "task=", "out=", "in=", "png=", "params=", "grid=", "space="])[0]
     except getopt.GetoptError:
         print(main.__doc__)
         sys.exit(2)
@@ -92,6 +95,8 @@ Example:
             png_dir = arg
         elif opt in ("-m", "--model"):
             model = arg
+        elif opt in ("-u", "--space"):
+            space = arg
         elif opt in ("-g", "--grid"):
             grid_only = True
 
@@ -104,6 +109,7 @@ Example:
     if sub.isdecimal() != True:
         print(f"ERROR: input contains non-digit elements. Subject = {sub}")
         sys.exit(1)
+
 
     if ses != None:
         if ses.isdecimal() != True:
@@ -186,7 +192,7 @@ Example:
     m_prf_tc_data = np.median(np.array(prf_tc_data), 0)
 
     # vertices per hemi
-    n_verts_per_hemi = [np.load(opj(in_dir, f'{out}_run-{gr}_space-fsnative_hemi-{hemi}_desc-denoised_bold.npy')).shape[-1] for hemi in ['L', 'R']]
+    n_verts_per_hemi = [np.load(opj(in_dir, f'{out}_run-{gr}_space-{space}_hemi-{hemi}_desc-denoised_bold.npy')).shape[-1] for hemi in ['L', 'R']]
     # print(f"Nr of vertices in func data: {n_verts_per_hemi}")
 
     # check if this matches with FreeSurfer surfaces
