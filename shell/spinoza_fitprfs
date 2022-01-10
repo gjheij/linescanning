@@ -206,11 +206,11 @@ for dir in ${search}; do
         job="python"
       else
         job="qsub -wd ${prf_dir} -N $(basename ${dir})_gauss"
-        # job="python"
+        job="python"
       fi
 
       export DISPLAY=:0
-      ${job} ${DIR_SCRIPTS}/bin/call_prf \
+      ${job} ${DIR_SCRIPTS}/bin/call_prf ${grid_flag} \
         -s "$(basename ${dir} | cut -d'-' -f2)" \
         -n ${nr} \
         -t ${TASK_SES1} \
@@ -218,7 +218,7 @@ for dir in ${search}; do
         -i ${pybest_dir}/denoising \
         -p ${PNGS} \
         -m ${use_model} \
-        ${grid_flag} # empty if iterfit, '-g' if grid_only -eq 1
+        -u ${PYBEST_SPACE}
 
     else
 
