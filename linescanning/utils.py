@@ -1,13 +1,8 @@
 import cortex
 import csv
-import getpass
 import json
-from scipy.io.matlab.mio5 import _has_struct
-
-from scipy.misc.common import derivative
 from . import prf
 import matplotlib.colors as mcolors
-import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
 import nibabel as nb
 from nilearn.signal import clean
@@ -24,7 +19,6 @@ from prfpy import stimulus
 import random
 from re import I
 from scipy import io
-from scipy.interpolate import interp1d
 from scipy.signal import detrend
 import seaborn as sns
 from shapely import geometry
