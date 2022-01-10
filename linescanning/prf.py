@@ -1241,9 +1241,9 @@ class pRFmodelFitting():
             ## start grid fit
             start = time.time()
             self.gaussian_fitter.grid_fit(ecc_grid=self.settings['grids']['eccs'],
-                                        polar_grid=self.settings['grids']['polars'],
-                                        size_grid=self.settings['grids']['sizes'],
-                                        pos_prfs_only=self.settings['pos_prfs_only'])
+                                          polar_grid=self.settings['grids']['polars'],
+                                          size_grid=self.settings['grids']['sizes'],
+                                          pos_prfs_only=self.settings['pos_prfs_only'])
             
             elapsed = (time.time() - start)
 
@@ -1267,11 +1267,11 @@ class pRFmodelFitting():
                 if self.verbose:
                     print("Starting gauss iterfit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S'))
 
-                self.gauss_bounds = [tuple(self.settings['bounds']['x']),              # x
-                                    tuple(self.settings['bounds']['y']),               # y
-                                    tuple(self.settings['bounds']['size']),            # prf size
-                                    tuple(self.settings['bounds']['prf_ampl']),        # prf amplitude
-                                    tuple(self.settings['bounds']['bold_bsl'])]        # bold baseline    
+                self.gauss_bounds = [tuple(self.settings['bounds']['x']),               # x
+                                     tuple(self.settings['bounds']['y']),               # y
+                                     tuple(self.settings['bounds']['size']),            # prf size
+                                     tuple(self.settings['bounds']['prf_ampl']),        # prf amplitude
+                                     tuple(self.settings['bounds']['bold_bsl'])]        # bold baseline    
 
                 self.gaussian_fitter.iterative_fit(rsq_threshold=self.settings['rsq_threshold'], bounds=self.gauss_bounds)
 
