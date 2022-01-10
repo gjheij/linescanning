@@ -47,8 +47,100 @@ if [[ $1 == "setup" ]]; then
       ) >> ~/.bash_profile
   fi
 
+  # make helper scripts available
   source ~/.bash_profile
 
+  # fetch ITK-Snap
+  check_itksnap=`check_function itksnap`
+  if [[ ${check_itksnap} -eq 1 ]]; then
+    cd ${PATH_HOME}
+    DOWNLOAD_PATH=https://sourceforge.net/projects/itk-snap/files/itk-snap/3.8.0/itksnap-3.8.0-20190612-Linux-x86_64.tar.gz
+    wget -c ${DOWNLOAD_PATH}
+    mkdir ${PWD}/itksnap
+    tar -C itksnap -zxf $(basename ${DOWNLOAD_PATH})
+    mv ${PWD}/itksnap/*/* ${PWD}/itksnap && rm -r ${PWD}/itksnap/itksnap-* 2>/dev/null
+    ITK_PATH=`readlink -f ${PWD}/itksnap/bin/itksnap`
+
+    search_for="alias itksnap=\"${ITK_PATH}\""
+    case `grep -Fx "${search_for}" ~/.bash_profile >/dev/null; echo ${?}` in
+      0) 
+        ;;
+      1) 
+        (
+        echo
+        echo "# make itksnap-alias"
+        echo "${search_for}"
+        ) >> ~/.bash_profile
+        ;;
+      *)
+        # code if an error occurred
+        echo "ERROR: Could not complete setup.."
+        ;;
+    esac
+  fi
+
+  # source again to instantiate the alias
+  source ~/.bash_profile
+  check_itksnap=`check_function itksnap`
+  if [[ ${check_itksnap} -eq 1 ]]; then
+    echo "ERROR: Something went wrong during setup.. Do this manually please"
+    exit 1
+  fi
+
+  # activate conda environment
+  ACTIVATE_CONDA=1
+  if [[ ${ACTIVATE_CONDA} -eq 1 ]]; then
+    conda create --name linescanning --file ${REPO_DIR}/environment.yml 
+  fi
+
+  # setup python packages
+  declare -a INSTALL_PACKAGES=("Pycortex" "pRFpy" "Nideconv" "Pymp2rage" "Pybest" "Nighres")
+  for package in ${INSTALL_PACKAGES[@]}; do
+
+    # pycortex's package name == 'cortex'
+    if [[ ${package,,} != "pycortex" ]]; then
+
+      # pybest = command-line function
+      if [[ ${package,,} == "pybest" ]];
+        pybest_exists=`check_function pybest`
+        if [[ $? -ne 0 ]]; then
+          cd ${PATH_HOME}/${package,,}
+          pip install -e .
+        fi
+      # nighres requires special installation
+      elif [[ ${package,,} == "nighres" ]]; then
+        python -c "import ${package,,}" 2>/dev/null
+        if [[ $? -ne 0 ]]; then
+          cd ${PATH_HOME}/${package,,}
+          ./build.sh
+          if [[ $? -ne 0 ]]; then
+            echo "ERROR Nighres built INCOMPLETE: I'm guessing you need to set the JCC_JDK variable and/or install JCC"
+            exit
+          fi
+          pip install -e .
+        fi
+      else
+        # regular python package install
+        python -c "import ${package,,}" 2>/dev/null
+        if [[ $? -ne 0 ]]; then
+          cd ${PATH_HOME}/${package,,}
+          pip install -e .
+        fi
+      fi
+    else
+      # pycortex check
+      python -c "import cortex" 2>/dev/null
+      if [[ $? -ne 0 ]]; then
+        cd ${PATH_HOME}/${package,,}
+        pip install -e .
+      fi
+    fi
+
+  done
+
+  cd ${REPO_DIR}
+  pip install -e .
+  
 fi
 
 #===================================================================================================

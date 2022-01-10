@@ -12,18 +12,13 @@ Download the repository from ``github`` (see **TIP** below on what ``<some direc
    $ cd <some directory>
    $ git clone https://github.com/gjheij/linescanning.git
 
-Setup the environment for ``bash``:
+Edit the ``ACTIVATE_CONDA`` variable in the ``spinoza_setup``-file to your liking: by default, we'll activate and install several packages into that environment. Set to ``0`` if you wish to use the currently active python installation. Also adjust ``PATH_HOME`` if you want (See **TIP** below), as we'll be putting the installed packages here. By default this is in the same directory as where you ``git clone``'d this repository. Then enter:
 
 .. code:: bash
 
    $ bash <some directory>/linescanning/shell/spinoza_setup setup
 
-This makes sure the setup file is loaded in your ``.bash_profile`` each time you start a new a new terminal and makes the scripts inside the repository executable similar to how *FSL* works. Setup the ``python`` environment. Edit the *environment.yml* file to your liking (e.g., paths and environment name) and execute the following commands:
-
-.. code:: bash
-
-   $ conda create --name <environment name> --file environment.yml
-   $ pip install -e .
+This makes sure the setup file is loaded in your ``.bash_profile`` each time you start a new a new terminal and makes the scripts inside the repository executable similar to how *FSL* works. The file then looks for an installation of ITK-Snap_, and install it in ``PATH_HOME`` if it can't find an installation. It will also attempt to install Nighres_, Pymp2rage_, Pybest_, pRFpy_, Pycortex_, and Nideconv_ if no installations are found.
 
 Test the installation with:
 
@@ -51,7 +46,7 @@ As an additional installation setting, FreeSurfer requires a license file (see `
 
 External Dependencies
 ---------------------
-*LineScanning* is written using Python 3.7 (or above). *LineScanning* requires some other neuroimaging software tools used to deploy the ``LineScanning`` package that are not handled by the Python's packaging system (Pypi) or that require special attention setting up. For each of these packages, evaluate whether your computing cluster has some of these already available. If not, follow their individual installation instructions as per the packages' documentation:
+You can either choose to activate the accompanying ``environment.yml``-file (``ACTIVATE_CONDA=1`` in ``spinoza_setup``; = Default!) or install it in your own environment/python installation (set ``ACTIVATE_CONDA=0`` in ``spinoza_setup``). Installations of ANTs_, FSL_, SPM_ (+CAT12_-toolbox), fMRIprep_ and FreeSurfer_ are expected to exist on your system.
 
 .. tip::
    For python packages that are currently in development (e.g., pRFpy_, Nideconv_, Pycortex_) or require special attention (e.g., Nighres_), it is advisable to create a separate folder like ``packages`` locally, ``git clone`` the packages into this directory, and run ``pip install -e .`` in the individual packages (should the respective packages allow this procedure). That could look something like:
@@ -79,25 +74,27 @@ External Dependencies
              └── <project name 2>
                  └── fmriprep_wf
 
-   This would keep the organization of fMRIprep_'s tidy and increases reproducibility as you'd only have to change the project name in order to access everything from logs, preprocessing, and analyses. In ``spinoza_setup``, this directory is specified as ``PATH_HOME/programs/packages``, but can obviously be changed to the user's desired path. So the steps would be: 
+   This would keep the organization of fMRIprep_'s tidy and increases reproducibility as you'd only have to change the project name in order to access everything from logs, preprocessing, and analyses. In ``spinoza_setup``, this directory is specified as ``PATH_HOME``, but can obviously be changed to the user's desired path. So the steps would be: 
    
-   1) Create the directory ``PATH_HOME/programs/packages``
+   1) Create the directory ``PATH_HOME``
    2) For the packages pRFpy_, Nideconv_, Nighres_, Pycortex_, Pybest_, but also the *linescanning* repo, run ``git clone + pip install -e .`` in **THAT** directory
    3) Let this package organize your fMRIprep_ output for you
 
-- FSL_ (version 5.0.9) > will be on your PATH by default upon installation
-- ANTs_ (version 2.3.1) > will be on your PATH by default upon installation
-- ITK-Snap_ (version 3.8.0) > has to be added to path manually, e.g., in ``~/.bash_profile``
-- `C3D <https://sourceforge.net/projects/c3d/>`_ (version 1.0.0) > will be on your PATH by default upon installation
-- Nideconv_ (dev version) > use ``git clone + pip install -e .``
-- pRFpy_ (dev version) > use ``git clone + pip install -e .``
-- fMRIprep_ (version 20.2.6)
-- CAT12_ (version r1113)
-- SPM_ (spm12)
-- Nighres_ requires specific Java modules!
-- Pybest_ (dev version) > use ``git clone + pip install -e .``
-- Pycortex_ (dev version) > use ``git clone + pip install -e .``
-- FreeSurfer_ (version 7.2.0) > add the following to your ``~/.bash_profile``:
+   **This is done by default by ``spinoza_setup``**
+
+- FSL_ (version 5.0.9) > should be present/user install
+- ANTs_ (version 2.3.1) > should be present/user install
+- ITK-Snap_ (version 3.8.0) > installed by ``spinoza_setup``
+- `C3D <https://sourceforge.net/projects/c3d/>`_ (version 1.0.0) > will be on your PATH by default upon installation/user install
+- Nideconv_ (dev version) > installed by ``spinoza_setup``
+- pRFpy_ (dev version) > installed by ``spinoza_setup``
+- fMRIprep_ (version 20.2.6) > should be present/user install
+- CAT12_ (version r1113) > should be present/user install
+- SPM_ (spm12) > should be present/user install
+- Nighres_ > installed by ``spinoza_setup`` (Java-modules might have to be installed by user!)
+- Pybest_ (dev version) > installed by ``spinoza_setup``
+- Pycortex_ (dev version) > installed by ``spinoza_setup``
+- FreeSurfer_ (version 7.2.0) > should be present/user install, make sure the following is presnt in your ``~/.bash_profile``:
   
 .. code:: bash
    

@@ -6,9 +6,11 @@
 
 This repository contains all of the tools used during the acquisition and postprocessing of line scanning data at the Spinoza Centre for Neuroimaging in Amsterdam. The main goal of the package is to create the most accurate segmentations (both volumetric and surface) by combining various software packages such as [Nighres](https://github.com/nighres/nighres), [fMRIprep](https://fmriprep.org/en/stable/usage.html), [FreeSurfer](https://surfer.nmr.mgh.harvard.edu/), [CAT12](http://www.neuro.uni-jena.de/cat/index.html#DOWNLOAD), and [SPM](https://www.fil.ion.ucl.ac.uk/spm/software/spm12/). 
 
-## In active development - do not use unless otherwise instructed by repo owners
+## In active development
+This package is still in development and its API might change. Documentation for this package can be found at [readthedocs](https://linescanning.readthedocs.io/en/latest/) (not up to date)
 
-Documentation for this package can be found at [readthedocs](https://linescanning.readthedocs.io/en/latest/) (not up to date)
+## Installation
+To install, clone the repository and run `bash linescanning/shell/spinoza_setup setup`. This will make the executables in the `bin` and `shell` folders available, install additionally required packages (such as `pRFpy`, `Pycortex`, `Nighres`, `Pybest`, `ITK-Snap`, and `Nideconv`). You can either choose to activate the accompanying `environment.yml`-file (`ACTIVATE_CONDA=1` in `spinoza_setup`; = Default!) or install it in your own environment/python installation (set `ACTIVATE_CONDA=0` in `spinoza_setup`). Installations of `FSL`, `SPM` (+`CAT12`-toolbox), `fMRIprep` and `FreeSurfer` are expected to exist on your system.
 
 ## Policy & To Do
 
