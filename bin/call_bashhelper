@@ -44,6 +44,16 @@ function start_ssh {
 	fi
 }
 
+function check_function {
+    FN=`type -t $1`
+
+    if [[ -z ${FN} ]]; then
+      echo 1
+    else
+      echo 0
+    fi
+}
+
 # function to wait for a submitted job
 function wait_for_qsub {
 
