@@ -101,7 +101,7 @@ if [[ $1 == "setup" ]]; then
     if [[ ${package,,} != "pycortex" ]]; then
 
       # pybest = command-line function
-      if [[ ${package,,} == "pybest" ]];
+      if [[ ${package,,} == "pybest" ]]; then
         pybest_exists=`check_function pybest`
         if [[ $? -ne 0 ]]; then
           cd ${PATH_HOME}/${package,,}
