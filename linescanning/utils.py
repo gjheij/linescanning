@@ -336,7 +336,7 @@ def remove_files(path, string, ext=False):
         os.remove(path_to_file)
 
 
-def get_file_from_substring(filt, path):
+def get_file_from_substring(filt, path, return_msg='error'):
     """get_file_from_substring
 
     This function returns the file given a path and a substring. Avoids annoying stuff with glob. Now also allows multiple filters to be applied to the list of files in the directory. The idea here is to construct a binary matrix of shape (files_in_directory, nr_of_filters), and test for each filter if it exists in the filename. If all filters are present in a file, then the entire row should be 1. This is what we'll be looking for. If multiple files are found in this manner, a list of paths is returned. If only 1 file was found, the string representing the filepath will be returned. 
@@ -347,6 +347,8 @@ def get_file_from_substring(filt, path):
         tag for files we need to select. Now also support a list of multiple filters. 
     path: str
         path to the directory from which we need to remove files
+    return_msg: str, optional
+        whether to raise an error (*return_msg='error') or return None (*return_msg=None*). Default = 'error'.
     
     Returns
     ----------
@@ -400,7 +402,10 @@ def get_file_from_substring(filt, path):
                 match_list.append(opj(path, fname))
             return match_list
         else:
-            raise ValueError(f"Could not find file with filters: {filt}")
+            if return_msg == "error":
+                raise ValueError(f"Could not find file with filters: {filt} in {path}")
+            else:
+                return None
 
 def get_bids_file(layout, filter=None):
     """get_bids_file
@@ -1448,7 +1453,7 @@ class LazyPlot():
                         ymin, ymax = yerr
                     x = np.arange(0, len(el))
                     axs.fill_between(
-                        x, ymax, ymin, color=self.color_list[idx], alpha=self.error_alpha)
+                        x, ymax, ymin, color=color_list[idx], alpha=self.error_alpha)
         else:
             if not self.color:
                 self.color = sns.color_palette(self.cmap, 1)[0]
