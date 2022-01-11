@@ -18,7 +18,7 @@ class Scanner(object):
     subject: str
         subject-ID corresponding to the name in the pycortex filestore directory (mandatory!! for looking up how much the image has been moved when imported from FreeSurfer to Pycortex)
     df: dict
-        output from optimal.call_pycortex2; a dictionary containing the result from :class:`linescanning.optimal.CalcBestVertex`
+        output from optimal.target_vertex; a dictionary containing the result from :class:`linescanning.optimal.CalcBestVertex`
     fs2ses: str, numpy.ndarray
         (4,4) array or path to matrix file mapping FreeSurfer to the new session. It sort of assumes the matrix has been created with ANTs, so make sure the have run `call_antsregistration`. Enter 'identity' to use an identity matrix; this is useful if you want to plan the line in FreeSurfer-space (before session 2)
     new_anat: str
@@ -74,21 +74,21 @@ class Scanner(object):
 
         if hasattr(self.pycortex, 'infofile'):
          
-            # assuming I got an infofile dataframe from VertexInfo
-            self.normals = self.pycortex.get_normal()
-            self.ctx_coords = self.pycortex.get_coord()
-            self.vertices = self.pycortex.get_vertex()
+            # assuming I got an infofile dataframe from utils.VertexInfo
+            self.normals    = self.pycortex.get('normal')
+            self.ctx_coords = self.pycortex.get('position')
+            self.vertices   = self.pycortex.get('index')
 
         else:
             # assuming I got entire dataframe from CalcBestVertex
-            self.normals = {"lh": self.pycortex.lh_normal,
-                            "rh": self.pycortex.rh_normal}
+            self.normals    = {"lh": self.pycortex.lh_normal,
+                               "rh": self.pycortex.rh_normal}
 
             self.ctx_coords = {"lh": self.pycortex.lh_best_vertex_coord,
                                "rh": self.pycortex.rh_best_vertex_coord}
 
-            self.vertices = {"lh": self.pycortex.lh_best_vertex,
-                             "rh": self.pycortex.rh_best_vertex}
+            self.vertices   = {"lh": self.pycortex.lh_best_vertex,
+                               "rh": self.pycortex.rh_best_vertex}
 
         self.fs_orig = self.ref_anat
         self.fs_raw = opj(fs_dir, self.subject, 'mri', 'rawavg.mgz')
