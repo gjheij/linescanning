@@ -2,8 +2,6 @@
 import cortex
 from datetime import datetime
 from linescanning import (
-    glm, 
-    info, 
     planning,
     prf, 
     pycortex, 
@@ -158,12 +156,17 @@ def target_vertex(subject,
 
     if os.path.isfile(out):
         print(f"Loading in {out}")
-        return info.VertexInfo(out, subject=subject)
+        return utils.VertexInfo(out, subject=subject)
     else:
         if use_prf == True:
             prf_params = utils.get_file_from_substring(f"task-{task}_desc-prf_params.npy", prf_dir)
+            if "gauss" in prf_params:
+                model = "gauss"
+            elif "norm" in prf_params:
+                model = "norm"
         else:
             prf_params = None
+            model = "none"
         
         print(f"prf file = {prf_params}")
         print(f"roi      = {roi}")
@@ -296,16 +299,15 @@ def target_vertex(subject,
                 outF.close()
                 check = True
 
-        GetBestVertex.vertexinfo()
+        GetBestVertex.write_line_pycortex(save_as=out)
         print(" writing {file}".format(file=out))
-        GetBestVertex.trafo_info.to_csv(out)
 
         #----------------------------------------------------------------------------------------------------------------
         # Get pRF-parameters from best vertices
 
         if prf_params and os.path.exists(prf_params):
             prf_data = np.load(prf_params)
-            prf_bestvertex = opj(cx_dir, subject, f'{subject}_desc-prf_params_best_vertices.csv')
+            prf_bestvertex = opj(cx_dir, subject, f'{subject}_model-{model}_desc-best_vertices.csv')
 
             prf_right = prf_data[GetBestVertex.surface.lh_surf_data[0].shape[0]:][GetBestVertex.rh_best_vertex]
             prf_left = prf_data[0:GetBestVertex.surface.lh_surf_data[0].shape[0]][GetBestVertex.lh_best_vertex]
@@ -324,8 +326,6 @@ def target_vertex(subject,
                                         "index":    [GetBestVertex.lh_best_vertex, GetBestVertex.rh_best_vertex],
                                         "position": [GetBestVertex.lh_best_vertex_coord, GetBestVertex.rh_best_vertex_coord],
                                         "normal":   [GetBestVertex.lh_normal, GetBestVertex.rh_normal]})
-
-            best_vertex = best_vertex.set_index(['hemi'])
 
             best_vertex.to_csv(prf_bestvertex)
             print(" writing {file}".format(file=prf_bestvertex))
@@ -1077,9 +1077,9 @@ class CalcBestVertex(object):
             if hasattr(self, 'lr_best_vertex_map'):
                 np.save(opj(self.prf_dir, self.subject, f'{self.fname}_desc-smoothvertex_hemi-LR.npy'), self.lr_best_vertex_map_sm)
 
-    def vertexinfo(self, hemi="both"):
+    def write_line_pycortex(self, hemi="both", save_as=None):
 
-        """vertexinfo
+        """write_line_pycortex
 
         This function creates the line_pycortex files containing the angles and translation given the vertex ID, normal vector, and RAS coordinate. It uses :func:`linescanning.planning.create_line_pycortex` to calculate these things. It will return a pandas dataframe containing the relevant information for the vertices in both hemispheres.
 
@@ -1087,6 +1087,9 @@ class CalcBestVertex(object):
         ----------
         hemi: str
             what hemisphere should we process? ("both", "lh", "rh")
+
+        save_as: str, optional
+            save dataframe as `csv`-file
 
         Returns
         ----------
@@ -1096,11 +1099,13 @@ class CalcBestVertex(object):
 
         if hemi == "both":
             # do stuff for both hemispheres
-            rot_lh = planning.create_line_pycortex(self.lh_normal, "left", self.lh_best_vertex, coord=self.lh_best_vertex_coord)
-            rot_rh = planning.create_line_pycortex(self.rh_normal, "right", self.rh_best_vertex, coord=self.rh_best_vertex_coord)
-            rot_df = pd.concat([rot_lh, rot_rh]).set_index(['parameter'])
+            rot_lh = planning.single_hemi_line_pycortex(self.lh_normal, "L", self.lh_best_vertex, coord=self.lh_best_vertex_coord)
+            rot_rh = planning.single_hemi_line_pycortex(self.rh_normal, "R", self.rh_best_vertex, coord=self.rh_best_vertex_coord)
+            rot_df = pd.concat([rot_lh, rot_rh]).set_index(['hemi'])
 
             self.trafo_info = rot_df
+            if save_as:
+                self.trafo_info.to_csv(save_as)
 
         else:
 
@@ -1109,8 +1114,11 @@ class CalcBestVertex(object):
             elif hemi == "right" or hemi == "rh" or hemi.lower() == "r":
                 tag = "rh"
 
-            rot = planning.create_line_pycortex(getattr(self, f'{tag}_normal'), "left", getattr(self, f'{tag}_best_vertex'), coord=getattr(self, f'{tag}_best_vertex_coord'))
+            rot = planning.single_hemi_line_pycortex(getattr(self, f'{tag}_normal'), "left", getattr(self, f'{tag}_best_vertex'), coord=getattr(self, f'{tag}_best_vertex_coord'))
             setattr(self, f'{tag}_trafo_info', rot)
+            
+            if save_as:
+                getattr(self, f'{tag}_trafo_info').to_csv(save_as)
 
     def to_angle(self, hemi="both"):
         """convert normal vector to angle using :func:`linescanning.planning.normal2angle`"""
