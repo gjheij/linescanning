@@ -199,12 +199,17 @@ def string2float(string_array):
     array([ -7.42, -92.97, -15.28])
     """
 
-    new = string_array[1:-1].split(' ')[0:]
-    new = list(filter(None, new))
-    new = [float(i) for i in new]
-    new = np.array(new)
+    if type(string_array) == str:
+        new = string_array[1:-1].split(' ')[0:]
+        new = list(filter(None, new))
+        new = [float(i) for i in new]
+        new = np.array(new)
 
-    return new
+        return new
+
+    else:
+        # array is already in non-string format
+        return string_array
 
 
 def get_module_nr(key_word):
@@ -331,15 +336,15 @@ def remove_files(path, string, ext=False):
         os.remove(path_to_file)
 
 
-def get_file_from_substring(string, path):
+def get_file_from_substring(filt, path):
     """get_file_from_substring
 
-    This function returns the file given a path and a substring. Avoids annoying stuff with glob.
+    This function returns the file given a path and a substring. Avoids annoying stuff with glob. Now also allows multiple filters to be applied to the list of files in the directory. The idea here is to construct a binary matrix of shape (files_in_directory, nr_of_filters), and test for each filter if it exists in the filename. If all filters are present in a file, then the entire row should be 1. This is what we'll be looking for. If multiple files are found in this manner, a list of paths is returned. If only 1 file was found, the string representing the filepath will be returned. 
 
     Parameters
     ----------
-    string: str
-        tag for files we need to select
+    filt: str, list
+        tag for files we need to select. Now also support a list of multiple filters. 
     path: str
         path to the directory from which we need to remove files
     
@@ -348,18 +353,54 @@ def get_file_from_substring(string, path):
     str
         path to the files containing `string`. If no files could be found, `None` is returned
 
+    list
+        list of paths if multiple files were found
+
+    Raises
+    ----------
+    ValueError
+        If no files usingn the specified filters could be found
+
     Example
     ----------
-    >>> file = get_file_from_substring("R2", "/path/to/prf")
+    >>> get_file_from_substring("R2", "/path/to/prf")
     '/path/to/prf/r2.npy'
+    >>> get_file_from_substring(['gauss', 'best_vertices'], "path/to/pycortex/sub-xxx")
+    '/path/to/pycortex/sub-xxx/sub-xxx_model-gauss_desc-best_vertices.csv'
+    >>> get_file_from_substring(['best_vertices'], "path/to/pycortex/sub-xxx")
+    ['/path/to/pycortex/sub-xxx/sub-xxx_model-gauss_desc-best_vertices.csv',
+    '/path/to/pycortex/sub-xxx/sub-xxx_model-norm_desc-best_vertices.csv']    
     """
+    
+    if isinstance(filt, str):
+        filt = [filt]
 
-    for f in os.listdir(path):
-        if string in f:
-            try:
-                return opj(path, f)
-            except:
-                return None
+    if isinstance(filt, list):
+        # list and sort all files in the directory
+        files_in_directory = sorted(os.listdir(path))
+
+        # the idea is to create a binary matrix for the files in 'path', loop through the filters, and find the row where all values are 1
+        filt_array = np.zeros((len(files_in_directory), len(filt)))
+        for ix,f in enumerate(files_in_directory):
+            for filt_ix,filt_opt in enumerate(filt):
+                filt_array[ix,filt_ix] = filt_opt in f
+
+        # now we have a binary <number of files x number of filters> array. If all filters were available in a file, the entire row should be 1, 
+        # so we're going to look for those rows
+        full_match = np.ones(len(filt))
+        full_match_idc = np.where(np.all(filt_array==full_match,axis=1))[0]
+        
+        if len(full_match_idc) == 1:
+            fname = files_in_directory[full_match_idc[0]]
+            return opj(path, fname)
+        elif len(full_match_idc) > 1:
+            match_list = []
+            for match in full_match_idc:
+                fname = files_in_directory[match]
+                match_list.append(opj(path, fname))
+            return match_list
+        else:
+            raise ValueError(f"Could not find file with filters: {filt}")
 
 def get_bids_file(layout, filter=None):
     """get_bids_file
@@ -574,14 +615,20 @@ class VertexInfo:
         
         self.infofile = infofile
         self.data = pd.read_csv(self.infofile, index_col=0)
-
+        
+        # try to set the index to hemi. It will throw an error if you want to set the index while there already is an index.
+        # E.g., initially we will set the index to 'hemi'. If we then later on read in that file again, the index is already 
+        # set
         try:
-            self.data['normal']['L'] = string2float(self.data['normal']['L'])
-            self.data['normal']['R'] = string2float(self.data['normal']['R'])
-            self.data['position']['L'] = string2float(self.data['position']['L'])
-            self.data['position']['R'] = string2float(self.data['position']['R'])
+            self.data = self.data.set_index('hemi')
         except:
-            print("WARNING: could not convert normal and position to arrays. They're still in string representation!")
+            pass
+        
+        # check if arrays are in string format
+        for hemi in ["L", "R"]:
+            self.data['normal'][hemi]   = string2float(self.data['normal'][hemi])
+            self.data['position'][hemi] = string2float(self.data['position'][hemi])
+        
         self.subject = subject
 
     def get(self, keyword, hemi='both'):
@@ -612,134 +659,6 @@ class VertexInfo:
                 return self.data[keyword]['R']
             elif hemi.lower() == "left" or hemi.lower() == "l" or hemi.lower() == "lh":
                 return self.data[keyword]['L']
-
-def show_prf(x=None,y=None,size=None,df_prf=None, vertex=None, save_img=None):
-    """show_prf
-
-    Return a matplotlib figure showing the targeted pRF based on the parameter-dataframe. The dataframe can either be the path pointing to the sub-xxx_ses-1_desc-prf_params.npy or the numpy array itself. Assumes that the first column is `x`, second is `y`, third is `size`.
-
-    Parameters
-    ----------
-    x: float, optional
-        x-parameter of pRF (first column of *desc-prf_params.npy*)
-    y: float, optional
-        y-parameter of pRF (second column of *desc-prf_params.npy*)
-    size: float, optional
-        size-parameter of pRF (third column of *desc-prf_params.npy*)
-    df_prf: str, numpy.ndarray, optional
-        if you don't have individual values, give the entire dataframe contained in /derivatives/prf/sub-xxx/sub-xxx_*desc-prf_params.npy file or that numpy array. Note that the dataframe stacks the vertices of the right hemisphere onto those of the left hemisphere, so this method is mainly only accurate for the left hemisphere! 
-    vertex: int, optional
-        the vertex of which you'd like to display the position in the visual field
-    save_img: None, str, optional
-        leave to None if you just want the data used to create the image. Specify a filepath if you'd like to save the image straight away. If set to None (default), it will return the ingredients to insert into plt.imshow
-
-    Returns
-    ----------
-    prfpy.stimulus.gauss2D_iso_cart
-        stimulus object if `save_img` is set to `None`
-
-    list
-        list representing the space in which the pRF-lives (`vf_extent`) if `save_img` is set to `None`
-
-    matplotlib.image.AxesImage
-        matplotlib figure if `save_img` is *NOT* `None`
-        
-    Example
-    ----------
-    >>> from linescanning.utils import show_prf
-    >>> prf_params = np.load('derivatives/prf/sub-003/sub-003_ses-1_desc-prf_params.npy')
-    >>> prf_params.shape
-    (732592, 6)
-    >>> ff = show_prf(prf_params, vertex=3386)
-    >>> ff
-    <matplotlib.image.AxesImage at 0x7fafd37464f0>
-    >>> plt.show(ff)
-    """
-
-    vf_extent = [-8, 8]
-    nr_vf_pix = 200
-    prf_space_x, prf_space_y = np.meshgrid(np.linspace(vf_extent[0], vf_extent[1], nr_vf_pix, endpoint=True),
-                                            np.linspace(vf_extent[0], vf_extent[1], nr_vf_pix, endpoint=True))
-
-    if x != None and y != None and size != None:
-        prf = gauss2D_iso_cart(prf_space_x,
-                               prf_space_y,
-                               [x,y],size)
-
-    else:
-        if isinstance(df_prf, str):
-            prf_pars_df = np.load(df_prf)
-        elif isinstance(df_prf, np.ndarray):
-            prf_pars_df = df_prf
-        else:
-            raise ValueError("Do not understand the input for pRF-parameter. Either input a numpy array with the 6 columns or the *desc-prf_params.npy file")
-
-        if not vertex:
-            raise ValueError("Need a vertex number for this method. Note that only left hemispheric vertices work with this function, unless you cut the prf_params in half")
-
-        prf = gauss2D_iso_cart(prf_space_x,
-                                prf_space_y,
-                                [prf_pars_df[vertex, 0],
-                                prf_pars_df[vertex, 1]],
-                                prf_pars_df[vertex, 2])
-
-    if isinstance(save_img, str):
-        plt.imshow(prf, extent=vf_extent+vf_extent, cmap='cubehelix')
-        plt.axvline(0, color='white', linestyle='dashed', lw=0.5)
-        plt.axhline(0, color='white', linestyle='dashed', lw=0.5)
-        plt.savefig(save_img, transparant=True)
-        plt.close()
-        return save_img
-    else:
-        return prf, vf_extent
-
-
-def show_tc(array, vertex=None, color='#65CC14', save_img=None, axes=True):
-
-    """show_tc
-
-    Function to visualize the timecourse given a vertex in the left or right hemisphere (ideally the optimally selected vertex)
-
-    Parameters
-    ----------
-    array: numpy.ndarray
-        array containing data
-    vertex: int
-        the timecourse of the given vertex will be plotted
-    color: str
-        RGB-codes, names, hex-codes, whatever color you want (default is some sort of olive green)
-    save_img: None | str
-        leave to None if you just want the data used to create the image. Specify a filepath if you'd like to save the image straight away. If set to None (default), it will return the ingredients to insert into `plt.imshow`
-
-    Returns
-    ----------
-    str
-        path to `save_img` if `save_img` is set to `None`
-
-    matplotlib.image.AxesImage
-        matplotlib figure if `save_img` is *NOT* `None`    
-
-    """
-
-    if vertex:
-        tc = array[:,vertex]
-        fig2,axs2 = plt.subplots(figsize=(5,2))
-        axs2.plot(tc, color='#65CC14')
-        axs2.axhline(0, color='black', lw=0.25)
-        axs2.set(xlabel='Volumes', ylabel='Delta BOLD (%)')
-
-        if axes:
-            axs2.spines['top'].set_visible(False)
-            axs2.spines['right'].set_visible(False)
-        else:
-            axs2.axis('off')
-
-    if save_img:
-        fig2.savefig(save_img, transparant=True)
-        plt.close(fig2)
-        return save_img
-    else:
-        return fig2
 
 
 def make_binary_cm(color):
@@ -996,9 +915,6 @@ class ParseFuncFile():
     def get_freq(self, datatype='raw', spectrum_type='psd'):
 
         """return power & frequency spectrum from timeseries"""
-        from nitime.analysis import SpectralAnalyzer, FilterAnalyzer, NormalizationAnalyzer
-        from nitime.timeseries import TimeSeries
-        import numpy as np
 
         if datatype == "raw":
             self.TC = self.raw_data.copy()
@@ -1631,6 +1547,11 @@ def find_intersection(xx, curve1, curve2):
     tuple
         x,y coordinates where *curve1* and *curve2* intersect
 
+    Raises
+    ----------
+    ValueError
+        if no intersection coordinates could be found
+
     Example
     ----------
     See [refer to linescanning.prf.SizeResponse.find_stim_sizes]
@@ -1640,7 +1561,10 @@ def find_intersection(xx, curve1, curve2):
     second_line = geometry.LineString(np.column_stack((xx, curve2)))
     intersection = first_line.intersection(second_line)
 
-    x_coord, y_coord = geometry.LineString(intersection).xy[0]
+    try:
+        x_coord, y_coord = geometry.LineString(intersection).xy[0]
+    except:
+        raise ValueError("Could not find intersection between curves..")
 
     return (x_coord, y_coord)
 
@@ -1668,6 +1592,8 @@ class CollectSubject:
         Hemisphere to extract target vertex from, by default "lh"
     settings: str, optional
         Fetch most recent settings file rather than `analysis_yaml`, by default None. 
+    model: str, optional
+        This flag can be set to read in a specific 'best_vertex' file as the location parameters sometimes differ between a Gaussian and DN-fit.
 
     Example
     ----------
@@ -1675,14 +1601,15 @@ class CollectSubject:
     >>> subject_info = utils.CollectSubject(subject, derivatives=<path_to_derivatives>, settings='recent', hemi="lh")
     """
 
-    def __init__(self, subject, derivatives=None, cx_dir=None, prf_dir=None, ses=1, analysis_yaml=None, hemi="lh", settings=None):
+    def __init__(self, subject, derivatives=None, cx_dir=None, prf_dir=None, ses=1, analysis_yaml=None, hemi="lh", settings=None, model="gauss"):
 
-        self.subject = subject
-        self.derivatives = derivatives
-        self.cx_dir = cx_dir
-        self.prf_dir = prf_dir
-        self.prf_ses = ses
-        self.hemi = hemi
+        self.subject        = subject
+        self.derivatives    = derivatives
+        self.cx_dir         = cx_dir
+        self.prf_dir        = prf_dir
+        self.prf_ses        = ses
+        self.hemi           = hemi
+        self.model          = model
 
         # set pRF directory
         if self.prf_dir == None:
@@ -1690,16 +1617,11 @@ class CollectSubject:
                 self.prf_dir = opj(self.derivatives, 'prf', self.subject, f'ses-{self.prf_ses}')
 
         # get design matrix, vertex info, and analysis file
-        self.design_fn = get_file_from_substring("vis_design.mat", self.prf_dir)
-        self.design_matrix = io.loadmat(self.design_fn)['stim']
-        self.vert_fn = get_file_from_substring("best_vertices.csv", self.cx_dir)
-
-        if self.vert_fn != "":
-            self.vert_info = VertexInfo(infofile=self.vert_fn, subject=self.subject)
-        else:
-            raise FileNotFoundError(f"Could not find 'best_vertices.csv' in {self.cxdir}")
-
-        self.analysis_yaml = analysis_yaml
+        self.design_fn      = get_file_from_substring("vis_design.mat", self.prf_dir)
+        self.design_matrix  = io.loadmat(self.design_fn)['stim']
+        self.vert_fn        = get_file_from_substring([self.model, "best_vertices.csv"], self.cx_dir)
+        self.vert_info      = VertexInfo(self.vert_fn, subject=self.subject)
+        self.analysis_yaml  = analysis_yaml
 
         # load specific analysis file
         if self.analysis_yaml != None:
