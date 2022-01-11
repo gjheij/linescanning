@@ -1526,6 +1526,8 @@ class SizeResponse():
         Object describing the nature of the stimulus
     params: numpy.ndarray
         array with shape (10,) as per the output of a Divisive Normalization fit operation.
+    subject_info: `linescanning.utils.VertexInfo`-object
+        Subject information collected in `linescanning.utils.VertexInfo` that can be used for :func:`linescanning.prf.SizeResponse.save_target_params`
 
     Example
     ----------
@@ -1565,15 +1567,19 @@ class SizeResponse():
     >>> new_params = fitting.norm_grid[0]
     >>> #
     >>> # size response functionsf
-    >>> SR = prf.SizeResponse(fitting.prf_stim, new_params)        
+    >>> SR = prf.SizeResponse(fitting.prf_stim, new_params)
+
+    >>> # add subject info object
+    >>> SR = prf.SizeResponse(fitting.prf_stim, new_params, subject_info=subject_info)        
     """
     
-    def __init__(self, prf_stim, params):
+    def __init__(self, prf_stim, params, subject_info=None):
 
         self.prf_stim = prf_stim
         self.n_pix = self.prf_stim.design_matrix.shape[0]
         self.params = params
         self.params_df = self.parse_normalization_parameters(self.params)
+        self.subject_info = subject_info
 
         # define visual field in degree of visual angle
         self.ss_deg = 3.0 * np.degrees(np.arctan(self.prf_stim.screen_size_cm /(2.0*self.prf_stim.screen_distance_cm)))
@@ -1586,27 +1592,46 @@ class SizeResponse():
         self.stims_fill, self.stims_fill_sizes = make_stims(self.n_pix, self.prf_stim, factr=factor)
     
 
-    def parse_normalization_parameters(self, params):
+    def parse_normalization_parameters(self, params, save_as=None):
         """store the Divisive Normalization model parameters in a DataFrame"""
-        params_dict = {"x": [params[0]], "y": [params[1]], "A": [params[3]], "B": [params[-3]/params[3]], "C": [params[5]], "D": [params[-2]], "ss": [params[6]], "r2": [params[-1]], "size": [params[2]], "norm": [params[6]/params[3]]}
+        params_dict = {"x": [params[0]], 
+                       "y": [params[1]], 
+                       "prf_size": [params[2]],
+                       "prf_ampl": [params[3]],
+                       "bold_bsl": [params[4]],
+                       "surr_bsl": [params[5]],
+                       "surr_size": [params[6]], 
+                       "neur_bsl": [params[7]],
+                       "surr_bsl": [params[4]],
+                       "A": [params[3]], 
+                       "B": [params[-3]/params[3]], 
+                       "C": [params[5]], 
+                       "D": [params[-2]], 
+                       "r2": [params[-1]],
+                       "norm": [params[6]/params[3]]}
 
-        return pd.DataFrame(params_dict)
+        df = pd.DataFrame(params_dict)
+        if save_as:
+            df.to_csv(save_as)
+            return df
+        else:
+            return df
 
     
     def make_sr_function(self, center_prf=True, scale_factor=None, normalize=True):
         """create Size-Response function. If you want to ignore the actual location of the pRF, set `center_prf=True`. You can also scale the pRF-size with a factor `scale_factor`, for instance if you want to simulate pRF-sizes across depth."""
         if center_prf:
+            mu_x, mu_y = 0,0
+        else:
             mu_x = self.params_df['x'][0]
             mu_y = self.params_df['y'][0]
-        else:
-            mu_x, mu_y = 0,0
 
         if scale_factor != None:
-            prf_size = self.params_df['size'][0]*scale_factor
+            prf_size = self.params_df['prf_size'][0]*scale_factor
         else:
-            prf_size = self.params_df['size'][0]
+            prf_size = self.params_df['prf_size'][0]
 
-        func = norm_2d_sr_function(self.params_df['A'][0], self.params_df['B'][0], self.params_df['C'][0], self.params_df['D'][0], prf_size, self.params_df['ss'][0], self.x, self.x, self.stims_fill, mu_x=mu_x, mu_y=mu_y)
+        func = norm_2d_sr_function(self.params_df['A'][0], self.params_df['B'][0], self.params_df['C'][0], self.params_df['D'][0], prf_size, self.params_df['surr_size'][0], self.x, self.x, self.stims_fill, mu_x=mu_x, mu_y=mu_y)
 
         if normalize:
             return func / func.max()
@@ -1676,3 +1701,46 @@ class SizeResponse():
         im.set_clip_path(patch)
 
 
+    def save_target_params(self, fname=None, hemi="L"):
+        """Write best_vertices-type file for normalization parameters + full normalization parameters in numpy-file"""
+            
+        ecc = np.sqrt(self.params_df['x'][0]**2+self.params_df['y'][0]**2)
+        polar = np.angle(self.params_df['x'][0]+self.params_df['y'][0]*1j)
+
+        if hemi == "lh":
+            hemi = "L"
+        elif hemi == "rh":
+            hemi = "R"
+
+        if self.subject_info != None:
+            if fname == None:
+                prf_bestvertex = opj(self.subject_info.cx_dir, f'{self.subject_info.subject}_model-norm_desc-best_vertices.csv')
+            else:
+                prf_bestvertex = fname
+
+            vert_info = self.subject_info.vert_info.data.copy()
+            best_vertex = pd.DataFrame({"hemi":     [hemi],
+                                        "x":        [self.params_df['x'][0]],
+                                        "y":        [self.params_df['y'][0]],
+                                        "size":     [self.params_df['prf_size'][0]],
+                                        "beta":     [self.params_df['prf_ampl'][0]],
+                                        "baseline": [self.params_df['bold_bsl'][0]],
+                                        "r2":       [self.params_df['r2'][0]],
+                                        "ecc":      [ecc],
+                                        "polar":    [polar],
+                                        "index":    [vert_info['index'][hemi]],
+                                        "position": [vert_info['position'][hemi]],
+                                        "normal":   [vert_info['normal'][hemi]]})
+            
+            if os.path.exists(prf_bestvertex):
+                data = pd.read_csv(prf_bestvertex).reset_index()
+                
+                # make sure we actually add new information
+                if data['hemi'][0] != best_vertex['hemi'][0]:
+                    df = pd.concat((data, best_vertex)).set_index('hemi')
+                    df.to_csv(prf_bestvertex)
+            else:
+                best_vertex = best_vertex.set_index(['hemi'])
+                best_vertex.to_csv(prf_bestvertex)
+            
+        self.params_df.to_csv(opj(self.subject_info.cx_dir, f'{self.subject_info.subject}_hemi-{hemi}_desc-normalization_parameters.csv'))
