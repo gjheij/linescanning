@@ -223,7 +223,7 @@ for dir in ${search}; do
     if [[ $? != 0 ]]; then
       echo
       echo "---------------------------------------------------------------------------------------------------"
-      echo "ERROR in `basename ${0}`: call_pycortex exited with non-zero status"
+      echo "ERROR in `basename ${0}`: call_targetvertex exited with non-zero status"
       exit 1
     fi
 
