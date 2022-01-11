@@ -131,9 +131,9 @@ def target_vertex(subject,
 
     if deriv:
         # This is mainly for displaying purposes
-        dirs = {'prf': opj(deriv, 'prf'),
-                'fs': opj(deriv, 'freesurfer'),
-                'ctx': opj(deriv, 'pycortex')}
+        dirs = {'prf':  opj(deriv, 'prf'),
+                'fs':   opj(deriv, 'freesurfer'),
+                'ctx':  opj(deriv, 'pycortex')}
 
         prf_dir, fs_dir, cx_dir = dirs['prf'], dirs['fs'], dirs['ctx']
     else:
@@ -146,7 +146,7 @@ def target_vertex(subject,
                     'ctx': cx_dir}
 
     print("Using following directories:")
-    [print(f" {i}: {dirs[i]}") for i in dirs]
+    [print(f" {i}:\t{dirs[i]}") for i in dirs]
 
     if not out:
         out = opj(cx_dir, subject, 'line_pycortex.csv')
@@ -159,6 +159,7 @@ def target_vertex(subject,
         return utils.VertexInfo(out, subject=subject)
     else:
         if use_prf == True:
+            print(f"Selecting pRF-parameters from: {task}")
             prf_params = utils.get_file_from_substring(f"task-{task}_desc-prf_params.npy", prf_dir)
             if "gauss" in prf_params:
                 model = "gauss"
