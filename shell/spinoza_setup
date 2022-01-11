@@ -8,12 +8,19 @@ export PATH_HOME=${PATH_HOME}
 
 if [[ $1 == "setup" ]]; then
 
+  echo "==================================================================================================="
+  echo "                            SETUP SCRIPT FOR LINE SCANNING REPOSITORY                              "
+  echo "==================================================================================================="
+  echo "Setting up ~/.bash_profile"
   # ignore permission changes in git
-  git config core.fileMode false
+  git config core.fileMode false 2>/dev/null
 
   # make scripts executable
   chmod -R 775 ${REPO_DIR}/bin
   chmod -R 775 ${REPO_DIR}/shell
+
+  # source call_bashhelper
+  source ${REPO_DIR}/bin/call_bashhelper
 
   if [ -f ~/.bash_profile ]; then
     search_for="source ${SETUP_FILE}"
@@ -47,12 +54,15 @@ if [[ $1 == "setup" ]]; then
       ) >> ~/.bash_profile
   fi
 
-  # make helper scripts available
-  source ~/.bash_profile
+  # # make helper scripts available
+  # source ~/.bash_profile
 
   # fetch ITK-Snap
   check_itksnap=`check_function itksnap`
   if [[ ${check_itksnap} -eq 1 ]]; then
+    echo
+    echo "---------------------------------------------------------------------------------------------------"
+    echo "Dealing with ITK-Snap"    
     cd ${PATH_HOME}
     DOWNLOAD_PATH=https://sourceforge.net/projects/itk-snap/files/itk-snap/3.8.0/itksnap-3.8.0-20190612-Linux-x86_64.tar.gz
     wget -c ${DOWNLOAD_PATH}
@@ -79,24 +89,47 @@ if [[ $1 == "setup" ]]; then
     esac
   fi
 
-  # source again to instantiate the alias
-  source ~/.bash_profile
+  # # source again to instantiate the alias
   check_itksnap=`check_function itksnap`
   if [[ ${check_itksnap} -eq 1 ]]; then
     echo "ERROR: Something went wrong during setup.. Do this manually please"
     exit 1
+  else
+    echo "Found ITK-Snap installation: `which itksnap`"
   fi
 
   # activate conda environment
-  ACTIVATE_CONDA=1
+  ACTIVATE_CONDA=0
   if [[ ${ACTIVATE_CONDA} -eq 1 ]]; then
-    conda create --name linescanning --file ${REPO_DIR}/environment.yml 
+
+    echo
+    echo "---------------------------------------------------------------------------------------------------"
+    echo "Dealing with conda environment"
+
+    env_name="test_install"
+    if [[ -z `conda info --envs | grep ${env_name}` ]]; then
+      conda env create --name ${env_name} --file ${REPO_DIR}/environment.yml 
+      if [[ $? -ne 0 ]]; then
+        echo "ERROR: conda install from environment.yml file did not complete"
+        exit 1
+      fi
+    else
+      echo "ERROR: conda environment \"${env_name}\" already exists. Edit \"env_name\" in setup file and rerun"
+      exit 1
+    fi
+    conda activate ${env_name}
   fi
 
   # setup python packages
   declare -a INSTALL_PACKAGES=("Pycortex" "pRFpy" "Nideconv" "Pymp2rage" "Pybest" "Nighres")
+  echo
+  echo "---------------------------------------------------------------------------------------------------"
+  echo "Checking specific python packages"
   for package in ${INSTALL_PACKAGES[@]}; do
 
+    cd ${PATH_HOME}
+
+    PACKAGE_LINK=`cat ${REPO_DIR}/doc/source/links.rst | grep ${package,,} | cut -d' ' -f3`
     # pycortex's package name == 'cortex'
     if [[ ${package,,} != "pycortex" ]]; then
 
@@ -104,42 +137,72 @@ if [[ $1 == "setup" ]]; then
       if [[ ${package,,} == "pybest" ]]; then
         pybest_exists=`check_function pybest`
         if [[ $? -ne 0 ]]; then
+          echo "INSTALLING: pybest.."
+          if [ ! -d ${PATH_HOME}/${package,,} ]; then
+            git clone ${PACKAGE_LINK}
+          fi
           cd ${PATH_HOME}/${package,,}
           pip install -e .
+        else
+          echo "Found pybest installation"
         fi
       # nighres requires special installation
       elif [[ ${package,,} == "nighres" ]]; then
         python -c "import ${package,,}" 2>/dev/null
         if [[ $? -ne 0 ]]; then
+          echo
+          echo "INSTALLING: Nighres.."
+          if [ ! -d ${PATH_HOME}/${package,,} ]; then
+            git clone ${PACKAGE_LINK}
+          fi
           cd ${PATH_HOME}/${package,,}
           ./build.sh
           if [[ $? -ne 0 ]]; then
             echo "ERROR Nighres built INCOMPLETE: I'm guessing you need to set the JCC_JDK variable and/or install JCC"
-            exit
+            continue
           fi
           pip install -e .
+        else
+          echo "Found nighres installation"
         fi
       else
         # regular python package install
         python -c "import ${package,,}" 2>/dev/null
         if [[ $? -ne 0 ]]; then
+          echo "INSTALLING: ${package}.."        
+          if [ ! -d ${PATH_HOME}/${package,,} ]; then
+            git clone ${PACKAGE_LINK}
+          fi
           cd ${PATH_HOME}/${package,,}
           pip install -e .
+        else
+          echo "Found ${package} installation"
         fi
       fi
     else
       # pycortex check
       python -c "import cortex" 2>/dev/null
       if [[ $? -ne 0 ]]; then
-        cd ${PATH_HOME}/${package,,}
+        echo "INSTALLING: ${package}.."        
+          if [ ! -d ${PATH_HOME}/${package,,} ]; then
+            git clone ${PACKAGE_LINK}
+          fi
+          cd ${PATH_HOME}/${package,,}
         pip install -e .
+      else
+        echo "Found Pycortex installation"
       fi
     fi
 
   done
 
+  echo
+  echo "---------------------------------------------------------------------------------------------------"
+  echo "Installing linescanning.."
   cd ${REPO_DIR}
   pip install -e .
+
+  echo "Done. Now enter: \"source ~/.bash_profile\""
   
 fi
 
