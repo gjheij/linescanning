@@ -1,0 +1,224 @@
+#!/usr/bin/env python
+#$ -q long.q@jupiter
+#$ -j Y
+#$ -cwd
+#$ -V
+
+from prfpy import model
+from linescanning import utils, prf
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+import numpy as np
+import os
+import sys, getopt
+import warnings
+warnings.filterwarnings('ignore')
+np.set_printoptions(precision=3)
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_sizeresponse
+
+Find stimulus sizes that allow optimal disentanglement of pRFs in superficial/deep layers and middle 
+layers of the cortex. We know from earlier studies that pRF-sizes seem to be higher in superficial 
+and deeper layers compared to middle layer pRFs. Here, we take for each subject the Gaussian pRF 
+parameters, fit a Divisive Normalization model, compare the Size-Response curves for superficial/
+deeper layers (= `regular` pRF size) and middle layers (= `0.8*pRF-size`), and extract the stimulus 
+sizes where the differences between these to curves are largest.
+
+
+Args:
+    -s (--sub)      Subject name as defined in FreeSurfer directory
+    -n (--ses)      Session to use pRF-parameters from
+    -h (--hemi)     hemisphere in which target vertex lives (defaults to "lh")
+    -l (--stage)    Stage to fit DN-model with. Can be 'grid', 'grid+iter', or 'iter' (which is 
+                    equivalent to 'grid+iter'). Default = 'iter'
+    --ctx           Path to pycortex directory up to subject specific directories (defaults to <de-
+                    rivatives>/pycortex/<subject>
+    --prf           Path to pRF directory up to subject specific directories (defaults to <deriva-
+                    tives/<prf>/<subject>/ses-<session>)
+
+Outputs:
+    a *npy-file containing stimulus sizes
+    matplotlib figure
+
+Examples:
+    call_sizeresponse -s sub-001 --ctx /path/pycortex --prf /path/prf -h right
+    call_sizeresponse -s sub-001
+    qsub -N SR_001 -wd $DIR_LOGS $DIR_SCRIPTS/bin/call_sizeresponse -s sub-001
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    subject     = None
+    session     = None
+    hemi        = "lh"
+    cx_dir      = None
+    prf_dir     = None
+    stage       = "iter"
+    verbose     = False
+
+    try:
+        opts = getopt.getopt(argv,"vqs:n:h:m:l:",["help", "sub=", "ses=", "hemi=", "cx=", "prf=", "stage="])[0]
+    except getopt.GetoptError:
+        print("ERROR IN ARGUMENT HANDLING!")
+        print(main.__doc__)
+        sys.exit(2)
+
+    for opt, arg in opts:
+        if opt == '-q':
+            print(main.__doc__)
+            sys.exit()
+        elif opt == '-v':
+            verbose=True
+        elif opt in ("-s", "--sub"):
+            subject = arg
+        elif opt in ("-n", "--ses"):
+            session = arg
+        elif opt in ("-l", "--stage"):
+            stage = arg            
+        elif opt in ("--cx"):
+            cx_dir = arg
+        elif opt in ("--prf"):
+            prf_dir = arg
+
+    if len(argv) < 1:
+        print("\nNEED AT LEAST A SUBJECT ID")
+        print(main.__doc__)
+        sys.exit()
+
+    #---------------------------------------------------------------------------------------------------
+    # set some defaults
+    if hemi == "lh":
+        hemi_tag = "hemi-L"
+    elif hemi == "rh":
+        hemi_tag = "hemi-R"
+
+    if not prf_dir:
+        if not session:
+            ses = 'ses-1'
+        else:
+            ses = f'ses-{session}'
+
+        prf_dir = opj(os.environ['DIR_DATA_DERIV'], 'prf', subject, ses)
+
+    if not cx_dir:
+        cx_dir = opj(os.environ['DIR_DATA_DERIV'], 'pycortex', subject)
+
+    if stage != "grid" and stage != "iter" and stage != "grid+iter":
+        raise ValueError(f"Stage must be 'grid' or 'iter', not {stage}")
+    elif stage == "iter":
+        stage = "grid+iter"
+
+    #---------------------------------------------------------------------------------------------------
+    # figure settings
+    line_width = 2
+
+    fig = plt.figure(constrained_layout=True, figsize=(30,5))
+    gs00 = fig.add_gridspec(1,4, width_ratios=[10,20,10,10])
+    gs01 = fig.add_gridspec(5,1, left=0.48, right=0.98)        
+
+    #---------------------------------------------------------------------------------------------------
+    # load in subject
+    subject_info = utils.CollectSubject(subject, prf_dir=prf_dir, cx_dir=cx_dir, settings='recent', hemi=hemi)
+
+    # make pRF plot
+    ax1 = fig.add_subplot(gs00[0])
+    prf.plot_prf(subject_info.prf_array, subject_info.settings['vf_extent'], ax=ax1)    
+
+    # Get and plot fMRI signal
+    data_fn = utils.get_file_from_substring(f"avg_bold_{hemi_tag}.npy", subject_info.prf_dir)
+    if data_fn != None:
+        data = np.load(data_fn)[...,subject_info.return_target_vertex(hemi=hemi)]
+    else:
+        raise ValueError(f"Could not find file with '{hemi_tag}.npy' in {prf_dir}")
+
+    #---------------------------------------------------------------------------------------------------    
+    # insert old parameters
+    insert_params =(np.array(subject_info.target_params)[np.newaxis,...],"gauss+iter")
+
+    # initiate class
+    fitting = prf.pRFmodelFitting(data[...,np.newaxis].T, 
+                                    design_matrix=subject_info.design_matrix, 
+                                    TR=subject_info.settings['TR'], 
+                                    model="norm", 
+                                    stage=stage, 
+                                    old_params=insert_params, 
+                                    verbose=verbose, 
+                                    output_dir=subject_info.prf_dir, 
+                                    nr_jobs=1)
+    
+    # fit
+    fitting.fit()
+
+    if stage == "grid+iter":
+        new_params = fitting.norm_iter[0]
+    else:
+        new_params = fitting.norm_grid[0]
+
+    new_prediction = fitting.norm_model.return_prediction(*new_params[:-1]).T
+
+    print(f"Params in: \t{np.array(subject_info.target_params)}")
+    print(f"Params out: \t{new_params}")
+    #---------------------------------------------------------------------------------------------------
+    # plot pRF output
+    ax2 = fig.add_subplot(gs00[1])
+    utils.LazyPlot([data, new_prediction], 
+                    color=['#08B2F0','#cccccc'], 
+                    labels=['real','pred'], 
+                    add_hline='defaults', 
+                    line_width=line_width,
+                    axs=ax2,
+                    y_label="BOLD amplitude (z-score)",
+                    x_label="Volumes",
+                    font_size=14)
+
+    #---------------------------------------------------------------------------------------------------
+    # size response functions
+    SR = prf.SizeResponse(fitting.prf_stim, new_params, subject_info=subject_info)
+    SR.make_stimuli()
+    sr_curve1 = SR.make_sr_function(center_prf=True)
+    sr_curve2 = SR.make_sr_function(center_prf=True, scale_factor=0.8)
+
+    #---------------------------------------------------------------------------------------------------
+    # make plot 
+    ax3 = fig.add_subplot(gs00[2])
+    utils.LazyPlot([sr_curve1, sr_curve2], 
+                    xx=SR.stims_fill_sizes,
+                    color=["#1B9E77","#D95F02"], 
+                    labels=['superficial', 'middle'],
+                    axs=ax3,
+                    y_label="Response",
+                    x_label="Stimulus size (°)",
+                    font_size=14)
+
+    #---------------------------------------------------------------------------------------------------
+    # find stim sizes
+    use_stim_sizes = SR.find_stim_sizes(sr_curve1, sr_curve2)
+    for ix,ii in enumerate(use_stim_sizes):
+        ax3.axvline(ii, color='k', lw=2, ymin=0.05, ymax=0.1)
+
+        # plot actual stimuli too
+        ax = fig.add_subplot(gs01[ix])
+        stim_ix = utils.find_nearest(SR.stims_fill_sizes, ii)[0]
+        cmap_blue = utils.make_binary_cm((8,178,240))
+
+        im = ax.imshow(SR.stims_fill[stim_ix], extent=subject_info.settings['vf_extent']+subject_info.settings['vf_extent'], cmap=cmap_blue)
+        ax.axvline(0, color='k', linestyle='dashed', lw=0.5)
+        ax.axhline(0, color='k', linestyle='dashed', lw=0.5)
+        ax.axis('off')
+        patch = patches.Circle((0,0), radius=subject_info.settings['vf_extent'][-1], transform=ax.transData)
+        im.set_clip_path(patch)
+
+    #---------------------------------------------------------------------------------------------------
+    # finalize figure and save output
+    fig.tight_layout(rect=[0, 0, 0.91, 1])
+    fig.savefig(opj(cx_dir, f"{subject}_{hemi_tag}_desc-prf_sizeresponse.pdf"))
+    np.save(opj(cx_dir, f"{subject}_{hemi_tag}_desc-prf_sizeresponse.npy"), use_stim_sizes)
+    SR.save_target_params(hemi=hemi)
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
