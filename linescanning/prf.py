@@ -795,7 +795,6 @@ def prf_neighbouring_vertices(subject, hemi='lh', vertex=None, prf_params=None, 
 def create_line_prf_matrix(log_dir, 
                            nr_trs=None,
                            stim_at_half_TR=False,
-                           n_samples=None, 
                            TR=0.105, 
                            n_pix=275, 
                            deleted_first_timepoints=0, 
@@ -908,7 +907,10 @@ def create_line_prf_matrix(log_dir,
             else:
                 img_number = "1".zfill(zfilling)
 
-            image_file = utils.get_file_from_substring(img_number, screenshot_path)
+            try:
+                image_file = utils.get_file_from_substring(img_number, screenshot_path)
+            except:
+                image_file = None
             
             if image_file != None:
 
