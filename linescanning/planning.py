@@ -467,19 +467,27 @@ def rotate_normal(norm, xfm, system="RAS"):
 
     return rot_norm[:3]
 
-def create_line_pycortex(normal, hemi, idx, coord=None):
-    """create the line_pycortex file"""
+def single_hemi_line_pycortex(normal, hemi, idx, coord=None):
+    """create the line_pycortex portion of 1 hemisphere"""
 
     angles = normal2angle(normal)
 
     # Write the rotations describing the orientation of the line in the first session anatomy to a text file
-    try:
-        data = {"parameter": ["vertex", "LR_rot", "AP_rot", "FH_rot", "normal", "coord"],
-                "value": [int(round(idx,0)), angles[0], angles[1], angles[2], normal, coord]}
-    except:
-        data = {"parameter": ["vertex", "LR_rot", "AP_rot", "FH_rot", "normal"],
-                "value": [int(round(idx,0)), angles[0], angles[1], angles[2], normal]}
-    data['hemi'] = hemi
+    if isinstance(coord, list) or isinstance(coord, np.ndarray):
+        data = {"hemi":     [hemi],
+                "index":    [int(round(idx,0))],
+                "LR_rot":   [angles[0]],
+                "AP_rot":   [angles[1]],
+                "FH_rot":   [angles[2]],
+                "normal":   [normal],
+                "position": [coord]}
+    else:
+        data = {"hemi":     [hemi],
+                "index":    [int(round(idx,0))],
+                "LR_rot":   [angles[0]],
+                "AP_rot":   [angles[1]],
+                "FH_rot":   [angles[2]],
+                "position": [coord]}
 
     df = pd.DataFrame(data)
 
