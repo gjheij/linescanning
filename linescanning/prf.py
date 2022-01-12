@@ -1,8 +1,5 @@
 import ast
 from datetime import datetime, timedelta
-from joblib.externals.cloudpickle.cloudpickle import instance
-from numpy.lib.arraysetops import isin
-from scipy.io.matlab.mio5 import _has_struct
 from linescanning import utils
 import math
 import matplotlib.image as mpimg
