@@ -131,7 +131,7 @@ for dir in ${search}; do
   fi
 
   for r in ${EXRTACT[@]}; do
-    file=`find "${p}" -type f \( -name "*acq-${space^^}*" -and -iname "*-${r}*" -and -not -name "*manual*" -and -name "*.nii.gz" \) 2>/dev/null`
+    file=`find "${p}" -type f \( -name "*acq-${DATA^^}*" -and -iname "*-${r}*" -and -not -name "*manual*" -and -name "*.nii.gz" \) 2>/dev/null`
     if [[ -f ${file} ]]; then
       INPUTS+=(${file})
     else
@@ -145,7 +145,7 @@ for dir in ${search}; do
     continue
   fi
 
-  output_root=${output_dir}/cruise/${base}_acq-${space^^}_desc
+  output_root=${output_dir}/cruise/${base}_acq-${DATA^^}_desc
   output=${output_root}-cruise_cortex.nii.gz
 
   if [[ ! -d ${output_dir}/cruise ]]; then
@@ -155,8 +155,8 @@ for dir in ${search}; do
   # OVERWRITE ALL CREATED FILES; SHOULD BE DEFAULT AND CAN BE DISABLE BY SPECIFYING MASTER -M <MODULE> -O N
   if [[ ${OW} -eq 1 ]]; then
     if [[ -d ${output_dir}/cruise ]]; then
-      INTRO="Overwrite mode: deleting files with \"${base}_acq-${space^^}_desc\""
-      rm -r ${output_dir}/cruise/${base}_acq-${space^^}_desc* 2>/dev/null
+      INTRO="Overwrite mode: deleting files with \"${base}_acq-${DATA^^}_desc\""
+      rm -r ${output_dir}/cruise/${base}_acq-${DATA^^}_desc* 2>/dev/null
     fi
   else
     INTRO="Overwrite mode disabled"
@@ -202,7 +202,7 @@ for dir in ${search}; do
 
   fi
 
-  # fslmaths ${output_root}-cruise_cortex.nii.gz -bin ${input_dir}/${base}_acq-${space^^}_desc-cruise_mask.nii.gz
+  # fslmaths ${output_root}-cruise_cortex.nii.gz -bin ${input_dir}/${base}_acq-${DATA^^}_desc-cruise_mask.nii.gz
 
 done
 

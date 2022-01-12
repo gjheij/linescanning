@@ -124,7 +124,7 @@ for dir in ${search}; do
   fi
 
   T1_DIR=${T1}/${base_dir}/anat
-  input_t1w=`find "${T1_DIR}" -type f \( -name "*T1w*" -and -name "*${space^^}*" -and -name "*.nii.gz" \) 2>/dev/null`
+  input_t1w=`find "${T1_DIR}" -type f \( -name "*T1w*" -and -name "*${DATA^^}*" -and -name "*.nii.gz" \) 2>/dev/null`
   if [[ ! -z ${input_t1w} ]]; then
 
     if [[ ! -d ${SUBJECTS_DIR}/$(basename ${dir}) ]]; then

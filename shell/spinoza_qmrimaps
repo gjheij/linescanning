@@ -90,10 +90,10 @@ for dir in ${search}; do
   if [[ ! -z ${ses} ]]; then
     nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
     base_path=$(basename ${dir})/ses-${nr}
-    base=$(basename ${dir})_ses-${nr}_acq-${space^^}
+    base=$(basename ${dir})_ses-${nr}_acq-${DATA^^}
   else
     base_path=$(basename ${dir})
-    base=$(basename ${dir})_acq-${space^^}
+    base=$(basename ${dir})_acq-${DATA^^}
   fi
 
   outdir=${OUTPUT}/${base_path}

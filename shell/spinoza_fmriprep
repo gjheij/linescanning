@@ -152,7 +152,7 @@ for dir in ${search}; do
 
   # echo $input_dir
   if [[ ${MODE} == "anat" ]]; then
-    anat=`find "${input_dir}/anat" -type f \( -name "*T1w*" -and -name "*acq-${space^^}*" -and -name "*.nii.gz" \) 2>/dev/null`
+    anat=`find "${input_dir}/anat" -type f \( -name "*T1w*" -and -name "*acq-${DATA^^}*" -and -name "*.nii.gz" \) 2>/dev/null`
     if [[ -z ${anat} ]]; then
       echo " `basename ${dir}`; missing anatomical data"
       continue
@@ -178,7 +178,7 @@ for dir in ${search}; do
     else
       # same directory for functional and anatomical data
       func=`find "${input_dir}/func" -type f \( -name "*bold.nii.gz" \) 2>/dev/null`
-      anat=`find "${input_dir}/anat" -type f \( -name "*T1w*" -and -name "*acq-${space^^}*" -and -name "*.nii.gz" \) 2>/dev/null`
+      anat=`find "${input_dir}/anat" -type f \( -name "*T1w*" -and -name "*acq-${DATA^^}*" -and -name "*.nii.gz" \) 2>/dev/null`
     fi
 
     if [[ -z ${func} ]]; then

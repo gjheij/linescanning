@@ -130,3 +130,5 @@ dmypy.json
 
 # VSCode editor metadata
 .vscode/
+
+acq.txt

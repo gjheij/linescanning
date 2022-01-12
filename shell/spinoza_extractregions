@@ -173,7 +173,7 @@ for dir in ${search}; do
   declare -a INPUTS=()
 
   for r in ${MGDM[@]}; do
-    file=`find "${mgdm_dir}" -type f \( -name "*acq-${space^^}*" -and -name "*${r}*" -and -name "*.nii.gz" \) 2>/dev/null`
+    file=`find "${mgdm_dir}" -type f \( -name "*acq-${DATA^^}*" -and -name "*${r}*" -and -name "*.nii.gz" \) 2>/dev/null`
 
     # check for multiple files..
     j=0; for i in ${file[@]}; do ((j++)); done
@@ -198,7 +198,7 @@ for dir in ${search}; do
     continue
   fi
 
-  output_root=${region_dir}/${base}_acq-${space^^}_desc
+  output_root=${region_dir}/${base}_acq-${DATA^^}_desc
   output=${output_root}-xproba_${suff}-gm.nii.gz
 
   if [[ ! -d ${region_dir} ]]; then
@@ -208,7 +208,7 @@ for dir in ${search}; do
   # OVERWRITE ALL CREATED FILES; SHOULD BE DEFAULT AND CAN BE DISABLE BY SPECIFYING MASTER -M <MODULE> -O N
   if [[ ${OW} -eq 1 ]]; then
     if [[ -d ${output_dir}/cruise ]]; then
-      INTRO="Overwrite mode: deleting files with \"${base}_acq-${space^^}_desc\" and \"${suff}\""
+      INTRO="Overwrite mode: deleting files with \"${base}_acq-${DATA^^}_desc\" and \"${suff}\""
       rm -r ${output_root}*${suff}* 2>/dev/null
     fi
   else
@@ -279,7 +279,7 @@ for dir in ${search}; do
       -c ${region_dir} \
       -d ${mask_dir} \
       -o ${mask_dir} \
-      -b ${base}_acq-${space^^}
+      -b ${base}_acq-${DATA^^}
 
     if [[ $? != 0 ]]; then
       echo "WARNING: Could not create combined segmentations, continuing.."

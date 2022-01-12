@@ -110,7 +110,7 @@ for dir in ${search}; do
     r2star=`find "${input_dir}" -type f \( -name "*R2*" -and -name "*.nii.gz" \) 2>/dev/null`
     if [[ ! -z ${r2star} ]]; then
 
-      r2star_mask=${mask_dir}/${base}_acq-${space^^}_desc-sagittalsinus.nii.gz
+      r2star_mask=${mask_dir}/${base}_acq-${DATA^^}_desc-sagittalsinus.nii.gz
       if [[ ! -f ${r2star_mask} ]]; then
 
         echo
@@ -175,11 +175,11 @@ for dir in ${search}; do
 
   elif [[ ${DATA} == "MP2RAGE" ]]; then
 
-    r2star_mask=${mask_dir}/${base}_acq-${space^^}_desc-sagittalsinus.nii.gz
+    r2star_mask=${mask_dir}/${base}_acq-${DATA^^}_desc-sagittalsinus.nii.gz
 
     if [[ ! -f ${r2star_mask} ]]; then
 
-      t1w=`find "${input_dir}" -type f \( -name "$(basename ${dir})*" -and -name "*${space^^}*" -and -not -iname "*memp2rage*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
+      t1w=`find "${input_dir}" -type f \( -name "$(basename ${dir})*" -and -name "*${DATA^^}*" -and -not -iname "*memp2rage*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
 
       if [[ ! -z ${t1w} ]]; then
 
@@ -232,7 +232,7 @@ for dir in ${search}; do
       fi
 
       if [[ -f ${r2star_mask} ]]; then
-        inv2_mask=`find "${mask_dir}" -type f \( -name "*inv-2*" -and -name "*${space^^}*" -and -name "*bet_mask*" \) 2>/dev/null`
+        inv2_mask=`find "${mask_dir}" -type f \( -name "*inv-2*" -and -name "*${DATA^^}*" -and -name "*bet_mask*" \) 2>/dev/null`
         if [[ ! -z ${inv2_mask} ]]; then
           echo "Applying mask to `basename ${r2star_mask}`"
           fslmaths ${r2star_mask} -mas ${inv2_mask} ${r2star_mask}

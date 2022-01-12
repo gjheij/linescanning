@@ -35,8 +35,6 @@ if [[ $1 == "setup" ]]; then
         echo 
         echo "# Inserted via the linescanning-repository"
         echo "source ${SETUP_FILE}"
-        echo "echo \"ACTIVE PROJECT    ${DIR_DATA_HOME}\""
-        echo "echo \"ACTIVE ACQ FORMAT ${DATA}\""
         ) >> ~/.bash_profile
         ;;
       *)
@@ -49,8 +47,6 @@ if [[ $1 == "setup" ]]; then
       echo "# .bash_profile"
       echo "# Inserted via the linescanning-repository"
       echo "source ${SETUP_FILE}"
-      echo "echo \"ACTIVE PROJECT    ${DIR_DATA_HOME}\""
-      echo "echo \"ACTIVE ACQ FORMAT ${DATA}\""
       ) >> ~/.bash_profile
   fi
 
@@ -233,13 +229,13 @@ export PYBEST_NORM="zscore"
 
 # PROJECT
 export DIR_PROJECTS=$(dirname $(dirname ${PATH_HOME}))/projects 
-export PROJECT=hemifield # ANAT_SEG-Raw #URIS-MDD #hemifield
+export PROJECT=URIS-MDD # ANAT_SEG-Raw #URIS-MDD #hemifield
 export TASK_SES1="2R"
 export TASK_SES2="LR"
 export PREFIX="sub-"
 
 # DATA TYPE(S)
-declare -a ACQ=("MP2RAGE") # or ("MP2RAGE" "MEMP2RAGE")
+declare -a ACQ=("MEMP2RAGE") # or ("MP2RAGE" "MEMP2RAGE")
 export DATA=${ACQ[0]} # or MP2RAGEME/AVERAGE
 
 # For DATA == AVERAGE we'll need multiple acquisitions
