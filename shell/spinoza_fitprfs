@@ -206,7 +206,6 @@ for dir in ${search}; do
         job="python"
       else
         job="qsub -wd ${prf_dir} -N $(basename ${dir})_gauss"
-        job="python"
       fi
 
       export DISPLAY=:0
