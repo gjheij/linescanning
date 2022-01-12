@@ -1293,7 +1293,7 @@ def random_timeseries(intercept, volatility, nr):
 
 class LazyPlot():
 
-    def __init__(self, ts, xx=None, error=None, error_alpha=0.3, x_label=None, y_label=None, title=None, xkcd=False, color=None, figsize=(12, 5), cmap='viridis', save_as=None,  labels=None, font_size=12, add_hline=None, add_vline=None, line_width=1, axs=None):
+    def __init__(self, ts, xx=None, error=None, error_alpha=0.3, x_label=None, y_label=None, title=None, xkcd=False, color=None, figsize=(12, 5), cmap='viridis', save_as=None,  labels=None, font_size=12, add_hline=None, add_vline=None, line_width=1, axs=None, y_lim=None):
         """__init__
 
         Class for plotting because I'm lazy and I don't want to go through the `matplotlib` motion everything I quickly want to visualize something. This class makes that a lot easier. It allows single inputs, lists with multiple timecourses, labels, error shadings, and much more.
@@ -1342,6 +1342,8 @@ class LazyPlot():
             Line widths for either all graphs (then *int*) or a *list* with the number of elements as requested graphs, default = 1.
         axs: <AxesSubplot:>, optional
             Matplotlib axis to store the figure on
+        y_lim: list, optional
+            List for `axs.set_ylim`
             
         Example
         ----------
@@ -1375,24 +1377,25 @@ class LazyPlot():
         <linescanning.glm.LazyPlot at 0x7f839b0d5220>
         """
 
-        self.array = ts
-        self.xx = xx
-        self.error = error
-        self.error_alpha = error_alpha
-        self.x_label = x_label
-        self.y_label = y_label
-        self.title = title
-        self.xkcd = xkcd
-        self.color = color
-        self.figsize = figsize
-        self.cmap = cmap
-        self.save_as = save_as
-        self.labels = labels
-        self.font_size = font_size
-        self.add_hline = add_hline
-        self.add_vline = add_vline
-        self.axs = axs
-        self.line_width = line_width
+        self.array          = ts
+        self.xx             = xx
+        self.error          = error
+        self.error_alpha    = error_alpha
+        self.x_label        = x_label
+        self.y_label        = y_label
+        self.title          = title
+        self.xkcd           = xkcd
+        self.color          = color
+        self.figsize        = figsize
+        self.cmap           = cmap
+        self.save_as        = save_as
+        self.labels         = labels
+        self.font_size      = font_size
+        self.add_hline      = add_hline
+        self.add_vline      = add_vline
+        self.axs            = axs
+        self.line_width     = line_width
+        self.y_lim          = y_lim
 
         if self.xkcd:
             with plt.xkcd():
@@ -1454,6 +1457,7 @@ class LazyPlot():
                     x = np.arange(0, len(el))
                     axs.fill_between(
                         x, ymax, ymin, color=color_list[idx], alpha=self.error_alpha)
+
         else:
             if not self.color:
                 self.color = sns.color_palette(self.cmap, 1)[0]
@@ -1474,6 +1478,9 @@ class LazyPlot():
                     ymin, ymax = self.error
                 x = np.arange(0, len(self.array))
                 axs.fill_between(x, ymax, ymin, color=self.color, alpha=self.error_alpha)
+
+        if isinstance(self.y_lim, list):
+            axs.set_ylim(self.y_lim)
 
         if self.labels:
             axs.legend(frameon=False)
