@@ -1511,6 +1511,9 @@ def find_most_similar_prf(reference_prf, look_in_params, verbose=False, return_n
         if verbose:
             print(f"{xysize_par.shape} survived r2>{r2_thresh}")
 
+    if len(xysize_par) == 0:
+        raise ValueError(f"Could not find similar pRFs. Maybe lower r2-threshold?")
+        
     if return_nr == "all":
         return xysize_par
     else:
