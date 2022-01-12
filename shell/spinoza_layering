@@ -66,12 +66,12 @@ fi
 # Check for subject & session flags
 while getopts os:n: argument
 do
-    case ${argument} in
-      s)  sub=${OPTARG}
-            ;;
-      n)  ses=${OPTARG}
-            ;;
-    esac
+  case ${argument} in
+    s)  sub=${OPTARG}
+          ;;
+    n)  ses=${OPTARG}
+          ;;
+  esac
 done
 
 if [[ $# -lt 3 ]] ; then
@@ -184,7 +184,7 @@ for dir in ${search}; do
     declare -a LAYER=(gwb cgb)
     declare -a INPUTS=()
     for r in ${LAYER[@]}; do
-      file=`find "${input_dir}/cruise" -type f \( -name "*acq-${space^^}*" -and -name "*${r}*" -and -name "*.nii.gz" \) 2>/dev/null`
+      file=`find "${input_dir}/cruise" -type f \( -name "*acq-${DATA^^}*" -and -name "*${r}*" -and -name "*.nii.gz" \) 2>/dev/null`
       if [[ -f ${file} ]]; then
         INPUTS+=(${file})
       else
@@ -198,7 +198,7 @@ for dir in ${search}; do
       continue
     fi
 
-    output_root=${input_dir}/layering/${base}_acq-${space^^}_desc
+    output_root=${input_dir}/layering/${base}_acq-${DATA^^}_desc
     output=${output_root}-layering_depth.nii.gz
 
     if [[ ! -d $(dirname ${output_root}) ]]; then

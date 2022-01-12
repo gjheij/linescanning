@@ -123,10 +123,10 @@ for dir in ${search}; do
 
   else
     search_for_mask="cat_dura"
-    t1w_fn=`find ${input_dir} -maxdepth 1 -type f \( -name "$(basename ${dir})*" -and -not -name "*skull*" -and -name "*acq-${space^^}*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
-    t1m_fn=`find ${input_dir} -type f \( -name "*acq-${space^^}*" -and -not -name "*skull*" -and -name "*T1map.nii.gz" \) 2>/dev/null`
-    MASKED=`find "${output_dir}" -maxdepth 1 -type f \( -name "*${space^^}*" -and -name "*masked_T1w.nii.gz" \) 2>/dev/null`
-    MASK=`find "${mask_dir}" -maxdepth 1 -type f \( -name "*${space^^}*" -and -name "*${search_for_mask}*" \) 2>/dev/null`
+    t1w_fn=`find ${input_dir} -maxdepth 1 -type f \( -name "$(basename ${dir})*" -and -not -name "*skull*" -and -name "*acq-${DATA^^}*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
+    t1m_fn=`find ${input_dir} -type f \( -name "*acq-${DATA^^}*" -and -not -name "*skull*" -and -name "*T1map.nii.gz" \) 2>/dev/null`
+    MASKED=`find "${output_dir}" -maxdepth 1 -type f \( -name "*${DATA^^}*" -and -name "*masked_T1w.nii.gz" \) 2>/dev/null`
+    MASK=`find "${mask_dir}" -maxdepth 1 -type f \( -name "*${DATA^^}*" -and -name "*${search_for_mask}*" \) 2>/dev/null`
 
     # echo $input_dir
     # echo $output_dir
@@ -140,9 +140,9 @@ for dir in ${search}; do
 
     # overwrite mode
     if [[ ${OW} -eq 1 ]]; then
-      txt="Overwrite mode: deleting files with \"${space^^}\""
+      txt="Overwrite mode: deleting files with \"${DATA^^}\""
       if [[ -d ${output_dir} ]]; then
-        rm -r ${output_dir}/*acq-${space^^}* 2>/dev/null
+        rm -r ${output_dir}/*acq-${DATA^^}* 2>/dev/null
       fi
       
       if [[ -f ${MASKED} ]]; then
@@ -173,7 +173,7 @@ for dir in ${search}; do
             exit 1
           fi
 
-          MASKED=`find "${output_dir}" -maxdepth 1 -type f \( -name "*${space^^}*" -and -name "*masked_T1w.nii.gz" \) 2>/dev/null`
+          MASKED=`find "${output_dir}" -maxdepth 1 -type f \( -name "*${DATA^^}*" -and -name "*masked_T1w.nii.gz" \) 2>/dev/null`
           if [[ ! -z ${MASKED} ]]; then
             # check manually were to clip
             echo "Opening ITK-Snap; go to \"tools\" > \"Color Map Editor\""
@@ -211,8 +211,8 @@ for dir in ${search}; do
 
     fi
 
-    bet_t1w=${skull_dir}/${base}_acq-${space^^}_desc-skullstrip_T1w.nii.gz
-    bet_t1m=${skull_dir}/${base}_acq-${space^^}_desc-skullstrip_T1map.nii.gz
+    bet_t1w=${skull_dir}/${base}_acq-${DATA^^}_desc-skullstrip_T1w.nii.gz
+    bet_t1m=${skull_dir}/${base}_acq-${DATA^^}_desc-skullstrip_T1map.nii.gz
 
     # echo $bet_t1w
     # echo $bet_t1m
@@ -228,9 +228,9 @@ for dir in ${search}; do
         mkdir -p ${skull_dir}
       fi
 
-      MASKED=`find "${output_dir}" -maxdepth 1 -type f \( -name "*${space^^}*" -and -name "*masked_T1w.nii.gz" \) 2>/dev/null`
+      MASKED=`find "${output_dir}" -maxdepth 1 -type f \( -name "*${DATA^^}*" -and -name "*masked_T1w.nii.gz" \) 2>/dev/null`
       mask_img=`find ${mask_dir} -type f -name "*spm_mask.nii.gz" -print -quit 2>/dev/null`
-      t1map=`find "${input_dir}" -type f \( -name "*T1map*" -and -name "*${space^^}*" -and -name "*.nii.gz" \) 2>/dev/null`
+      t1map=`find "${input_dir}" -type f \( -name "*T1map*" -and -name "*${DATA^^}*" -and -name "*.nii.gz" \) 2>/dev/null`
 
       if [[ ! -z ${mask_img} ]]; then
 

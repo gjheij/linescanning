@@ -108,16 +108,16 @@ for dir in ${search}; do
     continue
   fi
 
-  input_t1w=`find "${input_dir}" -type f \( -name "*${space^^}*" -and -name "*T1w*" -and -name "*.nii.gz" \) 2>/dev/null`
+  input_t1w=`find "${input_dir}" -type f \( -name "*${DATA^^}*" -and -name "*T1w*" -and -name "*.nii.gz" \) 2>/dev/null`
 
   declare -a OUTPUTS=(mixeltype pve_0 pve_1 pve_2 pveseg seg)
-  outputroot=${output_dir}/${base}_acq-${space^^}_desc
+  outputroot=${output_dir}/${base}_acq-${DATA^^}_desc
 
   # OVERWRITE ALL CREATED FILES; SHOULD BE DEFAULT AND CAN BE DISABLE BY SPECIFYING MASTER -M <MODULE> -O N
   if [[ ${OW} -eq 1 ]]; then
     if [[ -d ${output_dir} ]]; then
-      echo "  Overwrite mode: deleting files with \"${base}_acq-${space^^}_desc\""
-      rm -r ${output_dir}/${base}_acq-${space^^}_desc* 2>/dev/null
+      echo "  Overwrite mode: deleting files with \"${base}_acq-${DATA^^}_desc\""
+      rm -r ${output_dir}/${base}_acq-${DATA^^}_desc* 2>/dev/null
     fi
   fi
 
@@ -133,7 +133,7 @@ for dir in ${search}; do
       fi
 
       if [[ ! -f ${outputroot}_seg.nii.gz ]]; then
-        echo "  Running FAST on `basename ${input_t1w}`"
+        echo "Running FAST on `basename ${input_t1w}`"
         call_fslfast ${input_t1w} ${outputroot}
       fi
 
@@ -160,15 +160,15 @@ for dir in ${search}; do
 
       done
 
-      echo "  Done"
+      echo "Done"
 
     else
-      echo "  `basename ${dir}`: segmentations already exist"
+      echo "`basename ${dir}`: segmentations already exist"
     fi
 
   else
     
-    echo "  `basename ${dir}`: No skullstripped T1-weighted image found"
+    echo "`basename ${dir}`: No skullstripped T1-weighted image found"
     continue
 
   fi

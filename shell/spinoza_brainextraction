@@ -118,7 +118,7 @@ for dir in ${search}; do
 
   inv2_mask=`find ${INPUTDIR} -type f -name "*brain_mask.nii.gz" 2>/dev/null`
   if [[ ! -z ${inv2_mask} ]]; then
-    cp ${inv2_mask} ${MASKS}/${base}_acq-${space^^}_desc-spm_mask.nii.gz 2>/dev/null
+    cp ${inv2_mask} ${MASKS}/${base}_acq-${DATA^^}_desc-spm_mask.nii.gz 2>/dev/null
   fi
 
   # Decide input/output/command based on the third argument flag (FSL/ANTs)
@@ -129,8 +129,8 @@ for dir in ${search}; do
     if [[ -f ${input} ]]; then
 
       declare -a OUT=(brain mask)
-      final_brain=${BET}/${base}_acq-${space^^}_desc-ants_brain_T1w.nii.gz
-      final_mask=${MASKS}/${base}_acq-${space^^}_desc-ants_mask.nii.gz
+      final_brain=${BET}/${base}_acq-${DATA^^}_desc-ants_brain_T1w.nii.gz
+      final_mask=${MASKS}/${base}_acq-${DATA^^}_desc-ants_mask.nii.gz
       ants_brain=$(dirname ${final_brain})/$(basename ${final_brain} _brain.nii.gz)_BrainExtractionBrain.nii.gz
       ants_mask=$(dirname ${final_brain})/$(basename ${final_brain} _brain.nii.gz)_BrainExtractionMask.nii.gz
 
@@ -192,8 +192,8 @@ for dir in ${search}; do
 
   elif [[ ${SOFTWARE,,} == "fsl" ]]; then
 
-    input=`find "${INPUTDIR}" -type f \( -name "*inv-2*" -and -name "*${space^^}*" -and -name "*bfc*" \) 2>/dev/null`
-    output_root=${BET}/${base}_acq-${space^^}_inv-2_desc-bet
+    input=`find "${INPUTDIR}" -type f \( -name "*inv-2*" -and -name "*${DATA^^}*" -and -name "*bfc*" \) 2>/dev/null`
+    output_root=${BET}/${base}_acq-${DATA^^}_inv-2_desc-bet
     output_brain=${output_root}_brain.nii.gz
     output_mask=${MASKS}/$(basename ${output_brain} _brain.nii.gz)_mask.nii.gz
     output_skull=${MASKS}/$(basename ${output_brain} _brain.nii.gz)_skull.nii.gz
@@ -282,11 +282,11 @@ for dir in ${search}; do
       mode=${mode}
     fi
 
-    input=`find "${INPUTDIR}" -type f \( -name "*T1w*" -and -name "*${space^^}*" -and -name "*.nii.gz" \) 2>/dev/null`
-    brainmask=${MASKS}/${base}_acq-${space^^}_desc-cat_mask.nii.gz
-    spm=${MASKS}/${base}_acq-${space^^}_desc-spm_mask.nii.gz
-    corrected_t1w=${BET}/${base}_acq-${space^^}_T1w.nii.gz
-    duramask=${MASKS}/${base}_acq-${space^^}_desc-cat_dura.nii.gz
+    input=`find "${INPUTDIR}" -type f \( -name "*T1w*" -and -name "*${DATA^^}*" -and -name "*.nii.gz" \) 2>/dev/null`
+    brainmask=${MASKS}/${base}_acq-${DATA^^}_desc-cat_mask.nii.gz
+    spm=${MASKS}/${base}_acq-${DATA^^}_desc-spm_mask.nii.gz
+    corrected_t1w=${BET}/${base}_acq-${DATA^^}_T1w.nii.gz
+    duramask=${MASKS}/${base}_acq-${DATA^^}_desc-cat_dura.nii.gz
     if [[ ${OW} -eq 1 ]]; then
       if [[ -f ${brainmask} ]]; then
         rm -r ${brainmask}
@@ -377,7 +377,7 @@ for dir in ${search}; do
         fi
 
         # this gets T1-weighted and T1map in one directory for spinoza_masking
-        t1map=`find "${INPUTDIR}" -type f \( -name "*T1map*" -and -name "*${space^^}*" -and -name "*.nii.gz" \) 2>/dev/null`
+        t1map=`find "${INPUTDIR}" -type f \( -name "*T1map*" -and -name "*${DATA^^}*" -and -name "*.nii.gz" \) 2>/dev/null`
         if [[ ! -z ${t1map} ]]; then
           echo "Copying T1map needed for spinoza_segmentmgdm"
           cp ${t1map} ${BET} 2>/dev/null

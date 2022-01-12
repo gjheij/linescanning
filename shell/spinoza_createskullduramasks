@@ -98,33 +98,33 @@ for dir in ${search}; do
 
   # LOOK FOR THE SECOND INVERSION IMAGE; PREFERABLY THE BIAS FIELD CORRECTED ONE
   if [[ ${DATA} == "MEMP2RAGE" ]]; then
-    inv2=`find "${inv2_dir}" -type f \( -name "$(basename ${dir})*" -and -name "*echo-1*" -and -name "*inv-2*" -and -name "*${space^^}*" -and -name "*part-mag*" -and -name "*.nii.gz" \) 2>/dev/null`
+    inv2=`find "${inv2_dir}" -type f \( -name "$(basename ${dir})*" -and -name "*echo-1*" -and -name "*inv-2*" -and -name "*${DATA^^}*" -and -name "*part-mag*" -and -name "*.nii.gz" \) 2>/dev/null`
   else
-    inv2=`find "${inv2_dir}" -type f \( -name "$(basename ${dir})*" -and -not -name "*echo-*" -and -name "*inv-2*" -and -name "*${space^^}*" -and -name "*part-mag*" -and -name "*.nii.gz" \) 2>/dev/null`
+    inv2=`find "${inv2_dir}" -type f \( -name "$(basename ${dir})*" -and -not -name "*echo-*" -and -name "*inv-2*" -and -name "*${DATA^^}*" -and -name "*part-mag*" -and -name "*.nii.gz" \) 2>/dev/null`
   fi
 
   # LOOK FOR THE T1W IMAGE
-  t1w=`find "${input_dir}" -type f \( -name "$(basename ${dir})*" -and -name "*acq-${space^^}*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
+  t1w=`find "${input_dir}" -type f \( -name "$(basename ${dir})*" -and -name "*acq-${DATA^^}*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
 
   # LOOK FOR THE T1-MAP IMAGE
-  t1map=`find "${input_dir}" -type f \( -name "*acq-${space^^}*" -and -name "*T1map.nii.gz" \) 2>/dev/null`
+  t1map=`find "${input_dir}" -type f \( -name "*acq-${DATA^^}*" -and -name "*T1map.nii.gz" \) 2>/dev/null`
 
   #----------------------------------------------------------------------------------------------------------------------------------------------------------
   # Running dura mask module with call_nighresdura
-  output_root="${base}_acq-${space^^}_desc"
+  output_root="${base}_acq-${DATA^^}_desc"
 	output_dura=${outdir_dura}/${output_root}-dura_proba.nii.gz
   output_mask=${MASKS}/$(basename ${dir})/ses-1/${output_root}-dura_orig.nii.gz
 
   if [[ ! -f ${output_mask} ]]; then
 
-    inv2_mask=`find "${mask_dir}" -type f \( -name "*${space^^}*" -and -name "*spm_mask.nii.gz" \) 2>/dev/null`
+    inv2_mask=`find "${mask_dir}" -type f \( -name "*${DATA^^}*" -and -name "*spm_mask.nii.gz" \) 2>/dev/null`
 
     if [[ -z ${inv2} ]]; then
       echo "`basename ${dir}`: Missing INV2-image. Check ${inv2_dir} for:"
       echo "  \"`basename ${dir}`\""
       echo "  \"echo-1\""
       echo "  \"inv-2\""
-      echo "  \"${space^^}\""
+      echo "  \"${DATA^^}\""
       echo "  \"part-mag\""
       echo
       continue
@@ -253,7 +253,7 @@ for dir in ${search}; do
 
     declare -a NIGH_OUT=(mask inv2 t1w t1map)
     for f in ${NIGH_OUT[@]}; do
-      out=`find "${outdir_skull}" -type f \( -name "*${f}*" -and -name "*${space^^}*" \) 2>/dev/null`
+      out=`find "${outdir_skull}" -type f \( -name "*${f}*" -and -name "*${DATA^^}*" \) 2>/dev/null`
 
       if [[ ! -f ${outdir_skull}/${output_root}-strip_${f}.nii.gz ]]; then
         if [[ ! -z ${out} ]]; then

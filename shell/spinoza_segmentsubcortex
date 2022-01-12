@@ -102,7 +102,7 @@ for dir in ${search}; do
   #----------------------------------------------------------------------------------------------------------------------------------------------------------
   # Running MASSP with Nighres
 
-  massp=${output_dir}/${base}_acq-${space^^}_desc-massp_label.nii.gz
+  massp=${output_dir}/${base}_acq-${DATA^^}_desc-massp_label.nii.gz
 
   if [[ ! -f ${massp} ]]; then
 
@@ -111,7 +111,7 @@ for dir in ${search}; do
 
     #-----------------------------------------------------------------------------
     # Check if we can mask inputs
-    mask=`find ${DIR_DATA_DERIV}/manual_masks/${subdir} -type f \( -name "*acq-${space^^}*" -and -name "*brainmask.nii.gz" \) 2>/dev/null`
+    mask=`find ${DIR_DATA_DERIV}/manual_masks/${subdir} -type f \( -name "*acq-${DATA^^}*" -and -name "*brainmask.nii.gz" \) 2>/dev/null`
     declare -a INPUTS=()
 
     echo "Should we mask inputs?"
@@ -148,7 +148,7 @@ for dir in ${search}; do
         -n ${nr} \
         -i ${use_dir} \
         -o ${output_dir} \
-        -b ${base}_acq-${space^^}_desc
+        -b ${base}_acq-${DATA^^}_desc
 
       if [[ $? != 0 ]]; then
         echo
@@ -163,7 +163,7 @@ for dir in ${search}; do
         -n ${nr} \
         -i ${use_dir} \
         -o ${output_dir} \
-        -b ${base}_acq-${space^^}_desc
+        -b ${base}_acq-${DATA^^}_desc
 
     fi
 
