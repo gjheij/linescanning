@@ -1615,6 +1615,7 @@ class CollectSubject:
         self.prf_ses        = ses
         self.hemi           = hemi
         self.model          = model
+        self.analysis_yaml  = analysis_yaml
 
         # set pRF directory
         if self.prf_dir == None:
@@ -1622,11 +1623,13 @@ class CollectSubject:
                 self.prf_dir = opj(self.derivatives, 'prf', self.subject, f'ses-{self.prf_ses}')
 
         # get design matrix, vertex info, and analysis file
-        self.design_fn      = get_file_from_substring("vis_design.mat", self.prf_dir)
-        self.design_matrix  = io.loadmat(self.design_fn)['stim']
-        self.vert_fn        = get_file_from_substring([self.model, "best_vertices.csv"], self.cx_dir)
-        self.vert_info      = VertexInfo(self.vert_fn, subject=self.subject)
-        self.analysis_yaml  = analysis_yaml
+        if self.prf_dir != None:
+            self.design_fn      = get_file_from_substring("vis_design.mat", self.prf_dir)
+            self.design_matrix  = io.loadmat(self.design_fn)['stim']
+
+        if self.cx_dir != None:
+            self.vert_fn        = get_file_from_substring([self.model, "best_vertices.csv"], self.cx_dir)
+            self.vert_info      = VertexInfo(self.vert_fn, subject=self.subject)
 
         # load specific analysis file
         if self.analysis_yaml != None:
@@ -1643,7 +1646,8 @@ class CollectSubject:
                 self.settings = yaml.safe_load(file)
         
         # fetch target vertex parameters
-        self.target_params = self.return_prf_params(hemi=self.hemi)
+        if hasattr(self, "vert_info"):
+            self.target_params = self.return_prf_params(hemi=self.hemi)
 
         # create pRF if settings were specified
         if hasattr(self, "settings"):
