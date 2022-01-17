@@ -1293,7 +1293,7 @@ def random_timeseries(intercept, volatility, nr):
 
 class LazyPlot():
 
-    def __init__(self, ts, xx=None, error=None, error_alpha=0.3, x_label=None, y_label=None, title=None, xkcd=False, color=None, figsize=(12, 5), cmap='viridis', save_as=None,  labels=None, font_size=12, add_hline=None, add_vline=None, line_width=1, axs=None, y_lim=None):
+    def __init__(self, ts, xx=None, error=None, error_alpha=0.3, x_label=None, y_label=None, title=None, xkcd=False, color=None, figsize=(12, 5), cmap='viridis', save_as=None,  labels=None, font_size=12, add_hline=None, add_vline=None, line_width=1, axs=None, y_lim=None, sns_offset=10, sns_trim=True, sns_rm_bottom=False):
         """__init__
 
         Class for plotting because I'm lazy and I don't want to go through the `matplotlib` motion everything I quickly want to visualize something. This class makes that a lot easier. It allows single inputs, lists with multiple timecourses, labels, error shadings, and much more.
@@ -1396,6 +1396,9 @@ class LazyPlot():
         self.axs            = axs
         self.line_width     = line_width
         self.y_lim          = y_lim
+        self.sns_offset     = sns_offset
+        self.sns_trim       = sns_trim
+        self.sns_bottom     = sns_rm_bottom
 
         if self.xkcd:
             with plt.xkcd():
@@ -1506,7 +1509,7 @@ class LazyPlot():
 
             axs.axhline(self.add_hline['pos'], color=self.add_hline['color'], lw=self.add_hline['lw'], ls=self.add_hline['ls'])
 
-        sns.despine(offset=10)
+        sns.despine(offset=self.sns_offset, trim=self.sns_trim, bottom=self.sns_bottom)
 
 
 def squeeze_generic(a, axes_to_keep):
