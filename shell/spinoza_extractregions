@@ -200,17 +200,24 @@ for dir in ${search}; do
 
   output_root=${region_dir}/${base}_acq-${DATA^^}_desc
   output=${output_root}-xproba_${suff}-gm.nii.gz
-
+  gm_prob=${mask_dir}/${base}_acq-${DATA^^}_label-GM_probseg.nii.gz
   if [[ ! -d ${region_dir} ]]; then
     mkdir -p ${region_dir}
   fi
 
   # OVERWRITE ALL CREATED FILES; SHOULD BE DEFAULT AND CAN BE DISABLE BY SPECIFYING MASTER -M <MODULE> -O N
   if [[ ${OW} -eq 1 ]]; then
+    # remove existing nighres stuff
     if [[ -d ${output_dir}/cruise ]]; then
       INTRO="Overwrite mode: deleting files with \"${base}_acq-${DATA^^}_desc\" and \"${suff}\""
       rm -r ${output_root}*${suff}* 2>/dev/null
     fi
+
+    # remove search target for probability-maps
+    if [[ -f ${gm_prob} ]]; then
+      rm -r ${gm_prob} 2>/dev/null
+    fi
+
   else
     INTRO="Overwrite mode disabled"
   fi
@@ -248,55 +255,59 @@ for dir in ${search}; do
 		echo "`basename ${output}` is already present"
 
   fi
+  
+  if [[ ! -f ${gm_prob} ]]; then
 
-  if [[ ${mask_dir} == *"nighres"* ]]; then
-    :
-  else
-    fs=${SUBJECTS_DIR}/$(basename ${dir})
+    if [[ ${mask_dir} == *"nighres"* ]]; then
+      :
+    else
+      fs=${SUBJECTS_DIR}/$(basename ${dir})
 
-    for i in ${fprep_dir} ${fs} ${mask_dir} ${region_dir}; do
-      if [[ ! -d ${i} ]]; then
-        echo "You want a custom levelset, but you're missing directories:"
-        echo " ${i}"
-        # continue 2
+      for i in ${fprep_dir} ${fs} ${mask_dir} ${region_dir}; do
+        if [[ ! -d ${i} ]]; then
+          echo "You want a custom levelset, but you're missing directories:"
+          echo " ${i}"
+          # continue 2
+          exit 1
+        fi
+      done
+
+      if [[ -d ${cat12_dir} ]]; then
+        echo "Creating custom levelset from fmriprep+FS+MGDM+CAT12"
+        cat12=${cat12_dir}
+      else
+        echo "Creating custom levelset from fmriprep+FS+MGDM"
+        cat12=""
+      fi
+
+      # combine segmentations
+      if [[ ${COMBINE_SEGMENTATIONS} == "weighted" ]]; then
+        cmd="call_gdhcombine"
+      elif [[ ${COMBINE_SEGMENTATIONS} == "hard" ]]; then
+        cmd="call_combine"
+      else
+        echo "ERROR in `basename ${0}`: Unknown method \"${COMBINE_SEGMENTATIONS}\". Specify \"weighted\" or \"hard\" as COMBINE_SEGMENTATIONS in ${DIR_SCRIPTS}/shell/spinoza_setup"
         exit 1
       fi
-    done
 
-    if [[ -d ${cat12_dir} ]]; then
-      echo "Creating custom levelset from fmriprep+FS+MGDM+CAT12"
-      cat12=${cat12_dir}
-    else
-      echo "Creating custom levelset from fmriprep+FS+MGDM"
-      cat12=""
+      ${cmd} \
+        -s $(basename ${dir}) -q ${cat12} \
+        -a ${fprep_dir} \
+        -f ${fs} \
+        -c ${region_dir} \
+        -d ${mask_dir} \
+        -o ${mask_dir} \
+        -b ${base}_acq-${DATA^^}
+
+      if [[ $? != 0 ]]; then
+        echo "WARNING: Could not create combined segmentations, continuing.."
+        # echo "---------------------------------------------------------------------------------------------------"
+        # echo "ERROR in `basename ${0}`: call_gdhcombine exited with non-zero status"
+        # exit 1
+      fi
+
     fi
-
-    # combine segmentations
-    if [[ ${COMBINE_SEGMENTATIONS} == "weighted" ]]; then
-      cmd="call_gdhcombine"
-    elif [[ ${COMBINE_SEGMENTATIONS} == "hard" ]]; then
-      cmd="call_combine"
-    else
-      echo "ERROR in `basename ${0}`: Unknown method \"${COMBINE_SEGMENTATIONS}\". Specify \"weighted\" or \"hard\" as COMBINE_SEGMENTATIONS in ${DIR_SCRIPTS}/shell/spinoza_setup"
-      exit 1
-    fi 
-
-    ${cmd} \
-      -s $(basename ${dir}) -q ${cat12} \
-      -a ${fprep_dir} \
-      -f ${fs} \
-      -c ${region_dir} \
-      -d ${mask_dir} \
-      -o ${mask_dir} \
-      -b ${base}_acq-${DATA^^}
-
-    if [[ $? != 0 ]]; then
-      echo "WARNING: Could not create combined segmentations, continuing.."
-      # echo "---------------------------------------------------------------------------------------------------"
-      # echo "ERROR in `basename ${0}`: call_gdhcombine exited with non-zero status"
-      # exit 1
-    fi
-
+  
   fi
 
 done
