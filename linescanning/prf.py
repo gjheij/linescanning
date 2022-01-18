@@ -1390,7 +1390,7 @@ class pRFmodelFitting():
     
     def plot_vox(self, vox_nr='best', model='gauss', stage='iter'):
 
-        """plot real and predicted timecourses for a voxel"""
+        """plot real and predicted timecourses for a voxel. Also returns parameters, the numpy array representing the pRF in visual space, and timecourse of data"""
         
         if model == "gauss":
             use_model = self.gaussian_model
@@ -1405,7 +1405,7 @@ class pRFmodelFitting():
             else:
                 vox = vox_nr
 
-            params = params[vox, ...]
+            params = params[vox,...]
         else:
             raise ValueError(f"Could not find {stage} parameters for {model}")
 
@@ -1418,30 +1418,29 @@ class pRFmodelFitting():
 
         # make plot 
         ax1 = fig.add_subplot(gs00[0])
-        ax1.axvline(0, color='white', linestyle='dashed', lw=0.5)
-        ax1.axhline(0, color='white', linestyle='dashed', lw=0.5)
-        im = ax1.imshow(np.squeeze(prf_array,axis=0), extent=self.settings['vf_extent']+self.settings['vf_extent'], cmap='magma')
-        patch = patches.Circle((0, 0), radius=self.settings['vf_extent'][-1], transform=ax1.transData)
-        im.set_clip_path(patch)
-        ax1.axis('off')
+        plot_prf(prf_array, vf_extent=self.settings['vf_extent'], ax=ax1)
 
         # make plot 
         ax2 = fig.add_subplot(gs00[1])
-        ax2.axhline(0, color='k', linestyle='dashed', lw=0.5)
 
         # annoying indexing issues.. lots of inconsistencies in array shapes.
         try:
-            im = ax2.plot(self.data.T[vox,...], lw=2, color='#08B2F0', label='real')
+            tc = self.data.T[vox,...]
         except:
-            im = ax2.plot(self.data[vox,...], lw=2, color='#08B2F0', label='real')
+            tc = self.data[vox,...]
 
-        im = ax2.plot(self.prediction, lw=2, color='#cccccc', label='pred')
-        ax2.set_ylabel("BOLD amplitude (z-score)").set_fontsize(14)
-        ax2.set_xlabel("Volumes").set_fontsize(14)
-        ax2.legend(frameon=False)
-        sns.despine(offset=10)
+        utils.LazyPlot([tc, self.prediction], 
+                       line_width=2, 
+                       color=['#08B2F0', '#cccccc'], 
+                       labels=['real', 'pred'], 
+                       add_hline='default',
+                       x_label="Volumes",
+                       y_label="amplitude",
+                       axs=ax2,
+                       font_size=14,
+                       set_xlim_zero=True)
 
-        return params
+        return params, prf_array, tc
 
     def save_params(self, model="gauss", stage="grid", verbose=False, output_dir=None, output_base=None):
 
