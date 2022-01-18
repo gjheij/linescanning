@@ -1,10 +1,9 @@
 #!/usr/bin/env python
 
 from nighres.brain import extract_brain_region
+from linescanning import utils
 import sys, getopt
 import os
-import nibabel as nb
-import linescanning.bin.utils.utils as line
 opj = os.path.join
 
 def main(argv):
@@ -106,10 +105,10 @@ Notes:
     print("Loading files..")
     if mgdm_dir != None:
         # we got passed an mgdm_dir, fetch files from directory
-        segm    = line.get_file_from_substring("seg.nii.gz", mgdm_dir)
-        dist    = line.get_file_from_substring("dist.nii.gz", mgdm_dir)
-        mems    = line.get_file_from_substring("mems.nii.gz", mgdm_dir)
-        lbls    = line.get_file_from_substring("lbls.nii.gz", mgdm_dir)
+        segm    = utils.get_file_from_substring("seg.nii.gz", mgdm_dir)
+        dist    = utils.get_file_from_substring("dist.nii.gz", mgdm_dir)
+        mems    = utils.get_file_from_substring("mems.nii.gz", mgdm_dir)
+        lbls    = utils.get_file_from_substring("lbls.nii.gz", mgdm_dir)
 
     else:
 

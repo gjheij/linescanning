@@ -4,7 +4,7 @@ from nighres.brain import mgdm_segmentation
 import sys, getopt
 import os
 import nibabel as nb
-import linescanning.bin.utils.utils as linescanning
+from linescanning import image
 opj = os.path.join
 
 def main(argv):
@@ -124,7 +124,7 @@ Example:
         if not ax == ras and not ax == lpi:
             orient = True
             print(" {f}: Reorient {ax} to {ras}".format(f=os.path.basename(files[i]), ax=orig[i], ras=code.upper()))
-            linescanning.reorient_img(files[i], code=code, out=files[i].split('.')[0]+f"_{code}-valid.nii.gz")
+            image.reorient_img(files[i], code=code, out=files[i].split('.')[0]+f"_{code}-valid.nii.gz")
             ras_files[i] = files[i].split('.')[0]+f"_{code}-valid.nii.gz"
         else:
             orient = False
@@ -167,7 +167,7 @@ Example:
             print("Reorient results to input orientation")
             for i in results:
                 print(" {f}: Reorient {ax} to {ras}".format(f=os.path.basename(results[i]), ax=code.upper(), ras=orig[list(orig.keys())[0]]))
-                linescanning.reorient_img(results[i], code=orig[list(orig.keys())[0]])
+                image.reorient_img(results[i], code=orig[list(orig.keys())[0]])
         except:
             print("Could not reorient results to input orientation")
 
