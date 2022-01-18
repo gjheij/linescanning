@@ -1292,92 +1292,93 @@ def random_timeseries(intercept, volatility, nr):
 
 
 class LazyPlot():
+    """LazyPlot
 
+    Class for plotting because I'm lazy and I don't want to go through the `matplotlib` motion everything I quickly want to visualize something. This class makes that a lot easier. It allows single inputs, lists with multiple timecourses, labels, error shadings, and much more.
+
+    Parameters
+    ----------
+    ts: list, numpy.ndarray
+        Input data. Can either be a single list, or a list of multiple numpy arrays. If you want labels, custom colors, or error bars, these inputs must come in lists of similar length as `ts`!
+    xx: list, numpy.ndarray, optional
+        X-axis array
+    error: list, numpy.ndarray, optional
+        Error data with the same length/shape as the input timeseries, by default None. Can be either a numpy.ndarray for 1 timeseries, or a list of numpy.ndarrays for multiple timeseries
+    error_alpha: float, optional
+        Opacity level for error shadings, by default 0.3
+    x_label: str, optional
+        Label of x-axis, by default None
+    y_label: str, optional
+        Label of y-axis, by default None
+    labels: str, list, optional
+        String (if 1 timeseries) or list (with the length of `ts`) of colors, by default None. Labels for the timeseries to be used in the legend
+    title: str, optional
+        Plot title, by default None
+    xkcd: bool, optional
+        Plot the figre in XKCD-style (cartoon), by default False
+    color: str, list, optional
+        String (if 1 timeseries) or list (with the length of `ts`) of colors, by default None. If nothing is specified, we'll use `cmap` to create a color palette
+    cmap: str, optional
+        Color palette to use for colors if no individual colors are specified, by default 'viridis'
+    figsize: tuple, optional
+        Figure dimensions as per usual matplotlib conventions, by default (12,5)
+    save_as: str, optional
+        Save the plot, by default None. If you want to use figures in Inkscape, save them as PDFs to retain high resolution
+    font_size: int, optional
+        Font size of titles and axis labels, by default 12
+    add_hline: dict, optional
+        Dictionary for a horizontal line through the plot, by default None. Collects the following items:
+
+        >>> add_hline = {'pos' 0,       # position
+        >>>              'color': 'k',  # color
+        >>>              'lw': 1,       # linewidth
+        >>>              'ls': '--'}    # linestyle
+        You can get the settings above by specifying *add_hline='defaults'*
+    add_vline: [type], optional
+        Dictionary for a vertical line through the plot, by default None. Same keys as `add_hline`
+    line_width: int, list, optional
+        Line widths for either all graphs (then *int*) or a *list* with the number of elements as requested graphs, default = 1.
+    axs: <AxesSubplot:>, optional
+        Matplotlib axis to store the figure on
+    y_lim: list, optional
+        List for `axs.set_ylim`
+    set_xlim_zero: bool, optional
+        Reduces the space between y-axis and start of the plot. Is set before sns.despine. Default = False
+
+    Example
+    ----------
+    >>> # create a bunch of timeseries
+    >>> from linescanning import utils
+    >>> ts = utils.random_timeseries(1.2, 0.0, 100)
+    >>> ts1 = utils.random_timeseries(1.2, 0.3, 100)
+    >>> ts2 = utils.random_timeseries(1.2, 0.5, 100)
+    >>> ts3 = utils.random_timeseries(1.2, 0.8, 100)
+    >>> ts4 = utils.random_timeseries(1.2, 1, 100)
+
+    >>> # plot 1 timecourse
+    >>> glm.LazyPlot(ts2, figsize=(20, 5))
+    <linescanning.glm.LazyPlot at 0x7f839b0289d0>
+
+    >>> # plot multiple timecourses, add labels, and save file
+    >>> glm.LazyPlot([ts, ts1, ts2, ts3, ts4], figsize=(20, 5), save_as="/mnt/d/FSL/shared/spinoza/programs/project_repos/PlayGround/results/test_LazyPlot.pdf", labels=['vol=0', 'vol=0.3', 'vol=0.5', 'vol=0.8', 'vol=1.0'])
+    <linescanning.glm.LazyPlot at 0x7f839b2177c0>
+
+    >>> # add horizontal line at y=0
+    >>> hline = {'pos': 0, 'color': 'k', 'lw': 0.5, 'ls': '--'}
+    >>> >>> glm.LazyPlot(ts2, figsize=(20, 5), add_hline=hline)
+    <linescanning.glm.LazyPlot at 0x7f839b053580>
+
+    >>> # add shaded error bars
+    >>> from scipy.stats import sem
+    # make some stack
+    >>> stack = np.hstack((ts1[...,np.newaxis],ts2[...,np.newaxis],ts4[...,np.newaxis]))
+    >>> avg = stack.mean(axis=-1) # calculate mean
+    >>> err = sem(stack, axis=-1) # calculate error
+    >>> glm.LazyPlot(avg, figsize=(20, 5), error=err)
+    <linescanning.glm.LazyPlot at 0x7f839b0d5220>
+    """
+    
     def __init__(self, ts, xx=None, error=None, error_alpha=0.3, x_label=None, y_label=None, title=None, xkcd=False, color=None, figsize=(12, 5), cmap='viridis', save_as=None,  labels=None, font_size=12, add_hline=None, add_vline=None, line_width=1, axs=None, y_lim=None, sns_offset=10, sns_trim=True, sns_rm_bottom=False, set_xlim_zero=False):
-        """LazyPlot
-
-        Class for plotting because I'm lazy and I don't want to go through the `matplotlib` motion everything I quickly want to visualize something. This class makes that a lot easier. It allows single inputs, lists with multiple timecourses, labels, error shadings, and much more.
-
-        Parameters
-        ----------
-        ts: list, numpy.ndarray
-            Input data. Can either be a single list, or a list of multiple numpy arrays. If you want labels, custom colors, or error bars, these inputs must come in lists of similar length as `ts`!
-        xx: list, numpy.ndarray, optional
-            X-axis array
-        error: list, numpy.ndarray, optional
-            Error data with the same length/shape as the input timeseries, by default None. Can be either a numpy.ndarray for 1 timeseries, or a list of numpy.ndarrays for multiple timeseries
-        error_alpha: float, optional
-            Opacity level for error shadings, by default 0.3
-        x_label: str, optional
-            Label of x-axis, by default None
-        y_label: str, optional
-            Label of y-axis, by default None
-        labels: str, list, optional
-            String (if 1 timeseries) or list (with the length of `ts`) of colors, by default None. Labels for the timeseries to be used in the legend
-        title: str, optional
-            Plot title, by default None
-        xkcd: bool, optional
-            Plot the figre in XKCD-style (cartoon), by default False
-        color: str, list, optional
-            String (if 1 timeseries) or list (with the length of `ts`) of colors, by default None. If nothing is specified, we'll use `cmap` to create a color palette
-        cmap: str, optional
-            Color palette to use for colors if no individual colors are specified, by default 'viridis'
-        figsize: tuple, optional
-            Figure dimensions as per usual matplotlib conventions, by default (12,5)
-        save_as: str, optional
-            Save the plot, by default None. If you want to use figures in Inkscape, save them as PDFs to retain high resolution
-        font_size: int, optional
-            Font size of titles and axis labels, by default 12
-        add_hline: dict, optional
-            Dictionary for a horizontal line through the plot, by default None. Collects the following items:
-
-            >>> add_hline = {'pos' 0,       # position
-            >>>              'color': 'k',  # color
-            >>>              'lw': 1,       # linewidth
-            >>>              'ls': '--'}    # linestyle
-            You can get the settings above by specifying *add_hline='defaults'*
-        add_vline: [type], optional
-            Dictionary for a vertical line through the plot, by default None. Same keys as `add_hline`
-        line_width: int, list, optional
-            Line widths for either all graphs (then *int*) or a *list* with the number of elements as requested graphs, default = 1.
-        axs: <AxesSubplot:>, optional
-            Matplotlib axis to store the figure on
-        y_lim: list, optional
-            List for `axs.set_ylim`
-        set_xlim_zero: bool, optional
-            Reduces the space between y-axis and start of the plot. Is set before sns.despine. Default = False
-            
-        Example
-        ----------
-        >>> # create a bunch of timeseries
-        >>> from linescanning import utils
-        >>> ts = utils.random_timeseries(1.2, 0.0, 100)
-        >>> ts1 = utils.random_timeseries(1.2, 0.3, 100)
-        >>> ts2 = utils.random_timeseries(1.2, 0.5, 100)
-        >>> ts3 = utils.random_timeseries(1.2, 0.8, 100)
-        >>> ts4 = utils.random_timeseries(1.2, 1, 100)
-        
-        >>> # plot 1 timecourse
-        >>> glm.LazyPlot(ts2, figsize=(20, 5))
-        <linescanning.glm.LazyPlot at 0x7f839b0289d0>
-
-        >>> # plot multiple timecourses, add labels, and save file
-        >>> glm.LazyPlot([ts, ts1, ts2, ts3, ts4], figsize=(20, 5), save_as="/mnt/d/FSL/shared/spinoza/programs/project_repos/PlayGround/results/test_LazyPlot.pdf", labels=['vol=0', 'vol=0.3', 'vol=0.5', 'vol=0.8', 'vol=1.0'])
-        <linescanning.glm.LazyPlot at 0x7f839b2177c0>
-
-        >>> # add horizontal line at y=0
-        >>> hline = {'pos': 0, 'color': 'k', 'lw': 0.5, 'ls': '--'}
-        >>> >>> glm.LazyPlot(ts2, figsize=(20, 5), add_hline=hline)
-        <linescanning.glm.LazyPlot at 0x7f839b053580>
-
-        >>> # add shaded error bars
-        >>> from scipy.stats import sem
-        >>> stack = np.hstack((ts1[...,np.newaxis],ts2[...,np.newaxis],ts4[...,np.newaxis])) # make some stack
-        >>> avg = stack.mean(axis=-1) # calculate mean
-        >>> err = sem(stack, axis=-1) # calculate error
-        >>> glm.LazyPlot(avg, figsize=(20, 5), error=err)
-        <linescanning.glm.LazyPlot at 0x7f839b0d5220>
-        """
 
         self.array          = ts
         self.xx             = xx
