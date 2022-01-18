@@ -135,8 +135,8 @@ You will have to set a few things yourself:
     $ export PREFIX="sub-"
     $ export COMBINE_SEGMENTATIONS="weighted"
 
-    .. attention::
-        if `COMBINE_SEGMENTATIONS="weighted"`, then a weighted combination will produce the tissue probability maps that will be inserted in CRUISE; this will utilize `call_gdhcombine`. Alternatively, you can set `COMBINE_SEGMENTATIONS="hard"`. This means you trust the segmentation from CAT12_, and `call_combine` will use this in concert with FreeSurfer_'s segmentation to create **binary** 'probabilities' that are directly converted in `spinoza_cortexreconstruction` rather than estimating levelsets using CRUISE. There's benefit to both; *weighted* allows you to be more conservative around GM/CSF interfaces, whereas *hard* can be useful in hard-to-segment areas
+.. attention::
+    if `COMBINE_SEGMENTATIONS="weighted"`, then a weighted combination will produce the tissue probability maps that will be inserted in CRUISE; this will utilize `call_gdhcombine`. Alternatively, you can set `COMBINE_SEGMENTATIONS="hard"`. This means you trust the segmentation from CAT12_, and `call_combine` will use this in concert with FreeSurfer_'s segmentation to create **binary** 'probabilities' that are directly converted in `spinoza_cortexreconstruction` rather than estimating levelsets using CRUISE. There's benefit to both; *weighted* allows you to be more conservative around GM/CSF interfaces, whereas *hard* can be useful in hard-to-segment areas
 
 7) Specify your data type(s).
    
