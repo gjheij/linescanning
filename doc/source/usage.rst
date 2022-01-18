@@ -44,8 +44,9 @@ The path specifications are mainly controlled by the setup file called ``spinoza
     export DIR_PROJECTS=$(dirname $(dirname ${PATH_HOME}))/projects # REQUIRED; path where PROJECT lives
     export PROJECT=<project name>                                   # REQUIRED; project name
     export TASK_SES1="2R"                                           # OPTIONAL (but advised); task name ses-1
-    export TASK_SES2="LR"                                           # OPTOINAL; task name ses-2
+    export TASK_SES2="LR"                                           # OPTIONAL; task name ses-2
     export PREFIX="sub-"                                            # REQUIRED; prefix for subject folders
+    export COMBINE_SEGMENTATIONS="weighted"                         # REQUIRED; method for combining segmentations
 
     # DATA TYPE(S)
     declare -a ACQ=("MP2RAGE")                                      # REQUIRED; another example = ("MP2RAGE" "MEMP2RAGE") or ("MPRAGE")
@@ -132,6 +133,10 @@ You will have to set a few things yourself:
     $ export TASK_SES1="2R"
     $ export TASK_SES2="LR"
     $ export PREFIX="sub-"
+    $ export COMBINE_SEGMENTATIONS="weighted"
+
+    .. attention::
+        if `COMBINE_SEGMENTATIONS="weighted"`, then a weighted combination will produce the tissue probability maps that will be inserted in CRUISE; this will utilize `call_gdhcombine`. Alternatively, you can set `COMBINE_SEGMENTATIONS="hard"`. This means you trust the segmentation from CAT12_, and `call_combine` will use this in concert with FreeSurfer_'s segmentation to create **binary** 'probabilities' that are directly converted in `spinoza_cortexreconstruction` rather than estimating levelsets using CRUISE. There's benefit to both; *weighted* allows you to be more conservative around GM/CSF interfaces, whereas *hard* can be useful in hard-to-segment areas
 
 7) Specify your data type(s).
    

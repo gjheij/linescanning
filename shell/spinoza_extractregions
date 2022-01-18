@@ -272,7 +272,16 @@ for dir in ${search}; do
     fi
 
     # combine segmentations
-    call_gdhcombine \
+    if [[ ${COMBINE_SEGMENTATIONS} == "weighted" ]]; then
+      cmd="call_gdhcombine"
+    elif [[ ${COMBINE_SEGMENTATIONS} == "hard" ]]; then
+      cmd="call_combine"
+    else
+      echo "ERROR in `basename ${0}`: Unknown method \"${COMBINE_SEGMENTATIONS}\". Specify \"weighted\" or \"hard\" as COMBINE_SEGMENTATIONS in ${DIR_SCRIPTS}/shell/spinoza_setup"
+      exit 1
+    fi 
+
+    ${cmd} \
       -s $(basename ${dir}) -q ${cat12} \
       -a ${fprep_dir} \
       -f ${fs} \

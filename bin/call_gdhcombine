@@ -2,11 +2,9 @@
 
 import os
 from nilearn import image
+from scipy import ndimage
 import sys, getopt
-import nibabel as nb
-import numpy as np
-from linescanning.bin.utils.utils import get_file_from_substring
-from scipy.ndimage import interpolation
+from linescanning.utils import get_file_from_substring
 opj = os.path.join
 
 def main(argv):
@@ -18,7 +16,7 @@ call_gdhcombine
 Combine the outputs from FAST (fmriprep or FSL itself), FreeSurfer, and Nighres' MGDM. If possible, 
 we will also include CAT12-segmentations. These should be located in DIR_DATA_DERIV/cat12/sub-xxx/.
 Also takes in manual edits that are weighted 5-times more than the segmentations from the other
-softwares.
+softwares. 
 
 Args:
     -s <subject nr>  subject ID
@@ -36,9 +34,7 @@ Example:
 Notes:
     if you only specify the subject ID, it will look for the files in the environmental variables
     Nighres/FreeSurfer/fMRIprep are compulsory, manual edits & CAT12 are optional!
-
 ---------------------------------------------------------------------------------------------------
-
     """
 
     subject     = None
@@ -78,11 +74,23 @@ Notes:
             outputbase = arg
 
     if len(argv) < 1:
-        print("\nNEED AT LEAST A SUBJECT ID")
-        print(main.__doc__)
-        sys.exit()
+            print("\nNEED AT LEAST A SUBJECT ID")
+            print(main.__doc__)
+            sys.exit()
 
-    # At least CAT12/Nighres/FreeSurfer need to be specified. Manual & fMRIprep are optional
+    # print(f"subject:     {subject}")
+    # print(f"CAT12:       {cat}")
+    # print(f"FAST:        {fast}")
+    # print(f"FS:          {fs}")
+    # print(f"MGDM:        {mgdm}")
+    # print(f"Manual:      {manual}")
+    # print(f"Output dir:  {outputdir}")
+    # print(f"Output base: {outputbase}")
+
+    # At least fMRIprep/Nighres/FreeSurfer need to be specified. Manual & CAT12 are optional
+    if not fprep_prob:
+        raise ValueError("Need an fmriprep-directory")
+
     if not nigh_prob:
         raise ValueError("Need a nighres-directory")
 
@@ -95,9 +103,8 @@ Notes:
         ## Manual edits (optional)
         print(" manual edits..")
         manual = {}
-        manual['wm']        = get_file_from_substring('manualsegwm', man_edit)
-        manual['gm']        = get_file_from_substring('manualseggm', man_edit)
-        manual['outside']   = get_file_from_substring('desc-outside.nii.gz', man_edit)
+        manual['wm']    = get_file_from_substring('manualsegwm', man_edit)
+        manual['gm']    = get_file_from_substring('manualseggm', man_edit)
     except:
         manual = None
     
@@ -113,6 +120,18 @@ Notes:
             print(f" Missing {i}-file from mgdm")
             sys.exit(1)
 
+    ## fMRIprep: compulsory
+    print(" fmriprep..")
+    fmriprep = {}
+    fmriprep['wm']  = image.resample_to_img(get_file_from_substring('label-WM', fprep_prob), nighres['gm'], interpolation='nearest')
+    fmriprep['gm']  = image.resample_to_img(get_file_from_substring('label-GM', fprep_prob), nighres['gm'], interpolation='nearest')
+    fmriprep['csf'] = image.resample_to_img(get_file_from_substring('label-CSF', fprep_prob), nighres['gm'], interpolation='nearest')
+
+    for i in fmriprep:
+        if fmriprep[i] == None:
+            print(f" Missing {i}-file from fmriprep")
+            sys.exit(1)
+
     ## CAT12: optional
     if cat_prob:
         try:
@@ -124,108 +143,120 @@ Notes:
         except:
             cat['wm'],cat['gm'],cat['csf'] = None,None,None
 
-    ## FreeSurfer: compulsory
-    print(" FreeSurfer..")
+    # print("  Creating cerebrum mask..")
+    # cereb_mask = image.math_img('wm + gm + csf',
+    #                             wm=mgdm['wm'],
+    #                             gm=mgdm['gm'],
+    #                             csf=mgdm['csf'])
+    
+    # cereb_mask.to_filename(output + '_space-mp2rage_desc-cerebrum.nii.gz')
+    # print(manual)
+    # print(fmriprep)
+    # print(mgdm)
 
-    # split ribbon.mgz into wm/gm components
-    base_name= opj(man_edit, f"{subject}_ses-1_acq-{os.environ['DATA']}")
+    ## FreeSurfer: compulsory
     try:
-        cmd = f"call_splitribbon {subject} {base_name}"
-        os.system(cmd)
+        aseg = get_file_from_substring("aseg_dseg.nii.gz", fprep_prob)
     except:
-        print("Could not convert ribbon file.. Does it exist?")
-        sys.exit(1)
+        aseg = opj(fs, subject, 'mri', 'aseg.nii.gz')
+        mgz  = opj(fs, subject, 'mri', 'aseg.mgz')
+        if not os.path.exists(aseg):
+
+            if os.path.exists(mgz):
+                print("Converting aseg.mgz to aseg.nii.gz")
+                try:
+                    os.system(f'call_mriconvert {mgz}')
+                except:
+                    try:
+                        os.system("mri_convert --in_type mgz --out_type nii {mgz} {nii}".format(mgz=mgz, nii=aseg))
+                    except:
+                        raise OSError('Could not find function mri_convert')
+            else:
+                print("Could not find aseg.mgz")
+                sys.exit(1)
+
+    print(" FreeSurfer..")
+    freesurfer_seg = image.resample_to_img(aseg,
+                                           nighres['gm'],
+                                           interpolation='nearest')
 
     freesurfer = {}
-    wm_img = get_file_from_substring("ribbon_wm.nii.gz", man_edit)
-    gm_img = get_file_from_substring("ribbon_gm.nii.gz", man_edit)
-    cx_img = get_file_from_substring("ribbon_mask.nii.gz", man_edit)
-
-    # resample and save so that they are in native-space
-    image.resample_to_img(wm_img, nighres['gm'], interpolation='nearest').to_filename(wm_img)
-    image.resample_to_img(gm_img, nighres['gm'], interpolation='nearest').to_filename(gm_img)
-    image.resample_to_img(cx_img, nighres['gm'], interpolation='nearest').to_filename(cx_img)
-    
-    freesurfer['wm'] = wm_img
-    freesurfer['gm'] = gm_img
-    freesurfer['cx'] = cx_img
-
-    # do some operations to cortex img
-    print("Creating cortex-specific mask from ribbon.mgz")
-    os.system(f"call_dilate {cx_img} {cx_img} 2")
+    freesurfer['wm'] = image.math_img('((seg == 2).astype(int) + (seg == 41).astype(int))', seg=freesurfer_seg)
+    freesurfer['gm'] = image.math_img('((seg == 3).astype(int) + (seg == 42).astype(int))', seg=freesurfer_seg)
 
     print("Combining segmentations")
     print(" wm..")
     if manual['wm'] != None:
-        wm = image.math_img('(cat*ctx) + manual',
-                            cat=cat['wm'],
-                            ctx=freesurfer['cx'],
+        wm = image.math_img('fmriprep + mgdm + freesurfer + manual*5',
+                            mgdm=nighres['wm'],
+                            fmriprep=fmriprep['wm'],
+                            freesurfer=freesurfer['wm'],
                             manual=image.resample_to_img(manual['wm'], nighres['wm'], interpolation='nearest'))
-
-        wm_data = wm.get_fdata()
-        wm_data[wm_data > 1] = 1
-        wm = nb.Nifti1Image(wm_data, affine=wm.affine, header=wm.header)                        
     else:
-        wm = image.math_img('(cat*ctx)', cat=cat['wm'], ctx=freesurfer["cx"])
+        wm = image.math_img('fmriprep + mgdm + freesurfer',
+                            mgdm=nighres['wm'],
+                            fmriprep=fmriprep['wm'],
+                            freesurfer=freesurfer['wm'])
+    
+    # Include CAT12 segmentation if present
+    if cat['wm']:
+        wm = image.math_img('wm + cat', 
+                            wm=wm,
+                            cat=cat['wm'])
 
     print(" gm..")
-    gm = image.math_img('(cat*ctx)', cat=cat['gm'], ctx=freesurfer["cx"])  
+    if manual['gm'] != None:
+        # gm = image.math_img('fmriprep + mgdm + freesurfer + manual*5',
+        #                     mgdm=nighres['gm'],
+        #                     fmriprep=fmriprep['gm'],
+        #                     freesurfer=freesurfer['gm'],
+        #                     manual=image.resample_to_img(manual['gm'], nighres['gm']))
+
+        gm = image.math_img('fmriprep + freesurfer + manual*5',
+                            fmriprep=fmriprep['gm'],
+                            freesurfer=freesurfer['gm'],
+                            manual=image.resample_to_img(manual['gm'], nighres['gm']))                            
+    else:
+        gm = image.math_img('fmriprep + mgdm + freesurfer',
+                        mgdm=nighres['gm'],
+                        fmriprep=fmriprep['gm'],
+                        freesurfer=freesurfer['gm'])
+    # Include CAT12 segmentation if present
+    if cat['gm']:
+        gm = image.math_img('gm + cat*3', 
+                            gm=gm,
+                            cat=cat['gm'])
 
     print(" csf..")
-    csf = image.math_img('(3 * mgdm) + (cat*ctx)', 
-                         mgdm=nighres['csf'],
-                         ctx=freesurfer['cx'],
-                         cat=cat['csf'])
+    # csf = image.math_img('3 * mgdm + 0*fmriprep', mgdm=mgdm['csf'], fmriprep=fmriprep['csf'])
+    csf = image.math_img('3 * mgdm', mgdm=nighres['csf'])
 
-    csf_data = csf.get_fdata()
-    csf_data[csf_data > 1] = 1
-    csf = nb.Nifti1Image(csf_data, affine=csf.affine, header=csf.header)
+    # Include CAT12 segmentation if present
+    if cat['csf']:
+        csf = image.math_img('csf + cat', 
+                            csf=csf,
+                            cat=cat['csf'])
 
-    print("Saving combined probabilities")
-    gm_file = opj(outputdir, outputbase + '_label-GM_probseg.nii.gz')
-    wm_file = opj(outputdir, outputbase + '_label-WM_probseg.nii.gz')
-    csf_file = opj(outputdir, outputbase + '_label-CSF_probseg.nii.gz')
-    
-    wm.to_filename(wm_file); print(" wrote new WM-probability map")
-    gm.to_filename(gm_file); print(" wrote new GM-probability map")
-    csf.to_filename(csf_file); print(" wrote new CSF-probability map")
+    print(" total..")
+    total_prob = image.math_img('wm + gm + csf',
+                                wm=wm,
+                                gm=gm,
+                                csf=csf)
 
-    # exclude midbrain, sinus, and CSF-stuff from GM-segmentation
-    os.system(f"call_setmasktozero -i {gm_file} -m {freesurfer['wm']}")
-    os.system(f"call_setmasktozero -i {gm_file} -m {manual['outside']}")
-    os.system(f"call_setmasktozero -i {gm_file} -m {get_file_from_substring('p3', cat_prob)}")
+    print("Calculate new probabilities and save files")
+    wm = image.math_img('wm / total_prob', wm=wm, total_prob=total_prob)
+    gm = image.math_img('gm / total_prob', gm=gm, total_prob=total_prob)
+    csf = image.math_img('csf / total_prob', csf=csf, total_prob=total_prob)
 
-    # exclude midbrain from CSF-segmentation
-    os.system(f"call_setmasktozero -i {csf_file} -m {freesurfer['wm']}")
-    os.system(f"call_setmasktozero -i {csf_file} -m {gm_file}")
+    wm.to_filename(opj(outputdir, outputbase + '_label-WM_probseg.nii.gz')); print(" wrote new WM-probability map")
+    gm.to_filename(opj(outputdir, outputbase + '_label-GM_probseg.nii.gz')); print(" wrote new GM-probability map")
+    csf.to_filename(opj(outputdir, outputbase + '_label-CSF_probseg.nii.gz')); print(" wrote new CSF-probability map")
 
-    # get rid of cerebellum
-    os.system(f"call_setmasktozero -i {gm_file} -m {csf_file}")        
+    inside_mask = image.math_img('wm > 0.45', wm=wm)
+    inside_mask = image.largest_connected_component_img(inside_mask)
+    inside_mask = image.new_img_like(inside_mask,ndimage.binary_closing(inside_mask.get_fdata(),iterations=3))
+    inside_mask.to_filename(opj(outputdir, outputbase + '_desc-inside.nii.gz')); print(" wrote 'inside'-map")
 
-    # add midbrain to WM-segmentation
-    os.system(f"call_setmasktoone -i {wm_file} -m {freesurfer['wm']}")
-    os.system(f"call_setmasktozero -i {wm_file} -m {csf_file}")
-    os.system(f"cp {wm_file} {opj(outputdir, outputbase + '_desc-inside.nii.gz')}"); print(" wrote 'inside'-map")
-
-    # WM/GM-segmentations need to be binarized to be converted to levelsets properly
-    os.system(f"fslmaths {gm_file} -bin {gm_file}")
-    os.system(f"fslmaths {wm_file} -bin {wm_file}")
-
-    # set manual GM edits to 1 in GM-file and 0 in WM-file
-    if manual['gm'] != None:
-        os.system(f"call_setmasktoone -i {gm_file} -m {manual['gm']}")
-        os.system(f"call_setmasktozero -i {wm_file} -m {manual['gm']}")
-
-    print("Make a manual cruise image")
-    gm_img = nb.load(gm_file)
-    wm_img = nb.load(wm_file)
-
-    gm_data,wm_data = gm_img.get_fdata(), wm_img.get_fdata()
-    cruise_img = np.zeros_like(gm_data)
-    cruise_img[wm_data > 0] = 2
-    cruise_img[gm_data > 0] = 1
-
-    nb.Nifti1Image(cruise_img, affine=gm_img.affine, header=gm_img.header).to_filename(opj(outputdir, outputbase + '_desc-cruise_cortex.nii.gz'))
     print("Done")
 if __name__ == "__main__":
     main(sys.argv[1:])

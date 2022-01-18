@@ -175,34 +175,74 @@ for dir in ${search}; do
       echo " - GM  : `basename ${INPUTS[2]}`"
       echo " - SEG : `basename ${INPUTS[3]}`"
 
-      # define output names
-      cgb=${output_root}-cruise_cgb.nii.gz
-      gwb=${output_root}-cruise_gwb.nii.gz
+      if [[ ${COMBINE_SEGMENTATIONS} == "weighted" ]]; then
+        # run regular cruise
+        echo "Creating `basename ${output}`"
+        call_nighrescruise \
+          -m "${INPUTS[0]}" \
+          -w "${INPUTS[1]}" \
+          -g "${INPUTS[2]}" \
+          -c "${INPUTS[3]}" \
+          -o "$(dirname ${output_root})" \
+          -n "$(basename ${output_root})"
 
-      # create WM/GM levelset from probability
-      echo "Creating `basename ${gwb}`"
-      call_nighresproblevel -p ${INPUTS[1]} -d $(dirname ${output_root}) -n $(basename ${output_root})
-      mv ${output_root}-p2l_surf.nii.gz ${gwb} 2>/dev/null
+        if [[ $? != 0 ]]; then
+          echo
+          echo "---------------------------------------------------------------------------------------------------"
+          echo "ERROR in `basename ${0}`: call_nighrescruise exited with non-zero status"
+          exit 1
+        fi
 
-      # create GM/CSF levelset from probability
-      echo "Creating `basename ${cgb}`"
-      call_nighresproblevel -p ${INPUTS[2]} -d $(dirname ${output_root}) -n $(basename ${output_root})
-      mv ${output_root}-p2l_surf.nii.gz ${cgb} 2>/dev/null
+        declare -a NIGH_OUT=(cortex gwb cgb avg thick pwm pgm pcsf)
+        for f in ${NIGH_OUT[@]}; do
+          out=`find "$(dirname ${output})" -type f \( -name "*acq-${space^^}*" -and -name "*${f}*" \) 2>/dev/null`
 
-      # copy cruise image from manual_masks to cruise directory
-      cp ${INPUTS[3]} ${output} 2>/dev/null
+          if [[ ! -f ${output_root}-cruise_${f}.nii.gz ]]; then
+            if [[ ! -z ${out} ]]; then
+              mv ${out} ${output_root}-cruise_${f}.nii.gz
+            else
+              echo "Could not find file for cruise output: ${f}"
+              continue 2
+            fi
+          else
+            echo "`basename ${dir}`: reconstruction already present"
+          fi
 
-		else
-			echo "Skipping nighres. Found something that looks like output"
+        done
+        fslmaths ${output_root}-cruise_cortex.nii.gz -bin ${input_dir}/${base}_acq-${DATA^^}_desc-cruise_mask.nii.gz 2>/dev/null
+
+      elif [[ ${COMBINE_SEGMENTATIONS} == "hard" ]]; then
+        # directly creat levelsets from 'probabilities'
+
+        # define output names
+        cgb=${output_root}-cruise_cgb.nii.gz
+        gwb=${output_root}-cruise_gwb.nii.gz
+
+        # create WM/GM levelset from probability
+        echo "Creating `basename ${gwb}`"
+        call_nighresproblevel -p ${INPUTS[1]} -d $(dirname ${output_root}) -n $(basename ${output_root})
+        mv ${output_root}-p2l_surf.nii.gz ${gwb} 2>/dev/null
+
+        # create GM/CSF levelset from probability
+        echo "Creating `basename ${cgb}`"
+        call_nighresproblevel -p ${INPUTS[2]} -d $(dirname ${output_root}) -n $(basename ${output_root})
+        mv ${output_root}-p2l_surf.nii.gz ${cgb} 2>/dev/null
+
+        # copy cruise image from manual_masks to cruise directory
+        cp ${INPUTS[3]} ${output} 2>/dev/null
+      else
+        echo "ERROR in `basename ${0}`: Unknown method \"${COMBINE_SEGMENTATIONS}\". Specify \"weighted\" or \"hard\" as COMBINE_SEGMENTATIONS in ${DIR_SCRIPTS}/shell/spinoza_setup"
+        exit 1
+      fi 
+    else
+      echo "Skipping nighres. Found something that looks like output"
     fi
 
-	else
+  else
 
     echo "`basename ${dir}`: reconstruction already present"
 
   fi
-
-  # fslmaths ${output_root}-cruise_cortex.nii.gz -bin ${input_dir}/${base}_acq-${DATA^^}_desc-cruise_mask.nii.gz
 
 done
 

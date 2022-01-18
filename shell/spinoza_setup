@@ -233,6 +233,7 @@ export PROJECT=URIS-MDD # ANAT_SEG-Raw #URIS-MDD #hemifield
 export TASK_SES1="2R"
 export TASK_SES2="LR"
 export PREFIX="sub-"
+export COMBINE_SEGMENTATIONS="weighted"
 
 # DATA TYPE(S)
 declare -a ACQ=("MEMP2RAGE") # or ("MP2RAGE" "MEMP2RAGE")
