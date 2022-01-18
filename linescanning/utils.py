@@ -1293,8 +1293,8 @@ def random_timeseries(intercept, volatility, nr):
 
 class LazyPlot():
 
-    def __init__(self, ts, xx=None, error=None, error_alpha=0.3, x_label=None, y_label=None, title=None, xkcd=False, color=None, figsize=(12, 5), cmap='viridis', save_as=None,  labels=None, font_size=12, add_hline=None, add_vline=None, line_width=1, axs=None, y_lim=None, sns_offset=10, sns_trim=True, sns_rm_bottom=False):
-        """__init__
+    def __init__(self, ts, xx=None, error=None, error_alpha=0.3, x_label=None, y_label=None, title=None, xkcd=False, color=None, figsize=(12, 5), cmap='viridis', save_as=None,  labels=None, font_size=12, add_hline=None, add_vline=None, line_width=1, axs=None, y_lim=None, sns_offset=10, sns_trim=True, sns_rm_bottom=False, set_xlim_zero=False):
+        """LazyPlot
 
         Class for plotting because I'm lazy and I don't want to go through the `matplotlib` motion everything I quickly want to visualize something. This class makes that a lot easier. It allows single inputs, lists with multiple timecourses, labels, error shadings, and much more.
 
@@ -1344,6 +1344,8 @@ class LazyPlot():
             Matplotlib axis to store the figure on
         y_lim: list, optional
             List for `axs.set_ylim`
+        set_xlim_zero: bool, optional
+            Reduces the space between y-axis and start of the plot. Is set before sns.despine. Default = False
             
         Example
         ----------
@@ -1399,6 +1401,7 @@ class LazyPlot():
         self.sns_offset     = sns_offset
         self.sns_trim       = sns_trim
         self.sns_bottom     = sns_rm_bottom
+        self.set_xlim_zero  = set_xlim_zero
 
         if self.xkcd:
             with plt.xkcd():
@@ -1498,17 +1501,20 @@ class LazyPlot():
             axs.set_title(self.title, fontname=self.fontname, fontsize=self.font_size)
 
         if self.add_vline:
-            if self.add_vline == "defaults":
+            if "default" in self.add_vline.lower():
                 self.add_vline={'pos': 0, 'color': 'k', 'ls': 'dashed', 'lw': 0.5}
 
             axs.axvline(self.add_vline['pos'], color=self.add_vline['color'], lw=self.add_vline['lw'], ls=self.add_vline['ls'])
 
         if self.add_hline:
-            if self.add_hline == "defaults":
+            if "default" in self.add_hline.lower():
                 self.add_hline={'pos': 0, 'color': 'k', 'ls': 'dashed', 'lw': 0.5}
 
             axs.axhline(self.add_hline['pos'], color=self.add_hline['color'], lw=self.add_hline['lw'], ls=self.add_hline['ls'])
-
+        
+        if self.set_xlim_zero:
+            axs.set_xlim(0)
+            
         sns.despine(offset=self.sns_offset, trim=self.sns_trim, bottom=self.sns_bottom)
 
 
