@@ -103,8 +103,8 @@ Notes:
         ## Manual edits (optional)
         print(" manual edits..")
         manual = {}
-        manual['wm']    = get_file_from_substring('manualsegwm', man_edit)
-        manual['gm']    = get_file_from_substring('manualseggm', man_edit)
+        manual['wm']    = get_file_from_substring('manualsegwm', man_edit, return_msg=None)
+        manual['gm']    = get_file_from_substring('manualseggm', man_edit, return_msg=None)
     except:
         manual = None
     
@@ -116,36 +116,32 @@ Notes:
     nighres['csf']     = get_file_from_substring('proba_cr-csf.nii.gz', nigh_prob)
 
     for i in nighres:
-        if nighres[i] == None:
-            print(f" Missing {i}-file from mgdm")
-            sys.exit(1)
+        if isinstance(nighres[i], list):
+            raise ValueError(f"Found more than 1 file for '{i}'-segmentation from Nighres containing string 'proba_cr-{i}.nii.gz'..\n{nighres[i]}")    
 
     ## fMRIprep: compulsory
     print(" fmriprep..")
     fmriprep = {}
-    fmriprep['wm']  = image.resample_to_img(get_file_from_substring('label-WM', fprep_prob), nighres['gm'], interpolation='nearest')
-    fmriprep['gm']  = image.resample_to_img(get_file_from_substring('label-GM', fprep_prob), nighres['gm'], interpolation='nearest')
-    fmriprep['csf'] = image.resample_to_img(get_file_from_substring('label-CSF', fprep_prob), nighres['gm'], interpolation='nearest')
+    fmriprep['wm']  = get_file_from_substring(f"{os.environ.get('DATA')}_label-WM", fprep_prob)
+    fmriprep['gm']  = get_file_from_substring(f"{os.environ.get('DATA')}_label-GM", fprep_prob)
+    fmriprep['csf'] = get_file_from_substring(f"{os.environ.get('DATA')}_label-CSF", fprep_prob)
 
     for i in fmriprep:
-        if fmriprep[i] == None:
-            print(f" Missing {i}-file from fmriprep")
-            sys.exit(1)
-
-    ## CAT12: optional
-    if cat_prob:
-        try:
-            print(" CAT12..")
-            cat = {}
-            cat['wm']   = image.resample_to_img(get_file_from_substring('p2', cat_prob), nighres['gm'], interpolation='nearest')
-            cat['gm']   = image.resample_to_img(get_file_from_substring('p1', cat_prob), nighres['gm'], interpolation='nearest')
-            cat['csf']  = image.resample_to_img(get_file_from_substring('p3', cat_prob), nighres['gm'], interpolation='nearest')
-        except:
-            cat['wm'],cat['gm'],cat['csf'] = None,None,None
+        if isinstance(fmriprep[i], list):
+            raise ValueError(f"Found more than 1 file for '{i}'-segmentation from fMRIprep with string '{os.environ.get('DATA')}_label-{i.upper()}'..\n{fmriprep[i]}")
+        else:
+            fmriprep[i] = image.resample_to_img(fmriprep[i], nighres['gm'], interpolation='nearest')
+            
+    ## CAT12
+    print(" CAT12..")
+    cat = {}
+    cat['wm']   = image.resample_to_img(get_file_from_substring('p2', cat_prob), nighres['gm'], interpolation='nearest')
+    cat['gm']   = image.resample_to_img(get_file_from_substring('p1', cat_prob), nighres['gm'], interpolation='nearest')
+    cat['csf']  = image.resample_to_img(get_file_from_substring('p3', cat_prob), nighres['gm'], interpolation='nearest') 
 
     print(" FreeSurfer..")
     # split ribbon.mgz into wm/gm components
-    base_name= opj(man_edit, f"{subject}_ses-1_acq-{os.environ['DATA']}")
+    base_name= opj(man_edit, f"{subject}_ses-1_acq-{os.environ.get('DATA')}")
     try:
         cmd = f"call_splitribbon {subject} {base_name}"
         os.system(cmd)
@@ -189,10 +185,10 @@ Notes:
                             freesurfer=freesurfer['gm'],
                             manual=image.resample_to_img(manual['gm'], nighres['gm']))
     else:
-        gm = image.math_img('fmriprep + mgdm + freesurfer',
-                        mgdm=nighres['gm'],
-                        fmriprep=fmriprep['gm'],
-                        freesurfer=freesurfer['gm'])
+        gm = image.math_img('fmriprep + cat + freesurfer',
+                            fmriprep=fmriprep['gm'],
+                            cat=cat['gm'],
+                            freesurfer=freesurfer['gm'])
 
     print(" csf..")
     csf = image.math_img('3 * cat', cat=cat['csf'])
