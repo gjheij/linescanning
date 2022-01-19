@@ -711,9 +711,11 @@ class CalcBestVertex(object):
         self.surface = SurfaceCalc(subject=self.subject, fs_dir=self.fs_dir, fs_label=fs_label)
         self.session = ses_nr
         self.task_id = task
+        self.prffile = prffile
         self.fname   = f"{self.subject}_ses-{self.session}_task-{self.task_id}"
 
-        self.prf = pRFCalc(subject=self.subject, prf_dir=self.prf_dir, prffile=prffile)
+        if self.prffile != None:
+            self.prf = pRFCalc(subject=self.subject, prf_dir=self.prf_dir, prffile=self.prffile)
 
     def apply_thresholds(self, r2_thresh=None, ecc_thresh=None, polar_thresh=None, thick_thresh=None, depth_thresh=None):
 
