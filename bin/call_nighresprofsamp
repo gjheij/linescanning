@@ -15,25 +15,25 @@ The Profile Sampling module of CBS Tools was used to transform the 2-dimensional
 representations of any input data
 
 Args:
-    -l (--layerimg=)    4D image containing levelset representations of different intracortical 
-                        surfaces on which data should be sampled (the 4D output from call_nighres-
-                        layering; "-layering_boundaries")
-    -s (--samplefrom=)  Image from which data should be sampled
-    -d (--outputdir=)   output directory
-    -n (--name=)        basename for output
+  -l (--layerimg=)    4D image containing levelset representations of different intracortical 
+                      surfaces on which data should be sampled (the 4D output from call_nighres-
+                      layering; "-layering_boundaries")
+  -s (--samplefrom=)  Image from which data should be sampled
+  -d (--outputdir=)   output directory
+  -n (--name=)        basename for output
 
 Outputs:
-    (taken from https://nighres.readthedocs.io/en/latest/laminar/profile_sampling.html)
-    Dictionary collecting outputs under the following keys (suffix of output files in brackets)
+  (taken from https://nighres.readthedocs.io/en/latest/laminar/profile_sampling.html)
+  Dictionary collecting outputs under the following keys (suffix of output files in brackets)
 
-    result (niimg): 4D profile image , where the 4th dimension represents the profile for each 
-                    voxel (-lps_data)
+  result (niimg): 4D profile image , where the 4th dimension represents the profile for each 
+                  voxel (-lps_data)
 
 Example:
-    call_nighresprofsamp -l sub-001_ses-1_acq-MP2RAGE_desc-layering_boundaries.nii.gz
-                         -s sub-001_ses-1_acq-MP2RAGE_T1map.nii.gz
-                         -d derivatives/nighres/sub-001/profiling
-                         -n sub-001_ses-1_acq-MP2RAGE_desc-profile_T1map
+  call_nighresprofsamp -l sub-001_ses-1_acq-MP2RAGE_desc-layering_boundaries.nii.gz
+                       -s sub-001_ses-1_acq-MP2RAGE_T1map.nii.gz
+                       -d derivatives/nighres/sub-001/profiling
+                       -n sub-001_ses-1_acq-MP2RAGE_desc-profile_T1map
 
 ---------------------------------------------------------------------------------------------------
     """
@@ -64,9 +64,9 @@ Example:
             output_base = arg
 
     if len(argv) < 4:
-            print("\nNOT ENOUGH ARGUMENTS SPECIFIED")
-            print(main.__doc__)
-            sys.exit()
+        print("\nNOT ENOUGH ARGUMENTS SPECIFIED")
+        print(main.__doc__)
+        sys.exit()
 
     # Just plop everything in dir of segmentation
     profile_sampling(layers_lvls,
