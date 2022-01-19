@@ -103,8 +103,9 @@ Notes:
         ## Manual edits (optional)
         print(" manual edits..")
         manual = {}
-        manual['wm']    = get_file_from_substring('manualsegwm', man_edit, return_msg=None)
-        manual['gm']    = get_file_from_substring('manualseggm', man_edit, return_msg=None)
+        manual['wm']        = get_file_from_substring('manualsegwm', man_edit, return_msg=None)
+        manual['gm']        = get_file_from_substring('manualseggm', man_edit, return_msg=None)
+        manual['outside']   = get_file_from_substring('desc-outside.nii.gz', man_edit, return_msg=None)
     except:
         manual = None
     
@@ -214,11 +215,15 @@ Notes:
     gm.to_filename(gm_file); print(" wrote new GM-probability map")
     csf.to_filename(csf_file); print(" wrote new CSF-probability map")
 
-    # set midbrain to WM
+    # set midbrain to one in WM and to zero in GM/CSF
     print("Removing midbrain")
     os.system(f"call_setmasktoone -i {wm_file} -m {freesurfer['wm']}")
     os.system(f"call_setmasktozero -i {wm_file} -m {csf_file}")
     os.system(f"call_setmasktozero -i {gm_file} -m {freesurfer['wm']}")
+    
+    # get rid of outside stuff
+    print("Set 'outside' mask to zero")
+    os.system(f"call_setmasktozero -i {gm_file} -m {manual['outside']}")
 
     # make inside mask
     print("Create 'inside' mask")
