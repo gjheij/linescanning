@@ -64,7 +64,7 @@ if [[ $# -lt 4 ]] ; then
 fi
 
 # Check for subject & session flags
-while getopts os:n:f: argument
+while getopts cos:n:f: argument
 do
     case ${argument} in
       s)  sub=${OPTARG}
@@ -85,6 +85,12 @@ if [[ "${@}" == *"-o"* ]]; then
   OW=1
 else
   OW=0
+fi
+
+if [[ "${@}" == *"-c"* ]]; then
+  COMB_ONLY=1
+else
+  COMB_ONLY=0
 fi
 
 INPUT=${@:$OPTIND:1}
@@ -207,60 +213,73 @@ for dir in ${search}; do
 
   # OVERWRITE ALL CREATED FILES; SHOULD BE DEFAULT AND CAN BE DISABLE BY SPECIFYING MASTER -M <MODULE> -O N
   if [[ ${OW} -eq 1 ]]; then
-    # remove existing nighres stuff
-    if [[ -d ${output_dir}/cruise ]]; then
-      INTRO="Overwrite mode: deleting files with \"${base}_acq-${DATA^^}_desc\" and \"${suff}\""
-      rm -r ${output_root}*${suff}* 2>/dev/null
-    fi
+    if [[ ${COMB_ONLY} -eq 1 ]]; then
+      if [[ -f ${gm_prob} ]]; then
+        rm -r ${gm_prob} 2>/dev/null
+      fi
+    else
+      # remove existing nighres stuff
+      if [[ -d ${output_dir}/cruise ]]; then
+        INTRO="Overwrite mode: deleting files with \"${base}_acq-${DATA^^}_desc\" and \"${suff}\""
+        rm -r ${output_root}*${suff}* 2>/dev/null
+      fi
 
-    # remove search target for probability-maps
-    if [[ -f ${gm_prob} ]]; then
-      rm -r ${gm_prob} 2>/dev/null
+      # remove search target for probability-maps
+      if [[ -f ${gm_prob} ]]; then
+        rm -r ${gm_prob} 2>/dev/null
+      fi
     fi
-
   else
     INTRO="Overwrite mode disabled"
   fi
 
-  if [[ ! -f ${output} ]]; then
+  if [[ ${COMB_ONLY} -eq 0 ]]; then
+    if [[ ! -f ${output} ]]; then
 
-    echo
-    echo "**************************************** Processing `basename ${dir}` ***************************************"
-    echo ${INTRO}
+      echo
+      echo "**************************************** Processing `basename ${dir}` ***************************************"
+      echo ${INTRO}
 
-    if [[ ! -f ${output_root}_xproba-${suff}gm.nii.gz ]]; then
+      if [[ ! -f ${output_root}_xproba-${suff}gm.nii.gz ]]; then
 
-      echo "Creating `basename ${output}` with suffix: ${suff}"
-      call_nighresextractregions \
-        -s "${INPUTS[0]}" \
-        -b "${INPUTS[1]}" \
-        -p "${INPUTS[2]}" \
-        -l "${INPUTS[3]}" \
-        -r "${REGION}" \
-        -o "${region_dir}" \
-        -n "$(basename ${INPUTS[0]} -mgdm_seg.nii.gz)"
+        echo "Creating `basename ${output}` with suffix: ${suff}"
+        call_nighresextractregions \
+          -s "${INPUTS[0]}" \
+          -b "${INPUTS[1]}" \
+          -p "${INPUTS[2]}" \
+          -l "${INPUTS[3]}" \
+          -r "${REGION}" \
+          -o "${region_dir}" \
+          -n "$(basename ${INPUTS[0]} -mgdm_seg.nii.gz)"
 
-      if [[ $? -ne 0 ]]; then
-        echo
-        echo "ERROR in spinoza_extractregions: call_nighresextractregions exited with non-zero status"
-        continue
+        if [[ $? -ne 0 ]]; then
+          echo
+          echo "ERROR in spinoza_extractregions: call_nighresextractregions exited with non-zero status"
+          continue
+        fi
+
+      else
+        echo "Skipping nighres. Found something that looks like output"
       fi
 
-		else
-			echo "Skipping nighres. Found something that looks like output"
+    else
+
+      echo "`basename ${output}` is already present"
+
     fi
-
-  else
-
-		echo "`basename ${output}` is already present"
-
   fi
-  
+
   if [[ ! -f ${gm_prob} ]]; then
 
     if [[ ${mask_dir} == *"nighres"* ]]; then
       :
     else
+
+      if [[ ${COMB_ONLY} -eq 1 ]]; then
+        echo
+        echo "**************************************** Processing `basename ${dir}` ***************************************"
+      fi
+      
       fs=${SUBJECTS_DIR}/$(basename ${dir})
 
       for i in ${fprep_dir} ${fs} ${mask_dir} ${region_dir}; do

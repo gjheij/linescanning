@@ -115,7 +115,9 @@ Args:
                       - spinoza_qmrimaps; turn on Universal Pulses
                       - spinoza_fmriprep; remove surface_recon_wf folder. Handy for re-running with
                         new reconstruction
-                      - spinoza_bestvertex; disable FreeView during vertex selection                        
+                      - spinoza_bestvertex; disable FreeView during vertex selection
+                      - spinoza_extractregions: skip nighres, only do combination of segmentations.
+                        Works with '-o' flag.                
                       - spinoza_profiling; specify the type of file to use
   -u <config>       specify configuration file for fMRIprep (see linescanning/misc for examp-
                     les). If not specified, no configuration will be used. If ses-1 is specified,
@@ -1392,8 +1394,14 @@ if [[ $? -eq 0 ]]; then
     SUBJECT="-s ${SUB}"
   fi
 
+  if [[ ! -z ${KWARGS} ]]; then
+    KWARGS="-c"
+  else
+    KWARGS=""
+  fi    
+
   roi="cerebrum"
-  spinoza_extractregions ${SUBJECT} ${SESSION} ${OW} -f ${DIR_DATA_DERIV}/fmriprep ${DIR_DATA_DERIV}/nighres ${DIR_DATA_DERIV}/manual_masks ${roi}
+  spinoza_extractregions ${SUBJECT} ${SESSION} ${OW} ${KWARGS} -f ${DIR_DATA_DERIV}/fmriprep ${DIR_DATA_DERIV}/nighres ${DIR_DATA_DERIV}/manual_masks ${roi}
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_extractregions exited with non-zero status"
