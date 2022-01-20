@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 
 import os, sys, getopt, cortex
+from interface_meta import override
 from linescanning.pycortex import set_ctx_path
 opj = os.path.join
+ose = os.path.exists
 
 def main(argv):
 
@@ -17,7 +19,7 @@ ducial surfaces are stored in <subject>/surf/?h.fiducial!
 Args:
     -s (--subj=)        subject name (e.g., sub-xxx)
     -f (--fsdir=)       path to freesurfer dir (e.g., derivatives/freesurfer)
-    -o (--overwrite=)   force overwrite if directory already exists ('n'=no|'y'=yes) (default = no)   
+    -o                  overwrite if directory already exists
 
 Example:
     call_ctximport -s sub-001 (uses SUBJECTS_DIR)
@@ -27,10 +29,10 @@ Example:
 
     subject = None
     fs_dir  = None
-    force   = "n"
+    overwrite = False
 
     try:
-        opts = getopt.getopt(argv,"hs:f:o:",["help=", "subj=", "fsdir=", "overwrite="])[0]
+        opts = getopt.getopt(argv,"ohs:f:",["help=", "subj=", "fsdir="])[0]
     except getopt.GetoptError:
         print(main.__doc__)
         sys.exit(2)
@@ -43,8 +45,8 @@ Example:
             subject = arg
         elif opt in ("-f", "--fsdir"):
             fs_dir = arg
-        elif opt in ("-o", "--overwrite"):
-            force = arg            
+        elif opt in ("-o"):
+            overwrite = True
 
     if len(argv) < 1:
         print("NOT ENOUGH ARGUMENTS SPECIFIED")
@@ -57,13 +59,14 @@ Example:
         except:
             raise ValueError("SUBJECTS_DIR is empty and no other FreeSurfer-directory is specified")
 
-    ctx_dir = set_ctx_path(opt="show_fs")
-    if force.lower() == "y":
-        if os.path.exists(opj(ctx_dir, subject)):
+    ctx_dir = set_ctx_path(opt="update")
+    print(ctx_dir)
+    if overwrite:
+        if ose(opj(ctx_dir, subject)):
             os.system(f'rm -r {opj(ctx_dir, subject)}')
             
-    if not os.path.exists(opj(ctx_dir, subject)):
-        if os.path.exists(opj(fs_dir, subject)):
+    if not ose(opj(ctx_dir, subject)):
+        if ose(opj(fs_dir, subject)):
             cortex.freesurfer.import_subj(fs_subject=subject,
                                          cx_subject=subject,
                                          freesurfer_subject_dir=fs_dir,
@@ -71,7 +74,7 @@ Example:
         else:
             raise ValueError(f'Could not find {subject} in {fs_dir}')
     else:
-        print(f"{subject} already present in {ctx_dir}. Use 'call_ctximport -s {subject} -o y' to overwrite")
+        print(f"{subject} already present in {ctx_dir}. Use 'call_ctximport -s {subject} -o' to overwrite")
 
 if __name__ == "__main__":
     main(sys.argv[1:])

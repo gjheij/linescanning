@@ -3,6 +3,7 @@ from linescanning import image, utils
 import nibabel as nb
 import numpy as np
 import os
+import configparser
 import random
 import sys
 
@@ -28,32 +29,21 @@ def set_ctx_path(p=None, opt="update"):
     if p == None:
         p = os.environ['CTX']
 
-    conf = cortex.options.usercfg
+    usercfg = cortex.options.usercfg
+    config = configparser.ConfigParser()
+    config.read(usercfg)
 
-    if opt == "show_pn":
-        print(conf)
-
-    f = open(conf, "r+")
-    list_f = f.readlines()
-
-    for i, j in enumerate(list_f):
-        if "filestore =" in j:
-
-            if opt == "show_fs":
-                filestore = j.strip('\n').split('=')[-1].strip(' ')
-                return filestore
-
-            elif opt == "update":
-                if j.split(' ')[2].split('\n')[0] != p:
-                    list_f[i] = "filestore = {}".format(p+'\n')
-                    print("new {}".format(list_f[i].split('\n')[0]))
-
-    f = open(conf, "w+")
-    for i in list_f:
-        f.writelines(i)
-
-    f.close()
-
+    if opt == "show_fs":
+        config.get("basic", "filestore")
+    elif opt == "show_pn":
+        return usercfg
+    else:
+        if config.get("basic", "filestore") != p:
+            config.set("basic", "filestore", p)
+            return config.get("basic", "filestore")
+        else:
+            return config.get("basic", "filestore")
+            
 
 def create_ctx_transform(subject, ctx_dir, in_file, warp_name, binarize=False, ctx_type=None, cmap=None):
 
