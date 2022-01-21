@@ -181,14 +181,14 @@ export LONG_QUEUE="long.q@jupiter"
 export SHORT_QUEUE="short.q@jupiter"
 
 # set SGE paths
-if [[ $1 == "setup" ]]; then
-  for file in ${REPO_DIR}/bin/* ${REPO_DIR}/shell/*; do
-    if [[ ! -f ${REPO_DIR}/shell/spinoza_setup ]]; then
-      sed -i "s|LONG_QUEUE|${LONG_QUEUE}|g" ${file}
-      sed -i "s|SHORT_QUEUE|${SHORT_QUEUE}|g" ${file}
-    fi
-  done
-fi
+# if [[ $1 == "setup" ]]; then
+#   for file in ${REPO_DIR}/bin/* ${REPO_DIR}/shell/*; do
+#     if [[ ! -f ${REPO_DIR}/shell/spinoza_setup ]]; then
+#       sed -i "s|LONG_QUEUE|${LONG_QUEUE}|g" ${file}
+#       sed -i "s|SHORT_QUEUE|${SHORT_QUEUE}|g" ${file}
+#     fi
+#   done
+# fi
 
 # MATLAB
 export MRRECON=/packages/matlab/toolbox/MRecon/3.0.541  
