@@ -143,7 +143,7 @@ fi
 #-----------------------------------------------------------------------------
 # Set default FS-license if none specified
 if [[ -z ${LIC} ]]; then
-  license=${DIR_SCRIPTS}/data/license.txt
+  license=${DIR_SCRIPTS}/misc/license.txt
 else
   license=${LIC}
 fi
