@@ -34,7 +34,7 @@ def set_ctx_path(p=None, opt="update"):
     config.read(usercfg)
 
     if opt == "show_fs":
-        config.get("basic", "filestore")
+        return config.get("basic", "filestore")
     elif opt == "show_pn":
         return usercfg
     else:
