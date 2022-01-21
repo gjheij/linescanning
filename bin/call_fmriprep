@@ -2,7 +2,7 @@
 #$ -S /bin/bash
 #$ -cwd
 #$ -j Y
-#$ -q ${USE_QUEUE}
+#$ -q ${LONG_QUEUE}
 #$ -V
 #$ -pe smp 5
 #Template provided by Daniel Levitas of Indiana University
