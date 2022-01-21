@@ -140,32 +140,17 @@ for dir in ${search}; do
     echo "Create `basename ${massp}`"
 
     if [[ ${PLACE} == "SGE" ]]; then
-
-      # Registration takes ages, so submit job to SGE
-      qsub -N massp_$(basename ${dir} | cut -d'-' -f2) -wd ${DIR_LOGS} \
-      ${DIR_SCRIPTS}/bin/call_nighresmassp \
-        -s $(basename ${dir}) \
-        -n ${nr} \
-        -i ${use_dir} \
-        -o ${output_dir} \
-        -b ${base}_acq-${DATA^^}_desc
-
-      if [[ $? != 0 ]]; then
-        echo
-        echo "---------------------------------------------------------------------------------------------------"
-        echo "ERROR in `basename ${0}`: job submission of MASSP was unsuccessful"
-        exit 1
-      fi
-
+      job="qsub -q ${SGE_QUEUE_LONG} -N massp_$(basename ${dir} | cut -d'-' -f2) -wd ${DIR_LOGS} ${DIR_SCRIPTS}/bin/call_nighresmassp"
     else
-      call_nighresmassp \
-        -s $(basename ${dir}) \
-        -n ${nr} \
-        -i ${use_dir} \
-        -o ${output_dir} \
-        -b ${base}_acq-${DATA^^}_desc
-
+      job="call_nighresmassp"
     fi
+
+    ${job} \
+      -s $(basename ${dir}) \
+      -n ${nr} \
+      -i ${use_dir} \
+      -o ${output_dir} \
+      -b ${base}_acq-${DATA^^}_desc
 
     if [[ $? != 0 ]]; then
       echo

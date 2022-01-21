@@ -220,7 +220,7 @@ for dir in ${search}; do
       confFile=${conf}
     fi
     
-    qsub -N fprep_$(basename ${dir} | cut -d'-' -f2) -o ${workdir} \
+    qsub -q ${SGE_QUEUE_LONG} -N fprep_$(basename ${dir} | cut -d'-' -f2) -o ${workdir} \
       ${DIR_SCRIPTS}/bin/call_fmriprep \
       -s $(basename ${dir} | cut -d'-' -f2) \
       -m ${MODE} \

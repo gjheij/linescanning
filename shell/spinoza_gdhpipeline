@@ -2,7 +2,6 @@
 #$ -S /bin/bash
 #$ -cwd
 #$ -j Y
-#$ -q long.q@jupiter
 #$ -V
 #$ -pe smp 5
 #
@@ -529,8 +528,8 @@ if [[ ${RUN_POSTMGDM} != "n" ]]; then
   # spinoza_extractregions and spinoza_cortexreconstruction
   if [[ ${PLACE} == "SGE" ]]; then
     echo "Re-running post-edit Nighres segmentations and pRF-analyses"
-    qsub -N post_gdh_nighres -wd ${DIR_LOGS} ${DIR_SCRIPTS}/shell/master -m ${region},${cruise} -s $(basename ${subject} | cut -d'-' -f2) # overwrite is default for nighres modules
-    qsub -N post_gdh_prf -wd ${DIR_LOGS} ${DIR_SCRIPTS}/shell/master -m ${denoise},${prf} -s $(basename ${subject} | cut -d'-' -f2) -o y # explicitly set to overwrite for denoising/prf-fitting
+    qsub -q ${SGE_QUEUE_SHORT} -N post_gdh_nighres -wd ${DIR_LOGS} ${DIR_SCRIPTS}/shell/master -m ${region},${cruise} -s $(basename ${subject} | cut -d'-' -f2) # overwrite is default for nighres modules
+    qsub -q ${SGE_QUEUE_SHORT} -N post_gdh_prf -wd ${DIR_LOGS} ${DIR_SCRIPTS}/shell/master -m ${denoise},${prf} -s $(basename ${subject} | cut -d'-' -f2) -o y # explicitly set to overwrite for denoising/prf-fitting
   else
     master -m ${region},${cruise},${denoise},${prf}
   fi

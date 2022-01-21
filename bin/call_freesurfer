@@ -158,7 +158,7 @@ fi
 
 if [[ -z ${SGE} ]]; then
   # read from spinoza_setup
-  if [[ ${PLACE} == SPINOZA ]]; then
+  if [[ ${PLACE} == SGE ]]; then
     RUN=SGE
   else
     RUN=LOCAL
@@ -194,7 +194,7 @@ CMD(){
     echo "Submitting job to cluster"
 
     # delete previously existing file
-    fs_script=${PATH_HOME}/programs/packages/freesurfer/${1}_${2}.sh
+    fs_script=${PATH_HOME}/freesurfer/${1}_${2}.sh
     if [[ -f ${fs_script} ]]; then
       rm -r ${fs_script}
     fi
@@ -229,7 +229,7 @@ CMD(){
     echo "#$ -wd ${SUBJECTS_DIR}"
     echo "#$ -o $(dirname ${fs_script})/$(basename ${fs_script} .sh).log"
     echo "#$ -j Y"
-    echo "#$ -q long.q@jupiter"
+    echo "#$ -q ${SGE_QUEUE_LONG}"
     echo "#$ -V"
     echo "#$ -pe smp 5"
     echo ""

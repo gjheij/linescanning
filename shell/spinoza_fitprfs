@@ -205,7 +205,7 @@ for dir in ${search}; do
       if [[ ${PLACE} != "SGE" ]]; then
         job="python"
       else
-        job="qsub -wd ${prf_dir} -N $(basename ${dir})_gauss"
+        job="qsub -q ${SGE_QUEUE_LONG} -wd ${prf_dir} -N $(basename ${dir})_gauss"
       fi
 
       export DISPLAY=:0

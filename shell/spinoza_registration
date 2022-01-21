@@ -189,7 +189,7 @@ for dir in ${search}; do
         fi
 
         if [[ ${PLACE} == "SGE" ]]; then
-          job="qsub -wd ${DIR_LOGS} -N reg_${sub_id} ${DIR_SCRIPTS}/bin/call_antsregistration"
+          job="qsub -q ${SGE_QUEUE_LONG} -wd ${DIR_LOGS} -N reg_${sub_id} ${DIR_SCRIPTS}/bin/call_antsregistration"
           wait_for=1
         else
           job="call_antsregistration"

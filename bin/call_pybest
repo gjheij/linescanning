@@ -3,7 +3,6 @@
 #$ -N pybest
 #$ -e $HOME/logs
 #$ -o $HOME/logs
-#$ -q long.q@jupiter
 #$ -j Y
 #$ -cwd
 #$ -V

@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-#$ -q long.q@jupiter
 #$ -j Y
 #$ -cwd
 #$ -V

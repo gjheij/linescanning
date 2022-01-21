@@ -118,7 +118,7 @@ for dir in ${search}; do
 
       # We need to specify a setup script with the variables if we want to qsub this job
       if [[ ${PLACE} == "SGE" ]]; then
-        job="qsub -pe smp 10"
+        job="qsub -q ${SGE_QUEUE_LONG} -pe smp 10"
         job="bash"
         in_setup="-v ${DIR_SCRIPTS}/shell/spinoza_setup"
         cpu=10
