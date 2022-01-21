@@ -177,8 +177,8 @@ fi
 
 # If you have access to SGE, leave to SGE; otherwise change to e.g., LOCAL
 export PLACE=SGE
-export LONG_QUEUE="long.q@jupiter"
-export SHORT_QUEUE="short.q@jupiter"
+export SGE_QUEUE_LONG="long.q@jupiter"
+export SGE_QUEUE_SHORT="short.q@jupiter"
 
 # set SGE paths
 # if [[ $1 == "setup" ]]; then
