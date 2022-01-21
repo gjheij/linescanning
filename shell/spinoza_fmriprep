@@ -200,7 +200,7 @@ for dir in ${search}; do
   if [[ ${PLACE} == "SGE" ]]; then
 
     # qsub wants full paths, also for exectuble scripts
-    workdir=${PATH_HOME}/programs/packages/fmriprep/${PROJECT}
+    workdir=${PATH_HOME}/fmriprep/${PROJECT}
     if [[ ! -d ${workdir} ]]; then
       mkdir -p ${workdir}
     fi
