@@ -1071,8 +1071,13 @@ if [[ $? -eq 0 ]]; then
     fi
   fi
 
-  spinoza_fmriprep ${SUBJECT} ${SESSION} ${confFile} ${REMOVE_WF} -f ${DIR_DATA_HOME} -m ${TYPE} ${DIR_DATA_DERIV}/masked_${space,,} ${DIR_DATA_DERIV} ${DIR_DATA_HOME}
-  # spinoza_fmriprep ${SUBJECT} ${SESSION} -f ${DIR_DATA_HOME} -m ${TYPE} ${DIR_DATA_HOME} ${DIR_DATA_DERIV} ${DIR_DATA_HOME}
+  if [[ -d ${DIR_DATA_DERIV}/masked_${space,,} ]]; then
+    ANAT_DIR=${DIR_DATA_DERIV}/masked_${space,,}
+  else
+    ANAT_DIR=${DIR_DATA_HOME}
+  fi
+
+  spinoza_fmriprep ${SUBJECT} ${SESSION} ${confFile} ${REMOVE_WF} -f ${DIR_DATA_HOME} -m ${TYPE} ${ANAT_DIR} ${DIR_DATA_DERIV} ${DIR_DATA_HOME}
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_fmriprep exited with non-zero status"
