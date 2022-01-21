@@ -5,8 +5,6 @@
 #$ -q long.q@jupiter
 #$ -V
 #$ -pe smp 5
-#$ -m ea
-#$ -M j.heij@spinozacentre.nl
 #
 # Allocate input arguments to variables
 #
