@@ -229,7 +229,7 @@ CMD(){
     echo "#$ -wd ${SUBJECTS_DIR}"
     echo "#$ -o $(dirname ${fs_script})/$(basename ${fs_script} .sh).log"
     echo "#$ -j Y"
-    echo "#$ -q ${LONG_QUEUE}"
+    echo "#$ -q LONG_QUEUE"
     echo "#$ -V"
     echo "#$ -pe smp 5"
     echo ""

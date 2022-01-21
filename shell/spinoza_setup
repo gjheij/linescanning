@@ -192,11 +192,16 @@ if [[ $1 == "setup" ]]; then
 
   done
 
-  echo
-  echo "---------------------------------------------------------------------------------------------------"
-  echo "Installing linescanning.."
-  cd ${REPO_DIR}
-  pip install -e .
+  python -c "import linescanning"
+  if [[ $? -ne 0 ]]; then
+    echo
+    echo "---------------------------------------------------------------------------------------------------"
+    echo "Installing linescanning.."
+    cd ${REPO_DIR}
+    pip install -e .
+  else
+    echo "Found linescanning installation"
+  fi
 
   echo "Done. Now enter: \"source ~/.bash_profile\""
   
@@ -210,6 +215,14 @@ fi
 export PLACE=SGE
 export LONG_QUEUE="long.q@jupiter"
 export SHORT_QUEUE="short.q@jupiter"
+
+# set SGE paths
+if [[ $1 == "setup" ]]; then
+  for file in ${REPO_DIR}/bin/* ${REPO_DIR}/shell/*; do 
+    sed -i "s|LONG_QUEUE|${LONG_QUEUE}|g" ${file}
+    sed -i "s|SHORT_QUEUE|${SHORT_QUEUE}|g" ${file}
+  done
+fi
 
 # MATLAB
 export MRRECON=/packages/matlab/toolbox/MRecon/3.0.541  

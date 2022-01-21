@@ -2,7 +2,7 @@
 #$ -S /bin/bash
 #$ -cwd
 #$ -j Y
-#$ -q ${SHORT_QUEUE}
+#$ -q SHORT_QUEUE
 #$ -V
 #$ -pe smp 5
 

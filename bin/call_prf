@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-#$ -q ${LONG_QUEUE}
+#$ -q LONG_QUEUE
 #$ -j Y
 #$ -cwd
 #$ -V
