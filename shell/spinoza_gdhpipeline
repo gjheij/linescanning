@@ -2,11 +2,9 @@
 #$ -S /bin/bash
 #$ -cwd
 #$ -j Y
-#$ -q short.q@jupiter
+#$ -q ${SHORT_QUEUE}
 #$ -V
 #$ -pe smp 5
-#$ -m ea
-#$ -M j.heij@spinozacentre.nl
 #
 #---------------------------------------------------------------------------------------------------------
 # check if there's is a setup file containing the major paths and source it if it exists

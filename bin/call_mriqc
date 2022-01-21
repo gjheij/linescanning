@@ -2,7 +2,7 @@
 #$ -S /bin/bash
 #$ -cwd
 #$ -j Y
-#$ -q short.q@jupiter
+#$ -q ${SHORT_QUEUE}
 #$ -V
 #$ -pe smp 5
 #Template provided by Daniel Levitas of Indiana University

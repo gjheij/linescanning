@@ -1,12 +1,4 @@
 #!/usr/bin/env bash
-#$ -S /bin/bash
-#$ -N recon
-#$ -cwd
-#$ -o /data1/projects/MicroFunc/Jurjen/projects/ANAT_SEG-Raw/code
-#$ -j y
-#$ -q all.q@minerva
-#$ -V
-#$ -pe smp 6
 
 #---------------------------------------------------------------------------------------------------------
 # Create help text

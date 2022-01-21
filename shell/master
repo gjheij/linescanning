@@ -2,7 +2,7 @@
 #$ -S /bin/bash
 #$ -cwd
 #$ -j Y
-#$ -q long.q@jupiter
+#$ -q ${LONG_QUEUE}
 #$ -V
 #$ -pe smp 5
 #

@@ -208,6 +208,8 @@ fi
 
 # If you have access to SGE, leave to SGE; otherwise change to e.g., LOCAL
 export PLACE=SGE
+export LONG_QUEUE="long.q@jupiter"
+export SHORT_QUEUE="short.q@jupiter"
 
 # MATLAB
 export MRRECON=/packages/matlab/toolbox/MRecon/3.0.541  
@@ -229,14 +231,14 @@ export PYBEST_NORM="zscore"
 
 # PROJECT
 export DIR_PROJECTS=$(dirname $(dirname ${PATH_HOME}))/projects 
-export PROJECT=URIS-MDD # ANAT_SEG-Raw #URIS-MDD #hemifield
+export PROJECT=hemifield # ANAT_SEG-Raw #URIS-MDD #hemifield
 export TASK_SES1="2R"
 export TASK_SES2="LR"
 export PREFIX="sub-"
 export COMBINE_SEGMENTATIONS="weighted"
 
 # DATA TYPE(S)
-declare -a ACQ=("MEMP2RAGE") # or ("MP2RAGE" "MEMP2RAGE")
+declare -a ACQ=("MP2RAGE") # or ("MP2RAGE" "MEMP2RAGE")
 export DATA=${ACQ[0]} # or MP2RAGEME/AVERAGE
 
 # For DATA == AVERAGE we'll need multiple acquisitions
