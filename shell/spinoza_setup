@@ -50,46 +50,10 @@ if [[ $1 == "setup" ]]; then
       ) >> ~/.bash_profile
   fi
 
-  # # make helper scripts available
-  # source ~/.bash_profile
-
-  # fetch ITK-Snap
+  # check itksnap installation
   check_itksnap=`check_function itksnap`
   if [[ ${check_itksnap} -eq 1 ]]; then
-    echo
-    echo "---------------------------------------------------------------------------------------------------"
-    echo "Dealing with ITK-Snap"    
-    cd ${PATH_HOME}
-    DOWNLOAD_PATH=https://sourceforge.net/projects/itk-snap/files/itk-snap/3.8.0/itksnap-3.8.0-20190612-Linux-x86_64.tar.gz
-    wget -c ${DOWNLOAD_PATH}
-    mkdir ${PWD}/itksnap
-    tar -C itksnap -zxf $(basename ${DOWNLOAD_PATH})
-    mv ${PWD}/itksnap/*/* ${PWD}/itksnap && rm -r ${PWD}/itksnap/itksnap-* 2>/dev/null
-    ITK_PATH=`readlink -f ${PWD}/itksnap/bin/itksnap`
-
-    search_for="alias itksnap=\"${ITK_PATH}\""
-    case `grep -Fx "${search_for}" ~/.bash_profile >/dev/null; echo ${?}` in
-      0) 
-        ;;
-      1) 
-        (
-        echo
-        echo "# make itksnap-alias"
-        echo "${search_for}"
-        ) >> ~/.bash_profile
-        ;;
-      *)
-        # code if an error occurred
-        echo "ERROR: Could not complete setup.."
-        ;;
-    esac
-  fi
-
-  # # source again to instantiate the alias
-  check_itksnap=`check_function itksnap`
-  if [[ ${check_itksnap} -eq 1 ]]; then
-    echo "ERROR: Something went wrong during setup.. Do this manually please"
-    exit 1
+    echo "Please install ITK-Snap here: \"https://sourceforge.net/projects/itk-snap/files/itk-snap/3.8.0\""
   else
     echo "Found ITK-Snap installation: `which itksnap`"
   fi
