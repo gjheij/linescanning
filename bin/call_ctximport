@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 import os, sys, getopt, cortex
-from interface_meta import override
 from linescanning.pycortex import set_ctx_path
 opj = os.path.join
 ose = os.path.exists
