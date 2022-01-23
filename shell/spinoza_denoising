@@ -144,6 +144,7 @@ for dir in ${search}; do
         -n "${nr}" \
         -o ${DENOISE} \
         -s ${PYBEST_SPACE} \
+        -e ${PYBEST_ENV} \
         -f ${FPREP} ${in_setup} \
         -c ${cpu} \
         -z ${PYBEST_NORM}

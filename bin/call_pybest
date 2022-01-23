@@ -102,13 +102,13 @@ fi
 if [[ ! -z $env ]]; then
   check_env=${env}
 else
-  check_env="linescanning"
+  check_env="base"
 fi
 
 conda_env=`conda info --envs | grep -A0 "${check_env}" | cut -d' ' -f1  `
 if [[ -z ${conda_env} ]]; then
   echo
-  echo "ERROR:could not find conda environment. Please specify correct environment of create one names \"fmriprep_denoising\""
+  echo "ERROR in `basename ${0}`: could not find conda environment \"${check_env}\""
   exit 1
 fi
 
