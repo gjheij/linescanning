@@ -159,13 +159,6 @@ else
   cpu_input=""
 fi
 
-# Make sure we run with the specified amount of slots
-if [[ ! -z ${normalization} ]]; then
-  norm_input="--normalization ${normalization}"
-else
-  norm_input=""
-fi
-
 #
 # source activate ${env}
 source activate ${conda_env}
@@ -183,13 +176,13 @@ if [[ ${in_space} == "fsnative" ]]; then
 
   # running left hemisphere
   # echo "pybest ${sub_input} ${ses_input} ${task_input} --space ${in_space} --hemi L ${cpu_input} --verbose ERROR ${input_dir}"
-  pybest ${sub_input} ${ses_input} ${task_input} --space ${in_space} --hemi L ${cpu_input} ${norm_input} --verbose ERROR --save-all ${input_dir}
+  pybest ${sub_input} ${ses_input} ${task_input} --space ${in_space} --hemi L ${cpu_input} --verbose ERROR --save-all ${input_dir}
 
   # running left hemisphere
-  pybest ${sub_input} ${ses_input} ${task_input} --space ${in_space} --hemi R ${cpu_input} ${norm_input} --verbose ERROR --save-all ${input_dir}
+  pybest ${sub_input} ${ses_input} ${task_input} --space ${in_space} --hemi R ${cpu_input} --verbose ERROR --save-all ${input_dir}
 
 else
 
-  pybest ${sub_input} ${ses_input} ${task_input} --space ${in_space} ${norm_input} --verbose ERROR --save-all ${input_dir}
+  pybest ${sub_input} ${ses_input} ${task_input} --space ${in_space} --verbose ERROR --save-all ${input_dir}
 
 fi
