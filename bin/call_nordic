@@ -89,7 +89,7 @@ if [[ -f ${fn_mag} && -f ${fn_phase} ]]; then
   make_nordic_script ${fn_mag} ${fn_phase} ${fn_nordic} ${mag_only} ${new_script}
 
   # call_matlab = in call_bashhelper
-  # call_matlab ${new_script}
+  call_matlab ${new_script}
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR: matlab exited with non-zero status"
