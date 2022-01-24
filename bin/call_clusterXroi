@@ -32,6 +32,8 @@ Args:
 
   -z <zstat>          which zstat to process? CONTROLS = zstat1; PATIENT = zstat2, for instance
 
+  -r <run ID>         if multiple runs were acquired, add a 'run-' flag. Must be integer
+
 Example:
   call_clusterXroi -s sub-001 -f <featdir> -m <dir with ROI masks> -z "1,2,3"
 
@@ -52,11 +54,15 @@ USAGE
 
 #-----------------------------------------------------------------------------
 # Deal with arguments
-while getopts s:f:g:m:c:z: arg
+while getopts s:f:g:m:c:z:r:n: arg
 do
     case ${arg} in
       s)  subj_ID=${OPTARG}
             ;;
+      r)  run_ID=${OPTARG}
+            ;;
+      n)  ses_ID=${OPTARG}
+            ;;       
       f)  featdir=${OPTARG}
             ;;
       g)  gfeatdir=${OPTARG}
@@ -76,6 +82,12 @@ if [[ $# -lt 3 ]] ; then
   exit 1
 fi
 
+if [[ ! -z ${ses} ]]; then
+  fbase=${subj_ID}_ses-${ses}
+else
+  fbase=${subj_ID}
+fi
+
 if [[ -z ${maskdir} ]]; then
   maskdir=/fast/project/PG_Niendorf_fmri/fmri/pipeHMR/repo/toolboxes/ROIs
 fi
@@ -88,15 +100,14 @@ if [[ -z ${nr_zstat} ]]; then
   nr_zstat=1
 fi
 
-echo "  General settings:"
-echo "   copes: ${copes}"
-echo "   zstat: ${nr_zstat}"
+echo "General settings:"
+echo " copes: ${copes}"
+echo " zstat: ${nr_zstat}"
 
-export PATH=${PATH}:/fast/project/PG_Niendorf_fmri/fmri/pipeHMR/projects/H01/code
 
 # start by warping file from template to anat-space
 if [[ ! -d ${maskdir} ]] || [[ ! -d ${featdir} ]]; then
-  echo "  Could not find ROI-directory and FEAT-directory.."
+  echo "Could not find ROI-directory and FEAT-directory.."
   exit 1
 fi
 
@@ -119,7 +130,7 @@ lineNrContrasts=`sed -n ''"${howManyContrasts}p"'' ${design}`
   # get value at this line number
 nrContrasts=`echo "${lineNrContrasts}" | cut -d' ' -f 3`
 
-echo "   Found ${nrContrasts} contrasts"
+echo "Found ${nrContrasts} contrasts"
 # Now get all the contrasts in a text file. We make a while loop that stores the
 # output in a text file as long as the nth element of the array is less than the
 # max number of contrasts
@@ -138,7 +149,7 @@ while [[ ${i} -le ${nrContrasts} ]]; do
   tmp3=`echo "${tmp2}" | cut -d'"' -f2`
 
   printf "${i}_${tmp3}\n" >> ${outdir}/contrasts.txt
-  printf "   ${i}_${tmp3} >> contrasts.txt\n"
+  printf "${i}_${tmp3} >> contrasts.txt\n"
   ((i++))
 
 done
@@ -153,7 +164,7 @@ listContrasts=`sed -e '' ${outdir}/contrasts.txt`
 # will check whether the item corresponds with the specified input. If it is,
 # we continue with the mask-making procedure.
 
-echo "  Make clusterXroi masks.."
+echo "Make clusterXroi masks.."
 for i in ${listContrasts}; do
 
   # Get nr of contrast
@@ -171,11 +182,11 @@ for i in ${listContrasts}; do
     if [[ ! -f ${out} ]]; then
 
       fslmaths ${clusterMask} -bin ${out}
-      printf "   Created `basename ${out}`\n"
+      printf " Created `basename ${out}`\n"
 
     else
 
-      printf "   $(basename ${out}) already present\n"
+      printf " $(basename ${out}) already present\n"
 
     fi
 
@@ -185,7 +196,7 @@ done
 
 #-----------------------------------------------------------------------------
 # Multiplying all cluster masks with ROI masks
-printf "\n  Multiplying all cluster masks with ROI masks\n"
+printf "\nMultiplying all cluster masks with ROI masks\n"
 
 # For all masks of the ROI regions, we want to multiply it with the specified
 # contrast cluster masks, so we have two for-loops nested within each other.
@@ -196,13 +207,18 @@ for mask in ${maskdir}/bin.thr*.nii.gz; do
   for i in ${outdir}/bin_group_zstat${nr}*; do
 
     roi=$(basename ${mask} | cut -d "." -f3)
-    out=${outdir}/${subj_ID}_space-MNI152NLin6Asym_desc-${roi}_mask.nii.gz
+
+    if [[ ! -z ${run_ID} ]]; then
+      out=${outdir}/${fbase}_space-MNI152NLin6Asym_run-${run_ID}_desc-${roi}_mask.nii.gz
+    else
+      out=${outdir}/${fbase}_space-MNI152NLin6Asym_desc-${roi}_mask.nii.gz
+    fi
 
     if [[ ! -f ${out} ]]; then
-      printf "   `basename ${i}`  x  `basename ${mask}`\n"
+      printf " `basename ${i}`  x  `basename ${mask}`\n"
       fslmaths ${i} -mul ${mask} ${out}
     else
-      printf "   $(basename ${mask}): multiplied mask already present\n"
+      printf " $(basename ${mask}): multiplied mask already present\n"
     fi
 
   done
@@ -217,7 +233,7 @@ else
   in=${featdir}/filtered_func_data.nii.gz
 fi
 
-printf "\n  Extracting timeseries from `basename ${in}`\n"
+printf "\nExtracting timeseries from `basename ${in}`\n"
 
 for file in ${outdir}/${subj_ID}*.nii.gz; do
 
@@ -236,18 +252,22 @@ for file in ${outdir}/${subj_ID}*.nii.gz; do
       -o ${out} \
       -m ${file}
 
-    printf "   Wrote `basename ${out}`\n"
+    printf " Wrote `basename ${out}`\n"
 
   else
 
-    printf "   `basename ${out}` already present\n"
+    printf " `basename ${out}` already present\n"
 
   fi
 
 done
 
 # plop everthing in subject specific ROI files
-all_rois=${pathTextFiles}/${subj_ID}_desc-all_rois.txt
+if [[ ! -z ${run_ID} ]]; then
+  all_rois=${pathTextFiles}/${fbase}_run-${run_ID}_desc-all_rois.txt
+else
+  all_rois=${pathTextFiles}/${fbase}_desc-all_rois.txt
+fi
 
 if [[ ! -f ${all_rois} ]]; then
 
