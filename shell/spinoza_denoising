@@ -41,12 +41,12 @@ USAGE
 # Check for subject & session flags
 while getopts os:n: argument
 do
-    case ${argument} in
-      s)  sub=${OPTARG}
-            ;;
-      n)  ses=${OPTARG}
-            ;;
-    esac
+  case ${argument} in
+    s)  sub=${OPTARG}
+          ;;
+    n)  ses=${OPTARG}
+          ;;
+  esac
 done
 
 if [[ $# -lt 2 ]] ; then
@@ -119,7 +119,6 @@ for dir in ${search}; do
       # We need to specify a setup script with the variables if we want to qsub this job
       if [[ ${PLACE} == "SGE" ]]; then
         job="qsub -q ${SGE_QUEUE_LONG} -pe smp 10"
-        job="bash"
         in_setup="-v ${DIR_SCRIPTS}/shell/spinoza_setup"
         cpu=10
       else
