@@ -110,6 +110,7 @@ Args:
                       - spinoza_scanner2bids; denote the session number when you have a regular 
                         pRF-session, as the "-n" flag is used to specify this. 
                       - spinoza_qmrimaps; turn on Universal Pulses
+                      - spinoza_biassanlm; don't perform bias correction after denoising
                       - spinoza_fmriprep; remove surface_recon_wf folder. Handy for re-running with
                         new reconstruction
                       - spinoza_bestvertex; disable FreeView during vertex selection
