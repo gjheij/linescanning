@@ -9,32 +9,32 @@
 #
 while getopts wcjqom:s:h:n:t:l:v:p:x:u: arg
 do
-    case ${arg} in
-      m)  MOD=${OPTARG}
-            ;;
-      s)  SUB=${OPTARG}
-            ;;
-      h)  HEMI=${OPTARG}
-            ;;
-      n)  SES=${OPTARG}
-            ;;
-      o)  OVERWRITE=${OPTARG}
-            ;;
-      t)  TYPE=${OPTARG}
-            ;;
-      l)  WHICH_MOD=${OPTARG}
-            ;;
-      v)  VERTICES=${OPTARG}
-            ;;
-      p)  PRF_MODEL=${OPTARG}
-            ;;
-      c)  CAT_RUN=${OPTARG}
-            ;;
-      x)  KWARGS=${OPTARG}
-            ;;
-      u)  CONF=${OPTARG}
-            ;;
-    esac
+  case ${arg} in
+    m)  MOD=${OPTARG}
+          ;;
+    s)  SUB=${OPTARG}
+          ;;
+    h)  HEMI=${OPTARG}
+          ;;
+    n)  SES=${OPTARG}
+          ;;
+    o)  OVERWRITE=${OPTARG}
+          ;;
+    t)  TYPE=${OPTARG}
+          ;;
+    l)  WHICH_MOD=${OPTARG}
+          ;;
+    v)  VERTICES=${OPTARG}
+          ;;
+    p)  PRF_MODEL=${OPTARG}
+          ;;
+    c)  CAT_RUN=${OPTARG}
+          ;;
+    x)  KWARGS=${OPTARG}
+          ;;
+    u)  CONF=${OPTARG}
+          ;;
+  esac
 done
 
 source call_bashhelper
@@ -145,7 +145,7 @@ Available modules:                                     Script                   
   - 05: Register T1 from memp2rage to T1 from mp2rage  (spinoza_registration)           00:03:00
   - 06: Register T1 from mp2rage to MNI152             (spinoza_registration)             -
   - 07: Averaging of (me)mp2rages and other qMRI-maps  (spinoza_averagesanatomies)      00:03:00
-  - 08: Perform bias field correction on 2nd inversion (spinoza_biascorrection)         00:07:00
+  - 08: Bias correction + SANLM denoising              (spinoza_biassanlm)              00:07:00
   - 09: Brain extract (CAT12 || ANTs || FSL)           (spinoza_brainextraction)        00:10:00
   - 10: Noise level estimation                         (spinoza_noiselevelestimation)   00:00:30
   - 11: Dura estimation and skull estimations          (spinoza_createduraskullmasks)   00:08:00
@@ -705,10 +705,16 @@ if [[ $? -eq 0 ]]; then
     SUBJECT="-s ${SUB}"
   fi
 
-  if [[ -d ${DIR_DATA_DERIV}/pymp2rage ]]; then
-    spinoza_biassanlm ${SUBJECT} ${SESSION} ${DIR_DATA_DERIV}/pymp2rage ${DIR_DATA_DERIV}/denoised
+  if [[ ! -z ${KWARGS} ]]; then
+    NO_BIAS="-b"
   else
-    spinoza_biassanlm ${SUBJECT} ${SESSION} ${DIR_DATA_HOME} ${DIR_DATA_DERIV}/denoised
+    NO_BIAS=""
+  fi
+
+  if [[ -d ${DIR_DATA_DERIV}/pymp2rage ]]; then
+    spinoza_biassanlm ${SUBJECT} ${SESSION} ${NO_BIAS} ${DIR_DATA_DERIV}/pymp2rage ${DIR_DATA_DERIV}/denoised
+  else
+    spinoza_biassanlm ${SUBJECT} ${SESSION} ${NO_BIAS} ${DIR_DATA_HOME} ${DIR_DATA_DERIV}/denoised
   fi
 
   # spinoza_biascorrection ${SUBJECT} ${SESSION} ${DIR_DATA_HOME} ${DIR_DATA_DERIV}/ants inv-2

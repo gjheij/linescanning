@@ -16,21 +16,24 @@ flag as to turn off bias correction and denoising with CAT12.
 The input image is expected to reside in the input directory and to contain "acq-${ACQ1}" and end
 with *T1w.nii.gz.
 
-Usage:
-  spinoza_biascorrection <-s sub> <-n ses> <dir_to_input_file> <dir_to_output>
-
-Outputs:
-  <dir_to_output>/<subject>/ses-1/<subject>${SES}_acq-${ACQ1}_<T1w|inv-2>.nii.gz
+Arguments:
+  <-s sub>    digit subject number following '${PREFIX}'
+  <-n ses>    integer session number following 'ses-'
+  <-b>        skip bias correction with SPM
+  <anat dir>  parent directory containing the sub-xxx folders for anatomies. Can be e.g., DIR_DATA_-
+              HOME or DIR_DATA_HOME/derivatives/pymp2rage
+  <output>    Output directory for the denoised images (something like DIR_DATA_DERIV/denoised)
 
 Example:
-  spinoza_biascorrection $DIR_DATA_DERIV/pymp2rage
-  spinoza_biascorrection $DIR_DATA_DERIV/pymp2rage $DIR_DATA_DERIV/bias
-  spinoza_biascorrection -s 001 -n 1 $DIR_DATA_HOME
+  spinoza_biascorrection DIR_DATA_DERIV/pymp2rage DIR_DATA_DERIV/denoised
+  spinoza_biascorrection -s 001 -n 1 $DIR_DATA_HOME DIR_DATA_DERIV/denoised
+  spinoza_biascorrection -s 001 -n 1 -b $DIR_DATA_HOME DIR_DATA_DERIV/denoised
 
 Notes:
   - Has the '-s' and '-n' switches to specify a particular subject and session if present
   - <dir_to_output> is not a required argument. If not specified, the input file will be overwritten.
     The latter is default.
+  - Bias correction can be skipped using the '-b'-flag
 
 ---------------------------------------------------------------------------------------------------
 
@@ -39,7 +42,7 @@ USAGE
 }
 
 # Check for subject flag
-while getopts os:n: argument
+while getopts bos:n: argument
 do
   case ${argument} in
     s)  sub=${OPTARG}
@@ -70,6 +73,12 @@ if [[ "${@}" == *"-o"* ]]; then
   OW=1
 else
   OW=0
+fi
+
+if [[ "${@}" == *"-b"* ]]; then
+  NO_BIAS=1
+else
+  NO_BIAS=0
 fi
 
 #-----------------------------------------------------------------------------
@@ -159,22 +168,26 @@ for dir in ${search}; do
         output=${OUTPUTDIR}/$(basename ${input})
       fi
 
-      echo "Running bias field correction with SPM"
-      call_spmbias ${OUTPUTDIR}/denoised.nii.gz ${output}
+      if [[ ${NO_BIAS} -eq 0 ]]; then
+        echo "Running bias field correction with SPM"
+        call_spmbias ${OUTPUTDIR}/denoised.nii.gz ${output}
 
-      if [[ $? != 0 ]]; then
-        echo
-        echo "---------------------------------------------------------------------------------------------------"
-        echo "ERROR in `basename ${0}`: call_spmbias exited with non-zero status"
-        exit 1
+        if [[ $? != 0 ]]; then
+          echo
+          echo "---------------------------------------------------------------------------------------------------"
+          echo "ERROR in `basename ${0}`: call_spmbias exited with non-zero status"
+          exit 1
+        fi
+
+        rm -r ${OUTPUTDIR}/denoised.nii.gz 2>/dev/null
+      else
+        mv ${OUTPUTDIR}/denoised.nii.gz ${output}
       fi
-
-      rm -r ${OUTPUTDIR}/denoised.nii.gz 2>/dev/null
 
       echo "Done"
 
     else
-      echo "`basename ${dir}`: `basename ${output}` already exists"
+      echo "`basename ${output}` already exists"
       continue
     fi
 
