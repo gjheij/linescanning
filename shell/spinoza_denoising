@@ -54,12 +54,24 @@ if [[ $# -lt 2 ]] ; then
   exit 1
 fi
 
+# check overwrite mode
 if [[ "${@}" == *"-o"* ]]; then
   OW=1
 else
   OW=0
 fi
 
+# use master -c to submit call_pybest to cluster
+if [[ "${@}" == *"-c"* ]]; then
+  job="qsub -q ${SGE_QUEUE_LONG} -pe smp 10"
+  in_setup="-v ${DIR_SCRIPTS}/shell/spinoza_setup"
+  cpu=10
+else
+  job="bash"
+  cpu=1
+fi
+
+# fetch positional arguments
 FPREP=${@:$OPTIND:1}
 DENOISE=${@:$OPTIND+1:1}
 
@@ -115,17 +127,6 @@ for dir in ${search}; do
 
       echo
       echo "**************************************** Processing `basename ${dir}` ***************************************"
-
-      # We need to specify a setup script with the variables if we want to qsub this job
-      if [[ ${PLACE} == "SGE" ]]; then
-        job="qsub -q ${SGE_QUEUE_LONG} -pe smp 10"
-        in_setup="-v ${DIR_SCRIPTS}/shell/spinoza_setup"
-        cpu=10
-      else
-        job="bash"
-        cpu=1
-      fi
-
       echo "Running pybest denoising"
 
       # check if spinoza_setup contains PYBEST_SPACE and PYBEST_NORM
