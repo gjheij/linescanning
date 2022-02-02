@@ -1733,15 +1733,7 @@ class SizeResponse():
                                         "position": [vert_info['position'][hemi]],
                                         "normal":   [vert_info['normal'][hemi]]})
             
-            if os.path.exists(prf_bestvertex):
-                data = pd.read_csv(prf_bestvertex).reset_index()
-                
-                # make sure we actually add new information
-                if data['hemi'][0] != best_vertex['hemi'][0]:
-                    df = pd.concat((data, best_vertex)).set_index('hemi')
-                    df.to_csv(prf_bestvertex)
-            else:
-                best_vertex = best_vertex.set_index(['hemi'])
-                best_vertex.to_csv(prf_bestvertex)
+            best_vertex = best_vertex.set_index(['hemi'])
+            best_vertex.to_csv(prf_bestvertex)
             
         self.params_df.to_csv(opj(self.subject_info.cx_dir, f'{self.subject_info.subject}_hemi-{hemi}_desc-normalization_parameters.csv'))
