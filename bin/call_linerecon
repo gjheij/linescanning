@@ -23,6 +23,9 @@ Usage:
   call_linerecon <subject number> <run number> <raw data> <output basename>
 
 Arguments:
+  -n                if -n is specified, we'll run NORDIC during reconstruction
+  -m nr_echoes      number of echoes in a multi-echo acquisition. Leave empty if acquisition was 
+                    single-echo
   <sub number>      number of subject's directory from which you can omit "sub-" (e.g.,
                     for "sub-001", enter "001")
   <run number>      integer for the nth bold run number
@@ -32,7 +35,6 @@ Arguments:
   <basename>        basename for output. Will automatically store the output in a .mat file, so spe-
                     cify up until .mat
 
-  <-n nordic on>    if -n is specified, we'll run NORDIC during reconstruction
 
 Example:
   call_linerecon 001 1 sourcedata/sub-001/ses-2 sub-001_ses-2_task-2R_run-1_bold
@@ -43,24 +45,46 @@ USAGE
     exit 1
 }
 
+# Deal with arguments
+while getopts hnm: argument
+do
+  case ${argument} in
+    m)  n_echos=${OPTARG}
+          ;;       
+  esac
+done
+
+if [[ "${@}" == *"-h"* ]]; then
+  Usage >&2
+  exit 1
+fi
+
 if [[ $# -lt 4 ]] ; then
   Usage >&2
   exit 1
 fi
 
+SUB=${@:$OPTIND:1}
+RUN=${@:$OPTIND+1:1}
+RAW=${@:$OPTIND+2:1}
+OUT=${@:$OPTIND+3:1}
+
 if [[ "${@}" == *"-n"* ]]; then
-  SUB=${@:$OPTIND+1:1}
-  RUN=${@:$OPTIND+2:1}
-  RAW=${@:$OPTIND+3:1}
-  OUT=${@:$OPTIND+4:1}
+  echo "NORDIC is turned on"
   do_nordic="on"
 else
-  SUB=${@:$OPTIND:1}
-  RUN=${@:$OPTIND+1:1}
-  RAW=${@:$OPTIND+2:1}
-  OUT=${@:$OPTIND+3:1}
   do_nordic="off"
 fi
+
+if [[ -z ${n_echos} ]]; then
+  multiecho=0
+else
+  multiecho=1
+fi
+
+#-----------------------------------------------------------------------------
+# Get bash helper functions
+source call_bashhelper
 
 #-----------------------------------------------------------------------------
 # Start loop
@@ -68,11 +92,11 @@ fi
 if [[ ! -d ${RAW} ]]; then
   echo
   echo "---------------------------------------------------------------------------------------------------"
-  echo "ERROR in `basename ${0}`: could not find input directory"
+  echo "ERROR in `basename ${0}`: could not find directory \"${RAW}\""
   exit 1
 fi
 
-if [[ ${PLACE} == SPINOZA ]]; then
+if [[ ${PLACE} == "SGE" ]]; then
 
   newrecon=${RAW}/sub${SUB}_run${RUN}_recon.m
   if [[ -f ${newrecon} ]]; then
@@ -94,38 +118,75 @@ if [[ ${PLACE} == SPINOZA ]]; then
 
   if [[ -f ${reconlab} && -f ${tasklab} ]]; then
 
-    (
-    echo "%% paths"
-    echo "addpath(getenv('MRRECON')) %working without patch or with seline patch"
-    echo "addpath(getenv('MATLAB_DIR'))"
-    echo "addpath('/data1/projects/MicroFunc/common');"
-    echo "addpath(genpath(fullfile(getenv('PATH_HOME'), 'programs', 'luisa')))"
-    echo "disp(\"Starting recon\")"
-    echo "filelocation = '${RAW}';"
-    echo ""
-    echo "% py_PAR   = 'RECON_PAR'; % sub-xxx_desc-recon.PAR"
-    echo "py_lab   = '$(basename ${reconlab})';  % sub-xxx_desc-recon.LAB"
-    echo "nopy_lab = '$(basename ${tasklab})'; % sub-xxx_task-2R_bold.LAB"
-    echo "nordic   = '${do_nordic}';"
-    echo ""
-    echo "Nc = 32; % nr of channels"
-    echo "TR = 105; %TR in ms"
-    echo "sp_res = 0.25; %line resolution [mm]"
-    echo "gausskernel = 24;"
-    echo ""
-    echo "Data_pc       = basic_recon(py_lab,filelocation, Nc);"
-    echo "nord_tresh    = 9; %not used now, since you are selecting the NORDIC threshold based on the scree plot"
-    echo "varargin_par  = {Data_pc, nord_tresh};"
-    echo "Data_wcsmtSNR = LS_recon_1way(nopy_lab, filelocation, Nc, 'all', TR, gausskernel, 'no', 'wcsmtSNR', nordic, varargin_par);"
-    echo ""
-    echo "save('${OUT}','Data_wcsmtSNR');"
-    echo "disp(\"Done\")"
-    ) >> ${newrecon}
+    if [[ ${multiecho} -eq 0 ]]; then
+      echo "Acquisition: single-echo"
+      (
+      echo "%% paths"
+      echo "addpath(getenv('MRRECON')) %working without patch or with seline patch"
+      echo "addpath(getenv('MATLAB_DIR'))"
+      echo "addpath('/data1/projects/MicroFunc/common');"
+      echo "addpath(genpath(fullfile(getenv('PATH_HOME'), 'programs', 'luisa')))"
+      echo "disp(\"Starting recon\")"
+      echo "filelocation = '${RAW}';"
+      echo ""
+      echo "% py_PAR   = 'RECON_PAR'; % sub-xxx_desc-recon.PAR"
+      echo "py_lab   = '$(basename ${reconlab})';  % sub-xxx_desc-recon.LAB"
+      echo "nopy_lab = '$(basename ${tasklab})'; % sub-xxx_task-2R_bold.LAB"
+      echo "nordic   = '${do_nordic}';"
+      echo ""
+      echo "Nc = 32; % nr of channels"
+      echo "TR = 105; %TR in ms"
+      echo "sp_res = 0.25; %line resolution [mm]"
+      echo "gausskernel = 24;"
+      echo ""
+      echo "Data_pc       = basic_recon(py_lab,filelocation, Nc);"
+      echo "nord_tresh    = 9; %not used now, since you are selecting the NORDIC threshold based on the scree plot"
+      echo "varargin_par  = {Data_pc, nord_tresh};"
+      echo "Data_wcsmtSNR = LS_recon_1way(nopy_lab, filelocation, Nc, 'all', TR, gausskernel, 'no', 'wcsmtSNR', nordic, varargin_par);"
+      echo ""
+      echo "save('${OUT}','Data_wcsmtSNR');"
+      echo "disp(\"Done\")"
+      ) >> ${newrecon}
+    
+    elif [[ ${multiecho} -eq 1 ]]; then
+      echo "Acquisition: Multi-echo (${n_echos} echoes)"
+      ## INSERT MULTIECHO PIPELINE
+      (
+      echo "%% paths"
+      echo "addpath(getenv('MRRECON')) %working without patch or with seline patch"
+      echo "addpath(getenv('MATLAB_DIR'))"
+      echo "addpath('/data1/projects/MicroFunc/common');"
+      echo "addpath(genpath(fullfile(getenv('PATH_HOME'), 'programs', 'luisa')))"
+      echo "disp(\"Starting recon\")"
+      echo "filelocation = '${RAW}';"
+      echo ""
+      echo "% py_PAR   = 'RECON_PAR'; % sub-xxx_desc-recon.PAR"
+      echo "py_lab   = '$(basename ${reconlab})';  % sub-xxx_desc-recon.LAB"
+      echo "nopy_lab = '$(basename ${tasklab})'; % sub-xxx_task-2R_bold.LAB"
+      echo "nordic   = '${do_nordic}';"
+      echo ""
+      echo "Nc = 32; % nr of channels"
+      echo "TR = 105; %TR in ms"
+      echo "sp_res = 0.25; %line resolution [mm]"
+      echo "gausskernel = 24;"
+      echo "Nechos = ${n_echos};"
+      echo ""
+      echo "Data_pc        = basic_recon(py_lab,filelocation, Nc);"
+      echo "csm4ls_sm_cplx = coil_sens_MELS(abs(Data_pc), gausskernel);"
+      echo "nord_tresh     = 9; %not used now, since you are selecting the NORDIC threshold based on the scree plot"
+      echo "varargin_par   = {'before', nord_tresh};"
+      echo "[Data, removed_comp] = GELINEME_NORDIC_FastRecon(csm4ls_sm_cplx, nopy_lab, filelocation, Nc, Nechos, TR, sp_res, 'off', 'on',varargin_par);"
+      echo ""
+      echo "TE1 = 6.*10^(-3);"
+      echo "deltaTE= 8.*10^(-3);"
+      echo "echotimes = TE1(1):deltaTE(1):(TE1(1)+deltaTE(1)*(Nechos(1)-1));"
+      echo "Data_comb = CombineEchoes_nofor_LS(Data, echotimes, 'SoS');"
+      echo "save('${OUT}','Data_comb');"
+      echo "disp(\"Done\")"
+      ) >> ${newrecon}
+    fi
 
-    DIR=`pwd`
-    cd ${RAW}
-    matlab -nodesktop -nosplash -nodisplay -r "$(basename ${newrecon} .m); quit"
-    cd ${DIR}
+    call_matlab ${newrecon}
 
   else
 
