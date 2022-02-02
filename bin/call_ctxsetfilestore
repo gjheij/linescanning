@@ -68,11 +68,8 @@ Example:
 
     # print(pn)
     # print(opt)
-    if opt == "show_fs":
-        ff = set_ctx_path(pn, opt=opt)
-        print(ff)
-    else:
-        set_ctx_path(pn, opt=opt)
+    ff = set_ctx_path(pn, opt=opt)
+    print(ff)
 
 
 if __name__ == "__main__":

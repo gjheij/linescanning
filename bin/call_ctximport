@@ -59,7 +59,6 @@ Example:
             raise ValueError("SUBJECTS_DIR is empty and no other FreeSurfer-directory is specified")
 
     ctx_dir = set_ctx_path(opt="update")
-    print(ctx_dir)
     if overwrite:
         if ose(opj(ctx_dir, subject)):
             os.system(f'rm -r {opj(ctx_dir, subject)}')
