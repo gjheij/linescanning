@@ -207,6 +207,7 @@ export DO_SYN=1 # set to zero if you do not want additional syn-distortion corre
 # PYBEST
 export PYBEST_SPACE="fsnative"
 export PYBEST_NORM="zscore"
+export PYBEST_ENV="fmriprep_denoising"
 
 # PROJECT
 export DIR_PROJECTS=$(dirname $(dirname ${PATH_HOME}))/projects 

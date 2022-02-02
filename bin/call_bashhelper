@@ -293,6 +293,55 @@ function make_suit_script {
 
 }
 
+#-----------------------------------------------------------------------------
+# NORDIC SCRIPT
+function make_nordic_script {
+  if [[ $# -ne 5 ]]; then
+    echo "Received only ${#} arguments, need 4:"
+    count=0; for ii in "${@}"; do ((count++)); echo " ${count}.) ${ii}"; done
+    echo
+    echo "---------------------------------------------------------------------------------------------------"
+    echo "make_nordic_script"
+    echo
+    echo "Make a matlab script to be called with call_matlab to run NORDIC. If you want to change the mode to"
+    echo "\"magnitude-only\", set the \"ARG.magnitude_only\" to 1. Default = [], which includes the phase data."
+    echo ""
+    echo "Args:"
+    echo "  <magnitude> path to magnitude image of fMRI-acquisition"
+    echo "  <phase>     path to phase image of fMRI-acquisition"
+    echo "  <output>    path to NORDIC'ed output"
+    echo "  <mag_only>  1 for magnitude only; [] for magnitude & phase"
+    echo "  <script>    script name"
+    echo ""
+    echo "Usage:"
+    echo "  make_nordic_script <mag> <phase> <output> <script>"
+    echo
+    echo "Examples:"
+    echo "  make_nordic_script mag.nii.gz phase.nii.gz nordic.nii.gz nordic.m"
+    echo "---------------------------------------------------------------------------------------------------"
+    echo
+  else  
+
+    (
+    echo "%-----------------------------------------------------------------------------"
+    echo "% Created on `date`. Nordic on $(basename ${1})"
+    echo ""
+    echo "clear;"
+    echo "addpath(genpath('${DIR_SCRIPTS}/misc'));"
+    echo "ARG.DIROUT              = '$(dirname ${3})/';"
+    echo "ARG.temporal_phase      = 1;"
+    echo "ARG.phase_filter_width  = 10;"
+    echo "ARG.magnitude_only      = ${4};"
+    echo ""
+    echo "nordic_template('${1}', '${2}', '$(basename ${3})', ARG);"
+    echo ""
+    echo "exit;"
+    ) >> ${5}
+
+  fi
+
+}
+
 
 #-----------------------------------------------------------------------------
 # Define function to create SPM-compatible script with
