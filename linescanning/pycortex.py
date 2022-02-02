@@ -40,6 +40,9 @@ def set_ctx_path(p=None, opt="update"):
     else:
         if config.get("basic", "filestore") != p:
             config.set("basic", "filestore", p)
+            with open(usercfg, 'w') as fp:
+                config.write(fp)
+                
             return config.get("basic", "filestore")
         else:
             return config.get("basic", "filestore")
