@@ -78,8 +78,17 @@ Example:
         prf_dir = opj(os.environ['PRF'], subject, 'ses-1')
 
     if not prf_info:
-        prf_info = get_file_from_substring('desc-prf_params', prf_dir)
+        try:
+            prf_info = get_file_from_substring('iter_desc-prf_params', prf_dir)
+        except:
+            try:
+                prf_info = get_file_from_substring('gauss_desc-prf_params', prf_dir)
+            except:
+                raise ValueError("Could not find prf-parameter file containing 'iter_desc-prf_params' or 'gauss_desc-prf_params'")
     
+    if isinstance(prf_info, list):
+        raise ValueError(f"A list of files was specified.. {prf_info}")
+        
     info = np.load(prf_info)
 
     if hemi == "rh":
