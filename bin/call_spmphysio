@@ -19,8 +19,8 @@ default, you can specify the path to SPM-directory containing the PhysIO-toolbox
 
 Args:
  -s <SPM_PATH>  path to SPM; should contain CAT12 in toolbox directory
- -t <TR>        set by default to 0.105; 
- -v <VOLUMES>   nr of volumes
+ -t <TR>        set by default to 0.105; 'pixdim4' if func = *.nii.gz
+ -v <VOLUMES>   nr of volumes; 'dim4' if func = *.nii.gz or 'shape[-1]' if *.mat
  -f <FUNC FILE> functional file that contains information about the number of runs
  <input file>   SCANPHYSLOG-file that you want to convert to text file
  <output image>	name of output image, including directory
@@ -76,17 +76,29 @@ else
   SPM_PATH=${SPM}
 fi
 
+# double check if directory exists
+if [[ ! -d ${SPM_PATH} ]]; then
+  echo "ERROR: Could not fined SPM-directory \"${SPM_PATH}\""
+  exit 1
+fi
+
 #-----------------------------------------------------------------------------
 # Fetch number of volumes
 if [[ -z ${VOLS} ]]; then
   if [[ ! -z ${FUNC} ]]; then
-    # check if we're dealing with nifti or mat
-    if [[ ${FUNC} == *".nii.gz"* ]]; then
-      VOLS=`fslval ${FUNC} dim4`
-    elif [[ ${FUNC} == *".mat"* ]]; then
-      VOLS=`python -c "from scipy.io import loadmat; k = loadmat('${FUNC}'); print(k['Data_wcsmtSNR'].shape[-1])"`
+    if [[ -f ${FUNC} ]]; then
+      # check if we're dealing with nifti or mat
+      if [[ ${FUNC} == *".nii.gz"* ]]; then
+        VOLS=`fslval ${FUNC} dim4`
+        TR=`fslval ${FUNC} pixdim4`
+      elif [[ ${FUNC} == *".mat"* ]]; then
+        VOLS=`python -c "from scipy.io import loadmat; k = loadmat('${FUNC}'); tag = list(k.keys())[-1]; print(k[tag].shape[-1])"`
+      else
+        echo "ERROR in `basename ${0}`: unknown input type. Use a Nifti-image or .mat file as per Luisa's reconstruction"
+        exit 1
+      fi
     else
-      echo "ERROR in `basename ${0}`: unknown input type. Use a Nifti-image or .mat file as per Luisa's reconstruction"
+      echo "ERROR in `basename ${0}`: could not find func-file \"${FUNC}\""
       exit 1
     fi
   else
@@ -114,7 +126,15 @@ if [[ ! -d $(dirname ${OUTPUT}) ]]; then
   mkdir -p $(dirname ${OUTPUT})
 fi
 
+# fetch full paths in case only a filename was specified
+INPUT=`fetch_filepath ${INPUT}`
+OUTPUT=`fetch_filepath ${OUTPUT}`
+
 make_physio_script ${SPM_PATH} ${INPUT} ${TR} ${VOLS} ${OUTPUT} ${new_script}
+if [[ $? -ne 0 ]]; then
+  echo "ERROR in `basename ${0}`: make_physio_script exited with non-zero status"
+  exit 1
+fi
 
 # call_matlab = in call_bashhelper
 call_matlab ${new_script}
