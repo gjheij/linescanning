@@ -1,3 +1,5 @@
+from attr import has
+import attr
 import cortex
 import csv
 import json
@@ -11,15 +13,12 @@ from nitime.timeseries import TimeSeries
 from nitime.analysis import SpectralAnalyzer, FilterAnalyzer, NormalizationAnalyzer
 import numpy as np
 import os
-from numpy.lib.arraysetops import isin
 import pandas as pd
 from PIL import ImageColor
-from prfpy import gauss2D_iso_cart
 from prfpy import stimulus
 import random
-from re import I
-from scipy import io
-from scipy.signal import detrend
+from re import I, S, T
+from scipy import io, signal
 import seaborn as sns
 from shapely import geometry
 import subprocess
@@ -374,12 +373,19 @@ def get_file_from_substring(filt, path, return_msg='error'):
     '/path/to/pycortex/sub-xxx/sub-xxx_model-norm_desc-best_vertices.csv']    
     """
     
+    input_is_list = False
     if isinstance(filt, str):
         filt = [filt]
 
     if isinstance(filt, list):
         # list and sort all files in the directory
-        files_in_directory = sorted(os.listdir(path))
+        if isinstance(path, str):
+            files_in_directory = sorted(os.listdir(path))
+        elif isinstance(path, list):
+            input_is_list = True
+            files_in_directory = path.copy()
+        else:
+            raise ValueError("Unknown input type; should be string to path or list of files")
 
         # the idea is to create a binary matrix for the files in 'path', loop through the filters, and find the row where all values are 1
         filt_array = np.zeros((len(files_in_directory), len(filt)))
@@ -391,15 +397,23 @@ def get_file_from_substring(filt, path, return_msg='error'):
         # so we're going to look for those rows
         full_match = np.ones(len(filt))
         full_match_idc = np.where(np.all(filt_array==full_match,axis=1))[0]
-        
+
         if len(full_match_idc) == 1:
             fname = files_in_directory[full_match_idc[0]]
-            return opj(path, fname)
+            if input_is_list:
+                return fname
+            else:
+                return opj(path, fname)
+                
         elif len(full_match_idc) > 1:
             match_list = []
             for match in full_match_idc:
                 fname = files_in_directory[match]
-                match_list.append(opj(path, fname))
+                if input_is_list:
+                    match_list.append(fname)         
+                else:
+                    match_list.append(opj(path, fname))
+                    
             return match_list
         else:
             if return_msg == "error":
@@ -616,7 +630,7 @@ class VertexInfo:
         sets attributes in the class    
     """
 
-    def __init__(self, infofile=None, subject=None):
+    def __init__(self, infofile=None, subject=None, hemi="lh"):
         
         self.infofile = infofile
         self.data = pd.read_csv(self.infofile, index_col=0)
@@ -628,11 +642,22 @@ class VertexInfo:
             self.data = self.data.set_index('hemi')
         except:
             pass
+            
+        if hemi == "lh" or hemi.lower() == "l" or hemi.lower() == "left":
+            self.hemi = "L"
+        elif hemi == "rh" or hemi.lower() == "r" or hemi.lower() == "right":
+            self.hemi = "R"
+        else:
+            self.hemi = "both"
         
-        # check if arrays are in string format
-        for hemi in ["L", "R"]:
-            self.data['normal'][hemi]   = string2float(self.data['normal'][hemi])
-            self.data['position'][hemi] = string2float(self.data['position'][hemi])
+        if self.hemi == "both":
+            # check if arrays are in string format
+            for hemi in ["L", "R"]:
+                self.data['normal'][hemi]   = string2float(self.data['normal'][hemi])
+                self.data['position'][hemi] = string2float(self.data['position'][hemi])
+        else:
+            self.data['normal'][self.hemi]   = string2float(self.data['normal'][self.hemi])
+            self.data['position'][self.hemi] = string2float(self.data['position'][self.hemi])            
         
         self.subject = subject
 
@@ -752,7 +777,9 @@ class ParseFuncFile():
     deleted_last_timepoints: int, optional
         number of volumes deleted at the end of the timeseries
     window_size: int, optional
-        size of window for rolling median
+        size of window for rolling median and Savitsky-Golay filter
+    poly_order: int, optional
+        The order of the polynomial used to fit the samples. polyorder must be less than window_length.
 
     Example
     ----------
@@ -766,25 +793,60 @@ class ParseFuncFile():
     def __init__(self, 
                  func_file, 
                  subject=1, 
-                 run=1, 
-                 bp_filter='boxcar', 
-                 standardize='psc', 
+                 run=1,
+                 high_pass=True,
+                 low_pass=True,
                  ub=0.15, 
                  lb=0.01, 
                  TR=0.105, 
                  deleted_first_timepoints=38, 
                  deleted_last_timepoints=38, 
-                 window_size=20):
+                 window_size=20,
+                 poly_order=3,
+                 attribute_tag=None,
+                 hdf_key="df"):
 
-        self.TR = TR
-        self.ub = ub
-        self.lb = lb
-        self.subject = subject
-        self.run = run
-        self.deleted_first_timepoints = deleted_first_timepoints
-        self.deleted_last_timepoints = deleted_last_timepoints
-        self.standardize = standardize
-        self.window_size = window_size
+        self.TR                         = TR
+        self.ub                         = ub
+        self.lb                         = lb
+        self.subject                    = subject
+        self.run                        = run
+        self.high_pass                  = high_pass
+        self.low_pass                   = low_pass
+        self.deleted_first_timepoints   = deleted_first_timepoints
+        self.deleted_last_timepoints    = deleted_last_timepoints
+        self.window_size                = window_size
+        self.poly_order                 = poly_order
+        self.attribute_tag              = attribute_tag
+        self.hdf_key                    = hdf_key
+        
+        if isinstance(func_file, str):
+            if not func_file.endswith("h5"):
+                self.preprocess_func_file(func_file, run=self.run, lowpass=self.low_pass, highpass=self.high_pass)
+                self.df_func_psc = self.get_psc(index=False)
+                self.df_func_raw = self.get_raw(index=False)
+            else:
+                if self.attribute_tag == None:
+                    hdf_store = pd.HDFStore(func_file)
+                    hdf_keys = hdf_store.keys()
+                    for key in hdf_keys:
+                        key = key.strip("/")
+                        setattr(self, key, hdf_store.get(key))
+                else:
+                    self.from_hdf(func_file, self.attribute_tag, key=self.hdf_key)
+                
+        elif isinstance(func_file, list):
+            df_func = []
+            df_raw = []
+            for run, func in enumerate(func_file):
+                self.preprocess_func_file(func, run=run+1, lowpass=self.low_pass, highpass=self.high_pass)
+                df_func.append(self.get_psc(index=False))
+                df_raw.append(self.get_raw(index=False))
+
+            self.df_func_psc = pd.concat(df_func).set_index(['subject', 'run', 't'])
+            self.df_func_raw = pd.concat(df_raw).set_index(['subject', 'run', 't'])
+
+    def preprocess_func_file(self, func_file, run=1, lowpass=True, highpass=True):
 
         # Load in datasets with tag "wcsmtSNR"
         self.ts_wcsmtSNR = io.loadmat(func_file)
@@ -801,148 +863,127 @@ class ParseFuncFile():
             self.ts_corrected = self.ts_magnitude[:,self.deleted_first_timepoints:]
 
         self.vox_cols = [f'vox {x}' for x in range(self.ts_corrected.shape[0])]
-        self.raw_data = pd.DataFrame(self.ts_corrected.T, columns=self.vox_cols)
-        self.raw_data['subject'], self.raw_data['run'], self.raw_data['t'] = subject, run, list(self.TR*np.arange(self.raw_data.shape[0]))
+        self.raw_data = self.add_index(self.ts_corrected, columns=self.vox_cols, subject=self.subject, run=run, TR=self.TR)
 
-        # nitime filtering?
-        if isinstance(bp_filter, str):
 
-            if bp_filter != "hanning" and bp_filter != "rolling":
-                self.T = TimeSeries(self.ts_corrected, sampling_interval=self.TR)
-                self.F = FilterAnalyzer(self.T, ub=self.ub, lb=self.lb)
-
-                if bp_filter.lower() == "boxcar":
-                    filter_type = self.F.filtered_boxcar
-                elif bp_filter.lower() == "iir":
-                    filter_type = self.F.iir
-                elif bp_filter.lower() == "fir":
-                    filter_type = self.F.fir
-                elif bp_filter.lower() == "fourier":
-                    filter_type = self.F.filtered_fourier
-                else:
-                    raise ValueError(f"'{bp_filter}' was requested, but must be one of: 'boxcar', 'iir', 'fir', 'fourier', 'hanning', 'rolling (WIP)'")
-
-                # normalize
-                self.psc = NormalizationAnalyzer(filter_type).percent_change.data
-                self.zscore = NormalizationAnalyzer(filter_type).z_score.data
-
-                self.mixed_zscore = pd.DataFrame(self.zscore.T, columns=self.vox_cols)
-                self.mixed_psc = pd.DataFrame(self.psc.T, columns=self.vox_cols)
-
-                self.mixed_zscore['subject'], self.mixed_zscore['run'], self.mixed_zscore['t'] = subject, run, list(self.TR*np.arange(self.zscore.shape[-1]))
-                self.mixed_psc['subject'], self.mixed_psc['run'], self.mixed_psc['t'] = subject, run, list(self.TR*np.arange(self.psc.shape[-1]))
-
-            elif bp_filter == "hanning":
-                
-                # filter by convolving Gaussian filter with data
-                self.windowSize = 20
-                self.window = np.hanning(self.windowSize)
-                self.window = self.window / self.window.sum()
-                
-                self.hanning_filtered = []
-                for ii in range(self.ts_corrected.shape[0]):
-                    convolved = np.convolve(self.window, self.ts_corrected[ii,:], mode='valid')
-                    self.hanning_filtered.append(convolved)
-
-                self.hanning_filtered = np.array(self.hanning_filtered)
-                # convert to percent change
-                self.han_filt_psc = percent_change(self.hanning_filtered, -1)
-
-                # detrend (high pass filter)
-                self.han_filt_psc_det  = detrend(self.han_filt_psc, axis=-1)
-
-                # make into dataframe
-                self.han_filt_psc_det_df = pd.DataFrame(self.han_filt_psc_det.T, columns=self.vox_cols)
-                self.han_filt_psc_det_df['subject'] = subject
-                self.han_filt_psc_det_df['run'] = run
-                self.han_filt_psc_det_df['t'] = list(self.TR*np.arange(self.han_filt_psc_det_df.shape[0]))
-
-            elif bp_filter == "rolling":
-
-                # Create high-pass filter and clean
-                n_vol = self.ts_corrected.shape[1]
-                tr = self.TR
-                st_ref = 0  # offset frametimes by st_ref * tr
-                ft = np.linspace(st_ref * self.TR, (n_vol + st_ref) * self.TR, n_vol, endpoint=False)
-
-                self.hp_set = dct_set(self.lb, ft)
-                self.filt_dct = clean(self.ts_corrected.T, detrend=False, standardize=self.standardize, confounds=self.hp_set)
-                # self.dct_psc_df = pd.DataFrame(self.filt_dct, index=self.raw_data.index, columns=self.raw_data.columns)
-                self.dct_psc_df = pd.DataFrame(self.filt_dct, columns=self.vox_cols)
-                self.dct_psc_df['subject'], self.dct_psc_df['run'], self.dct_psc_df['t'] = subject, run, list(self.TR*np.arange(self.dct_psc_df.shape[0]))
-                self.dct_psc_df = self.dct_psc_df.set_index(['subject', 'run', 't'])
-
-                if self.window_size != None:
-                    self.dct_psc_rol = self.dct_psc_df.rolling(self.window_size, min_periods=None, center=False, win_type=None, on=None, axis=0, closed=None).median()
-                    self.dct_psc_rol = self.dct_psc_rol.fillna(0)
-                else:
-                    self.dct_psc_rol = self.dct_psc_df.copy()
-                
-    def get_psc(self, index=False):
-        if hasattr(self, 'mixed_psc'):
-            if index:
-                return self.mixed_psc.set_index(['subject', 'run', 't'])
+        # apply some filtering
+        if lowpass:
+            self.low_passed, self.dct_set = self.lowpass_dct(self.ts_corrected, self.lb, TR=self.TR)
+            self.low_passed = self.low_passed.T
+            self.low_passed_psc = percent_change(self.low_passed, -1)
+            self.low_passed_df = self.add_index(self.low_passed_psc, columns=self.vox_cols, subject=self.subject, run=run, TR=self.TR, set_index=True)
+        
+        if highpass:
+            if hasattr(self, "low_passed"):
+                use_data = self.low_passed.copy()
             else:
-                return self.mixed_psc
-        else:
-            raise ValueError("Did not filter data; use 'bp_filter=True' to get percent-signal change data")
+                use_data = self.ts_corrected.copy()  
 
-    def get_zscore(self, index=False):
-        if hasattr(self, 'mixed_zscore'):
-            if index:
-                return self.mixed_zscore.set_index(['subject', 'run', 't'])
-            else:
-                return self.mixed_zscore
+            self.high_passed = self.highpass_savgol(use_data, window_length=self.window_size, polyorder=self.poly_order)
+            
+        # percent signal change
+        if hasattr(self, "high_passed"):
+            data = self.high_passed.copy()
+        elif hasattr(self, "low_passed"):
+            data = self.low_passed.copy()
         else:
-            raise ValueError("Did not filter data; use 'bp_filter=True' to get zscored data")
+            data = self.ts_corrected.copy()
 
-    def get_raw(self, index=False):
-        if index:
-            return self.raw_data.set_index(['subject', 'run', 't'])
+        self.psc_data       = percent_change(data, -1)
+        self.psc_data_df    = self.add_index(self.psc_data, columns=self.vox_cols, subject=self.subject, run=run, TR=self.TR)
+
+    @staticmethod
+    def add_index(array, columns=None, subject=1, run=1, TR=0.105, set_index=False):
+        
+        if columns == None:
+            df = pd.DataFrame(array.T)
         else:
-            return self.raw_data
+            df = pd.DataFrame(array.T, columns=columns)
+            
+        df['subject'] = subject
+        df['run'] = run
+        df['t'] = list(TR*np.arange(df.shape[0]))
 
-    def get_hanning(self, index=False):
-        if index:
-            return self.han_filt_psc_det_df.set_index(['subject', 'run', 't'])
+        if set_index:
+            return df.set_index(['subject', 'run', 't'])
         else:
-            return self.han_filt_psc_det_df
+            return df
 
-    def get_rolling(self, index=False):
-        if hasattr(self, 'dct_psc_rol'):
-            if index:
-                return self.dct_psc_rol.set_index(['subject', 'run', 't'])
-            else:
-                return self.dct_psc_rol
-        else:
-            raise ValueError("Did not filter data; use 'bp_filter=rolling' to get rolling median'ed data")
+    @staticmethod
+    def lowpass_dct(func, lb, TR=0.105):
 
-    def get_freq(self, datatype='raw', spectrum_type='psd'):
+        # Create high-pass filter and clean
+        n_vol           = func.shape[1]
+        st_ref          = 0  # offset frametimes by st_ref * tr
+        ft              = np.linspace(st_ref * TR, (n_vol + st_ref) * TR, n_vol, endpoint=False)
+        hp_set          = dct_set(lb, ft)
+        dct_data        = clean(func.T, detrend=False, standardize=False, confounds=hp_set)
+
+        return dct_data, hp_set
+
+    @staticmethod
+    def highpass_savgol(func, window_length=None, polyorder=None):
+
+        """
+
+        The Savitzky-Golay filter is a low pass filter that allows smoothing data. To use it, you should give as input parameter of the function the original noisy signal (as a one-dimensional array), set the window size, i.e. n° of points used to calculate the fit, and the order of the polynomial function used to fit the signal. We might be interested in using a filter, when we want to smooth our data points; that is to approximate the original function, only keeping the important features and getting rid of the meaningless fluctuations. In order to do this, successive subsets of points are fitted with a polynomial function that minimizes the fitting error.
+
+        The procedure is iterated throughout all the data points, obtaining a new series of data points fitting the original signal. If you are interested in knowing the details of the Savitzky-Golay filter, you can find a comprehensive description [here](https://en.wikipedia.org/wiki/Savitzky%E2%80%93Golay_filter).
+
+        Example
+        ----------
+        >>> 
+        """
+        
+        return signal.savgol_filter(func, window_length, polyorder, axis=0)
+
+    @staticmethod
+    def get_freq(func, TR=0.105, spectrum_type='psd'):
 
         """return power & frequency spectrum from timeseries"""
 
-        if datatype == "raw":
-            self.TC = self.raw_data.copy()
-        elif datatype == "psc":
-            self.TC = self.mixed_psc.copy()
-        elif datatype == "zscore":
-            self.TC = self.mixed_psc.copy()
-
-        self.TC = TimeSeries(np.asarray(self.TC), sampling_interval=self.TR)
-        self.spectra = SpectralAnalyzer(self.TC)
+        TC      = TimeSeries(np.asarray(func), sampling_interval=TR)
+        spectra = SpectralAnalyzer(TC)
 
         if spectrum_type == "psd":
-            selected_spectrum = self.spectra.psd
+            selected_spectrum = spectra.psd
         elif spectrum_type == "fft":
-            selected_spectrum = self.spectra.spectrum_fourier
+            selected_spectrum = spectra.spectrum_fourier
         elif spectrum_type == "periodogram":
-            selected_spectrum = self.spectra.periodogram
+            selected_spectrum = spectra.periodogram
         elif spectrum_type == "mtaper":
-            selected_spectrum = self.spectra.spectrum_multi_taper
+            selected_spectrum = spectra.spectrum_multi_taper
         else:
             raise ValueError(f"Requested spectrum was '{spectrum_type}'; available options are: 'psd', 'fft', 'periodogram', or 'mtaper'")
 
         return selected_spectrum[0], selected_spectrum[1]
+
+    def get_psc(self, index=False):
+        if hasattr(self, 'psc_data_df'):
+            if index:
+                return self.psc_data_df.set_index(['subject', 'run', 't'])
+            else:
+                return self.psc_data_df
+
+    def get_raw(self, index=False):
+        if hasattr(self, 'raw_data'):
+            if index:
+                return self.raw_data.set_index(['subject', 'run', 't'])
+            else:
+                return self.raw_data
+
+    def to_hdf(self, attribute_tag, output_file, key="df"):
+        if hasattr(self, attribute_tag):
+            add_df = getattr(self, attribute_tag)
+            if os.path.exists(output_file):
+                add_df.to_hdf(output_file,key=key, append=True, mode='r+', format='t')
+            else:
+                add_df.to_hdf(output_file, key=key, mode='w')
+            
+
+    def from_hdf(self, input_file, attribute_tag, key="df"):
+        setattr(self, attribute_tag, pd.read_hdf(input_file, key))
+
 
 class ParseExpToolsFile(object):
 
@@ -1378,7 +1419,7 @@ class LazyPlot():
     <linescanning.glm.LazyPlot at 0x7f839b0d5220>
     """
     
-    def __init__(self, ts, xx=None, error=None, error_alpha=0.3, x_label=None, y_label=None, title=None, xkcd=False, color=None, figsize=(12, 5), cmap='viridis', save_as=None,  labels=None, font_size=12, add_hline=None, add_vline=None, line_width=1, axs=None, y_lim=None, sns_offset=10, sns_trim=True, sns_rm_bottom=False, set_xlim_zero=False):
+    def __init__(self, ts, xx=None, error=None, error_alpha=0.3, x_label=None, y_label=None, title=None, xkcd=False, color=None, figsize=(12, 5), cmap='viridis', save_as=None,  labels=None, font_size=12, add_hline=None, add_vline=None, line_width=1, axs=None, y_lim=None, x_lim=None, sns_offset=10, sns_trim=True, sns_rm_bottom=False, set_xlim_zero=False):
 
         self.array          = ts
         self.xx             = xx
@@ -1399,6 +1440,7 @@ class LazyPlot():
         self.axs            = axs
         self.line_width     = line_width
         self.y_lim          = y_lim
+        self.x_lim          = x_lim
         self.sns_offset     = sns_offset
         self.sns_trim       = sns_trim
         self.sns_bottom     = sns_rm_bottom
@@ -1438,7 +1480,7 @@ class LazyPlot():
                         raise ValueError(f"Length of line width lenghts {len(self.line_width)} does not match length of data list ({len(self.array)}")
                         
                     use_width=self.line_width[idx]
-                elif isinstance(self.line_width, int):
+                elif isinstance(self.line_width, int) or isinstance(self.line_width, float):
                     use_width=self.line_width
                 else:
                     use_width=""
@@ -1461,7 +1503,6 @@ class LazyPlot():
                         ymax = el + yerr
                     elif len(yerr) == 2:
                         ymin, ymax = yerr
-                    x = np.arange(0, len(el))
                     axs.fill_between(
                         x, ymax, ymin, color=color_list[idx], alpha=self.error_alpha)
 
@@ -1483,7 +1524,6 @@ class LazyPlot():
                     ymax = self.array + self.error
                 elif len(self.error) == 2:
                     ymin, ymax = self.error
-                x = np.arange(0, len(self.array))
                 axs.fill_between(x, ymax, ymin, color=self.color, alpha=self.error_alpha)
 
         if isinstance(self.y_lim, list):
@@ -1502,19 +1542,30 @@ class LazyPlot():
             axs.set_title(self.title, fontname=self.fontname, fontsize=self.font_size)
 
         if self.add_vline:
-            if "default" in self.add_vline.lower():
+            if self.add_vline == "default":
                 self.add_vline={'pos': 0, 'color': 'k', 'ls': 'dashed', 'lw': 0.5}
 
-            axs.axvline(self.add_vline['pos'], color=self.add_vline['color'], lw=self.add_vline['lw'], ls=self.add_vline['ls'])
+            if isinstance(self.add_vline['pos'], list) or isinstance(self.add_vline['pos'], np.ndarray):
+                for line in self.add_vline['pos']:
+                    axs.axvline(line, color=self.add_vline['color'], lw=self.add_vline['lw'], ls=self.add_vline['ls'])
+            else:
+                axs.axvline(self.add_vline['pos'], color=self.add_vline['color'], lw=self.add_vline['lw'], ls=self.add_vline['ls'])
 
         if self.add_hline:
-            if "default" in self.add_hline.lower():
+            if self.add_hline == "default":
                 self.add_hline={'pos': 0, 'color': 'k', 'ls': 'dashed', 'lw': 0.5}
 
-            axs.axhline(self.add_hline['pos'], color=self.add_hline['color'], lw=self.add_hline['lw'], ls=self.add_hline['ls'])
-        
+            if isinstance(self.add_hline['pos'], list) or isinstance(self.add_hline['pos'], np.ndarray):
+                for line in self.add_hline['pos']:
+                    axs.axaxhlinevline(line, color=self.add_hline['color'], lw=self.add_hline['lw'], ls=self.add_hline['ls'])
+            else:
+                axs.axhline(self.add_hline['pos'], color=self.add_hline['color'], lw=self.add_hline['lw'], ls=self.add_hline['ls'])
+
         if self.set_xlim_zero:
             axs.set_xlim(0)
+        else:
+            if self.x_lim:
+                axs.set_xlim(self.x_lim)
             
         sns.despine(offset=self.sns_offset, trim=self.sns_trim, bottom=self.sns_bottom)
 
@@ -1634,6 +1685,13 @@ class CollectSubject:
         self.model          = model
         self.analysis_yaml  = analysis_yaml
 
+        if self.hemi == "lh" or self.hemi.lower() == "l" or self.hemi.lower() == "left":
+            self.hemi_tag = "L"
+        elif self.hemi == "rh" or self.hemi.lower() == "r" or self.hemi.lower() == "right":
+            self.hemi_tag = "R"
+        else:
+            self.hemi_tag = "both"        
+
         # set pRF directory
         if self.prf_dir == None:
             if derivatives != None:
@@ -1646,7 +1704,7 @@ class CollectSubject:
 
         if self.cx_dir != None:
             self.vert_fn        = get_file_from_substring([self.model, "best_vertices.csv"], self.cx_dir)
-            self.vert_info      = VertexInfo(self.vert_fn, subject=self.subject)
+            self.vert_info      = VertexInfo(self.vert_fn, subject=self.subject, hemi=self.hemi)
 
         # load specific analysis file
         if self.analysis_yaml != None:
@@ -1657,9 +1715,9 @@ class CollectSubject:
         
         # load the most recent analysis file. This is fine for screens/stimulus information
         if settings == "recent":
-            analysis_yaml = opj(self.prf_dir, sorted([ii for ii in os.listdir(self.prf_dir) if "desc-settings" in ii])[-1])
+            self.analysis_yaml = opj(self.prf_dir, sorted([ii for ii in os.listdir(self.prf_dir) if "desc-settings" in ii])[-1])
 
-            with open(analysis_yaml) as file:
+            with open(self.analysis_yaml) as file:
                 self.settings = yaml.safe_load(file)
         
         # fetch target vertex parameters
@@ -1671,6 +1729,10 @@ class CollectSubject:
             self.prf_stim = stimulus.PRFStimulus2D(screen_size_cm=self.settings['screen_size_cm'], screen_distance_cm=self.settings['screen_distance_cm'], design_matrix=self.design_matrix,TR=self.settings['TR'])
             self.prf_array = prf.make_prf(self.prf_stim, size=self.target_params[2], mu_x=self.target_params[0], mu_y=self.target_params[1])
 
+        try:
+            self.normalization_params = pd.read_csv(get_file_from_substring([f"hemi-{self.hemi_tag}", "normalization"], self.cx_dir), index_col=0)
+        except:
+            self.normalization_params = None
 
     def return_prf_params(self, hemi="lh"):
         """return pRF parameters from :class:`linescanning.utils.VertexInfo`"""
