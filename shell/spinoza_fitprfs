@@ -27,6 +27,7 @@ Arguments:
   <-n ses>       integer session number following 'ses-'
   <-m model>     'gauss' or 'norm' for the type of model to use for the fitting
   <-g grid>      only run grid fit, skip iterative fit
+  <-l local>     run locally even though we have SGE available.
   <prf dir>      base output directory for prf data (derivatives/prf)
   <pybest dir>   base input directory with pybest data (derivatives/pybest)
   <png dir>      base path to where the pRF-experiment's Log-directories with png's is
@@ -51,14 +52,14 @@ USAGE
 # Check for subject & session flags
 while getopts gos:n:m: argument
 do
-    case ${argument} in
-      s)  sub=${OPTARG}
-            ;;
-      n)  ses=${OPTARG}
-            ;;
-      m)  model=${OPTARG}
-            ;;
-    esac
+  case ${argument} in
+    s)  sub=${OPTARG}
+          ;;
+    n)  ses=${OPTARG}
+          ;;
+    m)  model=${OPTARG}
+          ;;
+  esac
 done
 
 if [[ $# -lt 3 ]] ; then
@@ -90,6 +91,12 @@ if [[ "${@}" == *"-g"* ]]; then
 else
   grid_flag=""
   grid_only=0
+fi
+
+if [[ "${@}" == *"-l"* ]]; then
+  run_locally=1
+else
+  run_locally=0
 fi
 
 #-----------------------------------------------------------------------------
@@ -205,9 +212,16 @@ for dir in ${search}; do
       if [[ ${PLACE} != "SGE" ]]; then
         job="python"
       else
-        job="qsub -q ${SGE_QUEUE_LONG} -wd ${prf_dir} -N $(basename ${dir})_gauss"
+        if [[ ${run_locally} -eq 0 ]]; then
+          job="qsub -q ${SGE_QUEUE_LONG} -wd ${prf_dir} -N $(basename ${dir})_gauss"
+        elif [[ ${run_locally} -eq 1 ]]; then
+          job="python"
+        else
+          echo "ERROR in `basename ${0}`: invalid option \"${run_locally}\". Must be '0' or '1'"
+          exit 1
+        fi
       fi
-
+      
       export DISPLAY=:0
       ${job} ${DIR_SCRIPTS}/bin/call_prf ${grid_flag} \
         -s "$(basename ${dir} | cut -d'-' -f2)" \
