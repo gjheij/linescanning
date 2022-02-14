@@ -5,9 +5,11 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from scipy.interpolate import interp1d
 import seaborn as sns
+from nilearn.glm.first_level import first_level
+from nilearn import plotting
 import warnings
 
-class GenericGLM:
+class GenericGLM():
     """GenericGLM
 
     Main class to perform a simple GLM with python. Will do most of the processes internally, and allows you to plot various processes along the way.
@@ -49,14 +51,20 @@ class GenericGLM:
         Instead of plotting the best-fitting voxel, specify which voxel to plot the timecourse and fit of, by default None
     plot_event: str, int, list, optional
         If a larger design matrix was inputted with multiple events, you can specify here the name of the event you'd like to plot the betas from. It also accepts a list of indices of events to plot, so you could plot the first to events by specifying `plot_event=[1,2]`. Remember, the 0th index is the intercept! By default we'll plot the event right after the intercept
+    contrast_matrix: numpy.ndarray, optional
+        contrast array for the event regressors. If none, we'll create a contrast matrix that estimates the effect of each regressor and the baseline
+    nilearn: bool, optional
+        use nilearn implementation of `FirstLevelModel` (True) or bare python (False). The later gives easier access to betas, while the former allows implementation of AR-noise models.
 
     Returns
     ----------
-    numpy.ndarray
-        numpy array of shape (<events + regressors>, <voxels>) representing the betas
+    dict
+        Dictionary collecting outputs under the following keys
 
-    numpy.ndarray
-        numpy array of shape (<time>, <events + regressors>) representing the design matrix
+        * betas: <n_regressors (+intercept), n_voxels>  beta values
+        * tstats: <n_regressors (+intercept), n_voxels> t-statistics (FSL-way)
+        * x_conv: <n_timepoints, n_regressors (+intercept)> design matrix
+        * resids: <n_timepoints, n_voxels> residuals>
 
     matplotlib.pyplot
         plots along the process if `make_figure=True`        
@@ -94,25 +102,50 @@ class GenericGLM:
     >>>
     >>> # do the fitting
     >>> fitting = GenericGLM(onsets, data.values, TR=func.TR, osf=1000)
+
+    Notes
+    ----------
+    For `FirstLevelModel` to work with our type of data, I had to add the following to `https://github.com/nilearn/nilearn/blob/main/nilearn/glm/first_level/first_level.py#L683`:
+
+    ```python
+    for output_type_ in output_types:
+        estimate_ = getattr(contrast, output_type_)()
+        
+        if return_type == "imgs":
+            # Prepare the returned images
+            output = self.masker_.inverse_transform(estimate_)
+            contrast_name = str(con_vals)
+            output.header['descrip'] = (
+                '%s of contrast %s' % (output_type_, contrast_name))
+            outputs[output_type_] = output
+        else:
+            output = estimate_
+            outputs[output_type_] = output
+
+    ```
+
+    This ensures we're getting an array back, rather than a nifti-image for our statistics
     """
     
-    def __init__(self, onsets, data, hrf_pars=None, TR=None, osf=1, exp_type='event', block_length=None, amplitude=None, regressors=None, make_figure=False, xkcd=False, plot_event=[1, 2], plot_vox=None, verbose=False):
+    def __init__(self, onsets, data, hrf_pars=None, TR=None, osf=1, contrast_matrix=None, exp_type='event', block_length=None, amplitude=None, regressors=None, make_figure=False, xkcd=False, plot_event=[1, 2], plot_vox=None, verbose=False, nilearn=False):
         
         # %%
         # instantiate 
-        self.onsets         = onsets
-        self.hrf_pars       = hrf_pars
-        self.TR             = TR
-        self.osf            = osf
-        self.exp_type       = exp_type
-        self.block_length   = block_length
-        self.amplitude      = amplitude
-        self.regressors     = regressors
-        self.make_figure    = make_figure
-        self.xkcd           = xkcd
-        self.plot_event     = plot_event
-        self.plot_vox       = plot_vox
-        self.verbose        = verbose
+        self.onsets             = onsets
+        self.hrf_pars           = hrf_pars
+        self.TR                 = TR
+        self.osf                = osf
+        self.exp_type           = exp_type
+        self.block_length       = block_length
+        self.amplitude          = amplitude
+        self.regressors         = regressors
+        self.make_figure        = make_figure
+        self.xkcd               = xkcd
+        self.plot_event         = plot_event
+        self.plot_vox           = plot_vox
+        self.verbose            = verbose
+        self.contrast_matrix    = contrast_matrix
+        self.nilearn_method     = nilearn
 
         if isinstance(data, np.ndarray):
             self.data = data.copy()
@@ -154,6 +187,8 @@ class GenericGLM:
         else:
             self.stims_convolved_resampled = self.stims_convolved.copy()
 
+        self.condition_names = list(self.stims_convolved_resampled.keys())
+
         # %%
         # finalize design matrix (with regressors)
         if verbose:
@@ -165,9 +200,59 @@ class GenericGLM:
         # Fit all
         if verbose:
             print("Running fit")
+        
+        if self.nilearn_method:
+            # we're going to hack Nilearn's FirstLevelModel to be compatible with our line-data. First, we specify the model as usual
+            fmri_glm = first_level.FirstLevelModel(t_r=self.TR,
+                                                noise_model='ar1',
+                                                standardize=False,
+                                                hrf_model='spm',
+                                                drift_model='cosine',
+                                                high_pass=.01)
 
-        self.betas, self.X_conv = fit_first_level(self.design, self.data, make_figure=self.make_figure, xkcd=self.xkcd, plot_vox=self.plot_vox, plot_event=self.plot_event)
+            # Normally, we'd run `fmri_glm = fmri_glm.fit()`, but because this requires nifti-like inputs, we run `run_glm` outside of that function to get the labels:
+            self.labels, self.results = first_level.run_glm(data.values, self.X_conv, noise_model='ar1')
 
+            # Then, we inject this into the `fmri_glm`-class so we can compute contrasts
+            fmri_glm.labels_    = [self.labels]
+            fmri_glm.results_   = [self.results]
+
+            # Then we specify our contrast matrix:
+            if self.contrast_matrix == None:
+                matrix                  = np.eye(len(self.condition_names))
+                icept                   = np.zeros((self.condition_names, 1))
+                matrix                  = np.hstack((icept, matrix)).astype(int)
+                self.contrast_matrix    = matrix.copy()
+
+                self.conditions = {}
+                for idx, name in enumerate(self.condition_names):
+                    self.conditions[name] = self.contrast_matrix[idx, ...]
+
+            self.tstats = []
+            for event in self.conditions:
+                tstat = fmri_glm.compute_contrast(self.conditions[event], stat_type='t', output_type='stat')
+                self.tstats.append(tstat)
+
+            self.tstats = np.array(self.tstats)
+        else:
+            self.results = fit_first_level(self.design, self.data, make_figure=self.make_figure, xkcd=self.xkcd, plot_vox=self.plot_vox, plot_event=self.plot_event)
+
+    def plot_contrast_matrix(self, save_as=None):
+        if self.nilearn_method:
+            fig,axs = plt.subplots(figsize=(10,10))
+            plotting.plot_contrast_matrix(self.contrast_matrix, ax=axs)
+
+            if save_as:
+                fig.savefig(save_as)
+        else:
+            raise NotImplementedError("Can't use this function without nilearn-fitting. Set 'nilearn=True'")
+
+    def plot_design_matrix(self, save_as=None):
+        fig,axs = plt.subplots(figsize=(10,10))
+        plotting.plot_design_matrix(self.design, ax=axs)
+
+        if save_as:
+            fig.savefig(save_as)
 
 def double_gamma(x, lag=6, a2=12, b1=0.9, b2=0.9, c=0.35, scale=True):
     """double_gamma
@@ -566,9 +651,9 @@ def fit_first_level(stim_vector, data, make_figure=False, copes=None, xkcd=False
 
     # calculate some other relevant parameters
     cope        = C @ betas_conv
-    r           = data - X_conv@betas_conv
+    resids      = data - X_conv@betas_conv
     dof         = X_conv.shape[0] - np.linalg.matrix_rank(X_conv)
-    sig2        = np.sum(r**2,axis=0)/dof
+    sig2        = np.sum(resids**2,axis=0)/dof
     varcope     = np.outer(C@np.diag(np.linalg.inv(X_conv.T@X_conv))@C.T,sig2)
 
     # calculate t-stats
@@ -632,4 +717,7 @@ def fit_first_level(stim_vector, data, make_figure=False, copes=None, xkcd=False
                            figsize=(20,5),
                            font_size=20)
 
-    return betas_conv,X_conv
+    return {'betas': betas_conv,
+            'x_conv': X_conv,
+            'resids': resids,
+            'tstats': tstat}
