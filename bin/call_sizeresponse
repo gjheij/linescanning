@@ -78,7 +78,9 @@ Examples:
         elif opt in ("-n", "--ses"):
             session = arg
         elif opt in ("-l", "--stage"):
-            stage = arg            
+            stage = arg
+        elif opt in ("-h", "--hemi"):
+            hemi = arg
         elif opt in ("--cx"):
             cx_dir = arg
         elif opt in ("--prf"):
@@ -141,14 +143,14 @@ Examples:
 
     # initiate class
     fitting = prf.pRFmodelFitting(data[...,np.newaxis].T, 
-                                    design_matrix=subject_info.design_matrix, 
-                                    TR=subject_info.settings['TR'], 
-                                    model="norm", 
-                                    stage=stage, 
-                                    old_params=insert_params, 
-                                    verbose=verbose, 
-                                    output_dir=subject_info.prf_dir, 
-                                    nr_jobs=1)
+                                  design_matrix=subject_info.design_matrix, 
+                                  TR=subject_info.settings['TR'], 
+                                  model="norm", 
+                                  stage=stage, 
+                                  old_params=insert_params, 
+                                  verbose=verbose, 
+                                  output_dir=subject_info.prf_dir, 
+                                  nr_jobs=1)
     
     # fit
     fitting.fit()
@@ -168,7 +170,7 @@ Examples:
     utils.LazyPlot([data, new_prediction], 
                     color=['#08B2F0','#cccccc'], 
                     labels=['real','pred'], 
-                    add_hline='defaults', 
+                    add_hline='default', 
                     line_width=line_width,
                     axs=ax2,
                     y_label="BOLD amplitude (z-score)",
