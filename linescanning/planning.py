@@ -82,7 +82,7 @@ def correct_angle(x, verbose=False, only_angles=True):
             # axis.
             if x[1] != 0:
                 scanner_angles[0] = 999 # code for sag slice
-                scanner_angles[1] = 90-x[0]
+                scanner_angles[1] = x[0]-90
                 
                 if verbose:
                     print(" No coronal cases hold: we'll get a sagittal slice")
@@ -126,33 +126,38 @@ def correct_angle(x, verbose=False, only_angles=True):
         # if the above resulted in a sagittal slice, we need to convert the angles relative to the AP-axis. We have the
         # angle with the RL-axis, scanner_angles[0], and the angle with the AP-axis then is 90-angle_RL. Because of the
         # way the scanner interprets this, a center-topleft vector is created with the -(90-angle_RL).
-        if 45 <= scanner_angles[0] <= 90:
-            # Convert angle with x-axis to be compatible with sagittal slice
-            if x[1] != 0:
-                scanner_angles[1] = 90-scanner_angles[0]
-                scanner_angles[0] = 999 # code for sagittal
-
-                # overwrite the angle around the axis that is represented by the angle with the Z-axis
-                z_axis_represents_angle_around = "X"
-                
-                # decide on the direction of the sagittal slice, center-topleft or center-topright depending on what the 
-                # initial angle with the x-axis was. Big angle means center-topleft, small angle means center-topright
-                if flip == True:
-                    if verbose:
-                        print(f" X angle was large ({round(x[0],2)}), inverting {round(scanner_angles[1],2)}")
-                        print(f" Z angle = angle around RL-axis")
-                    scanner_angles[1] = utils.reverse_sign(scanner_angles[1])
-                else:
-                    if verbose:
-                        print(f" X angle was small ({round(x[0],2)}), using {round(scanner_angles[1],2)} as is")
-                    else:
-                        pass
-
+        #
+        # First we check if we have a sagittal slice; if so, the XY-angles are already sorted
+        if scanner_angles[0] == 999:
+            z_axis_represents_angle_around = "X"
         else:
-            if verbose:
-                print(f" Z angle = angle around AP-axis")
+            if 45 <= scanner_angles[0] <= 90:
+                # Convert angle with x-axis to be compatible with sagittal slice
+                if x[1] != 0:
+                    scanner_angles[1] = 90-scanner_angles[0]
+                    scanner_angles[0] = 999 # code for sagittal
+
+                    # overwrite the angle around the axis that is represented by the angle with the Z-axis
+                    z_axis_represents_angle_around = "X"
+                    
+                    # decide on the direction of the sagittal slice, center-topleft or center-topright depending on what the 
+                    # initial angle with the x-axis was. Big angle means center-topleft, small angle means center-topright
+                    if flip == True:
+                        if verbose:
+                            print(f" X angle was large ({round(x[0],2)}), inverting {round(scanner_angles[1],2)}")
+                            print(f" Z angle = angle around RL-axis")
+                        scanner_angles[1] = utils.reverse_sign(scanner_angles[1])
+                    else:
+                        if verbose:
+                            print(f" X angle was small ({round(x[0],2)}), using {round(scanner_angles[1],2)} as is")
+                        else:
+                            pass
+
             else:
-                pass
+                if verbose:
+                    print(f" Z angle = angle around AP-axis")
+                else:
+                    pass
 
 
         #-------------------------------------------------------------------------------------------------------------------------------

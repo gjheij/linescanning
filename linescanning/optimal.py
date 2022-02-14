@@ -156,7 +156,7 @@ def target_vertex(subject,
 
     if os.path.isfile(out):
         print(f"Loading in {out}")
-        return utils.VertexInfo(out, subject=subject)
+        return utils.VertexInfo(out, subject=subject, hemi="both")
     else:
         if use_prf == True:
             print(f"Selecting pRF-parameters from: {task}")
@@ -240,14 +240,16 @@ def target_vertex(subject,
             print(" normal = {norm}".format(norm=GetBestVertex.surface.lh_surf_normals[GetBestVertex.lh_best_vertex]))
             print(" vertex = {vert}".format(vert=GetBestVertex.lh_best_vertex))
             
-            os.system(f"call_prfinfo -s {subject} -v {GetBestVertex.lh_best_vertex}")
+            if use_prf == True:
+                os.system(f"call_prfinfo -s {subject} -v {GetBestVertex.lh_best_vertex}")
 
             print("Found following vertex in right hemisphere:")
             print(" coord  = {coord}".format(coord=GetBestVertex.rh_best_vertex_coord))
             print(" normal = {norm}".format(norm=GetBestVertex.surface.lh_surf_normals[GetBestVertex.rh_best_vertex]))
             print(" vertex = {vert}".format(vert=GetBestVertex.rh_best_vertex))
 
-            os.system(f"call_prfinfo -s {subject} -v {GetBestVertex.rh_best_vertex} -h rh")
+            if use_prf == True:
+                os.system(f"call_prfinfo -s {subject} -v {GetBestVertex.rh_best_vertex} -h rh")
 
             # # Smooth vertex maps
             # print("Smooth vertex maps for visual verification")
@@ -359,7 +361,7 @@ def target_vertex(subject,
                                font_size=14,
                                line_width=2,
                                color="#53107B",
-                               add_hline='defaults',
+                               add_hline='default',
                                axs=ax2)
 
                 fig.savefig(opj(cx_dir, subject, f'{subject}_{hemi_tag}_desc-prf_info.pdf'))
