@@ -49,19 +49,19 @@ source call_bashhelper
 
 #-----------------------------------------------------------------------------
 # Add entire path if just filename is specified
-IMG_MAGN=`fetch_filepath ${IMG_MAG}`
-IMG_PHASE=`fetch_filepath ${IMG_PHASE}`
-IMG_NORDIC=`fetch_filepath ${IMG_NORDIC}`
+fn_mag=`fetch_filepath ${IMG_MAGN}`
+fn_phase=`fetch_filepath ${IMG_PHASE}`
+fn_nordic=`fetch_filepath ${IMG_NORDIC}`
 
 #-----------------------------------------------------------------------------
 # Get extension from input file
-ext_nordic=`fetch_extension ${IMG_NORDIC}`
+ext_nordic=`fetch_extension ${fn_nordic}`
 
 # nordic output
 if [[ ${ext_nordic} == "gz" ]]; then
-  fn_nordic=$(dirname ${IMG_NORDIC})/$(basename ${IMG_NORDIC} .nii.gz)
+  fn_nordic=$(dirname ${fn_nordic})/$(basename ${fn_nordic} .nii.gz)
 elif [[ ${ext_nordic} == "nii" ]]; then
-  fn_nordic=$(dirname ${IMG_NORDIC})/$(basename ${IMG_NORDIC} .nii)
+  fn_nordic=$(dirname ${fn_nordic})/$(basename ${fn_nordic} .nii)
 else
   echo "ERROR in `basename ${0}`: unrecognized extension \"${ext_nordic}\" for NORDIC output"
   exit 1
@@ -72,7 +72,7 @@ fi
 if [[ "${@}" == *"-m"* ]]; then 
   mag_only=1
 else
-  mag_only="[]"
+  mag_only=0
 fi 
 
 #-----------------------------------------------------------------------------
