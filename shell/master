@@ -114,6 +114,8 @@ Args:
                       - spinoza_fmriprep; remove surface_recon_wf folder. Handy for re-running with
                         new reconstruction
                       - spinoza_denoising; submit job to SGE, use master -m 16 -x sge
+                      - spinoza_fitprfs; run grid stage only '-x grid' OR run locally '-x local'; 
+                        not both!
                       - spinoza_bestvertex; disable FreeView during vertex selection
                       - spinoza_extractregions: skip nighres, only do combination of segmentations.
                         Works with '-o' flag.                
@@ -1188,6 +1190,8 @@ if [[ $? -eq 0 ]]; then
   # insert grid-only flag if master -m 17 -x grid is used
   if [[ ${KWARGS,,} == "grid" ]]; then
     KWARGS="-g"
+  elif [[ ${KWARGS,,} == "local" ]]; then
+    KWARGS="-l"
   else
     KWARGS=""
   fi     
