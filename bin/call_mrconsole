@@ -93,11 +93,11 @@ Usage:
         print(main.__doc__)
         sys.exit(1)
 
-    if not anat2:
-        raise ValueError(f"Need session {new_ses} anatomy")
+    if not os.path.exists(anat2):
+        raise ValueError(f"Need session {new_ses} anatomy; '{anat2}' cannot be found")
 
     if not affine:
-        raise ValueError(f"Need matrix-file mapping session 1 to session {new_ses}")
+        raise ValueError(f"Need matrix-file mapping session 1 to session {new_ses}; affine = '{affine}'")
 
     if deriv:
         fs_dir = opj(deriv, 'freesurfer')
