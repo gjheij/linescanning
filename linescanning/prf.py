@@ -1224,6 +1224,12 @@ class pRFmodelFitting():
                                                  filter_params={'window_length': self.settings['filter_window_length'],
                                                                 'polyorder': self.settings['filter_polyorder']})
 
+        self.norm_model = Norm_Iso2DGaussianModel(stimulus=self.prf_stim,
+                                                  filter_predictions=self.settings['filter_predictions'],
+                                                  filter_type='sg',
+                                                  hrf=self.hrf,                                                  
+                                                  filter_params={'window_length': self.settings['filter_window_length'],
+                                                                 'polyorder': self.settings['filter_polyorder']})
 
     def fit(self):
 
@@ -1306,13 +1312,10 @@ class pRFmodelFitting():
             # make n_units x 4 array, with X,Y,size,r2
             self.old_params_filt = np.hstack((self.old_params_arr[:,:3], self.old_params_arr[:,-1][...,np.newaxis]))
 
-            self.norm_model = Norm_Iso2DGaussianModel(stimulus=self.prf_stim,
-                                                      filter_predictions=self.settings['filter_predictions'],
-                                                      filter_type='sg',
-                                                      filter_params={'window_length': self.settings['filter_window_length'], 'polyorder': self.settings['filter_polyorder']})
-
+            # define fitter
             self.norm_fitter = Norm_Iso2DGaussianFitter(self.norm_model, self.data)
 
+            # read grid from settings file
             self.surround_amplitude_grid = np.array(self.settings['norm']['surround_amplitude_grid'], dtype='float32')
             self.surround_size_grid      = np.array(self.settings['norm']['surround_size_grid'], dtype='float32')
             self.neural_baseline_grid    = np.array(self.settings['norm']['neural_baseline_grid'], dtype='float32')
@@ -1379,16 +1382,31 @@ class pRFmodelFitting():
 
         if isinstance(params_file, str):
             params = np.load(params_file)
-
         elif isinstance(params_file, np.ndarray):
             params = params_file.copy()
+        elif isinstance(params_file, pd.DataFrame):
+            dict_keys = list(params_file.keys())
+            if not "hemi" in dict_keys:
+                # got normalization parameter file
+                params = np.array((params_file['x'][0],
+                                  params_file['y'][0],
+                                  params_file['prf_size'][0],
+                                  params_file['A'][0],
+                                  params_file['bold_bsl'][0],
+                                  params_file['B'][0],
+                                  params_file['C'][0],
+                                  params_file['surr_size'][0],
+                                  params_file['D'][0],
+                                  params_file['r2'][0]))
+            else:
+                raise NotImplementedError()
         else:
             raise ValueError("Unrecognized input type for 'params_file'")
 
         setattr(self, f'{model}_{stage}', params)
-        
-    
-    def plot_vox(self, vox_nr='best', model='gauss', stage='iter'):
+
+
+    def plot_vox(self, vox_nr='best', model='gauss', stage='iter', make_figure=True):
 
         """plot real and predicted timecourses for a voxel. Also returns parameters, the numpy array representing the pRF in visual space, and timecourse of data"""
         
@@ -1400,47 +1418,50 @@ class pRFmodelFitting():
         if hasattr(self, f"{model}_{stage}"):
             params = getattr(self, f"{model}_{stage}")
 
-            if vox_nr == "best":
-                vox,_ = utils.find_nearest(params[...,-1], np.amax(params[...,-1]))
-            else:
-                vox = vox_nr
+            if params.ndim > 1:
+                if vox_nr == "best":
+                    vox,_ = utils.find_nearest(params[...,-1], np.amax(params[...,-1]))
+                else:
+                    vox = vox_nr
 
-            params = params[vox,...]
+                params = params[vox,...]
         else:
             raise ValueError(f"Could not find {stage} parameters for {model}")
 
         self.prediction = use_model.return_prediction(*params[:-1]).T
 
-        prf_array = make_prf(self.prf_stim, size=params[2], mu_x=params[0], mu_y=params[1])
+        if make_figure:
+            prf_array = make_prf(self.prf_stim, size=params[2], mu_x=params[0], mu_y=params[1])
+            fig = plt.figure(constrained_layout=True, figsize=(20,5))
+            gs00 = fig.add_gridspec(1,2, width_ratios=[10,20])
 
-        fig = plt.figure(constrained_layout=True, figsize=(20,5))
-        gs00 = fig.add_gridspec(1,2, width_ratios=[10,20])
+            # make plot 
+            ax1 = fig.add_subplot(gs00[0])
+            plot_prf(prf_array, vf_extent=self.settings['vf_extent'], ax=ax1)
 
-        # make plot 
-        ax1 = fig.add_subplot(gs00[0])
-        plot_prf(prf_array, vf_extent=self.settings['vf_extent'], ax=ax1)
+            # make plot 
+            ax2 = fig.add_subplot(gs00[1])
 
-        # make plot 
-        ax2 = fig.add_subplot(gs00[1])
+            # annoying indexing issues.. lots of inconsistencies in array shapes.
+            try:
+                tc = self.data.T[vox,...]
+            except:
+                tc = self.data[vox,...]
 
-        # annoying indexing issues.. lots of inconsistencies in array shapes.
-        try:
-            tc = self.data.T[vox,...]
-        except:
-            tc = self.data[vox,...]
+            utils.LazyPlot([tc, self.prediction], 
+                        line_width=2, 
+                        color=['#08B2F0', '#cccccc'], 
+                        labels=['real', 'pred'], 
+                        add_hline='default',
+                        x_label="Volumes",
+                        y_label="amplitude",
+                        axs=ax2,
+                        font_size=14,
+                        set_xlim_zero=True)
 
-        utils.LazyPlot([tc, self.prediction], 
-                       line_width=2, 
-                       color=['#08B2F0', '#cccccc'], 
-                       labels=['real', 'pred'], 
-                       add_hline='default',
-                       x_label="Volumes",
-                       y_label="amplitude",
-                       axs=ax2,
-                       font_size=14,
-                       set_xlim_zero=True)
-
-        return params, prf_array, tc
+            return params, prf_array, tc
+        else:
+            return params, self.prediction
 
     def save_params(self, model="gauss", stage="grid", verbose=False, output_dir=None, output_base=None):
 
@@ -1579,7 +1600,12 @@ class SizeResponse():
         self.prf_stim = prf_stim
         self.n_pix = self.prf_stim.design_matrix.shape[0]
         self.params = params
-        self.params_df = self.parse_normalization_parameters(self.params)
+
+        if isinstance(self.params, np.ndarray):
+            self.params_df = self.parse_normalization_parameters(self.params)
+        elif isinstance(self.params, pd.DataFrame):
+            self.params_df = self.params.copy()
+            
         self.subject_info = subject_info
 
         # define visual field in degree of visual angle
@@ -1600,9 +1626,9 @@ class SizeResponse():
                        "prf_size": [params[2]],
                        "prf_ampl": [params[3]],
                        "bold_bsl": [params[4]],
-                       "surr_bsl": [params[5]],
-                       "surr_size": [params[6]], 
                        "neur_bsl": [params[7]],
+                       "surr_ampl": [params[5]],
+                       "surr_size": [params[6]], 
                        "surr_bsl": [params[4]],
                        "A": [params[3]], 
                        "B": [params[-3]/params[3]], 
@@ -1737,3 +1763,4 @@ class SizeResponse():
             best_vertex.to_csv(prf_bestvertex)
             
         self.params_df.to_csv(opj(self.subject_info.cx_dir, f'{self.subject_info.subject}_hemi-{hemi}_desc-normalization_parameters.csv'))
+        np.save(opj(self.subject_info.cx_dir, f'{self.subject_info.subject}_hemi-{hemi}_desc-normalization_parameters.npy'), self.params)
