@@ -1,5 +1,7 @@
+from multiprocessing.sharedctypes import Value
 from attr import has
 import attr
+from numpy import isin
 import cortex
 import csv
 import json
@@ -12,6 +14,7 @@ from nilearn.glm.first_level.design_matrix import _cosine_drift as dct_set
 from nitime.timeseries import TimeSeries
 from nitime.analysis import SpectralAnalyzer, FilterAnalyzer, NormalizationAnalyzer
 import numpy as np
+import operator
 import os
 import pandas as pd
 from PIL import ImageColor
@@ -84,6 +87,18 @@ class color:
    UNDERLINE = '\033[4m'
    END = '\033[0m'
 
+def str2operator(ops):
+
+    if ops == "and" or ops == "&" or ops == "&&":
+        return operator.and_
+    elif ops == "or" or ops == "|" or ops == "||":
+        return operator.or_
+    elif ops == "is not" or ops == "!=":
+        return operator.ne
+    elif ops == "is" or ops == "==" or ops == "=":
+        return operator.eq
+    else:
+        raise NotImplementedError()
 
 def find_nearest(array, value, return_nr=1):
     """find_nearest
@@ -741,12 +756,64 @@ def make_binary_cm(color):
 
     return cmap
 
-
 def percent_change(ts, ax):
     """convert timeseries to percent signal change via the nilearn method"""
 
     return (ts / np.expand_dims(np.mean(ts, ax), ax) - 1) * 100    
 
+def select_from_df(df, expression="run = 1", val_as_int=True, index=['subject', 'run', 't']):
+
+    # sometimes throws an error if you're trying to reindex a non-indexed dataframe
+    try:
+        df = df.reset_index()
+    except:
+        pass
+    
+    sub_df = df.copy()
+    if isinstance(expression, str):
+        expression = [expression]
+
+    if isinstance(expression, tuple) or isinstance(expression, list):
+
+        expressions = expression[::2]
+        operators = expression[1::2]
+
+        if len(expressions) == 1:
+
+            col1,operator1,val1 = expressions[0].split()
+            ops1 = str2operator(operator1)
+
+            if val_as_int:
+                val1 = int(val1)
+
+            sub_df = sub_df.loc[ops1(sub_df[col1], val1)]
+            
+        if len(expressions) == 2:
+            col1,operator1,val1 = expressions[0].split()
+            col2,operator2,val2 = expressions[1].split()
+
+            main_ops = str2operator(operators[0])
+            ops1 = str2operator(operator1)
+            ops2 = str2operator(operator2)
+
+            # check if we should interpret values invididually as integers
+            if isinstance(val_as_int, tuple):
+                if val_as_int[0]:
+                    val1 = int(val1)
+                
+                if val_as_int[1]:
+                    val2 = int(val2)
+            # both should be considered integers
+            elif val_as_int:
+                val1 = int(val1)
+                val2 = int(val2)
+
+            sub_df = sub_df.loc[main_ops(ops1(sub_df[col1], val1), ops2(sub_df[col2], val2))]
+
+    if index != None:
+        sub_df = sub_df.set_index(index)
+
+    return sub_df
 
 class ParseFuncFile():
 
@@ -935,7 +1002,7 @@ class ParseFuncFile():
         >>> 
         """
         
-        return signal.savgol_filter(func, window_length, polyorder, axis=0)
+        return signal.savgol_filter(func, window_length, polyorder, axis=-1)
 
     @staticmethod
     def get_freq(func, TR=0.105, spectrum_type='psd'):
@@ -983,7 +1050,6 @@ class ParseFuncFile():
 
     def from_hdf(self, input_file, attribute_tag, key="df"):
         setattr(self, attribute_tag, pd.read_hdf(input_file, key))
-
 
 class ParseExpToolsFile(object):
 
@@ -1034,39 +1100,65 @@ class ParseExpToolsFile(object):
 
         """Initialize object and do all of the parsing/correction/reading"""
 
-        self.subject = int(subject)
-        self.run = int(run)
-        self.deleted_volumes = delete_vols
-        self.TR = TR
-        self.delete_time = self.deleted_volumes*self.TR
+        self.tsv_file           = tsv_file
+        self.subject            = int(subject)
+        self.run                = int(run)
+        self.TR                 = TR
+        self.deleted_volumes    = delete_vols
+        self.delete_time        = self.deleted_volumes*self.TR
+        self.button             = button
+        self.blinks             = blinks
+
+        if isinstance(tsv_file, str):
+            if not tsv_file.endswith("h5"):
+                self.preprocess_exptools_file(tsv_file, run=self.run)
+                self.df_onsets = self.get_onset_df(index=False)
+            else:
+                if self.attribute_tag == None:
+                    hdf_store = pd.HDFStore(tsv_file)
+                    hdf_keys = hdf_store.keys()
+                    for key in hdf_keys:
+                        key = key.strip("/")
+                        setattr(self, key, hdf_store.get(key))
+                else:
+                    self.from_hdf(tsv_file, self.attribute_tag, key=self.hdf_key)
+        elif isinstance(tsv_file, list):
+            df_onsets = []
+            for run, onset_file in enumerate(tsv_file):
+                self.preprocess_exptools_file(onset_file, run=run+1)
+                df_onsets.append(self.get_onset_df(index=False))
+                
+            self.df_onsets = pd.concat(df_onsets).set_index(['subject', 'run', 'event_type'])
+
+    def preprocess_exptools_file(self, tsv_file, run=1):
 
         data_onsets = []
         with open(tsv_file) as f:
             timings = pd.read_csv(f, delimiter='\t')
             data_onsets.append(pd.DataFrame(timings))
 
-        self.data = data_onsets[0]
-        self.start_times = pd.DataFrame(self.data[(self.data['response'] == 't') & (self.data['trial_nr'] == 1) & (self.data['phase'] == 0)][['onset']])
+        self.data           = data_onsets[0]
+        self.start_times    = pd.DataFrame(self.data[(self.data['response'] == 't') & (self.data['trial_nr'] == 1) & (self.data['phase'] == 0)][['onset']])
         self.data_cut_start = self.data.drop([q for q in np.arange(0,self.start_times.index[0])])
-        self.onset_times = pd.DataFrame(self.data_cut_start[(self.data_cut_start['event_type'] == 'stim') & (self.data_cut_start['condition'].notnull()) | (self.data_cut_start['response'] == 'b')][['onset', 'condition']]['onset'])
-        self.condition = pd.DataFrame(self.data_cut_start[(self.data_cut_start['event_type'] == 'stim') & (self.data_cut_start['condition'].notnull()) | (self.data_cut_start['response'] == 'b')]['condition'])
+        self.onset_times    = pd.DataFrame(self.data_cut_start[(self.data_cut_start['event_type'] == 'stim') & (self.data_cut_start['condition'].notnull()) | (self.data_cut_start['response'] == 'b')][['onset', 'condition']]['onset'])
+        self.condition      = pd.DataFrame(self.data_cut_start[(self.data_cut_start['event_type'] == 'stim') & (self.data_cut_start['condition'].notnull()) | (self.data_cut_start['response'] == 'b')]['condition'])
 
         # add button presses
-        if button:
+        if self.button:
             self.response = self.data_cut_start[(self.data_cut_start['response'] == 'b')]
             self.condition.loc[self.response.index] = 'response'
 
         self.onset = np.concatenate((self.onset_times, self.condition), axis=1)
 
         # add eyeblinks
-        if isinstance(blinks, np.ndarray) or isinstance(blinks, str):
-            if isinstance(blinks, np.ndarray):
-                self.eye_blinks = blinks
-            elif isinstance(blinks, str):
-                if blinks.endwith(".npy"):
-                    self.eye_blinks = np.load(blinks)
+        if isinstance(self.blinks, np.ndarray) or isinstance(self.blinks, str):
+            if isinstance(self.blinks, np.ndarray):
+                self.eye_blinks = self.blinks
+            elif isinstance(self.blinks, str):
+                if self.blinks.endwith(".npy"):
+                    self.eye_blinks = np.load(self.blinks)
                 else:
-                    raise ValueError(f"Could not recognize type of {blinks}. Should be numpy array or string to numpy file")
+                    raise ValueError(f"Could not recognize type of {self.blinks}. Should be numpy array or string to numpy file")
 
             self.eye_blinks = self.eye_blinks.astype('object').flatten()
             tmp = self.onset[:,0].flatten()
@@ -1093,11 +1185,25 @@ class ParseExpToolsFile(object):
         # correct for start time of experiment and deleted time due to removal of inital volumes
         self.onset[:,0] = self.onset[:,0]-float(self.start_times['onset'] + self.delete_time)
 
-        # create nideconv-compatible dataframe
-        self.onset_df = pd.DataFrame(self.onset, columns=['onset', 'event_type'])
-        self.onset_df['subject'], self.onset_df['run'] = self.subject, self.run
-        self.onset_df['event_type'] = self.onset_df['event_type'].astype(str)
-        self.onset_df['onset'] = self.onset_df['onset'].astype(float)
+        # make dataframe
+        self.onset_df = self.add_index(self.onset, columns=['onset', 'event_type'], subject=self.subject, run=run)
+
+    @staticmethod
+    def add_index(array, columns=None, subject=1, run=1, TR=0.105, set_index=False):
+        
+        if columns == None:
+            df = pd.DataFrame(array)
+        else:
+            df = pd.DataFrame(array, columns=columns)
+            
+        df['subject'], df['run']    = subject, run
+        df['event_type']            = df['event_type'].astype(str)
+        df['onset']                 = df['onset'].astype(float)
+
+        if set_index:
+            return df.set_index(['subject', 'event_type'])
+        else:
+            return df        
 
     def get_onset_df(self, index=False):
         """Return the indexed DataFrame containing onset times"""
@@ -1140,6 +1246,7 @@ class ParseExpToolsFile(object):
         else:
             np.savetxt(fname, onsets, fmt='%1.3f')
             return fname
+
 
 class ParsePhysioFile():
 
@@ -1730,9 +1837,11 @@ class CollectSubject:
             self.prf_array = prf.make_prf(self.prf_stim, size=self.target_params[2], mu_x=self.target_params[0], mu_y=self.target_params[1])
 
         try:
-            self.normalization_params = pd.read_csv(get_file_from_substring([f"hemi-{self.hemi_tag}", "normalization"], self.cx_dir), index_col=0)
+            self.normalization_params_df    = pd.read_csv(get_file_from_substring([f"hemi-{self.hemi_tag}", "normalization", "csv"], self.cx_dir), index_col=0)
+            self.normalization_params       = np.load(get_file_from_substring([f"hemi-{self.hemi_tag}", "normalization", "npy"], self.cx_dir))
         except:
-            self.normalization_params = None
+            self.normalization_params_df    = None
+            self.normalization_params       = None
 
     def return_prf_params(self, hemi="lh"):
         """return pRF parameters from :class:`linescanning.utils.VertexInfo`"""
