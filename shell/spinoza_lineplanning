@@ -45,6 +45,11 @@ Notes:
   - It also depends on python3; if something doesn't seem to work, try to update the package
     with python -m pip install <package> --upgrade
 
+Command with master:
+  master -m 00 -s <subject> -h <hemi> -n <session>
+  master -m 00 -s 001 -h left -n 3                    # use session 3
+  master -m 00 -s 001 -h left -n 1                    # use session 1 (uses identity matrix)
+
 ---------------------------------------------------------------------------------------------------
 
 USAGE
@@ -60,18 +65,18 @@ fi
 #
 while getopts uos:i:p:h:n: argument
 do
-    case ${argument} in
-      s)  subject=${OPTARG}
-            ;;
-      n)  session=${OPTARG}
-            ;;            
-      i)  nifti=${OPTARG}
-            ;;
-      p)  ctxfile=${OPTARG}
-            ;;
-      h)  hemi=${OPTARG}
-            ;;
-    esac
+  case ${argument} in
+    s)  subject=${OPTARG}
+          ;;
+    n)  session=${OPTARG}
+          ;;            
+    i)  nifti=${OPTARG}
+          ;;
+    p)  ctxfile=${OPTARG}
+          ;;
+    h)  hemi=${OPTARG}
+          ;;
+  esac
 done
 
 #-----------------------------------------------------------------------------
@@ -89,9 +94,11 @@ echo
 
 #-----------------------------------------------------------------------------
 # Check if all input are correctly specified
-if [[ ! -d ${nifti} ]]; then
-  echo "Please specify the path to the raw session 2 anatomy"
-  exit 1
+if [[ ${session} -ne 1 ]]; then
+  if [[ ! -d ${nifti} ]]; then
+    echo "Please specify the path to the raw session ${session} anatomy"
+    exit 1
+  fi
 fi
 
 echo "Subject                            = ['${subject}']"
@@ -127,42 +134,47 @@ fi
 
 #-----------------------------------------------------------------------------
 # Convert PARREC to nifti for registration
-if [[ ! -d ${nifti}/nifti ]]; then
-  echo "Converting data with dcm2niix"
-  call_dcm2niix -i ${nifti} -o ${nifti}/nifti
-  echo
-fi
+if [[ ${session} -ne 1 ]]; then
+  if [[ ! -d ${nifti}/nifti ]]; then
+    echo "Converting data with dcm2niix"
+    call_dcm2niix -i ${nifti} -o ${nifti}/nifti
+    echo
+  fi
 
-# find delay time for nifti file
-PAR_FILE=`find ${nifti} -maxdepth 1 -type f -name "*.PAR" 2>/dev/null`
-ttime=`cat ${PAR_FILE} | awk '/^\s*$/ {next;} {print $33}' | grep -oE '[0-9]+' | head -n 1`
-      # echo content      #extract 33rd column              # filter numbers    # get first value (= trigger delay)
+  # find delay time for nifti file
+  PAR_FILE=`find ${nifti} -maxdepth 1 -type f -name "*.PAR" 2>/dev/null`
+  ttime=`cat ${PAR_FILE} | awk '/^\s*$/ {next;} {print $33}' | grep -oE '[0-9]+' | head -n 1`
+        # echo content      #extract 33rd column              # filter numbers    # get first value (= trigger delay)
 
-if [[ -z ${ttime} ]]; then
-  # set ttime to 1008 if command above did not work
-  ttime="1008"
-  echo "Could not find Trigger Delay time in .PAR file, setting it to \"${ttime}\""
+  if [[ -z ${ttime} ]]; then
+    # set ttime to 1008 if command above did not work
+    ttime="1008"
+    echo "Could not find Trigger Delay time in .PAR file, setting it to \"${ttime}\""
+  else
+    echo "Trigger Delay time                 = ['${ttime}']"
+  fi
+
+  anat_session2=`find "${nifti}/nifti" -type f \( -name "*t${ttime}*" -and -name "*real*" -and -name "*.nii.gz" \) 2>/dev/null`
+  if [[ -z ${anat_session2} ]]; then
+    echo "ERROR: Couldn't find lower anatomy file, please specify correctly.."
+    exit 1
+  elif [ `echo ${anat_session2} | wc -w` -gt 1 ]; then
+    echo "ERROR: Found more than 1 file, make sure only one file is specified for session 2 anatomy:"
+    for i in ${anat_session2[@]}; do echo "  ${i}"; done
+    exit 1
+  else
+    echo "Session ${session} input                    = ['`basename ${anat_session2}`']"
+  fi
+
+  #-----------------------------------------------------------------------------
+  # Call ANTs registration with Rigid body transformation
+  genaff=${nifti}/nifti/${subject}_from-fs_to-ses${session}_desc-genaff.mat
 else
-  echo "Trigger Delay time                 = ['${ttime}']"
+  genaff="identity"
+  anat_session2=${anat_session1}
 fi
 
-anat_session2=`find "${nifti}/nifti" -type f \( -name "*t${ttime}*" -and -name "*real*" -and -name "*.nii.gz" \) 2>/dev/null`
-if [[ -z ${anat_session2} ]]; then
-  echo "ERROR: Couldn't find lower anatomy file, please specify correctly.."
-  exit 1
-elif [ `echo ${anat_session2} | wc -w` -gt 1 ]; then
-  echo "ERROR: Found more than 1 file, make sure only one file is specified for session 2 anatomy:"
-  for i in ${anat_session2[@]}; do echo "  ${i}"; done
-  exit 1
-else
-  echo "Session ${session} input                    = ['`basename ${anat_session2}`']"
-fi
-
-#-----------------------------------------------------------------------------
-# Call ANTs registration with Rigid body transformation
-genaff=${nifti}/nifti/${subject}_from-fs_to-ses${session}_desc-genaff.mat
-
-if [[ ! -f ${genaff} ]]; then
+if [[ ! -f ${genaff} ]] && [[ ${genaff} != "identity" ]]; then
   # enter bash ${DIR_SCRIPTS}/bin/call_antsregistration.sh for help
   echo "Register FS (orig.mgz) to session ${session}"
   call_antsregistration \
@@ -179,17 +191,20 @@ fi
 # of the line in session 1 anatomy calculated based on the minimal curvature
 # and pRF-mapping
 line_orientation_file=${ctxfile}
-if [[ -f ${genaff} ]]; then
+if [[ -f ${genaff} ]] || [[ ${genaff} == "identity" ]]; then
 
-  call_mrconsole \
-    -s ${subject} \
-    -q 1 \
-    -n ${session} \
-    -d ${DIR_DATA_DERIV} \
-    --ses2 ${anat_session2} \
-    -a ${genaff} \
-    -h ${hemi} \
-    -l ${line_orientation_file}
+  # call_mrconsole \
+  #   -s ${subject} \
+  #   -q 1 \
+  #   -n ${session} \
+  #   -d ${DIR_DATA_DERIV} \
+  #   --ses2 ${anat_session2} \
+  #   -a ${genaff} \
+  #   -h ${hemi} \
+  #   -l ${line_orientation_file}
+
+  cmd="call_mrconsole -s ${subject} -q 1 -n ${session} -d ${DIR_DATA_DERIV} --ses2 ${anat_session2} -a ${genaff} -h ${hemi} -l ${line_orientation_file}"
+  exec $cmd
 
   if [[ $? != 0 ]]; then
     echo
@@ -205,7 +220,9 @@ fi
 
 # overwrite file earlier created with call_fs_to_ses2 or something
 if [ -d ${DIR_DATA_DERIV}/pycortex/${subject}/transforms ]; then
-  cp ${genaff} ${DIR_DATA_DERIV}/pycortex/${subject}/transforms
+  if [[ ${genaff} != "identity" ]]; then
+    cp ${genaff} ${DIR_DATA_DERIV}/pycortex/${subject}/transform
+  fi
 fi
 
 #-----------------------------------------------------------------------------
