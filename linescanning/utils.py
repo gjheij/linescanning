@@ -1442,91 +1442,6 @@ def random_timeseries(intercept, volatility, nr):
 
 
 class LazyPlot():
-    """LazyPlot
-
-    Class for plotting because I'm lazy and I don't want to go through the `matplotlib` motion everything I quickly want to visualize something. This class makes that a lot easier. It allows single inputs, lists with multiple timecourses, labels, error shadings, and much more.
-
-    Parameters
-    ----------
-    ts: list, numpy.ndarray
-        Input data. Can either be a single list, or a list of multiple numpy arrays. If you want labels, custom colors, or error bars, these inputs must come in lists of similar length as `ts`!
-    xx: list, numpy.ndarray, optional
-        X-axis array
-    error: list, numpy.ndarray, optional
-        Error data with the same length/shape as the input timeseries, by default None. Can be either a numpy.ndarray for 1 timeseries, or a list of numpy.ndarrays for multiple timeseries
-    error_alpha: float, optional
-        Opacity level for error shadings, by default 0.3
-    x_label: str, optional
-        Label of x-axis, by default None
-    y_label: str, optional
-        Label of y-axis, by default None
-    labels: str, list, optional
-        String (if 1 timeseries) or list (with the length of `ts`) of colors, by default None. Labels for the timeseries to be used in the legend
-    title: str, optional
-        Plot title, by default None
-    xkcd: bool, optional
-        Plot the figre in XKCD-style (cartoon), by default False
-    color: str, list, optional
-        String (if 1 timeseries) or list (with the length of `ts`) of colors, by default None. If nothing is specified, we'll use `cmap` to create a color palette
-    cmap: str, optional
-        Color palette to use for colors if no individual colors are specified, by default 'viridis'
-    figsize: tuple, optional
-        Figure dimensions as per usual matplotlib conventions, by default (12,5)
-    save_as: str, optional
-        Save the plot, by default None. If you want to use figures in Inkscape, save them as PDFs to retain high resolution
-    font_size: int, optional
-        Font size of titles and axis labels, by default 12
-    add_hline: dict, optional
-        Dictionary for a horizontal line through the plot, by default None. Collects the following items:
-
-        >>> add_hline = {'pos' 0,       # position
-        >>>              'color': 'k',  # color
-        >>>              'lw': 1,       # linewidth
-        >>>              'ls': '--'}    # linestyle
-        You can get the settings above by specifying *add_hline='defaults'*
-    add_vline: [type], optional
-        Dictionary for a vertical line through the plot, by default None. Same keys as `add_hline`
-    line_width: int, list, optional
-        Line widths for either all graphs (then *int*) or a *list* with the number of elements as requested graphs, default = 1.
-    axs: <AxesSubplot:>, optional
-        Matplotlib axis to store the figure on
-    y_lim: list, optional
-        List for `axs.set_ylim`
-    set_xlim_zero: bool, optional
-        Reduces the space between y-axis and start of the plot. Is set before sns.despine. Default = False
-
-    Example
-    ----------
-    >>> # create a bunch of timeseries
-    >>> from linescanning import utils
-    >>> ts = utils.random_timeseries(1.2, 0.0, 100)
-    >>> ts1 = utils.random_timeseries(1.2, 0.3, 100)
-    >>> ts2 = utils.random_timeseries(1.2, 0.5, 100)
-    >>> ts3 = utils.random_timeseries(1.2, 0.8, 100)
-    >>> ts4 = utils.random_timeseries(1.2, 1, 100)
-
-    >>> # plot 1 timecourse
-    >>> utils.LazyPlot(ts2, figsize=(20, 5))
-    <linescanning.utils.LazyPlot at 0x7f839b0289d0>
-
-    >>> # plot multiple timecourses, add labels, and save file
-    >>> utils.LazyPlot([ts, ts1, ts2, ts3, ts4], figsize=(20, 5), save_as="test_LazyPlot.pdf", labels=['vol=0', 'vol=0.3', 'vol=0.5', 'vol=0.8', 'vol=1.0'])
-    <linescanning.utils.LazyPlot at 0x7f839b2177c0>
-
-    >>> # add horizontal line at y=0
-    >>> hline = {'pos': 0, 'color': 'k', 'lw': 0.5, 'ls': '--'}
-    >>> >>> utils.LazyPlot(ts2, figsize=(20, 5), add_hline=hline)
-    <linescanning.utils.LazyPlot at 0x7f839b053580>
-
-    >>> # add shaded error bars
-    >>> from scipy.stats import sem
-    # make some stack
-    >>> stack = np.hstack((ts1[...,np.newaxis],ts2[...,np.newaxis],ts4[...,np.newaxis]))
-    >>> avg = stack.mean(axis=-1) # calculate mean
-    >>> err = sem(stack, axis=-1) # calculate error
-    >>> utils.LazyPlot(avg, figsize=(20, 5), error=err)
-    <linescanning.utils.LazyPlot at 0x7f839b0d5220>
-    """
     
     def __init__(self, 
                  ts, 
@@ -1893,6 +1808,57 @@ class CollectSubject:
         _, self.prediction, _ = self.modelling.plot_vox(vox_nr=self.target_vertex, model=self.model, stage='iter', make_figure=True)
 
 class CurveFitter():
+    """CurveFitter
+
+    Simple class to perform a quick curve fitting procedure on `y_data`. You can either specify your own function with `func`, or select a polynomial of order `order` (currently up until 3rd-order is included). Internally uses `lmfit.Model` to perform the fitting, allowing for access to confidence intervals.
+
+    Parameters
+    ----------
+    y_data: np.ndarray
+        Data-points to perform fitting on
+    x: np.ndarray, optional
+        Array describing the x-axis, by default None. If `None`, we'll take `np.arange` of `y_data.shape[0]`. 
+    func: <function> object, optional
+        Use custom function describing the behavior of the fit, by default None. If `none`, we'll assume either a linear or polynomial fit (up to 3rd order)
+    order: str, int, optional
+        Order of polynomial fit, by default "3rd". Can either be '1st'|1, '2nd'|2, or '3rd'|3
+    verbose: bool, optional
+        Print summary of fit, by default True
+    interpolate: str, optional
+        Method of interpolation for an upsampled version of the predicted data (default = 1000 samples)
+
+    Raises
+    ----------
+    NotImplementedError
+        If `func=None` and no valid polynomial order (see above) was specified
+
+    Example
+    ----------
+    >>> # imports
+    >>> from linescanning import utils
+    >>> import numpy as np
+    >>> # define data points
+    >>> data = np.array([5.436, 5.467, 5.293, 0.99 , 2.603, 1.902, 2.317])
+    >>> # create instantiation of CurveFitter
+    >>> cf = utils.CurveFitter(data, order=3, verbose=False)
+    >>> # initiate figure with axis to be fed into LazyPlot
+    >>> fig, axs = plt.subplots(figsize=(8,8))
+    >>> # plot original data points
+    >>> axs.plot(cf.x, data, 'o', color="#DE3163", alpha=0.6)
+    >>> # plot upsampled fit with 95% confidence intervals as shaded error
+    >>> utils.LazyPlot(cf.y_pred_upsampled,
+    >>>             xx=cf.x_pred_upsampled,
+    >>>             error=cf.ci_upsampled,
+    >>>             axs=axs,
+    >>>             color="#cccccc",
+    >>>             x_label="x-axis",
+    >>>             y_label="y-axis",
+    >>>             title="Curve-fitting with polynomial (3rd-order)",
+    >>>             set_xlim_zero=False,
+    >>>             sns_trim=True,
+    >>>             line_width=1,
+    >>>             font_size=20)
+    """
 
     def __init__(self, y_data, x=None, func=None, order="3rd", verbose=True, interpolate='linear'):
 
