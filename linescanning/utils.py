@@ -1921,6 +1921,7 @@ class CurveFitter():
     ----------
     >>> # imports
     >>> from linescanning import utils
+    >>> import matplotlib.pyplot as plt
     >>> import numpy as np
     >>> # define data points
     >>> data = np.array([5.436, 5.467, 5.293, 0.99 , 2.603, 1.902, 2.317])
@@ -1943,6 +1944,7 @@ class CurveFitter():
     >>>             sns_trim=True,
     >>>             line_width=1,
     >>>             font_size=20)
+    >>> plt.show()
     """
 
     def __init__(self, y_data, x=None, func=None, order="3rd", verbose=True, interpolate='linear'):
