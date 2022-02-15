@@ -1471,7 +1471,7 @@ class LazyPlot():
     cmap: str, optional
         Color palette to use for colors if no individual colors are specified, by default 'viridis'
     figsize: tuple, optional
-        Figure dimensions as per usual matplotlib conventions, by default (12,5)
+        Figure dimensions as per usual matplotlib conventions, by default (30,5)
     save_as: str, optional
         Save the plot, by default None. If you want to use figures in Inkscape, save them as PDFs to retain high resolution
     font_size: int, optional
