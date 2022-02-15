@@ -1483,7 +1483,7 @@ class LazyPlot():
         >>>              'color': 'k',  # color
         >>>              'lw': 1,       # linewidth
         >>>              'ls': '--'}    # linestyle
-        You can get the settings above by specifying *add_hline='defaults'*
+        You can get the settings above by specifying *add_hline='default'*
     add_vline: [type], optional
         Dictionary for a vertical line through the plot, by default None. Same keys as `add_hline`
     line_width: int, list, optional
@@ -1971,17 +1971,17 @@ class CurveFitter():
 
         self.pmodel = lmfit.Model(self.func)
         self.params = self.pmodel.make_params(a=1, b=2, c=1, d=1)
-
         self.result = self.pmodel.fit(self.y_data, self.params, x=self.x)
 
         if self.verbose:
             print(self.result.fit_report())
 
-        self.x_pred_upsampled = np.linspace(self.x[0], self.x[-1], 1000)
-        self.y_pred_upsampled = self.result.eval(x=self.x_pred_upsampled)
-        self.y_pred = self.result.best_fit
-        self.ci = self.result.eval_uncertainty()
-        self.ci_upsampled = glm.resample_stim_vector(self.ci, len(self.x_pred_upsampled), interpolate=self.interpolate)
+        # create predictions & confidence intervals that are compatible with LazyPlot
+        self.y_pred             = self.result.best_fit
+        self.ci                 = self.result.eval_uncertainty()
+        self.ci_upsampled       = glm.resample_stim_vector(self.ci, len(self.x_pred_upsampled), interpolate=self.interpolate)
+        self.x_pred_upsampled   = np.linspace(self.x[0], self.x[-1], 1000)
+        self.y_pred_upsampled   = self.result.eval(x=self.x_pred_upsampled)
 
     @staticmethod
     def first_order(x, a, b):
