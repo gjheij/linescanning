@@ -1,3 +1,4 @@
+from configparser import Interpolation
 from multiprocessing.sharedctypes import Value
 from attr import has
 import attr
@@ -5,7 +6,8 @@ from numpy import isin
 import cortex
 import csv
 import json
-from . import prf
+from . import prf, glm
+import lmfit
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import nibabel as nb
@@ -21,7 +23,7 @@ from PIL import ImageColor
 from prfpy import stimulus
 import random
 from re import I, S, T
-from scipy import io, signal
+from scipy import io, signal, optimize, stats
 import seaborn as sns
 from shapely import geometry
 import subprocess
@@ -1624,13 +1626,15 @@ class LazyPlot():
                 x = self.xx.copy()
 
             axs.plot(x, self.array, color=self.color, label=self.labels, lw=self.line_width)
-
+        
             if isinstance(self.error, list) or isinstance(self.error, np.ndarray):
                 if np.isscalar(self.error) or len(self.error) == len(self.array):
                     ymin = self.array - self.error
                     ymax = self.array + self.error
                 elif len(self.error) == 2:
                     ymin, ymax = self.error
+                else:
+                    raise ValueError(f"Don't underestimate input: {self.error}")
                 axs.fill_between(x, ymax, ymin, color=self.color, alpha=self.error_alpha)
 
         if isinstance(self.y_lim, list):
@@ -1863,3 +1867,104 @@ class CollectSubject:
 
     def target_prediction_prf(self):
         _, self.prediction, _ = self.modelling.plot_vox(vox_nr=self.target_vertex, model=self.model, stage='iter', make_figure=True)
+
+class CurveFitter():
+    """CurveFitter
+
+    Simple class to perform a quick curve fitting procedure on `y_data`. You can either specify your own function with `func`, or select a polynomial of order `order` (currently up until 3rd-order is included). Internally uses `lmfit.Model` to perform the fitting, allowing for access to confidence intervals.
+
+    Parameters
+    ----------
+    y_data: np.ndarray
+        Data-points to perform fitting on
+    x: np.ndarray, optional
+        Array describing the x-axis, by default None. If `None`, we'll take `np.arange` of `y_data.shape[0]`. 
+    func: <function> object, optional
+        Use custom function describing the behavior of the fit, by default None. If `none`, we'll assume either a linear or polynomial fit (up to 3rd order)
+    order: str, int, optional
+        Order of polynomial fit, by default "3rd". Can either be '1st'|1, '2nd'|2, or '3rd'|3
+    verbose: bool, optional
+        Print summary of fit, by default True
+    interpolate: str, optional
+        Method of interpolation for an upsampled version of the predicted data (default = 1000 samples)
+
+    Raises
+    ----------
+    NotImplementedError
+        If `func=None` and no valid polynomial order (see above) was specified
+
+    Example
+    ----------
+    >>> # imports
+    >>> from linescanning import utils
+    >>> import numpy as np
+    >>> # define data points
+    >>> data = np.array([5.436, 5.467, 5.293, 0.99 , 2.603, 1.902, 2.317])
+    >>> # create instantiation of CurveFitter
+    >>> cf = utils.CurveFitter(data, order=3, verbose=False)
+    >>> # initiate figure with axis to be fed into LazyPlot
+    >>> fig, axs = plt.subplots(figsize=(8,8))
+    >>> # plot original data points
+    >>> axs.plot(cf.x, data, 'o', color="#DE3163", alpha=0.6)
+    >>> # plot upsampled fit with 95% confidence intervals as shaded error
+    >>> utils.LazyPlot(cf.y_pred_upsampled,
+    >>>             xx=cf.x_pred_upsampled,
+    >>>             error=cf.ci_upsampled,
+    >>>             axs=axs,
+    >>>             color="#cccccc",
+    >>>             x_label="x-axis",
+    >>>             y_label="y-axis",
+    >>>             title="Curve-fitting with polynomial (3rd-order)",
+    >>>             set_xlim_zero=False,
+    >>>             sns_trim=True,
+    >>>             line_width=1,
+    >>>             font_size=20)
+    """
+
+    def __init__(self, y_data, x=None, func=None, order="3rd", verbose=True, interpolate='linear'):
+
+        self.y_data         = y_data
+        self.func           = func
+        self.order          = order
+        self.x              = x
+        self.verbose        = verbose
+        self.interpolate    = interpolate
+
+        if self.func == None:
+            if order == "1st" or order == 1:
+                self.func = self.first_order
+            elif order == "2nd" or order == 2:
+                self.func = self.second_order
+            elif order == "3rd" or order == 3:
+                self.func = self.third_order
+            else:
+                raise NotImplementedError(f"polynomial of order {order} is not available")
+
+        if self.x == None:
+            self.x = np.arange(self.y_data.shape[0])
+
+        self.pmodel = lmfit.Model(self.func)
+        self.params = self.pmodel.make_params(a=1, b=2, c=1, d=1)
+
+        self.result = self.pmodel.fit(self.y_data, self.params, x=self.x)
+
+        if self.verbose:
+            print(self.result.fit_report())
+
+        self.x_pred_upsampled = np.linspace(self.x[0], self.x[-1], 1000)
+        self.y_pred_upsampled = self.result.eval(x=self.x_pred_upsampled)
+        self.y_pred = self.result.best_fit
+        self.ci = self.result.eval_uncertainty()
+        self.ci_upsampled = glm.resample_stim_vector(self.ci, len(self.x_pred_upsampled), interpolate=self.interpolate)
+
+    @staticmethod
+    def first_order(x, a, b):
+        return a * x + b
+    
+    @staticmethod
+    def second_order(x, a, b, c):
+        return a * x + b * x**2 + c
+    
+    @staticmethod
+    def third_order(x, a, b, c, d):
+	    return (a * x) + (b * x**2) + (c * x**3) + d
