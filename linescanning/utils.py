@@ -1506,17 +1506,17 @@ class LazyPlot():
     >>> ts4 = utils.random_timeseries(1.2, 1, 100)
 
     >>> # plot 1 timecourse
-    >>> glm.LazyPlot(ts2, figsize=(20, 5))
-    <linescanning.glm.LazyPlot at 0x7f839b0289d0>
+    >>> utils.LazyPlot(ts2, figsize=(20, 5))
+    <linescanning.utils.LazyPlot at 0x7f839b0289d0>
 
     >>> # plot multiple timecourses, add labels, and save file
-    >>> glm.LazyPlot([ts, ts1, ts2, ts3, ts4], figsize=(20, 5), save_as="/mnt/d/FSL/shared/spinoza/programs/project_repos/PlayGround/results/test_LazyPlot.pdf", labels=['vol=0', 'vol=0.3', 'vol=0.5', 'vol=0.8', 'vol=1.0'])
-    <linescanning.glm.LazyPlot at 0x7f839b2177c0>
+    >>> utils.LazyPlot([ts, ts1, ts2, ts3, ts4], figsize=(20, 5), save_as="test_LazyPlot.pdf", labels=['vol=0', 'vol=0.3', 'vol=0.5', 'vol=0.8', 'vol=1.0'])
+    <linescanning.utils.LazyPlot at 0x7f839b2177c0>
 
     >>> # add horizontal line at y=0
     >>> hline = {'pos': 0, 'color': 'k', 'lw': 0.5, 'ls': '--'}
-    >>> >>> glm.LazyPlot(ts2, figsize=(20, 5), add_hline=hline)
-    <linescanning.glm.LazyPlot at 0x7f839b053580>
+    >>> >>> utils.LazyPlot(ts2, figsize=(20, 5), add_hline=hline)
+    <linescanning.utils.LazyPlot at 0x7f839b053580>
 
     >>> # add shaded error bars
     >>> from scipy.stats import sem
@@ -1524,11 +1524,35 @@ class LazyPlot():
     >>> stack = np.hstack((ts1[...,np.newaxis],ts2[...,np.newaxis],ts4[...,np.newaxis]))
     >>> avg = stack.mean(axis=-1) # calculate mean
     >>> err = sem(stack, axis=-1) # calculate error
-    >>> glm.LazyPlot(avg, figsize=(20, 5), error=err)
-    <linescanning.glm.LazyPlot at 0x7f839b0d5220>
+    >>> utils.LazyPlot(avg, figsize=(20, 5), error=err)
+    <linescanning.utils.LazyPlot at 0x7f839b0d5220>
     """
     
-    def __init__(self, ts, xx=None, error=None, error_alpha=0.3, x_label=None, y_label=None, title=None, xkcd=False, color=None, figsize=(12, 5), cmap='viridis', save_as=None,  labels=None, font_size=12, add_hline=None, add_vline=None, line_width=1, axs=None, y_lim=None, x_lim=None, sns_offset=10, sns_trim=True, sns_rm_bottom=False, set_xlim_zero=False):
+    def __init__(self, 
+                 ts, 
+                 xx=None, 
+                 error=None, 
+                 error_alpha=0.3, 
+                 x_label=None, 
+                 y_label=None, 
+                 title=None, 
+                 xkcd=False, 
+                 color=None, 
+                 figsize=(30, 5), 
+                 cmap='viridis', 
+                 save_as=None,  
+                 labels=None, 
+                 font_size=12, 
+                 add_hline=None, 
+                 add_vline=None, 
+                 line_width=1, 
+                 axs=None, 
+                 y_lim=None, 
+                 x_lim=None, 
+                 sns_offset=10, 
+                 sns_trim=True, 
+                 sns_rm_bottom=False, 
+                 set_xlim_zero=False):
 
         self.array          = ts
         self.xx             = xx
