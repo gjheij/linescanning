@@ -356,7 +356,7 @@ def make_prf(prf_object, mu_x=0, mu_y=0, size=None):
     return prf
 
 
-def plot_prf(prf,vf_extent, return_axis=False, save_as=None, ax=None):
+def plot_prf(prf,vf_extent, save_as=None, ax=None, cmap='magma', cross_color="white", alpha=None):
 
     """
     plot_prf
@@ -366,9 +366,19 @@ def plot_prf(prf,vf_extent, return_axis=False, save_as=None, ax=None):
     Parameters
     ----------
     prf: numpy.ndarray
-        instantiation of `gauss2D_iso_cart`
+        instantiation of `gauss2D_iso_cart`; will be np.squeeze'ed over the first axis if `ndim >= 3`.
     vf_extent: list
         the space the pRF lives in
+    save_as: str, optional
+        file path to save the image (*.pdf is recommended for quality and compatibility with Inkscape)
+    ax: <AxesSubplot:>, optional
+        Matplotlib axis to store the figure on
+    cmap: str, optional
+        Colormap for imshow; accepts output from :func:`linescanning.utils.make_binary_cm`. Defaults to 'magma'
+    cross_color: str, optional
+        Color for the fixation cross; defaults to 'white'. You can set it to 'k' if you have a binary colormap as input
+    alpha: float, optional
+        Opacity for imshow
 
     Returns
     ----------
@@ -378,17 +388,27 @@ def plot_prf(prf,vf_extent, return_axis=False, save_as=None, ax=None):
     if ax == None:
         ax = plt.gca()
 
-    ax.axvline(0, color='white', linestyle='dashed', lw=0.5)
-    ax.axhline(0, color='white', linestyle='dashed', lw=0.5)
-    im = ax.imshow(np.squeeze(prf, axis=0), extent=vf_extent+vf_extent, cmap='magma')
-    patch = patches.Circle((0, 0), radius=vf_extent[-1], transform=ax.transData)
+    if prf.ndim >= 3:
+        prf = np.squeeze(prf, axis=0)
+
+    if alpha == None:
+        alpha = 1
+
+    ax.axvline(0, color=cross_color, linestyle='dashed', lw=0.5)
+    ax.axhline(0, color=cross_color, linestyle='dashed', lw=0.5)
+    im = ax.imshow(prf, extent=vf_extent+vf_extent, cmap=cmap, alpha=alpha)
+    patch = patches.Circle((0, 0), 
+                           radius=vf_extent[-1], 
+                           transform=ax.transData, 
+                           edgecolor=cross_color, 
+                           facecolor="None", 
+                           linewidth=0.5)
+    ax.add_patch(patch)
     im.set_clip_path(patch)
     ax.axis('off')
 
     if save_as:
         plt.savefig(save_as, transparant=True)
-    if return_axis:
-        return ax
 
 
 # From Marco's https://github.com/VU-Cog-Sci/prfpy_tools/blob/master/utils/postproc_utils.py
@@ -884,7 +904,7 @@ def create_line_prf_matrix(log_dir,
 
         # get the onsets
         onsets = utils.ParseExpToolsFile(utils.get_file_from_substring(".tsv", log_dir), TR=TR, delete_vols=deleted_first_timepoints)
-        trial_df = onsets.get_onset_df()
+        trial_df = onsets.df_onsets.copy()
         for tr in range(nr_trs):
     
             # find time at the middle of TR
@@ -905,7 +925,7 @@ def create_line_prf_matrix(log_dir,
                 img_number = "1".zfill(zfilling)
 
             try:
-                image_file = utils.get_file_from_substring(img_number, screenshot_path)
+                image_file = utils.get_file_from_substring(f"{img_number}.png", screenshot_path)
             except:
                 image_file = None
             
@@ -1009,8 +1029,7 @@ def distance_centers(prf1,prf2):
     x2,y2 = prf2[0],prf2[1]
     
     # Calculating distance
-    return math.sqrt(math.pow(x2 - x1, 2) +
-                math.pow(y2 - y1, 2) * 1.0)
+    return math.sqrt(math.pow(x2 - x1, 2) + math.pow(y2 - y1, 2) * 1.0)
  
 
 def generate_model_params(model='gauss', dm=None, TR=1.5, outputdir=None, settings=None):
@@ -1405,10 +1424,7 @@ class pRFmodelFitting():
 
         setattr(self, f'{model}_{stage}', params)
 
-
-    def plot_vox(self, vox_nr='best', model='gauss', stage='iter', make_figure=True):
-
-        """plot real and predicted timecourses for a voxel. Also returns parameters, the numpy array representing the pRF in visual space, and timecourse of data"""
+    def make_predictions(self, vox_nr=None, model='gauss', stage='iter'):
         
         if model == "gauss":
             use_model = self.gaussian_model
@@ -1418,17 +1434,30 @@ class pRFmodelFitting():
         if hasattr(self, f"{model}_{stage}"):
             params = getattr(self, f"{model}_{stage}")
 
-            if params.ndim > 1:
-                if vox_nr == "best":
-                    vox,_ = utils.find_nearest(params[...,-1], np.amax(params[...,-1]))
-                else:
-                    vox = vox_nr
+            if params.ndim != 0:
+                if vox_nr != None:
+                    if vox_nr == "best":
+                        vox,_ = utils.find_nearest(params[...,-1], np.amax(params[...,-1]))
+                    else:
+                        vox = vox_nr
 
-                params = params[vox,...]
+                try:
+                    params = params[vox,...]
+                except:
+                    params = params
+
+                return use_model.return_prediction(*params[:-1]).T, params, vox_nr
+
+            else:
+                raise ValueError(f"No parameters found..")
         else:
             raise ValueError(f"Could not find {stage} parameters for {model}")
 
-        self.prediction = use_model.return_prediction(*params[:-1]).T
+    def plot_vox(self, vox_nr='best', model='gauss', stage='iter', make_figure=True):
+
+        """plot real and predicted timecourses for a voxel. Also returns parameters, the numpy array representing the pRF in visual space, and timecourse of data"""
+
+        self.prediction, params, vox = self.make_predictions(vox_nr=vox_nr, model=model, stage=stage)
 
         if make_figure:
             prf_array = make_prf(self.prf_stim, size=params[2], mu_x=params[0], mu_y=params[1])
