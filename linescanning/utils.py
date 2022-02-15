@@ -1808,11 +1808,9 @@ class CollectSubject:
         if self.prf_dir != None:
             self.design_fn      = get_file_from_substring("vis_design.mat", self.prf_dir)
             self.design_matrix  = io.loadmat(self.design_fn)['stim']
-
-        if self.cx_dir != None:
-            self.vert_fn        = get_file_from_substring([self.model, "best_vertices.csv"], self.cx_dir)
-            self.vert_info      = VertexInfo(self.vert_fn, subject=self.subject, hemi=self.hemi)
-
+            self.func_data_lr   = np.load(get_file_from_substring("avg_bold_hemi-LR.npy", self.prf_dir))
+            self.func_data_l    = np.load(get_file_from_substring("avg_bold_hemi-L.npy", self.prf_dir))
+            self.func_data_r    = np.load(get_file_from_substring("avg_bold_hemi-R.npy", self.prf_dir))
         # load specific analysis file
         if self.analysis_yaml != None:
             self.settings = yaml.safe_load(self.analysis_yaml)
@@ -1823,13 +1821,18 @@ class CollectSubject:
         # load the most recent analysis file. This is fine for screens/stimulus information
         if settings == "recent":
             self.analysis_yaml = opj(self.prf_dir, sorted([ii for ii in os.listdir(self.prf_dir) if "desc-settings" in ii])[-1])
-
+        
             with open(self.analysis_yaml) as file:
                 self.settings = yaml.safe_load(file)
+
+        if self.cx_dir != None:
+            self.vert_fn        = get_file_from_substring([self.model, "best_vertices.csv"], self.cx_dir)
+            self.vert_info      = VertexInfo(self.vert_fn, subject=self.subject, hemi=self.hemi)
         
         # fetch target vertex parameters
         if hasattr(self, "vert_info"):
             self.target_params = self.return_prf_params(hemi=self.hemi)
+            self.target_vertex = self.return_target_vertex(hemi=self.hemi)
 
         # create pRF if settings were specified
         if hasattr(self, "settings"):
@@ -1843,6 +1846,13 @@ class CollectSubject:
             self.normalization_params_df    = None
             self.normalization_params       = None
 
+        if self.prf_dir != None:
+            self.modelling      = prf.pRFmodelFitting(self.func_data_lr,
+                                                      design_matrix=self.design_matrix,
+                                                      settings=self.analysis_yaml)
+                                
+            self.modelling.load_params(self.normalization_params, model=self.model, stage="iter")
+
     def return_prf_params(self, hemi="lh"):
         """return pRF parameters from :class:`linescanning.utils.VertexInfo`"""
         return self.vert_info.get('prf', hemi=hemi)
@@ -1850,3 +1860,6 @@ class CollectSubject:
     def return_target_vertex(self, hemi="lh"):
         """return the vertex ID of target vertex"""
         return self.vert_info.get('index', hemi=hemi)
+
+    def target_prediction_prf(self):
+        _, self.prediction, _ = self.modelling.plot_vox(vox_nr=self.target_vertex, model=self.model, stage='iter', make_figure=True)
