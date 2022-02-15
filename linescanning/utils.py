@@ -1893,57 +1893,6 @@ class CollectSubject:
         _, self.prediction, _ = self.modelling.plot_vox(vox_nr=self.target_vertex, model=self.model, stage='iter', make_figure=True)
 
 class CurveFitter():
-    """CurveFitter
-
-    Simple class to perform a quick curve fitting procedure on `y_data`. You can either specify your own function with `func`, or select a polynomial of order `order` (currently up until 3rd-order is included). Internally uses `lmfit.Model` to perform the fitting, allowing for access to confidence intervals.
-
-    Parameters
-    ----------
-    y_data: np.ndarray
-        Data-points to perform fitting on
-    x: np.ndarray, optional
-        Array describing the x-axis, by default None. If `None`, we'll take `np.arange` of `y_data.shape[0]`. 
-    func: <function> object, optional
-        Use custom function describing the behavior of the fit, by default None. If `none`, we'll assume either a linear or polynomial fit (up to 3rd order)
-    order: str, int, optional
-        Order of polynomial fit, by default "3rd". Can either be '1st'|1, '2nd'|2, or '3rd'|3
-    verbose: bool, optional
-        Print summary of fit, by default True
-    interpolate: str, optional
-        Method of interpolation for an upsampled version of the predicted data (default = 1000 samples)
-
-    Raises
-    ----------
-    NotImplementedError
-        If `func=None` and no valid polynomial order (see above) was specified
-
-    Example
-    ----------
-    >>> # imports
-    >>> from linescanning import utils
-    >>> import numpy as np
-    >>> # define data points
-    >>> data = np.array([5.436, 5.467, 5.293, 0.99 , 2.603, 1.902, 2.317])
-    >>> # create instantiation of CurveFitter
-    >>> cf = utils.CurveFitter(data, order=3, verbose=False)
-    >>> # initiate figure with axis to be fed into LazyPlot
-    >>> fig, axs = plt.subplots(figsize=(8,8))
-    >>> # plot original data points
-    >>> axs.plot(cf.x, data, 'o', color="#DE3163", alpha=0.6)
-    >>> # plot upsampled fit with 95% confidence intervals as shaded error
-    >>> utils.LazyPlot(cf.y_pred_upsampled,
-    >>>             xx=cf.x_pred_upsampled,
-    >>>             error=cf.ci_upsampled,
-    >>>             axs=axs,
-    >>>             color="#cccccc",
-    >>>             x_label="x-axis",
-    >>>             y_label="y-axis",
-    >>>             title="Curve-fitting with polynomial (3rd-order)",
-    >>>             set_xlim_zero=False,
-    >>>             sns_trim=True,
-    >>>             line_width=1,
-    >>>             font_size=20)
-    """
 
     def __init__(self, y_data, x=None, func=None, order="3rd", verbose=True, interpolate='linear'):
 
