@@ -1177,6 +1177,8 @@ class pRFmodelFitting():
         >>> time_points = np.linspace(0,36,np.rint(float(36)/dt).astype(int))
         >>> hrf_custom = linescanning.glm.double_gamma(time_points, lag=6)
         >>> hrf_custom = hrf_custom[np.newaxis,...]
+    nr_jobs: int, optional
+        Set the number of jobs. By default 1.
     verbose: bool
         print messages to the terminal
 

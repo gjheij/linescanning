@@ -242,6 +242,7 @@ Example:
                                     verbose=True, 
                                     output_dir=outputdir,
                                     output_base=out,
+                                    nr_jobs=25,
                                     write_files=True)
     modelling.fit()
     # %%

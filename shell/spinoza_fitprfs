@@ -213,7 +213,7 @@ for dir in ${search}; do
         job="python"
       else
         if [[ ${run_locally} -eq 0 ]]; then
-          job="qsub -q ${SGE_QUEUE_LONG} -wd ${prf_dir} -N $(basename ${dir})_gauss"
+          job="qsub -q ${SGE_QUEUE_LONG} -pe smp 25 -wd ${prf_dir} -N $(basename ${dir})_gauss"
         elif [[ ${run_locally} -eq 1 ]]; then
           job="python"
         else
