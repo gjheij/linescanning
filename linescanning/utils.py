@@ -1,10 +1,7 @@
 from configparser import Interpolation
-from multiprocessing.sharedctypes import Value
-from attr import has
-import attr
 from numpy import isin
-import cortex
 import csv
+import hedfpy
 import json
 from . import prf, glm
 import lmfit
@@ -33,6 +30,7 @@ import yaml
 opj = os.path.join
 pd.options.mode.chained_assignment = None # disable warning thrown by string2float
 warnings.filterwarnings("ignore")
+
 
 def copy_hdr(source_img,dest_img):
     """copy_hdr
@@ -257,13 +255,6 @@ def bids_fullfile(bids_image):
 
     fullfile = opj(bids_image.dirname, bids_image.filename)
     return fullfile
-
-
-def ctx_config():
-    """fetch path to `Pycortex`'s configuration file"""
-
-    f = cortex.options.usercfg
-    return f
 
 
 def decode(obj):
@@ -763,7 +754,7 @@ def percent_change(ts, ax):
 
     return (ts / np.expand_dims(np.mean(ts, ax), ax) - 1) * 100    
 
-def select_from_df(df, expression="run = 1", val_as_int=True, index=['subject', 'run', 't']):
+def select_from_df(df, expression="run = 1", val_as_int=True, index='func'):
 
     # sometimes throws an error if you're trying to reindex a non-indexed dataframe
     try:
@@ -813,6 +804,11 @@ def select_from_df(df, expression="run = 1", val_as_int=True, index=['subject', 
             sub_df = sub_df.loc[main_ops(ops1(sub_df[col1], val1), ops2(sub_df[col2], val2))]
 
     if index != None:
+        if index == "func" or index == "fmri":
+            index = ['subject', 'run', 't']
+        elif index == "onsets" or index == "onsets":
+            index = ['subject', 'run', 'event_type']
+
         sub_df = sub_df.set_index(index)
 
     return sub_df
@@ -891,6 +887,12 @@ class ParseFuncFile():
         
         if isinstance(func_file, str):
             if not func_file.endswith("h5"):
+
+                try:
+                    self.run = split_bids_components(func_file)['run']
+                except:
+                    pass
+
                 self.preprocess_func_file(func_file, run=self.run, lowpass=self.low_pass, highpass=self.high_pass)
                 self.df_func_psc = self.get_psc(index=False)
                 self.df_func_raw = self.get_raw(index=False)
@@ -908,6 +910,11 @@ class ParseFuncFile():
             df_func = []
             df_raw = []
             for run, func in enumerate(func_file):
+                try:
+                    run = split_bids_components(func)['run']
+                except:
+                    pass
+
                 self.preprocess_func_file(func, run=run+1, lowpass=self.low_pass, highpass=self.high_pass)
                 df_func.append(self.get_psc(index=False))
                 df_raw.append(self.get_raw(index=False))
@@ -918,12 +925,11 @@ class ParseFuncFile():
     def preprocess_func_file(self, func_file, run=1, lowpass=True, highpass=True):
 
         # Load in datasets with tag "wcsmtSNR"
-        self.ts_wcsmtSNR = io.loadmat(func_file)
-        self.tag = list(self.ts_wcsmtSNR.keys())[-1]
-        self.ts_wcsmtSNR = self.ts_wcsmtSNR[self.tag]
-
-        self.ts_complex = self.ts_wcsmtSNR
-        self.ts_magnitude = np.abs(self.ts_wcsmtSNR)
+        self.ts_wcsmtSNR    = io.loadmat(func_file)
+        self.tag            = list(self.ts_wcsmtSNR.keys())[-1]
+        self.ts_wcsmtSNR    = self.ts_wcsmtSNR[self.tag]
+        self.ts_complex     = self.ts_wcsmtSNR
+        self.ts_magnitude   = np.abs(self.ts_wcsmtSNR)
 
         # trim beginning and end
         if self.deleted_last_timepoints != 0:
@@ -934,13 +940,17 @@ class ParseFuncFile():
         self.vox_cols = [f'vox {x}' for x in range(self.ts_corrected.shape[0])]
         self.raw_data = self.add_index(self.ts_corrected, columns=self.vox_cols, subject=self.subject, run=run, TR=self.TR)
 
-
         # apply some filtering
         if lowpass:
             self.low_passed, self.dct_set = self.lowpass_dct(self.ts_corrected, self.lb, TR=self.TR)
-            self.low_passed = self.low_passed.T
+            self.low_passed     = self.low_passed.T
             self.low_passed_psc = percent_change(self.low_passed, -1)
-            self.low_passed_df = self.add_index(self.low_passed_psc, columns=self.vox_cols, subject=self.subject, run=run, TR=self.TR, set_index=True)
+            self.low_passed_df  = self.add_index(self.low_passed_psc, 
+                                                 columns=self.vox_cols, 
+                                                 subject=self.subject,
+                                                 run=run, 
+                                                 TR=self.TR, 
+                                                 set_index=True)
         
         if highpass:
             if hasattr(self, "low_passed"):
@@ -969,9 +979,9 @@ class ParseFuncFile():
         else:
             df = pd.DataFrame(array.T, columns=columns)
             
-        df['subject'] = subject
-        df['run'] = run
-        df['t'] = list(TR*np.arange(df.shape[0]))
+        df['subject']   = subject
+        df['run']       = run
+        df['t']         = list(TR*np.arange(df.shape[0]))
 
         if set_index:
             return df.set_index(['subject', 'run', 't'])
@@ -1053,6 +1063,26 @@ class ParseFuncFile():
     def from_hdf(self, input_file, attribute_tag, key="df"):
         setattr(self, attribute_tag, pd.read_hdf(input_file, key))
 
+def split_bids_components(fname):
+
+    comp_list = fname.split('_')
+    comps = {}
+    
+    ids = ['ses', 'task', 'acq', 'rec', 'sub', 'desc', 'run']
+    for el in comp_list:
+        for i in ids:
+            if i in el:
+                comp = el.split('-')[-1]
+                if i == "run":
+                    comp = int(comp)
+
+                comps[i] = comp
+
+    if len(comps) != 0:
+        return comps
+    else:
+        print(f"Could not find any element of {ids} in {fname}")
+
 
 class ParseEyetrackerFile():
 
@@ -1099,97 +1129,340 @@ class ParseEyetrackerFile():
     >>> onsets = pd.concat(onsets).set_index(['subject', 'run', 'event_type'])
     """
 
-    def __init__(self, tsv_file, subject=1, run=1, button=False, blinks=None, TR=0.105, delete_vols=38):
+    def __init__(self, edf_file, subject=1, low_pass_pupil_f=6.0, high_pass_pupil_f=0.01, func_file=None, TR1=0.105, TR2=None, verbose=False):
 
         """Initialize object and do all of the parsing/correction/reading"""
 
-        self.tsv_file           = tsv_file
+        self.edf_file           = edf_file
+        self.func_file          = func_file
+        self.TR1                = TR1
+        self.TR2                = TR2
         self.subject            = int(subject)
-        self.run                = int(run)
-        self.TR                 = TR
-        self.deleted_volumes    = delete_vols
-        self.delete_time        = self.deleted_volumes*self.TR
-        self.button             = button
-        self.blinks             = blinks
+        self.low_pass_pupil_f   = low_pass_pupil_f
+        self.high_pass_pupil_f  = high_pass_pupil_f
+        self.verbose            = verbose
+        self.include_blinks     = False
 
-        if isinstance(tsv_file, str):
-            if not tsv_file.endswith("h5"):
-                self.preprocess_exptools_file(tsv_file, run=self.run)
-                self.df_onsets = self.get_onset_df(index=False)
-            else:
-                if self.attribute_tag == None:
-                    hdf_store = pd.HDFStore(tsv_file)
-                    hdf_keys = hdf_store.keys()
-                    for key in hdf_keys:
-                        key = key.strip("/")
-                        setattr(self, key, hdf_store.get(key))
-                else:
-                    self.from_hdf(tsv_file, self.attribute_tag, key=self.hdf_key)
-        elif isinstance(tsv_file, list):
-            df_onsets = []
-            for run, onset_file in enumerate(tsv_file):
-                self.preprocess_exptools_file(onset_file, run=run+1)
-                df_onsets.append(self.get_onset_df(index=False))
+        # add all files to h5-file
+        if isinstance(self.edf_file, str) or isinstance(self.edf_file, list):
+            self.preprocess_edf_files()
+            self.include_blinks = True
+
+    def preprocess_edf_files(self):
+        
+        # deal with edf-files
+        if isinstance(self.edf_file, str):
+            edfs = [self.edf_file]
+        elif isinstance(self.edf_file, list):
+            edfs = self.edf_file.copy()
+        else:
+            raise ValueError(f"Input must be 'str' or 'list', not '{type(self.edf_file)}'")
+
+        # deal with edf-files
+        if isinstance(self.func_file, str):
+            self.func_file = [self.func_file]
+        elif isinstance(self.func_file, list):
+            self.func_file = self.func_file.copy()
+        else:
+            raise ValueError(f"Input must be 'str' or 'list', not '{type(self.edf_file)}'")            
+
+        h5_file = opj(os.path.dirname(edfs[0]), f"eye.h5")
+        self.ho = hedfpy.HDFEyeOperator(h5_file)
+        if not os.path.exists(h5_file):
+            for i, edf_file in enumerate(edfs):
                 
-            self.df_onsets = pd.concat(df_onsets).set_index(['subject', 'run', 'event_type'])
+                # try to derive run-nr from file
+                try:
+                    run_ID = split_bids_components(edf_file)['run']
+                except:
+                    run_ID = i+1
+                    
+                self.ho.add_edf_file(edf_file)
+                self.ho.edf_message_data_to_hdf(alias=f'run_{run_ID}')
+                self.ho.edf_gaze_data_to_hdf(alias=f'run_{run_ID}',
+                                             pupil_hp=self.high_pass_pupil_f,
+                                             pupil_lp=self.low_pass_pupil_f)
+        else:
+            self.ho.open_hdf_file()
 
-    def preprocess_exptools_file(self, tsv_file, run=1):
+        self.df_eye         = []
+        self.blink_events   = []
+        self.eye_in_func    = []
+        for i, edf_file in enumerate(edfs):
 
-        data_onsets = []
-        with open(tsv_file) as f:
-            timings = pd.read_csv(f, delimiter='\t')
-            data_onsets.append(pd.DataFrame(timings))
+            if self.verbose:
+                print(f"Dealing with {edf_file}")
 
-        self.data           = data_onsets[0]
-        self.start_times    = pd.DataFrame(self.data[(self.data['response'] == 't') & (self.data['trial_nr'] == 1) & (self.data['phase'] == 0)][['onset']])
-        self.data_cut_start = self.data.drop([q for q in np.arange(0,self.start_times.index[0])])
-        self.onset_times    = pd.DataFrame(self.data_cut_start[(self.data_cut_start['event_type'] == 'stim') & (self.data_cut_start['condition'].notnull()) | (self.data_cut_start['response'] == 'b')][['onset', 'condition']]['onset'])
-        self.condition      = pd.DataFrame(self.data_cut_start[(self.data_cut_start['event_type'] == 'stim') & (self.data_cut_start['condition'].notnull()) | (self.data_cut_start['response'] == 'b')]['condition'])
+            try:
+                run_ID = split_bids_components(edf_file)['run']
+            except:
+                run_ID = i+1
 
-        # add button presses
-        if self.button:
-            self.response = self.data_cut_start[(self.data_cut_start['response'] == 'b')]
-            self.condition.loc[self.response.index] = 'response'
+            alias = f"run_{run_ID}"           
+            
+            # full output from 'fetch_relevant_info'
+            self.data = self.fetch_relevant_info(run=run_ID)
+            
+            # collect outputs
+            self.blink_events.append(self.fetch_eyeblinks())
+            self.eye_in_func.append(self.fetch_eye_func_time())
 
-        self.onset = np.concatenate((self.onset_times, self.condition), axis=1)
+        self.blink_events   = pd.concat(self.blink_events).set_index(['subject', 'run', 'event_type'])
+        self.eye_in_func    = pd.concat(self.eye_in_func).set_index(['subject', 'run', 't'])
 
-        # add eyeblinks
-        if isinstance(self.blinks, np.ndarray) or isinstance(self.blinks, str):
-            if isinstance(self.blinks, np.ndarray):
-                self.eye_blinks = self.blinks
-            elif isinstance(self.blinks, str):
-                if self.blinks.endwith(".npy"):
-                    self.eye_blinks = np.load(self.blinks)
-                else:
-                    raise ValueError(f"Could not recognize type of {self.blinks}. Should be numpy array or string to numpy file")
+    def fetch_blinks_run(self, run=1, return_type='df'):
+        blink_df = select_from_df(self.blink_events, expression=(f"run = {run}"), index=['subject', 'run', 'event_type'])
+        
+        if return_type == "df":
+            return blink_df
+        else:
+            return blink_df.values
 
-            self.eye_blinks = self.eye_blinks.astype('object').flatten()
-            tmp = self.onset[:,0].flatten()
+    @staticmethod
+    def add_index(array, columns=None, subject=1, run=1, TR=0.105, set_index=False):
+        
+        if columns == None:
+            df = pd.DataFrame(array.T)
+        else:
+            df = pd.DataFrame(array.T, columns=columns)
+            
+        df['subject'] = subject
+        df['run'] = run
+        df['t'] = list(TR*np.arange(df.shape[0]))
 
-            # combine and sort timings
-            comb = np.concatenate((self.eye_blinks, tmp))
-            comb = np.sort(comb)[...,np.newaxis]
+        if set_index:
+            return df.set_index(['subject', 'run', 't'])
+        else:
+            return df
+            
+    def fetch_eyeblinks(self):
+        return self.data['blink_events']
 
-            # add back event types by checking timing values in both arrays
-            event_array = []
-            for ii in comb:
+    def fetch_eye_func_time(self):
+        return self.data['space_func']
 
-                if ii in self.onset:
-                    idx = np.where(self.onset == ii)[0][0]
-                    event_array.append(self.onset[idx][-1])
-                else:
-                    idx = np.where(self.eye_blinks == ii)[0]
-                    event_array.append('blink')
+    def fetch_eye_tracker_time(self):
+        return self.data['space_eye']
 
-            event_array = np.array(event_array)[...,np.newaxis]
+    def fetch_relevant_info(self, run=1):
+        
+        # set alias
+        alias = f'run_{run}'
+        if self.verbose:
+            print(" Alias:       ", alias)
 
-            self.onset = np.concatenate((comb, event_array), axis=1)
+        # load times per session:
+        trial_times = self.ho.read_session_data(alias, 'trials')
+        trial_phase_times = self.ho.read_session_data(alias, 'trial_phases')        
 
-        # correct for start time of experiment and deleted time due to removal of inital volumes
-        self.onset[:,0] = self.onset[:,0]-float(self.start_times['onset'] + self.delete_time)
+        # read func data file to get nr of volumes
+        func_file = get_file_from_substring(f'run-{run}', self.func_file)
+        nr_vols = self.vols(func_file)
+        
+        if func_file.endswith("nii") or func_file.endswith("gz"):
+            TR = self.TR2
+        elif func_file.endswith('mat'):
+            TR = self.TR1
+        else:
+            TR = 0.105
 
-        # make dataframe
-        self.onset_df = self.add_index(self.onset, columns=['onset', 'event_type'], subject=self.subject, run=run)
+        # fetch duration of scan
+        func_time = nr_vols*TR
+
+        # get block parameters
+        session_start_EL_time = trial_times.iloc[0,:][0]
+        sample_rate = self.ho.sample_rate_during_period(alias)
+        session_stop_EL_time = session_start_EL_time+(func_time*sample_rate) # add number of fMRI*samplerate as stop EL time
+
+        eye = self.ho.eye_during_period([session_start_EL_time, session_stop_EL_time], alias)
+
+        if self.verbose:
+            print(" Sample rate: ", sample_rate)
+            print(" Start time:  ", session_start_EL_time)
+            print(" Stop time:   ", session_stop_EL_time)
+
+        # set some stuff required for successful plotting with seconds on the x-axis
+        div = False
+        if sample_rate == 500:
+            n_samples = int(session_stop_EL_time-session_start_EL_time)/2
+            duration_sec = n_samples*(1/sample_rate)*2
+
+            div = True
+        elif sample_rate == 1000:
+            n_samples = int(session_stop_EL_time-session_start_EL_time)
+            duration_sec = n_samples*(1/sample_rate)
+        else:
+            raise ValueError(f"Did not recognize sample_rate of {sample_rate}")
+
+        if self.verbose:
+            print(" Duration:     {}s [{} samples]".format(duration_sec,n_samples))
+
+        # Fetch a bunch of data
+        pupil_raw = np.squeeze(self.ho.signal_during_period(time_period=[session_start_EL_time, session_stop_EL_time+1], alias=alias, signal='pupil', requested_eye=eye))
+        pupil_int = np.squeeze(self.ho.signal_during_period(time_period=[session_start_EL_time, session_stop_EL_time+1], alias=alias, signal='pupil_int', requested_eye=eye))
+        pupil_bp = np.squeeze(self.ho.signal_during_period(time_period=[session_start_EL_time, session_stop_EL_time+1], alias=alias, signal='pupil_bp',requested_eye=eye))
+        pupil_lp = np.squeeze(self.ho.signal_during_period(time_period=[session_start_EL_time, session_stop_EL_time+1], alias=alias, signal='pupil_lp',requested_eye=eye))
+        pupil_hp = np.squeeze(self.ho.signal_during_period(time_period=[session_start_EL_time, session_stop_EL_time+1], alias=alias, signal='pupil_hp',requested_eye=eye))
+        pupil_bp_psc = np.squeeze(self.ho.signal_during_period(time_period=[session_start_EL_time, session_stop_EL_time+1], alias=alias, signal='pupil_bp_psc',requested_eye=eye))
+        pupil_bp_psc_c = np.squeeze(self.ho.signal_during_period(time_period=[session_start_EL_time, session_stop_EL_time+1], alias=alias, signal='pupil_bp_clean_psc',requested_eye=eye))
+
+        # Do some plotting
+        if not div:
+            x = np.arange(0,duration_sec,(1/sample_rate))
+        else:
+            x = np.arange(0,duration_sec,(1/(sample_rate/2)))
+
+        # resample to match functional data
+        resamp = glm.resample_stim_vector(pupil_bp_psc_c.values, nr_vols)
+        resamp1 = glm.resample_stim_vector(pupil_raw.values, nr_vols)
+
+        # add start time to it
+        start_exp_time = trial_times.iloc[0,:][-1]
+
+        if self.verbose:
+            print(" Start time exp = ", round(start_exp_time,2))
+
+        # get onset time of blinks, cluster blinks that occur within 350 ms
+        onsets = self.filter_for_eyeblinks(pupil_raw.to_numpy(), 
+                                           skip_time=10, 
+                                           filt_window=500, 
+                                           sample_rate=sample_rate, 
+                                           exp_start=start_exp_time)
+        
+        # normal eye blink is 1 blink every 4 seconds, throw warning if we found more than a blink per second
+        # ref: https://www.sciencedirect.com/science/article/abs/pii/S0014483599906607
+        blink_rate = len(onsets) / duration_sec
+
+        if self.verbose:
+            print(" Found {} blinks [{} blinks per second]".format(len(onsets), round(blink_rate,2)))
+
+        if blink_rate > 1 or blink_rate < 0.1:
+            print(f"WARNING for run-{run}: found {round(blink_rate,2)} blinks per second; normal blink rate is 0.25 blinks per second ({len(onsets)} in {duration_sec}s)")
+
+        # if verbose:
+        #     print("Saving blink onsets times and pupil size trace")
+        # np.save(opj(func_dir, '{}_ses-2_task-LR_{}_eyeblinks.npy'.format(subject, alias.replace('_','-'))), onsets.T)
+        # np.save(opj(func_dir, '{}_ses-2_task-LR_{}_pupilsize.npy'.format(subject, alias.replace('_','-'))), resamp)
+
+
+        # build dataframe with relevant information
+        df_space_eye = pd.DataFrame({"pupil_raw": pupil_raw,
+                                    "pupil_int": pupil_int,
+                                    "pupil_bp": pupil_bp,
+                                    "pupil_lp": pupil_lp,
+                                    "pupil_hp": pupil_hp,
+                                    "pupil_bp_psc": pupil_bp_psc,
+                                    "pupil_bp_psc_c": pupil_bp_psc_c})
+
+        # index
+        df_space_eye['subject'], df_space_eye['run'] = self.subject, run
+
+        df_space_func = pd.DataFrame({"pupil_raw_2_func": resamp,
+                                      "pupil_psc_2_func": resamp1})
+
+        # index
+        df_space_func['subject'], df_space_func['run'], df_space_func['t'] = self.subject, run, list(TR*np.arange(df_space_func.shape[0]))
+
+        # index
+        df_blink_events = pd.DataFrame(onsets.T, columns=['onsets'])
+        df_blink_events['subject'], df_blink_events['run'], df_blink_events['event_type'] = self.subject, run, "blink"
+
+        if self.verbose:
+            print("Done")
+
+        return {"space_eye": df_space_eye, 
+                "space_func": df_space_func,
+                "blink_events": df_blink_events}
+
+    def vols(self, func_file):
+        if func_file.endswith("gz") or func_file.endswith('nii'):
+            img = nb.load(func_file)
+            nr_vols = img.get_fdata().shape[-1]
+            self.TR2 = img.header['pixdim'][4]
+        elif func_file.endswith("mat"):
+            raw = io.loadmat(func_file)
+            tag = list(raw.keys())[-1]
+            raw = raw[tag]
+            nr_vols = raw.shape[-1]
+        else:
+            raise ValueError(f"Could not derive number of volumes for file '{func_file}'")
+        
+        return nr_vols
+
+    @staticmethod
+    def filter_for_eyeblinks(arr,skip_time=None,filt_window=350, sample_rate=500, exp_start=None):
+
+        """
+        filter_for_eyeblinks
+
+        This function reads where a blink occurred and will filter onset times with a particular window of 
+        occurrance. For instance, a blink generally takes about 100 ms, so any onsets within 100 ms of each
+        other can't be physiologically correct. The function will find the first onset time, checks for onset
+        times within the 100ms window using the sampling rate, and return the filtered onset times.
+
+        Parameters
+        -----------
+            <arr>               : np.ndarray
+                                array to-be-filtered. If obtained from 'signal_during_period', use 'to_numpy()' 
+                                as input
+
+            <skip_time>        : int
+                                skip the first <skip_time> seconds from sampled data to leave out any unphysio-
+                                logical events (default = None)
+
+            <filt_window>       : float
+                                consider events within <filt_window> as one blink. Given in seconds, default
+                                is set to 350ms (0.35s). See:
+                                `https://bionumbers.hms.harvard.edu/bionumber.aspx?id=100706&ver=0`
+
+            <sample_rate>       : int
+                                sampling rate of data, used together with <filt_window> to get the amount of 
+                                data points that need to be clustered as 1 event
+
+            <exp_start>         : float
+                                add the start of the experiment time to the onset times. Otherwise timing is re-
+                                lative to 0, so it's not synced with the experiment.
+
+        Returns
+        ----------
+            <onset times>       : np.ndarray
+                                numpy array containing onset times in seconds
+
+        """
+
+        blink_onsets = np.where(arr == 0)[0]
+
+        blink = 0
+        filter = True
+        blink_arr = []
+        while filter:
+
+            try:
+                start_blink = blink_onsets[blink]
+                end_blink = start_blink+int((filt_window/1000*sample_rate))
+
+                for ii in np.arange(start_blink+1, end_blink):
+                    if ii in blink_onsets:
+                        blink_onsets = np.delete(blink_onsets, np.where(blink_onsets == ii))
+
+                blink_arr.append(blink_onsets[blink])
+                
+                blink += 1
+            except:
+                filter = False
+
+        onsets = np.array(blink_arr)
+        onsets = onsets*(1/sample_rate)
+
+        if skip_time:
+            for pp in onsets:
+                if pp < skip_time:
+                    onsets = np.delete(onsets,np.where(onsets==pp))
+
+        if exp_start:
+            onsets = onsets+exp_start
+
+        return onsets
 
     @staticmethod
     def add_index(array, columns=None, subject=1, run=1, TR=0.105, set_index=False):
@@ -1296,7 +1569,7 @@ class ParseExpToolsFile(ParseEyetrackerFile):
     >>> onsets = pd.concat(onsets).set_index(['subject', 'run', 'event_type'])
     """
 
-    def __init__(self, tsv_file, subject=1, run=1, button=False, blinks=None, TR=0.105, delete_vols=38):
+    def __init__(self, tsv_file, subject=1, run=1, button=False, blinks=None, TR=0.105, delete_vols=38, edfs=None, funcs=None):
 
         """Initialize object and do all of the parsing/correction/reading"""
 
@@ -1308,10 +1581,24 @@ class ParseExpToolsFile(ParseEyetrackerFile):
         self.delete_time        = self.deleted_volumes*self.TR
         self.button             = button
         self.blinks             = blinks
+        self.funcs              = funcs
+        self.edfs               = edfs
+
+        super().__init__(self.edfs, subject=self.subject, func_file=self.funcs, TR1=self.TR)
 
         if isinstance(tsv_file, str):
+
+            try:
+                self.run = split_bids_components(tsv_file)['run']
+            except:
+                pass
+
             if not tsv_file.endswith("h5"):
-                self.preprocess_exptools_file(tsv_file, run=self.run)
+                if self.include_blinks:
+                    self.blinks = self.fetch_blinks_run(run=self.run)
+                    self.preprocess_exptools_file(tsv_file, run=self.run)
+                else:
+                    self.preprocess_exptools_file(tsv_file, run=self.run)
                 self.df_onsets = self.get_onset_df(index=False)
             else:
                 if self.attribute_tag == None:
@@ -1322,13 +1609,43 @@ class ParseExpToolsFile(ParseEyetrackerFile):
                         setattr(self, key, hdf_store.get(key))
                 else:
                     self.from_hdf(tsv_file, self.attribute_tag, key=self.hdf_key)
+
         elif isinstance(tsv_file, list):
             df_onsets = []
             for run, onset_file in enumerate(tsv_file):
-                self.preprocess_exptools_file(onset_file, run=run+1)
-                df_onsets.append(self.get_onset_df(index=False))
                 
+                try:
+                    self.run = split_bids_components(onset_file)['run']
+                except:
+                    self.run = run+1
+
+                # include eyeblinks?
+                if self.include_blinks:
+                    self.blinks = self.fetch_blinks_run(run=self.run)
+
+                # read in the exptools-file
+                self.preprocess_exptools_file(onset_file, run=self.run)
+
+                # append to df
+                df_onsets.append(self.get_onset_df(index=False))
+
+            # concatemate df
             self.df_onsets = pd.concat(df_onsets).set_index(['subject', 'run', 'event_type'])
+
+        # get events per run
+        self.events_per_run = self.events_per_run()
+
+    def events_per_run(self):
+        n_runs = np.unique(self.df_onsets.reset_index()['run'].values)
+        events = {}
+        for run in n_runs:
+            df = select_from_df(self.df_onsets, expression=f"run = {run}", index=None)
+            events[run] = np.unique(df['event_type'].values)
+
+        return events
+
+    def events_single_run(self, run=1):
+        return self.events_per_run[run]
 
     def preprocess_exptools_file(self, tsv_file, run=1):
 
