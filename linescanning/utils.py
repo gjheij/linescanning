@@ -1053,7 +1053,205 @@ class ParseFuncFile():
     def from_hdf(self, input_file, attribute_tag, key="df"):
         setattr(self, attribute_tag, pd.read_hdf(input_file, key))
 
-class ParseExpToolsFile(object):
+
+class ParseEyetrackerFile():
+
+    """ParseEyetrackerFile()
+
+    Class for parsing edf-files created during experiments with Exptools2. The class will read in the file, read when the experiment actually started, correct onset times for this start time and time deleted because of removing the first few volumes (to do this correctly, set the `TR` and `delete_vols`). You can also provide a numpy array/file containing eye blinks that should be added to the onset times in real-world time (seconds). In principle, it will return a pandas DataFrame indexed by subject and run that can be easily concatenated over runs. This function relies on the naming used when programming the experiment. In the `session.py` file, you should have created `phase_names=['iti', 'stim']`; the class will use these things to parse the file.
+
+    Parameters
+    ----------
+    edf_file: str, list
+        path pointing to the output file of the experiment; can be a list of multiple 
+    subject: int
+        subject number in the returned pandas DataFrame (should start with 1, ..., n)
+    run: int
+        run number you'd like to have the onset times for
+    button: bool
+        boolean whether to include onset times of button responses (default is false)
+    blinks: str, np.ndarray
+        string or array containing the onset times of eye blinks as extracted with hedfpy
+    TR: float
+        repetition time to correct onset times for deleted volumes
+    delete_vols: int
+        number of volumes to delete to correct onset times for deleted volumes
+
+    Examples
+    ----------
+    >>> from linescanning.utils import ParseExpToolsFile
+    >>> file = 'some/path/to/exptoolsfile.tsv'
+    >>> parsed_file = ParseExpToolsFile(file, subject=1, run=1, button=True)
+    >>> onsets = parsed_file.get_onset_df()
+
+    >>> # If you want to get all your subjects and runs in 1 nideconv compatible dataframe, you can do something like this:
+    >>> onsets = []
+    >>> run_subjects = ['001','002','003']
+    >>> for sub in run_subjects:
+    >>>     path_tsv_files = os.path.join(f'some/path/sub-{sub}')
+    >>>     f = os.listdir(path_tsv_files)
+    >>>     nr_runs = []; [nr_runs.append(os.path.join(path_tsv_files, r)) for r in f if "events.tsv" in r]
+    >>> 
+    >>>     for run in range(1,len(nr_runs)+1):
+    >>>         sub_idx = run_subjects.index(sub)+1
+    >>>         onsets.append(ParseExpToolsFile(df_onsets, subject=sub_idx, run=run).get_onset_df())
+    >>>         
+    >>> onsets = pd.concat(onsets).set_index(['subject', 'run', 'event_type'])
+    """
+
+    def __init__(self, tsv_file, subject=1, run=1, button=False, blinks=None, TR=0.105, delete_vols=38):
+
+        """Initialize object and do all of the parsing/correction/reading"""
+
+        self.tsv_file           = tsv_file
+        self.subject            = int(subject)
+        self.run                = int(run)
+        self.TR                 = TR
+        self.deleted_volumes    = delete_vols
+        self.delete_time        = self.deleted_volumes*self.TR
+        self.button             = button
+        self.blinks             = blinks
+
+        if isinstance(tsv_file, str):
+            if not tsv_file.endswith("h5"):
+                self.preprocess_exptools_file(tsv_file, run=self.run)
+                self.df_onsets = self.get_onset_df(index=False)
+            else:
+                if self.attribute_tag == None:
+                    hdf_store = pd.HDFStore(tsv_file)
+                    hdf_keys = hdf_store.keys()
+                    for key in hdf_keys:
+                        key = key.strip("/")
+                        setattr(self, key, hdf_store.get(key))
+                else:
+                    self.from_hdf(tsv_file, self.attribute_tag, key=self.hdf_key)
+        elif isinstance(tsv_file, list):
+            df_onsets = []
+            for run, onset_file in enumerate(tsv_file):
+                self.preprocess_exptools_file(onset_file, run=run+1)
+                df_onsets.append(self.get_onset_df(index=False))
+                
+            self.df_onsets = pd.concat(df_onsets).set_index(['subject', 'run', 'event_type'])
+
+    def preprocess_exptools_file(self, tsv_file, run=1):
+
+        data_onsets = []
+        with open(tsv_file) as f:
+            timings = pd.read_csv(f, delimiter='\t')
+            data_onsets.append(pd.DataFrame(timings))
+
+        self.data           = data_onsets[0]
+        self.start_times    = pd.DataFrame(self.data[(self.data['response'] == 't') & (self.data['trial_nr'] == 1) & (self.data['phase'] == 0)][['onset']])
+        self.data_cut_start = self.data.drop([q for q in np.arange(0,self.start_times.index[0])])
+        self.onset_times    = pd.DataFrame(self.data_cut_start[(self.data_cut_start['event_type'] == 'stim') & (self.data_cut_start['condition'].notnull()) | (self.data_cut_start['response'] == 'b')][['onset', 'condition']]['onset'])
+        self.condition      = pd.DataFrame(self.data_cut_start[(self.data_cut_start['event_type'] == 'stim') & (self.data_cut_start['condition'].notnull()) | (self.data_cut_start['response'] == 'b')]['condition'])
+
+        # add button presses
+        if self.button:
+            self.response = self.data_cut_start[(self.data_cut_start['response'] == 'b')]
+            self.condition.loc[self.response.index] = 'response'
+
+        self.onset = np.concatenate((self.onset_times, self.condition), axis=1)
+
+        # add eyeblinks
+        if isinstance(self.blinks, np.ndarray) or isinstance(self.blinks, str):
+            if isinstance(self.blinks, np.ndarray):
+                self.eye_blinks = self.blinks
+            elif isinstance(self.blinks, str):
+                if self.blinks.endwith(".npy"):
+                    self.eye_blinks = np.load(self.blinks)
+                else:
+                    raise ValueError(f"Could not recognize type of {self.blinks}. Should be numpy array or string to numpy file")
+
+            self.eye_blinks = self.eye_blinks.astype('object').flatten()
+            tmp = self.onset[:,0].flatten()
+
+            # combine and sort timings
+            comb = np.concatenate((self.eye_blinks, tmp))
+            comb = np.sort(comb)[...,np.newaxis]
+
+            # add back event types by checking timing values in both arrays
+            event_array = []
+            for ii in comb:
+
+                if ii in self.onset:
+                    idx = np.where(self.onset == ii)[0][0]
+                    event_array.append(self.onset[idx][-1])
+                else:
+                    idx = np.where(self.eye_blinks == ii)[0]
+                    event_array.append('blink')
+
+            event_array = np.array(event_array)[...,np.newaxis]
+
+            self.onset = np.concatenate((comb, event_array), axis=1)
+
+        # correct for start time of experiment and deleted time due to removal of inital volumes
+        self.onset[:,0] = self.onset[:,0]-float(self.start_times['onset'] + self.delete_time)
+
+        # make dataframe
+        self.onset_df = self.add_index(self.onset, columns=['onset', 'event_type'], subject=self.subject, run=run)
+
+    @staticmethod
+    def add_index(array, columns=None, subject=1, run=1, TR=0.105, set_index=False):
+        
+        if columns == None:
+            df = pd.DataFrame(array)
+        else:
+            df = pd.DataFrame(array, columns=columns)
+            
+        df['subject'], df['run']    = subject, run
+        df['event_type']            = df['event_type'].astype(str)
+        df['onset']                 = df['onset'].astype(float)
+
+        if set_index:
+            return df.set_index(['subject', 'event_type'])
+        else:
+            return df        
+
+    def get_onset_df(self, index=False):
+        """Return the indexed DataFrame containing onset times"""
+
+        if index:
+            return self.onset_df.set_index(['subject', 'run', 'event_type'])
+        else:
+            return self.onset_df
+
+    def onsets_to_txt(self, subject=1, run=1, condition='right', fname=None):
+        """onset_to_txt
+
+        This function creates a text file with a single column containing the onset times of a given condition. Such a file can be used for SPM or FSL modeling, but it should be noted that the onset times have been corrected for the deleted volumes at the beginning. So make sure your inputting the correct functional data in these cases.
+
+        Parameters
+        ----------
+        subject: int
+            subject number you'd like to have the onset times for
+        run: int
+            run number you'd like to have the onset times for
+        condition: str
+            name of the condition you'd like to have the onset times for as specified in the data frame
+        fname: str
+            path to output name for text file
+
+        Returns
+        ----------
+        str
+            if `fname` was specified, a new file will be created and `fname` will be returned as string pointing to that file
+
+        list
+            if `fname` was *None*, the list of onset times will be returned
+        """
+
+        df = self.onset_df.set_index(['subject', 'run', 'event_type'])
+        onsets = list(df['onset'][subject][run][condition].to_numpy().flatten().T)
+
+        if not fname:
+            return onsets
+        else:
+            np.savetxt(fname, onsets, fmt='%1.3f')
+            return fname
+
+
+class ParseExpToolsFile(ParseEyetrackerFile):
 
     """ParseExpToolsFile()
 
@@ -1326,6 +1524,8 @@ class ParsePhysioFile():
             return self.physio_df.set_index(['subject', 'run', 't'])
         else:
             return self.physio_df
+
+
 
 
 # this is basically a wrapper around pybest.utils.load_gifti
@@ -1978,10 +2178,10 @@ class CurveFitter():
 
         # create predictions & confidence intervals that are compatible with LazyPlot
         self.y_pred             = self.result.best_fit
-        self.ci                 = self.result.eval_uncertainty()
-        self.ci_upsampled       = glm.resample_stim_vector(self.ci, len(self.x_pred_upsampled), interpolate=self.interpolate)
         self.x_pred_upsampled   = np.linspace(self.x[0], self.x[-1], 1000)
         self.y_pred_upsampled   = self.result.eval(x=self.x_pred_upsampled)
+        self.ci                 = self.result.eval_uncertainty()
+        self.ci_upsampled       = glm.resample_stim_vector(self.ci, len(self.x_pred_upsampled), interpolate=self.interpolate)
 
     @staticmethod
     def first_order(x, a, b):
