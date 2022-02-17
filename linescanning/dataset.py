@@ -849,7 +849,6 @@ class ParseFuncFile(ParseExpToolsFile):
         self.sub                        = subject
         self.run                        = run
         self.TR                         = TR
-        self.ub                         = ub
         self.lb                         = lb
         self.high_pass                  = high_pass
         self.low_pass                   = low_pass
@@ -1231,7 +1230,6 @@ class Dataset(ParseFuncFile):
         self.sub                        = subject
         self.run                        = run
         self.TR                         = TR
-        self.ub                         = ub
         self.lb                         = lb
         self.high_pass                  = high_pass
         self.low_pass                   = low_pass
@@ -1252,7 +1250,6 @@ class Dataset(ParseFuncFile):
         super().__init__(self.func_file,
                          subject=self.sub,
                          run=self.run,
-                         ub=self.ub,
                          lb=self.lb,
                          low_pass=self.low_pass,
                          high_pass=self.high_pass,
