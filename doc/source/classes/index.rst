@@ -4,12 +4,14 @@ Python functions
 .. toctree::
    :maxdepth: 1
 
-   optimal
-   scanner
-   planning
+   dataset
+   image
    glm
+   optimal
+   planning
+   plotting
    prf
    pycortex
+   scanner
    transform
-   image
    utils
