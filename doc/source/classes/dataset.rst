@@ -1,10 +1,10 @@
 .. include:: ../links.rst
 
-Plotting
+Dataset
 ===========================================
 
 Functions to read/preprocess/format data
 
 
-.. automodule:: linescanning.plotting
+.. automodule:: linescanning.dataset
    :members:

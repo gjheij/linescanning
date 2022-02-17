@@ -409,8 +409,6 @@ class LazyCorr():
 
     def plot(self):
 
-        """Does the actual plotting"""
-
         if self.axs == None:
             fig, axs = plt.subplots(figsize=self.figsize)
         else:
