@@ -3,9 +3,8 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import seaborn as sns
 
-def LazyPRF(prf, vf_extent, save_as=None, ax=None, cmap='magma', cross_color="white", alpha=None):
-    """
-    LazyPRF
+class LazyPRF():
+    """LazyPRF
 
     Plot the geometric location of the Gaussian pRF.
 
@@ -25,37 +24,77 @@ def LazyPRF(prf, vf_extent, save_as=None, ax=None, cmap='magma', cross_color="wh
         Color for the fixation cross; defaults to 'white'. You can set it to 'k' if you have a binary colormap as input
     alpha: float, optional
         Opacity for imshow
+    shrink_factor: float, optional
+        When the background of the image is white, we create a black border around the Circle patch. If this is equal to `vf_extent`, the border is cut off at some points. This factor shrinks the radius of the Circle, so that we can have a nice border. When set to 0.9, it becomes sort of like a target. This is relevant for **all** non-`magma` color maps that you insert, specifically a :func:`linescanning.utils.make_binary_cm` object
+    xkcd: bool, optional
+        Plot in cartoon-format
 
     Returns
     ----------
     matplotlib.pyplot plot
     """
 
-    if ax == None:
-        ax = plt.gca()
+    def __init__(self, 
+                 prf, 
+                 vf_extent, 
+                 save_as=None, 
+                 ax=None, 
+                 cmap='magma', 
+                 cross_color="white", 
+                 alpha=None,
+                 shrink_factor=1, 
+                 xkcd=False):
+        
+        self.prf            = prf
+        self.vf_extent      = vf_extent
+        self.save_as        = save_as
+        self.ax             = ax
+        self.cmap           = cmap
+        self.cross_color    = cross_color
+        self.alpha          = alpha
+        self.xkcd           = xkcd
+        self.shrink_factor  = shrink_factor
 
-    if prf.ndim >= 3:
-        prf = np.squeeze(prf, axis=0)
+        if self.xkcd:
+            with plt.xkcd():
+                self.plot()
+        else:
+            self.plot()
 
-    if alpha == None:
-        alpha = 1
+        if self.save_as:
+            plt.savefig(self.save_as, transparant=True)
 
-    ax.axvline(0, color=cross_color, linestyle='dashed', lw=0.5)
-    ax.axhline(0, color=cross_color, linestyle='dashed', lw=0.5)
-    im = ax.imshow(prf, extent=vf_extent+vf_extent, cmap=cmap, alpha=alpha)
-    patch = patches.Circle((0, 0),
-                           radius=vf_extent[-1],
-                           transform=ax.transData,
-                           edgecolor=cross_color,
-                           facecolor="None",
-                           linewidth=0.5)
-    ax.add_patch(patch)
-    im.set_clip_path(patch)
-    ax.axis('off')
+    def plot(self):
 
-    if save_as:
-        plt.savefig(save_as, transparant=True)
+        if self.ax == None:
+            self.ax = plt.gca()
 
+        if self.prf.ndim >= 3:
+            self.prf = np.squeeze(self.prf, axis=0)
+
+        if self.alpha == None:
+            self.alpha = 1
+
+        self.ax.axvline(0, color=self.cross_color, linestyle='dashed', lw=0.5)
+        self.ax.axhline(0, color=self.cross_color, linestyle='dashed', lw=0.5)
+        im = self.ax.imshow(self.prf, extent=self.vf_extent+self.vf_extent, cmap=self.cmap, alpha=self.alpha)
+        
+        # In case of a white background, the circle for the visual field is cut off, so we need to make an adjustment:
+        if self.cmap != 'magma':
+            radius = self.vf_extent[-1]*self.shrink_factor
+        else:
+            radius = self.vf_extent[-1]
+            
+        self.patch = patches.Circle((0, 0),
+                                    radius=radius,
+                                    transform=self.ax.transData,
+                                    edgecolor=self.cross_color,
+                                    facecolor="None",
+                                    linewidth=0.5)
+
+        self.ax.add_patch(self.patch)
+        im.set_clip_path(self.patch)
+        self.ax.axis('off')
 
 class LazyPlot():
     """LazyPlot
@@ -166,9 +205,9 @@ class LazyPlot():
                  y_lim=None,
                  x_lim=None,
                  sns_offset=10,
-                 sns_trim=True,
+                 sns_trim=False,
                  sns_rm_bottom=False,
-                 set_xlim_zero=False):
+                 set_xlim_zero=True):
 
         self.array = ts
         self.xx = xx
