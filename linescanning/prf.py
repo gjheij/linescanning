@@ -1,6 +1,6 @@
 import ast
 from datetime import datetime, timedelta
-from linescanning import utils
+from linescanning import utils, plotting
 import math
 import matplotlib.image as mpimg
 import matplotlib.patches as patches
@@ -344,7 +344,7 @@ def make_prf(prf_object, mu_x=0, mu_y=0, size=None):
     Returns
     ----------
     numpy.ndarray
-        meshgrid containing Gaussian characteristics of the pRF. Can be plotted with :func:`linescanning.prf.plot_prf`
+        meshgrid containing Gaussian characteristics of the pRF. Can be plotted with :func:`linescanning.plotting.LazyPRF`
     """
 
     prf = np.rot90(rf.gauss2D_iso_cart(x=prf_object.x_coordinates[..., np.newaxis],
@@ -354,61 +354,6 @@ def make_prf(prf_object, mu_x=0, mu_y=0, size=None):
                                        normalize_RFs=False).T, axes=(1, 2))
 
     return prf
-
-
-def plot_prf(prf,vf_extent, save_as=None, ax=None, cmap='magma', cross_color="white", alpha=None):
-
-    """
-    plot_prf
-
-    Plot the geometric location of the Gaussian pRF.
-
-    Parameters
-    ----------
-    prf: numpy.ndarray
-        instantiation of `gauss2D_iso_cart`; will be np.squeeze'ed over the first axis if `ndim >= 3`.
-    vf_extent: list
-        the space the pRF lives in
-    save_as: str, optional
-        file path to save the image (*.pdf is recommended for quality and compatibility with Inkscape)
-    ax: <AxesSubplot:>, optional
-        Matplotlib axis to store the figure on
-    cmap: str, optional
-        Colormap for imshow; accepts output from :func:`linescanning.utils.make_binary_cm`. Defaults to 'magma'
-    cross_color: str, optional
-        Color for the fixation cross; defaults to 'white'. You can set it to 'k' if you have a binary colormap as input
-    alpha: float, optional
-        Opacity for imshow
-
-    Returns
-    ----------
-    matplotlib.pyplot plot
-    """
-
-    if ax == None:
-        ax = plt.gca()
-
-    if prf.ndim >= 3:
-        prf = np.squeeze(prf, axis=0)
-
-    if alpha == None:
-        alpha = 1
-
-    ax.axvline(0, color=cross_color, linestyle='dashed', lw=0.5)
-    ax.axhline(0, color=cross_color, linestyle='dashed', lw=0.5)
-    im = ax.imshow(prf, extent=vf_extent+vf_extent, cmap=cmap, alpha=alpha)
-    patch = patches.Circle((0, 0), 
-                           radius=vf_extent[-1], 
-                           transform=ax.transData, 
-                           edgecolor=cross_color, 
-                           facecolor="None", 
-                           linewidth=0.5)
-    ax.add_patch(patch)
-    im.set_clip_path(patch)
-    ax.axis('off')
-
-    if save_as:
-        plt.savefig(save_as, transparant=True)
 
 
 # From Marco's https://github.com/VU-Cog-Sci/prfpy_tools/blob/master/utils/postproc_utils.py
@@ -1468,7 +1413,7 @@ class pRFmodelFitting():
 
             # make plot 
             ax1 = fig.add_subplot(gs00[0])
-            plot_prf(prf_array, vf_extent=self.settings['vf_extent'], ax=ax1)
+            plotting.LazyPRF(prf_array, vf_extent=self.settings['vf_extent'], ax=ax1)
 
             # make plot 
             ax2 = fig.add_subplot(gs00[1])

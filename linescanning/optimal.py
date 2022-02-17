@@ -3,6 +3,7 @@ import cortex
 from datetime import datetime
 from linescanning import (
     planning,
+    plotting,
     prf, 
     pycortex, 
     transform, 
@@ -349,20 +350,20 @@ def target_vertex(subject,
 
                 # add pRF-plot
                 ax1 = fig.add_subplot(gs00[0])
-                prf.plot_prf(subject_info.prf_array, subject_info.settings['vf_extent'], ax=ax1)
+                plotting.LazyPRF(subject_info.prf_array, subject_info.settings['vf_extent'], ax=ax1)
                 
                 # create timecourse plot
                 ax2 = fig.add_subplot(gs00[1])
                 bold = np.load(utils.get_file_from_substring(f"avg_bold_{hemi_tag}.npy", os.path.dirname(prf_params)))
                 vert = getattr(GetBestVertex, f"{hemi}_best_vertex")
-                utils.LazyPlot(bold[:,vert], 
-                               x_label="volumes", 
-                               y_label="amplitude (z-score)", 
-                               font_size=14,
-                               line_width=2,
-                               color="#53107B",
-                               add_hline='default',
-                               axs=ax2)
+                plotting.LazyPlot(bold[:,vert], 
+                                  x_label="volumes", 
+                                  y_label="amplitude (z-score)", 
+                                  font_size=14,
+                                  line_width=2,
+                                  color="#53107B",
+                                  add_hline='default',
+                                  axs=ax2)
 
                 fig.savefig(opj(cx_dir, subject, f'{subject}_{hemi_tag}_desc-prf_info.pdf'))
 

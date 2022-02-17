@@ -1,4 +1,4 @@
-from linescanning import utils
+from linescanning.plotting import LazyPlot
 import os
 import numpy as np
 import matplotlib.pyplot as plt
@@ -698,24 +698,14 @@ def fit_first_level(stim_vector, data, make_figure=False, copes=None, xkcd=False
         else:
             raise NotImplementedError("Im lazy.. Please use indexing for now")
 
-        if xkcd:
-            utils.LazyPlot(signals,
-                           y_label="Activity (A.U.)",
-                           x_label="volumes",
-                           title=f"Model fit vox {best_vox}",
-                           labels=labels,
-                           figsize=(20,5),
-                           font_size=20,
-                           xkcd=True)
-
-        else:
-            utils.LazyPlot(signals,
-                           y_label="Activity (A.U.)",
-                           x_label="volumes",
-                           title=f"Model fit vox {best_vox}",
-                           labels=labels,
-                           figsize=(20,5),
-                           font_size=20)
+        LazyPlot(signals,
+                 y_label="Activity (A.U.)",
+                 x_label="volumes",
+                 title=f"Model fit vox {best_vox}",
+                 labels=labels,
+                 figsize=(20,5),
+                 font_size=20,
+                 xkcd=xkcd)
 
     return {'betas': betas_conv,
             'x_conv': X_conv,

@@ -4,7 +4,7 @@
 #$ -V
 
 from prfpy import model
-from linescanning import utils, prf
+from linescanning import utils, prf, plotting
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import numpy as np
@@ -128,7 +128,7 @@ Examples:
 
     # make pRF plot
     ax1 = fig.add_subplot(gs00[0])
-    prf.plot_prf(subject_info.prf_array, subject_info.settings['vf_extent'], ax=ax1)    
+    plotting.plot_prf(subject_info.prf_array, subject_info.settings['vf_extent'], ax=ax1)    
 
     # Get and plot fMRI signal
     data_fn = utils.get_file_from_substring(f"avg_bold_{hemi_tag}.npy", subject_info.prf_dir)
@@ -167,15 +167,15 @@ Examples:
     #---------------------------------------------------------------------------------------------------
     # plot pRF output
     ax2 = fig.add_subplot(gs00[1])
-    utils.LazyPlot([data, new_prediction], 
-                    color=['#08B2F0','#cccccc'], 
-                    labels=['real','pred'], 
-                    add_hline='default', 
-                    line_width=line_width,
-                    axs=ax2,
-                    y_label="BOLD amplitude (z-score)",
-                    x_label="Volumes",
-                    font_size=14)
+    plotting.LazyPlot([data, new_prediction], 
+                      color=['#08B2F0','#cccccc'], 
+                      labels=['real','pred'], 
+                      add_hline='default', 
+                      line_width=line_width,
+                      axs=ax2,
+                      y_label="BOLD amplitude (z-score)",
+                      x_label="Volumes",
+                      font_size=14)
 
     #---------------------------------------------------------------------------------------------------
     # size response functions
@@ -187,14 +187,14 @@ Examples:
     #---------------------------------------------------------------------------------------------------
     # make plot 
     ax3 = fig.add_subplot(gs00[2])
-    utils.LazyPlot([sr_curve1, sr_curve2], 
-                    xx=SR.stims_fill_sizes,
-                    color=["#1B9E77","#D95F02"], 
-                    labels=['superficial', 'middle'],
-                    axs=ax3,
-                    y_label="Response",
-                    x_label="Stimulus size (°)",
-                    font_size=14)
+    utplottingls.LazyPlot([sr_curve1, sr_curve2], 
+                          xx=SR.stims_fill_sizes,
+                          color=["#1B9E77","#D95F02"], 
+                          labels=['superficial', 'middle'],
+                          axs=ax3,
+                          y_label="Response",
+                          x_label="Stimulus size (°)",
+                          font_size=14)
 
     #---------------------------------------------------------------------------------------------------
     # find stim sizes
