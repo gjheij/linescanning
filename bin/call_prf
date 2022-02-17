@@ -4,7 +4,7 @@
 #$ -V
 
 import getopt
-from linescanning import prf,utils
+from linescanning import prf,utils,dataset
 import matplotlib.pyplot as plt
 import nibabel as nb
 import numpy as np
@@ -219,7 +219,7 @@ Example:
     func_file = utils.get_file_from_substring(f"run-{lower}_space-fsnative_hemi-L_bold.func.gii", func_path)
 
     if func_file != None:
-        gifti = utils.ParseGiftiFile(func_file)
+        gifti = dataset.ParseGiftiFile(func_file)
         tr = gifti.TR_sec
 
         print(f"Func-file found; setting TR to {tr}")
