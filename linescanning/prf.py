@@ -1,6 +1,8 @@
 import ast
 from datetime import datetime, timedelta
-from linescanning import utils, plotting
+
+from attr import has
+from linescanning import utils, plotting, dataset
 import math
 import matplotlib.image as mpimg
 import matplotlib.patches as patches
@@ -758,7 +760,7 @@ def create_line_prf_matrix(log_dir,
                            nr_trs=None,
                            stim_at_half_TR=False,
                            TR=0.105, 
-                           n_pix=275, 
+                           n_pix=270, 
                            deleted_first_timepoints=0, 
                            deleted_last_timepoints=0, 
                            stim_duration=1, 
@@ -780,9 +782,9 @@ def create_line_prf_matrix(log_dir,
         repetition time of scan acquisition. Needed to convert the onset times from seconds to TRs
     stim_at_half_TR: bool
         set to True if you want the stimulus halfway through the TR. This flag can be used in combination with <nr_trs>, when the stimulus duration is not modulo the repetition time
-    deleted_first: int 
+    deleted_first_timepoints: int 
         number of volumes to skip in the beginning; should be the same as used in ParseFunc-file and/or ParseFuncFile (if used in concert) (default = 0)
-    deleted_last: int
+    deleted_last_timepoints: int
         number of volumes to skip at the end; should be the same as used in ParseFuncFile and/or ParseFuncFile (if used in concert) (default = 0)
     n_pix: int 
         size determinant of the design matrix. Note, <n_pix> is hardcoded as well in the function itself because I ran stuff on my laptop and that screen has a different size than the stimulus computer @Spinoza (default = 270px)
@@ -848,7 +850,7 @@ def create_line_prf_matrix(log_dir,
         design_matrix = np.zeros((n_pix, n_pix, nr_trs))
 
         # get the onsets
-        onsets = utils.ParseExpToolsFile(utils.get_file_from_substring(".tsv", log_dir), TR=TR, delete_vols=deleted_first_timepoints)
+        onsets = dataset.ParseExpToolsFile(utils.get_file_from_substring(".tsv", log_dir), TR=TR, deleted_first_timepoints=deleted_first_timepoints, use_bids=False)
         trial_df = onsets.df_onsets.copy()
         for tr in range(nr_trs):
     
@@ -1094,7 +1096,7 @@ class pRFmodelFitting():
     Parameters
     ----------
     data: numpy.ndarray
-        <voxels,time> numpy array
+        <voxels,time> numpy array | when reading in the data later again, the format must be <time,voxels>. This is highly annoying, but it seems to be required for predictions to work properly.
     design_matrix: numpy.ndarray
         <n_pix, n_pix, time> numpy array containing the paradigm
     TR: float
@@ -1147,7 +1149,8 @@ class pRFmodelFitting():
                  hrf=None,
                  settings=None,
                  nr_jobs=1000,
-                 prf_stim=None):
+                 prf_stim=None,
+                 model_obj=None):
     
 
         self.data           = data
@@ -1163,17 +1166,28 @@ class pRFmodelFitting():
         self.hrf            = hrf
         self.old_params     = old_params
         self.nr_jobs        = nr_jobs
+        self.prf_stim       = prf_stim
+        self.model_obj      = model_obj
 
         #----------------------------------------------------------------------------------------------------------------------------------------------------------
         # Fetch the settings
-        self.settings, self.settings_file, self.prf_stim = generate_model_params(model=self.model, 
-                                                                                 dm=self.design_matrix, 
-                                                                                 outputdir=self.output_dir, 
-                                                                                 TR=self.TR,
-                                                                                 settings=self.settings_fn)
+        self.settings, self.settings_file, self.prf_stim_ = generate_model_params(model=self.model, 
+                                                                                  dm=self.design_matrix, 
+                                                                                  outputdir=self.output_dir, 
+                                                                                  TR=self.TR,
+                                                                                  settings=self.settings_fn)
 
+        # check if we got a pRF-stim object
+        if self.prf_stim != None:
+            if self.verbose:
+                print("Using user-defined pRF-stimulus object")
+            self.prf_stim = self.prf_stim
+        else:
+            self.prf_stim = self.prf_stim_
+        
+        # read the settings
         if isinstance(self.settings_fn, str):
-            if verbose:
+            if self.verbose:
                 print(f"Using settings file: {self.settings_fn}")
     
         if self.model.lower() != "gauss" and self.model.lower() != "norm":
@@ -1196,6 +1210,11 @@ class pRFmodelFitting():
                                                   hrf=self.hrf,                                                  
                                                   filter_params={'window_length': self.settings['filter_window_length'],
                                                                  'polyorder': self.settings['filter_polyorder']})
+
+        if self.model_obj != None:
+            if self.verbose:
+                print(f"Setting {self.model_obj} as '{model}_model'-attribute")
+            setattr(self, f'{model}_model', self.model_obj)
 
     def fit(self):
 
@@ -1227,7 +1246,7 @@ class pRFmodelFitting():
             
             self.gauss_grid = utils.filter_for_nans(self.gaussian_fitter.gridsearch_params)
             if self.write_files:
-                self.save_params(model="gauss", stage="grid", verbose=self.verbose, output_dir=self.output_dir, output_base=self.output_base)
+                self.save_params(model="gauss", stage="grid")
 
             #----------------------------------------------------------------------------------------------------------------------------------------------------------
             # Check if we should do Gaussian iterfit        
@@ -1254,7 +1273,7 @@ class pRFmodelFitting():
                 
                 self.gauss_iter = utils.filter_for_nans(self.gaussian_fitter.iterative_search_params)
                 if self.write_files:
-                    self.save_params(model="gauss", stage="iter", verbose=self.verbose, output_dir=self.output_dir, output_base=self.output_base)
+                    self.save_params(model="gauss", stage="iter")
 
         #----------------------------------------------------------------------------------------------------------------------------------------------------------
         # Check if we should do DN-model
@@ -1319,7 +1338,7 @@ class pRFmodelFitting():
             ### save grid parameters
             self.norm_grid = utils.filter_for_nans(self.norm_fitter.gridsearch_params)
             if self.write_files:
-                self.save_params(model="norm", stage="grid", verbose=self.verbose, output_dir=self.output_dir, output_base=self.output_base)
+                self.save_params(model="norm", stage="grid")
 
             #----------------------------------------------------------------------------------------------------------------------------------------------------------
             ## Check if we should do iterative fitting with DN model
@@ -1371,6 +1390,10 @@ class pRFmodelFitting():
 
         setattr(self, f'{model}_{stage}', params)
 
+        preds = utils.get_file_from_substring([model, stage, "predictions.npy"], os.path.dirname(self.settings_fn), return_msg=None)
+        if preds != None:
+            setattr(self, f'{model}_{stage}_predictions', np.load(preds))
+
     def make_predictions(self, vox_nr=None, model='gauss', stage='iter'):
         
         if model == "gauss":
@@ -1380,7 +1403,6 @@ class pRFmodelFitting():
 
         if hasattr(self, f"{model}_{stage}"):
             params = getattr(self, f"{model}_{stage}")
-
             if params.ndim != 0:
                 if vox_nr != None:
                     if vox_nr == "best":
@@ -1395,16 +1417,45 @@ class pRFmodelFitting():
 
                 return use_model.return_prediction(*params[:-1]).T, params, vox_nr
 
+            elif params.ndim == 2:
+                if vox_nr != None:
+                    if vox_nr == "best":
+                        vox,_ = utils.find_nearest(params[...,-1], np.amax(params[...,-1]))
+                    else:
+                        vox = vox_nr                    
+                    params = params[vox,...]
+                    return use_model.return_prediction(*params[:-1]).T, params, vox
+                else:
+                    predictions = []
+                    for vox in range(params.shape[0]):
+                        pars = params[vox,...]
+                        predictions.append(use_model.return_prediction(*pars[:-1]).T)
+                    
+                    return np.squeeze(np.array(predictions), axis=-1)
+
             else:
                 raise ValueError(f"No parameters found..")
         else:
             raise ValueError(f"Could not find {stage} parameters for {model}")
 
-    def plot_vox(self, vox_nr='best', model='gauss', stage='iter', make_figure=True):
+    def plot_vox(self, 
+                 vox_nr=0, 
+                 model='gauss', 
+                 stage='iter', 
+                 make_figure=True, 
+                 xkcd=False, 
+                 title=None, 
+                 font_size=18, 
+                 line_width=1, 
+                 transpose=False):
 
         """plot real and predicted timecourses for a voxel. Also returns parameters, the numpy array representing the pRF in visual space, and timecourse of data"""
 
-        self.prediction, params, vox = self.make_predictions(vox_nr=vox_nr, model=model, stage=stage)
+        self.prediction, params, vox = self.make_predictions(vox_nr=vox_nr, 
+        model=model, stage=stage)
+
+        if hasattr(self, f"{model}_{stage}_predictions"):
+            self.prediction = getattr(self, f"{model}_{stage}_predictions")[vox_nr]
 
         if make_figure:
             prf_array = make_prf(self.prf_stim, size=params[2], mu_x=params[0], mu_y=params[1])
@@ -1419,39 +1470,61 @@ class pRFmodelFitting():
             ax2 = fig.add_subplot(gs00[1])
 
             # annoying indexing issues.. lots of inconsistencies in array shapes.
-            try:
+            if transpose:
                 tc = self.data.T[vox,...]
-            except:
+            else:
                 tc = self.data[vox,...]
 
-            utils.LazyPlot([tc, self.prediction], 
-                        line_width=2, 
-                        color=['#08B2F0', '#cccccc'], 
-                        labels=['real', 'pred'], 
-                        add_hline='default',
-                        x_label="Volumes",
-                        y_label="amplitude",
-                        axs=ax2,
-                        font_size=14,
-                        set_xlim_zero=True)
+            if title != None:
+                if title == "pars":
+                    set_title = [round(ii,2) for ii in params]
+                else:
+                    set_title = title
+            else:
+                set_title = None
+
+            plotting.LazyPlot([tc, self.prediction],
+                              color=['#08B2F0', '#cccccc'], 
+                              labels=['real', 'pred'], 
+                              add_hline='default',
+                              x_label="Volumes",
+                              y_label="amplitude",
+                              axs=ax2,
+                              title=set_title,
+                              xkcd=xkcd,
+                              font_size=font_size,
+                              set_xlim_zero=True,
+                              line_width=line_width)
 
             return params, prf_array, tc
         else:
             return params, self.prediction
 
-    def save_params(self, model="gauss", stage="grid", verbose=False, output_dir=None, output_base=None):
+    def save_params(self, model="gauss", stage="grid"):
 
         if hasattr(self, f"{model}_{stage}"):
             params = getattr(self, f"{model}_{stage}")
-            output = opj(output_dir, f'{output_base}_model-{model}_stage-{stage}_desc-prf_params.npy')
+            output = opj(self.output_dir, f'{self.output_base}_model-{model}_stage-{stage}_desc-prf_params.npy')
             np.save(output, params)
 
-            if verbose:
+            if self.verbose:
                 print(f"Save {stage}-fit parameters in {output}")
         
         else:
             raise ValueError(f"class does not have attribute '{model}_{stage}'. Not saving parameters")
 
+    def save_predictions(self, model="gauss", stage="grid"):
+
+        if hasattr(self, f"{model}_{stage}"):
+            predictions = self.make_predictions(model=model, stage=stage)
+            output = opj(self.output_dir, f'{self.output_base}_model-{model}_stage-{stage}_desc-predictions.npy')
+            np.save(output, predictions)
+
+            if self.verbose:
+                print(f"Save {stage}-fit predictions in {output}")
+        
+        else:
+            raise ValueError(f"class does not have attribute '{model}_{stage}'. Not saving parameters")
 
 def find_most_similar_prf(reference_prf, look_in_params, verbose=False, return_nr='all', r2_thresh=0.5):
 
