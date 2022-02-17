@@ -142,17 +142,18 @@ class ParseEyetrackerFile():
 
             alias = f"run_{run_ID}"
 
-            # full output from 'fetch_relevant_info'
-            self.data = self.fetch_relevant_info(run=run_ID)
+            # full output from 'fetch_relevant_info' > use sub as differentiator if multiple files were given
+            if self.use_bids:
+                self.data = self.fetch_relevant_info(sub=self.sub, run=run_ID)
+            else:
+                self.data = self.fetch_relevant_info(run=run_ID)
 
             # collect outputs
             self.blink_events.append(self.fetch_eyeblinks())
             self.eye_in_func.append(self.fetch_eye_func_time())
 
-        self.blink_events = pd.concat(self.blink_events).set_index(
-            ['subject', 'run', 'event_type'])
-        self.eye_in_func = pd.concat(self.eye_in_func).set_index([
-            'subject', 'run', 't'])
+        self.blink_events = pd.concat(self.blink_events).set_index(['subject', 'run', 'event_type'])
+        self.eye_in_func = pd.concat(self.eye_in_func).set_index(['subject', 'run', 't'])
 
     def fetch_blinks_run(self, run=1, return_type='df'):
         blink_df = utils.select_from_df(self.blink_events, expression=(f"run = {run}"), index=['subject', 'run', 'event_type'])
@@ -171,7 +172,7 @@ class ParseEyetrackerFile():
     def fetch_eye_tracker_time(self):
         return self.data['space_eye']
 
-    def fetch_relevant_info(self, run=1):
+    def fetch_relevant_info(self, sub=None, run=1):
 
         # set alias
         alias = f'run_{run}'
@@ -183,12 +184,16 @@ class ParseEyetrackerFile():
         trial_phase_times = self.ho.read_session_data(alias, 'trial_phases')
 
         # read func data file to get nr of volumes
-        func_file = utils.get_file_from_substring(f'run-{run}', self.func_file)
-        nr_vols = self.vols(func_file)
+        if sub != None:
+            func = utils.get_file_from_substring([f"sub-{sub}_", f'run-{run}'], self.func_file)
+        else:
+            func = utils.get_file_from_substring(f'run-{run}', self.func_file)
 
-        if func_file.endswith("nii") or func_file.endswith("gz"):
+        nr_vols = self.vols(func)
+
+        if func.endswith("nii") or func.endswith("gz"):
             TR = self.TR2
-        elif func_file.endswith('mat'):
+        elif func.endswith('mat'):
             TR = self.TR1
         else:
             TR = 0.105
