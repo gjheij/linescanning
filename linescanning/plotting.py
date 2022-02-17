@@ -216,12 +216,12 @@ class LazyPlot():
         if isinstance(self.array, list):
 
             if not isinstance(self.color, list):
-                color_list = sns.color_palette(self.cmap, len(self.array))
+                self.color_list = sns.color_palette(self.cmap, len(self.array))
             else:
-                color_list = self.color
-                if len(color_list) != len(self.array):
+                self.color_list = self.color
+                if len(self.color_list) != len(self.array):
                     raise ValueError(
-                        f"Length color list {len(color_list)} does not match length of data list ({len(self.array)}")
+                        f"Length color list {len(self.color_list)} does not match length of data list ({len(self.array)}")
 
             for idx, el in enumerate(self.array):
 
@@ -244,9 +244,9 @@ class LazyPlot():
 
                 if self.labels:
                     axs.plot(
-                        x, el, color=color_list[idx], label=self.labels[idx], lw=use_width)
+                        x, el, color=self.color_list[idx], label=self.labels[idx], lw=use_width)
                 else:
-                    axs.plot(x, el, color=color_list[idx], lw=use_width)
+                    axs.plot(x, el, color=self.color_list[idx], lw=use_width)
 
                 if isinstance(self.error, list) or isinstance(self.error, np.ndarray):
                     yerr = self.error[idx]
@@ -256,7 +256,7 @@ class LazyPlot():
                     elif len(yerr) == 2:
                         ymin, ymax = yerr
                     axs.fill_between(
-                        x, ymax, ymin, color=color_list[idx], alpha=self.error_alpha)
+                        x, ymax, ymin, color=self.color_list[idx], alpha=self.error_alpha)
 
         else:
             if not self.color:
@@ -373,15 +373,17 @@ class LazyCorr():
         figure with the regression + confidence intervals for the given variables
     """    
 
-    def __init__(x, 
+    def __init__(self,
+                 x, 
                  y, 
                  color="#cccccc", 
                  axs=None, 
+                 title=None,
                  x_label=None, 
                  y_label=None, 
                  figsize=(8,8),
                  xkcd=False,
-                 fontsize=20,
+                 font_size=20,
                  sns_despine=5,
                  sns_trim=True,
                  save_as=None):
@@ -395,6 +397,9 @@ class LazyCorr():
         self.xkcd           = xkcd
         self.sns_despine    = sns_despine
         self.sns_trim       = sns_trim
+        self.color          = color
+        self.figsize        = figsize
+        self.title          = title
 
         if self.xkcd:
             with plt.xkcd():
