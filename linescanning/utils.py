@@ -1023,7 +1023,7 @@ class CollectSubject:
     >>> subject_info = utils.CollectSubject(subject, derivatives=<path_to_derivatives>, settings='recent', hemi="lh")
     """
 
-    def __init__(self, subject, derivatives=None, cx_dir=None, prf_dir=None, ses=1, analysis_yaml=None, hemi="lh", settings=None, model="gauss"):
+    def __init__(self, subject, derivatives=None, cx_dir=None, prf_dir=None, ses=1, analysis_yaml=None, hemi="lh", settings=None, model="gauss", correct_screen=True):
 
         self.subject        = subject
         self.derivatives    = derivatives
@@ -1033,6 +1033,7 @@ class CollectSubject:
         self.hemi           = hemi
         self.model          = model
         self.analysis_yaml  = analysis_yaml
+        self.correct_screen = correct_screen
 
         if self.hemi == "lh" or self.hemi.lower() == "l" or self.hemi.lower() == "left":
             self.hemi_tag = "L"
@@ -1084,6 +1085,10 @@ class CollectSubject:
         try:
             self.normalization_params_df    = pd.read_csv(get_file_from_substring([f"hemi-{self.hemi_tag}", "normalization", "csv"], self.cx_dir), index_col=0)
             self.normalization_params       = np.load(get_file_from_substring([f"hemi-{self.hemi_tag}", "normalization", "npy"], self.cx_dir))
+
+            if self.correct_screen:
+                self.normalization_params = self.normalization_params*1.08
+                
         except:
             self.normalization_params_df    = None
             self.normalization_params       = None
@@ -1103,8 +1108,15 @@ class CollectSubject:
         """return the vertex ID of target vertex"""
         return self.vert_info.get('index', hemi=hemi)
 
-    def target_prediction_prf(self):
-        _, self.prediction, _ = self.modelling.plot_vox(vox_nr=self.target_vertex, model=self.model, stage='iter', make_figure=True)
+    def target_prediction_prf(self, xkcd=False, line_width=1):
+        _, self.prediction, _ = self.modelling.plot_vox(vox_nr=self.target_vertex, 
+                                                        model=self.model, 
+                                                        stage='iter', 
+                                                        make_figure=True, 
+                                                        xkcd=xkcd,
+                                                        title='pars',
+                                                        transpose=True, 
+                                                        line_width=line_width)
 
 class CurveFitter():
     """CurveFitter
