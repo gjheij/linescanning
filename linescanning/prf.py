@@ -1,7 +1,5 @@
 import ast
 from datetime import datetime, timedelta
-
-from attr import has
 from linescanning import utils, plotting, dataset
 import math
 import matplotlib.image as mpimg
@@ -17,7 +15,6 @@ from prfpy.model import Iso2DGaussianModel, Norm_Iso2DGaussianModel
 import random
 from scipy.ndimage import rotate
 from scipy import signal
-import seaborn as sns
 import subprocess
 import time
 import yaml
@@ -1149,6 +1146,7 @@ class pRFmodelFitting():
                  hrf=None,
                  settings=None,
                  nr_jobs=1000,
+                 rsq_threshold=None,
                  prf_stim=None,
                  model_obj=None):
     
@@ -1168,6 +1166,7 @@ class pRFmodelFitting():
         self.nr_jobs        = nr_jobs
         self.prf_stim       = prf_stim
         self.model_obj      = model_obj
+        self.rsq_threshold  = rsq_threshold
 
         #----------------------------------------------------------------------------------------------------------------------------------------------------------
         # Fetch the settings
@@ -1176,6 +1175,12 @@ class pRFmodelFitting():
                                                                                   outputdir=self.output_dir, 
                                                                                   TR=self.TR,
                                                                                   settings=self.settings_fn)
+
+        # overwrite rsq-threshold from settings file
+        if self.rsq_threshold != None:
+            self.rsq = self.rsq_threshold
+        else:
+            self.rsq = self.settings['rsq_threshold']
 
         # check if we got a pRF-stim object
         if self.prf_stim != None:
@@ -1237,14 +1242,14 @@ class pRFmodelFitting():
             
             elapsed = (time.time() - start)
 
+            self.gauss_grid = utils.filter_for_nans(self.gaussian_fitter.gridsearch_params)
             if self.verbose:
                 print("Gaussian gridfit completed at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+
-                        ". voxels/vertices above "+str(self.settings['rsq_threshold'])+": "+str(np.sum(self.gaussian_fitter.gridsearch_params[:, -1]>self.settings['rsq_threshold']))+" out of "+
+                        ". voxels/vertices above "+str(self.rsq)+": "+str(np.sum(self.gauss_grid[:, -1]>self.rsq))+" out of "+
                         str(self.gaussian_fitter.data.shape[0]))
                 print(f"Gridfit took {str(timedelta(seconds=elapsed))}")
-                print("Mean rsq>"+str(self.settings['rsq_threshold'])+": "+str(np.mean(self.gaussian_fitter.gridsearch_params[self.gaussian_fitter.gridsearch_params[:, -1]>self.settings['rsq_threshold'], -1])))
+                print("Mean rsq>"+str(self.rsq)+": "+str(np.nanmean(self.gauss_grid[self.gauss_grid[:, -1]>self.rsq, -1])))
             
-            self.gauss_grid = utils.filter_for_nans(self.gaussian_fitter.gridsearch_params)
             if self.write_files:
                 self.save_params(model="gauss", stage="grid")
 
@@ -1263,15 +1268,15 @@ class pRFmodelFitting():
                                      tuple(self.settings['bounds']['prf_ampl']),        # prf amplitude
                                      tuple(self.settings['bounds']['bold_bsl'])]        # bold baseline    
 
-                self.gaussian_fitter.iterative_fit(rsq_threshold=self.settings['rsq_threshold'], bounds=self.gauss_bounds)
+                self.gaussian_fitter.iterative_fit(rsq_threshold=self.rsq, bounds=self.gauss_bounds)
 
                 elapsed = (time.time() - start)
 
-                if self.verbose:
-                    print("Gaussian iterfit completed at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+". Mean rsq>"+str(self.settings['rsq_threshold'])+": "+str(np.mean(self.gaussian_fitter.iterative_search_params[self.gaussian_fitter.rsq_mask, -1])))
-                    print(f"Iterfit took {str(timedelta(seconds=elapsed))}")
                 
                 self.gauss_iter = utils.filter_for_nans(self.gaussian_fitter.iterative_search_params)
+                if self.verbose:
+                    print("Gaussian iterfit completed at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+". Mean rsq>"+str(self.rsq)+": "+str(np.nanmean(self.gauss_iter[self.gaussian_fitter.rsq_mask, -1])))
+                    print(f"Iterfit took {str(timedelta(seconds=elapsed))}")
                 if self.write_files:
                     self.save_params(model="gauss", stage="iter")
 
@@ -1293,6 +1298,12 @@ class pRFmodelFitting():
             
             if self.verbose:
                 print(f"Using settings file: {settings_file}")
+
+            # overwrite rsq-threshold from settings file
+            if self.rsq_threshold != None:
+                self.rsq = self.rsq_threshold
+            else:
+                self.rsq = self.settings['rsq_threshold']                
 
             # make n_units x 4 array, with X,Y,size,r2
             self.old_params_filt = np.hstack((self.old_params_arr[:,:3], self.old_params_arr[:,-1][...,np.newaxis]))
@@ -1331,12 +1342,13 @@ class pRFmodelFitting():
 
             elapsed = (time.time() - start)
 
-            if self.verbose:
-                print("Norm gridfit completed at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+". Mean rsq>"+str(self.settings['rsq_threshold'])+": "+str(np.mean(self.norm_fitter.gridsearch_params[self.norm_fitter.gridsearch_rsq_mask, -1])))
-                print(f"Gridfit took {str(timedelta(seconds=elapsed))}")
             
             ### save grid parameters
             self.norm_grid = utils.filter_for_nans(self.norm_fitter.gridsearch_params)
+            if self.verbose:
+                print("Norm gridfit completed at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+". Mean rsq>"+str(self.rsq)+": "+str(np.nanmean(self.norm_grid[self.norm_fitter.gridsearch_rsq_mask, -1])))
+                print(f"Gridfit took {str(timedelta(seconds=elapsed))}")
+
             if self.write_files:
                 self.save_params(model="norm", stage="grid")
 
@@ -1352,13 +1364,13 @@ class pRFmodelFitting():
                                                starting_params=self.norm_fitter.gridsearch_params)
                 
                 elapsed = (time.time() - start)  
-                print("Norm iterfit completed at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+". Mean rsq>"+str(settings['rsq_threshold'])+": "+str(np.mean(self.norm_fitter.iterative_search_params[self.norm_fitter.rsq_mask, -1])))
-                print(f"Iterfit took {str(timedelta(seconds=elapsed))}")
 
                 ### save iterative parameters
                 self.norm_iter = utils.filter_for_nans(self.norm_fitter.iterative_search_params)
+                print("Norm iterfit completed at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+". Mean rsq>"+str(settings['rsq_threshold'])+": "+str(np.mean(self.norm_iter[self.norm_fitter.rsq_mask, -1])))
+                print(f"Iterfit took {str(timedelta(seconds=elapsed))}")
                 if self.write_files:
-                    self.save_params(model="norm", stage="iter", verbose=self.verbose, output_dir=self.output_dir, output_base=self.output_base)
+                    self.save_params(model="norm", stage="iter")
 
 
     def load_params(self, params_file, model='gauss', stage='iter'):
@@ -1415,7 +1427,7 @@ class pRFmodelFitting():
                 except:
                     params = params
 
-                return use_model.return_prediction(*params[:-1]).T, params, vox_nr
+                return use_model.return_prediction(*params[:-1]).T, params, vox
 
             elif params.ndim == 2:
                 if vox_nr != None:
@@ -1451,8 +1463,7 @@ class pRFmodelFitting():
 
         """plot real and predicted timecourses for a voxel. Also returns parameters, the numpy array representing the pRF in visual space, and timecourse of data"""
 
-        self.prediction, params, vox = self.make_predictions(vox_nr=vox_nr, 
-        model=model, stage=stage)
+        self.prediction, params, vox = self.make_predictions(vox_nr=vox_nr, model=model, stage=stage)
 
         if hasattr(self, f"{model}_{stage}_predictions"):
             self.prediction = getattr(self, f"{model}_{stage}_predictions")[vox_nr]
@@ -1464,7 +1475,7 @@ class pRFmodelFitting():
 
             # make plot 
             ax1 = fig.add_subplot(gs00[0])
-            plotting.LazyPRF(prf_array, vf_extent=self.settings['vf_extent'], ax=ax1)
+            plotting.LazyPRF(prf_array, vf_extent=self.settings['vf_extent'], ax=ax1, xkcd=xkcd)
 
             # make plot 
             ax2 = fig.add_subplot(gs00[1])
