@@ -1,20 +1,35 @@
 import hedfpy
 from . import glm, utils
 import nibabel as nb
-from nilearn.signal import clean
+from nilearn import signal
 from nilearn.glm.first_level.design_matrix import _cosine_drift
 from nitime.timeseries import TimeSeries
 from nitime.analysis import SpectralAnalyzer, FilterAnalyzer, NormalizationAnalyzer
 import numpy as np
 import os
 import pandas as pd
-from scipy import io, signal
+from scipy import io
+from scipy.signal import savgol_filter
 import warnings
 
 opj = os.path.join
 pd.options.mode.chained_assignment = None # disable warning thrown by string2float
 warnings.filterwarnings("ignore")
 
+def check_input_is_list(obj, var=None, list_element=0):
+
+    if hasattr(obj, var):
+        attr = getattr(obj, var)
+    else:
+        raise ValueError(f"Class does not have '{var}'-attribute")
+    
+    if isinstance(attr, list) or isinstance(attr, np.ndarray):
+        if len(attr) != len(obj.func_file):
+            raise ValueError(f"Length of '{var}' ({len(attr)}) does not match number of func files ({len(obj.func_file)}). Either specify a list of equal lenghts or 1 integer value for all volumes")
+
+        return attr[list_element]
+    else:
+        return attr
 
 class ParseEyetrackerFile():
 
@@ -558,13 +573,8 @@ class ParseExpToolsFile(ParseEyetrackerFile):
                 if self.include_blinks:
                     self.blinks = self.fetch_blinks_run(run=self.run)
 
-                # check if we need to cut each individual run
-                if isinstance(self.deleted_first_timepoints, list) or isinstance(self.deleted_first_timepoints, np.ndarray):
-                    if len(self.deleted_first_timepoints) != len(self.tsv_file):
-                        raise ValueError(f"Length of 'deleted_first_volumes' ({len(self.deleted_first_timepoints)}) does not match number of log files ({len(self.func_file)}). Either specify a list of equal lenghts or 1 integer value for all runs")                    
-                    delete_vols = self.deleted_first_timepoints[run]
-                else:
-                    delete_vols = self.deleted_first_timepoints
+                # check if we got different nr of vols to delete per run
+                delete_vols = check_input_is_list(self, "deleted_first_volumes", list_element=run)
 
                 # read in the exptools-file
                 self.preprocess_exptools_file(onset_file, run=self.run, delete_vols=delete_vols)
@@ -577,6 +587,8 @@ class ParseExpToolsFile(ParseEyetrackerFile):
 
         # get events per run
         self.events_per_run = self.events_per_run()
+
+
 
     def events_per_run(self):
         n_runs = np.unique(self.df_onsets.reset_index()['run'].values)
@@ -840,7 +852,7 @@ class ParseFuncFile(ParseExpToolsFile):
                  TR=0.105, 
                  deleted_first_timepoints=38, 
                  deleted_last_timepoints=38, 
-                 window_size=20,
+                 window_size=19,
                  poly_order=3,
                  attribute_tag=None,
                  hdf_key="df",
@@ -912,23 +924,11 @@ class ParseFuncFile(ParseExpToolsFile):
                 else:
                     self.run = run
 
-                # check if we have a list of deleted_first_timepoints
-                if isinstance(self.deleted_first_timepoints, list) or isinstance(self.deleted_first_timepoints, np.ndarray):
-                    if len(self.deleted_first_timepoints) != len(self.func_file):
-                        raise ValueError(f"Length of 'deleted_first_volumes' ({len(self.deleted_first_timepoints)}) does not match number of func files ({len(self.func_file)}). Either specify a list of equal lenghts or 1 integer value for all volumes")
+                # check if deleted_first_timepoints is list or not
+                delete_first = check_input_is_list(self, var="deleted_first_timepoints", list_element=run)
 
-                    delete_first = self.deleted_first_timepoints[run]
-                else:
-                    delete_first = self.deleted_first_timepoints
-
-                # check if we have a list of deleted_last_timepoints
-                if isinstance(self.deleted_last_timepoints, list) or isinstance(self.deleted_last_timepoints, np.ndarray):
-                    if len(self.deleted_last_timepoints) != len(self.func_file):
-                        raise ValueError(f"Length of 'deleted_last_timepoints' ({len(self.deleted_last_timepoints)})) does not match number of func files ({len(self.func_file)}). Either specify a list of equal lenghts or 1 integer value for all volumes")
-
-                    delete_last = self.deleted_first_timepoints[run]
-                else:
-                    delete_last = self.deleted_first_timepoints
+                # check if deleted_last_timepoints is list or not
+                delete_last = check_input_is_list(self, var="deleted_last_timepoints", list_element=run)
 
                 self.preprocess_func_file(func, 
                                           run=self.run, 
@@ -961,20 +961,25 @@ class ParseFuncFile(ParseExpToolsFile):
     def preprocess_func_file(self, 
                              func_file, 
                              run=1, 
-                             lowpass=True, 
-                             highpass=True, 
+                             lowpass=None, 
+                             highpass=None, 
                              deleted_first_timepoints=0, 
                              deleted_last_timepoints=0):
 
         # Load in datasets with tag "wcsmtSNR"
         if func_file.endswith("nii") or func_file.endswith("gz"):
             raise NotImplementedError("This datatype is not supported because of different nr of voxels compared to line data.. This make concatenation of dataframes not possible")
-
-        self.ts_wcsmtSNR    = io.loadmat(func_file)
-        self.tag            = list(self.ts_wcsmtSNR.keys())[-1]
-        self.ts_wcsmtSNR    = self.ts_wcsmtSNR[self.tag]
-        self.ts_complex     = self.ts_wcsmtSNR
-        self.ts_magnitude   = np.abs(self.ts_wcsmtSNR)
+        
+        if func_file.endswith("mat"):
+            self.ts_wcsmtSNR    = io.loadmat(func_file)
+            self.tag            = list(self.ts_wcsmtSNR.keys())[-1]
+            self.ts_wcsmtSNR    = self.ts_wcsmtSNR[self.tag]
+            self.ts_complex     = self.ts_wcsmtSNR
+            self.ts_magnitude   = np.abs(self.ts_wcsmtSNR)
+        elif func_file.endswith("npy"):
+            self.ts_magnitude   = np.load(func_file)
+        elif func_file.endswith("nii") or func_file.endswith("gz"):
+            raise NotImplementedError()
 
         # trim beginning and end
         if deleted_last_timepoints != 0:
@@ -983,38 +988,50 @@ class ParseFuncFile(ParseExpToolsFile):
             self.ts_corrected = self.ts_magnitude[:,deleted_first_timepoints:]
 
         self.vox_cols = [f'vox {x}' for x in range(self.ts_corrected.shape[0])]
-        self.raw_data = self.index_func(
-            self.ts_corrected, columns=self.vox_cols, subject=self.sub, run=run, TR=self.TR)
+        self.raw_data = self.index_func(self.ts_corrected, 
+                                        columns=self.vox_cols, 
+                                        subject=self.sub, 
+                                        run=run, 
+                                        TR=self.TR)
 
         # apply some filtering
-        if lowpass:
-            self.low_passed, self._cosine_drift = self.highpass_dct(self.ts_corrected, self.lb, TR=self.TR)
-            self.low_passed     = self.low_passed.T
-            self.low_passed_psc = utils.percent_change(self.low_passed, -1)
-            self.low_passed_df  = self.index_func(self.low_passed_psc, 
-                                                  columns=self.vox_cols, 
-                                                  subject=self.sub,
-                                                  run=run, 
-                                                  TR=self.TR, 
-                                                  set_index=True)
-        
         if highpass:
-            if hasattr(self, "low_passed"):
-                use_data = self.low_passed.copy()
+            if self.verbose:
+                print(f"Applying DCT-high pass filter [removes low frequencies >{self.lb} Hz]")
+            
+            self.high_passed, self._cosine_drift = self.highpass_dct(self.ts_corrected, self.lb, TR=self.TR)
+            self.high_passed_psc    = utils.percent_change(self.high_passed, -1)
+            self.high_passed_df     = self.index_func(self.high_passed_psc, 
+                                                      columns=self.vox_cols, 
+                                                      subject=self.sub,
+                                                      run=run, 
+                                                      TR=self.TR, 
+                                                      set_index=True)
+        if lowpass:
+            if self.verbose:
+                print(f"Applying Savitsky-Golay low pass filter [removes high frequences] (window = {self.window_size}, order = {self.poly_order})")            
+            if hasattr(self, "high_passed"):
+                use_data = self.high_passed.copy()
             else:
                 use_data = self.ts_corrected.copy()  
 
-            self.high_passed = self.lowpass_savgol(use_data, window_length=self.window_size, polyorder=self.poly_order)
-            
-        # percent signal change
-        if hasattr(self, "high_passed"):
-            data = self.high_passed.copy()
-        elif hasattr(self, "low_passed"):
-            data = self.low_passed.copy()
-        else:
-            data = self.ts_corrected.copy()
+            self.low_passed = self.lowpass_savgol(use_data, window_length=self.window_size, polyorder=self.poly_order)
 
-        self.psc_data       = utils.percent_change(data, -1)
+        # percent signal change
+        if hasattr(self, "low_passed"):
+            if self.verbose:
+                print("Using low-passed [SG-filtered] data for PSC")
+            self.data = self.low_passed.copy()
+        elif hasattr(self, "high_passed"):
+            if self.verbose:
+                print("Using high-passed [DCT-filtered] data for PSC")            
+            self.data = self.high_passed.copy()
+        else:
+            if self.verbose:
+                print("Using non-filtered data for PSC")            
+            self.data = self.ts_corrected.copy()
+
+        self.psc_data       = utils.percent_change(self.data, -1)
         self.psc_data_df    = self.index_func(self.psc_data, columns=self.vox_cols, subject=self.sub, run=run, TR=self.TR)
 
     @staticmethod
@@ -1063,11 +1080,11 @@ class ParseFuncFile(ParseExpToolsFile):
         """
 
         # Create high-pass filter and clean
-        n_vol           = func.shape[1]
+        n_vol           = func.shape[-1]
         st_ref          = 0  # offset frametimes by st_ref * tr
         ft              = np.linspace(st_ref * TR, (n_vol + st_ref) * TR, n_vol, endpoint=False)
         hp_set          = _cosine_drift(lb, ft)
-        dct_data        = clean(func.T, detrend=False, standardize=False, confounds=hp_set)
+        dct_data        = signal.clean(func.T, detrend=False, standardize=False, confounds=hp_set).T
 
         return dct_data, hp_set
 
@@ -1102,7 +1119,7 @@ class ParseFuncFile(ParseExpToolsFile):
         * Notch filters remove certain frequencies            
         """
         
-        return signal.savgol_filter(func, window_length, polyorder, axis=-1)
+        return savgol_filter(func, window_length, polyorder, axis=-1)
 
     @staticmethod
     def get_freq(func, TR=0.105, spectrum_type='psd'):
@@ -1253,6 +1270,7 @@ class Dataset(ParseFuncFile):
         self.verbose                    = verbose
 
         super().__init__(self.func_file,
+                         TR=self.TR,
                          subject=self.sub,
                          run=self.run,
                          lb=self.lb,
