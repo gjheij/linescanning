@@ -1,3 +1,4 @@
+from multiprocessing.sharedctypes import Value
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
@@ -138,7 +139,7 @@ class LazyPlot():
         >>>              'color': 'k',  # color
         >>>              'lw': 1,       # linewidth
         >>>              'ls': '--'}    # linestyle
-        You can get the settings above by specifying *add_hline='default'*
+        You can get the settings above by specifying *add_hline='default'*. Now also accepts *add_hline='mean'* for single inputs
     add_vline: [type], optional
         Dictionary for a vertical line through the plot, by default None. Same keys as `add_hline`
     line_width: int, list, optional
@@ -355,8 +356,12 @@ class LazyPlot():
 
         if self.add_hline:
             if self.add_hline == "default":
-                self.add_hline = {'pos': 0, 'color': 'k',
-                                  'ls': 'dashed', 'lw': 0.5}
+                self.add_hline = {'pos': 0, 'color': 'k', 'ls': 'dashed', 'lw': 0.5}
+            elif self.add_hline == "mean":
+                if isinstance(self.array, list):
+                    raise ValueError("This option can't be used with multiple inputs..")
+                    
+                self.add_hline = {'pos': self.array.mean(), 'color': 'k', 'ls': 'dashed', 'lw': 0.5}
 
             if isinstance(self.add_hline['pos'], list) or isinstance(self.add_hline['pos'], np.ndarray):
                 for line in self.add_hline['pos']:
