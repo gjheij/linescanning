@@ -1,17 +1,9 @@
-from configparser import Interpolation
-from numpy import isin
 import csv
-import hedfpy
 import json
 from . import prf, glm
 import lmfit
 import matplotlib.colors as mcolors
-import matplotlib.pyplot as plt
 import nibabel as nb
-from nilearn.signal import clean
-from nilearn.glm.first_level.design_matrix import _cosine_drift as dct_set
-from nitime.timeseries import TimeSeries
-from nitime.analysis import SpectralAnalyzer, FilterAnalyzer, NormalizationAnalyzer
 import numpy as np
 import operator
 import os
@@ -19,9 +11,7 @@ import pandas as pd
 from PIL import ImageColor
 from prfpy import stimulus
 import random
-from re import I, S, T
-from scipy import io, signal, optimize, stats
-import seaborn as sns
+from scipy import io
 from shapely import geometry
 import subprocess
 import warnings
