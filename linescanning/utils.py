@@ -1294,11 +1294,12 @@ class NideconvFitter():
     Notes
     ---------
     Several plotting options are available:
+
     * `plot_average_per_event`: for each event, average over the voxels present in the dataframe
     * `plot_average_per_voxel`: for each voxel, plot the response to each event
     * `plot_hrf_across_depth`: for each voxel, fetch the peak HRF response and fit a 3rd-order polynomial to the points (utilizes :class:`linescanning.utils.CurveFitter`)
 
-    See also the `linescanning/doc/source/examples/nideconv.ipynb` notebook for more details.
+    See also https://linescanning.readthedocs.io/en/latest/examples/nideconv.html for more details.
     """
 
     def __init__(self, func, onsets, TR=0.105, confounds=None, basis_sets="fourier", fit_type="ols", n_regressors=9, add_intercept=False, verbose=False, lump_events=False, interval=[0,12]):
