@@ -208,7 +208,8 @@ class LazyPlot():
                  sns_offset=10,
                  sns_trim=False,
                  sns_rm_bottom=False,
-                 set_xlim_zero=True):
+                 set_xlim_zero=True,
+                 **kwargs):
 
         self.array = ts
         self.xx = xx
@@ -234,6 +235,7 @@ class LazyPlot():
         self.sns_trim = sns_trim
         self.sns_bottom = sns_rm_bottom
         self.set_xlim_zero = set_xlim_zero
+        self.__dict__.update(kwargs)
 
         if self.xkcd:
             with plt.xkcd():
