@@ -1,9 +1,11 @@
 import csv
 import json
-from . import prf, glm
+from . import prf, glm, plotting
 import lmfit
 import matplotlib.colors as mcolors
+import matplotlib.pyplot as plt
 import nibabel as nb
+import nideconv as nd
 import numpy as np
 import operator
 import os
@@ -11,7 +13,8 @@ import pandas as pd
 from PIL import ImageColor
 from prfpy import stimulus
 import random
-from scipy import io
+from scipy import io, stats
+import seaborn as sns
 from shapely import geometry
 import subprocess
 import warnings
@@ -759,65 +762,72 @@ def percent_change(ts, ax):
 
     return (ts / np.expand_dims(np.mean(ts, ax), ax) - 1) * 100    
 
-def select_from_df(df, expression="run = 1", index=True):
+def select_from_df(df, expression="run = 1", index=True, indices=None):
 
-    # fetch existing indices
-    idc = list(df.index.names)
-    if idc[0] != None:
-        reindex = True
+    if expression == "ribbon":
+        
+        if indices == None:
+            raise ValueError("You want specific voxels from DataFrame, but none were specified. Please specify indices=[start,stop]")
+
+        return df.iloc[:,indices[0]:indices[1]]
     else:
-        reindex = False
+        # fetch existing indices
+        idc = list(df.index.names)
+        if idc[0] != None:
+            reindex = True
+        else:
+            reindex = False
 
-    # sometimes throws an error if you're trying to reindex a non-indexed dataframe
-    try:
-        df = df.reset_index()
-    except:
-        pass
-    
-    sub_df = df.copy()
-    if isinstance(expression, str):
-        expression = [expression]
+        # sometimes throws an error if you're trying to reindex a non-indexed dataframe
+        try:
+            df = df.reset_index()
+        except:
+            pass
+        
+        sub_df = df.copy()
+        if isinstance(expression, str):
+            expression = [expression]
 
-    if isinstance(expression, tuple) or isinstance(expression, list):
+        if isinstance(expression, tuple) or isinstance(expression, list):
 
-        expressions = expression[::2]
-        operators = expression[1::2]
+            expressions = expression[::2]
+            operators = expression[1::2]
 
-        if len(expressions) == 1:
+            if len(expressions) == 1:
 
-            col1,operator1,val1 = expressions[0].split()
-            ops1 = str2operator(operator1)
-            
-            if len(val1) == 1:
-                val1 = int(val1)
+                col1,operator1,val1 = expressions[0].split()
+                ops1 = str2operator(operator1)
                 
-            sub_df = sub_df.loc[ops1(sub_df[col1], val1)]
-            
-        if len(expressions) == 2:
-            col1,operator1,val1 = expressions[0].split()
-            col2,operator2,val2 = expressions[1].split()
+                if len(val1) == 1:
+                    val1 = int(val1)
+                    
+                sub_df = sub_df.loc[ops1(sub_df[col1], val1)]
+                
+            if len(expressions) == 2:
+                col1,operator1,val1 = expressions[0].split()
+                col2,operator2,val2 = expressions[1].split()
 
-            main_ops = str2operator(operators[0])
-            ops1 = str2operator(operator1)
-            ops2 = str2operator(operator2)
+                main_ops = str2operator(operators[0])
+                ops1 = str2operator(operator1)
+                ops2 = str2operator(operator2)
 
-            # check if we should interpret values invididually as integers
-            if len(val1) == 1:
-                val1 = int(val1)
+                # check if we should interpret values invididually as integers
+                if len(val1) == 1:
+                    val1 = int(val1)
 
-            if len(val2) == 1:
-                val2 = int(val2)
+                if len(val2) == 1:
+                    val2 = int(val2)
 
-            sub_df = sub_df.loc[main_ops(ops1(sub_df[col1], val1), ops2(sub_df[col2], val2))]
+                sub_df = sub_df.loc[main_ops(ops1(sub_df[col1], val1), ops2(sub_df[col2], val2))]
 
-    # first check if we should do indexing
-    if index != None:
-        # then check if we actually have something to index
-        if reindex:
-            if idc[0] != None:
-                sub_df = sub_df.set_index(idc)
+        # first check if we should do indexing
+        if index != None:
+            # then check if we actually have something to index
+            if reindex:
+                if idc[0] != None:
+                    sub_df = sub_df.set_index(idc)
 
-    return sub_df
+        return sub_df
 
 
 def split_bids_components(fname):
@@ -1210,3 +1220,301 @@ class CurveFitter():
     @staticmethod
     def third_order(x, a, b, c, d):
 	    return (a * x) + (b * x**2) + (c * x**3) + d
+
+
+class NideconvFitter():
+    """NideconvFitter
+
+    Wrapper class around :class:`nideconv.GroupResponseFitter` to promote reprocudibility, avoid annoyances with pandas indexing, and flexibility when performing multiple deconvolutions in an analysis. Works fluently with :class:`linescanning.dataset.Dataset` and :func:`linescanning.utils.select_from_df`. Because our data format generally involved ~720 voxels, we can specify the range which represents the grey matter ribbon around our target vertex, e.g., `[355,364]`, and select the subset of the main functional dataframe to use as input for this class (see also example).
+
+    Main inputs are the dataframe with fMRI-data, the onset timings, followed by specific settings for the deconvolution. Rigde-regression is not yet available as method, because 2D-dataframes aren't supported yet. This is a work-in-progress.
+
+    Parameters
+    ----------
+    func: pd.DataFrame
+        Dataframe as per the output of :func:`linescanning.dataset.Datasets.fetch_fmri()`, containing the fMRI data indexed on subject, run, and t.
+    onsets: pd.DataFrame
+        Dataframe as per the output of :func:`linescanning.dataset.Datasets.fetch_onsets()`, containing the onset timings data indexed on subject, run, and event_type.
+    TR: float, optional
+        Repetition time, by default 0.105. Use to calculate the sampling frequency (1/TR)
+    confounds: pd.DataFrame, optional
+        Confound dataframe with the same format as `func`, by default None
+    basis_sets: str, optional
+        Type of basis sets to use, by default "fourier". Should be 'fourier' or 'fir'.
+    fit_type: str, optional
+        Type of minimization strategy to employ, by default "ols". Should be 'ols' or 'ridge' (though the latter isn't implemented properly yet)
+    n_regressors: int, optional
+        Number of regressors to use, by default 9
+    add_intercept: bool, optional
+        Fit the intercept, by default False
+    verbose: bool, optional
+        _description_, by default False
+    lump_events: bool, optional
+        If ple are  in the onset dataframe, we can lump the events together and consider all onset times as 1 event, by default False
+    interval: list, optional
+        Interval to fit the regressors over, by default [0,12]
+
+    Example
+    ----------
+    >>> from linescanning import utils, dataset
+    >>> func_file
+    >>> ['sub-003_ses-3_task-SR_run-3_bold.mat',
+    >>> 'sub-003_ses-3_task-SR_run-4_bold.mat',
+    >>> 'sub-003_ses-3_task-SR_run-6_bold.mat']
+    >>> ribbon = [356,363]
+    >>> window = 19
+    >>> order = 3
+    >>> 
+    >>> ## window 5 TR poly 2
+    >>> data_obj = dataset.Dataset(func_file,
+    >>>                            deleted_first_timepoints=50,
+    >>>                            deleted_last_timepoints=50,
+    >>>                            window_size=window,
+    >>>                            high_pass=True,
+    >>>                            tsv_file=exp_file,
+    >>>                            poly_order=order,
+    >>>                            use_bids=True)
+    >>> 
+    >>> df_func     = data_obj.fetch_fmri()
+    >>> df_onsets   = data_obj.fetch_onsets()
+    >>> 
+    >>> # pick out the voxels representing the GM-ribbon
+    >>> df_ribbon = utils.select_from_df(df_func, expression='ribbon', indices=ribbon)
+    >>> nd_fit = utils.NideconvFitter(df_ribbon,
+    >>>                               df_onsets,
+    >>>                               confounds=None,
+    >>>                               basis_sets='fourier',
+    >>>                               n_regressors=19,
+    >>>                               lump_events=False,
+    >>>                               TR=0.105,
+    >>>                               interval=[0,12],
+    >>>                               add_intercept=True,
+    >>>                               verbose=True)
+
+    Notes
+    ---------
+    Several plotting options are available:
+    * `plot_average_per_event`: for each event, average over the voxels present in the dataframe
+    * `plot_average_per_voxel`: for each voxel, plot the response to each event
+    * `plot_hrf_across_depth`: for each voxel, fetch the peak HRF response and fit a 3rd-order polynomial to the points (utilizes :class:`linescanning.utils.CurveFitter`)
+
+    See also the `linescanning/doc/source/examples/nideconv.ipynb` notebook for more details.
+    """
+
+    def __init__(self, func, onsets, TR=0.105, confounds=None, basis_sets="fourier", fit_type="ols", n_regressors=9, add_intercept=False, verbose=False, lump_events=False, interval=[0,12]):
+
+        self.func           = func
+        self.onsets         = onsets
+        self.confounds      = confounds
+        self.basis_sets     = basis_sets 
+        self.fit_type       = fit_type
+        self.n_regressors   = n_regressors
+        self.add_intercept  = add_intercept
+        self.verbose        = verbose
+        self.lump_events    = lump_events
+        self.TR             = TR
+        self.fs             = 1/self.TR
+        self.interval       = interval
+
+        if self.lump_events:
+            self.lumped_onsets = self.onsets.copy().reset_index()
+            self.lumped_onsets['event_type'] = 'stim'
+            self.lumped_onsets = self.lumped_onsets.set_index(['subject', 'run', 'event_type'])
+            self.used_onsets = self.lumped_onsets.copy()
+        else:
+            self.used_onsets = self.onsets.copy()        
+        
+        # get the model
+        self.define_model()
+
+        # specify the events
+        self.define_events()
+
+        # fit
+        self.fit()
+
+    def timecourses_condition(self):
+
+        # get the condition-wise timecoursee
+        self.tc_condition = self.model.get_conditionwise_timecourses()
+
+        # rename 'event type' to 'event_type' so it's compatible with utils.select_from_df
+        tmp = self.tc_condition.reset_index().rename(columns={"event type": "event_type"})
+        self.tc_condition = tmp.set_index(['event_type', 'covariate', 'time'])
+
+        # get the standard error of mean
+        self.tc_error = self.model.get_subjectwise_timecourses().groupby(level=['event type', 'covariate', 'time']).sem()
+
+        # set time axis
+        self.time = self.tc_condition.groupby(['time']).mean().reset_index()['time'].values
+
+    def define_model(self):
+
+        self.model = nd.GroupResponseFitter(self.func,
+                                            self.used_onsets,
+                                            input_sample_rate=self.fs,
+                                            concatenate_runs=False,
+                                            confounds=self.confounds, 
+                                            add_intercept=False)
+    
+    def define_events(self):
+        
+        if self.verbose:
+            print(f"Selected '{self.basis_sets}'-basis sets")
+
+        # define events
+        self.cond = self.used_onsets.reset_index().event_type.unique()
+        self.cond = np.array(sorted([event for event in self.cond if event != 'nan']))
+
+        # add events to model
+        for event in self.cond:
+            if self.verbose:
+                print(f"Adding event '{event}' to model")
+
+            self.model.add_event(str(event), 
+                                 basis_set=self.basis_sets,
+                                 n_regressors=self.n_regressors, 
+                                 interval=self.interval)
+
+    def fit(self):
+
+        if self.verbose:
+            print(f"Fitting with '{self.fit_type}' minimization")
+
+        if self.fit_type.lower() == "rigde":
+            raise NotImplementedError("Ridge regression doesn't work with 2D-data yet, use 'ols' instead")
+        elif self.fit_type.lower() == "ols":
+            pass
+        else:
+            raise ValueError(f"Unrecognized minimizer '{self.fit_type}'; must be 'ols' or 'ridge'")
+        
+        # fitting
+        self.model.fit(type=self.fit_type)
+
+        if self.verbose:
+            print("Done")
+
+    def plot_average_per_event(self, add_offset=True, axs=None, title="Average HRF", **kwargs):
+
+        if not hasattr(self, "tc_condition"):
+            self.timecourses_condition()
+
+        self.event_avg = []
+        self.event_sem = []
+        for ev in self.cond:
+            # average over voxels (we have this iloc thing because that allows 'axis=1'). Groupby doesn't allow this
+            avg     = self.tc_condition.loc[ev].iloc[:].mean(axis=1).values
+            sem     = self.tc_condition.loc[ev].iloc[:].sem(axis=1).values
+
+            if add_offset:
+                if avg[0] > 0:
+                    avg -= avg[0]
+                else:
+                    avg += abs(avg[0])
+
+            self.event_avg.append(avg)
+            self.event_sem.append(sem)
+
+        plotting.LazyPlot(self.event_avg,
+                          xx=self.time,
+                          axs=axs,
+                          error=self.event_sem,
+                          title=title,
+                          font_size=16,
+                          **kwargs)
+
+    def plot_average_per_voxel(self, add_offset=True, axs=None, n_cols=4, wspace=0, figsize=(30,15), make_figure=True, labels=None, **kwargs):
+            
+        if not hasattr(self, "tc_condition"):
+            self.timecourses_condition()
+
+        cols = list(self.tc_condition.columns)
+        if cols > 30:
+            raise Exception(f"{len(cols)} were requested. Maximum number of plots is set to 30")
+
+        if n_cols != None:
+            # initiate figure
+            fig = plt.figure(figsize=figsize)
+            n_rows = int(np.ceil(len(cols) / n_cols))
+            gs = fig.add_gridspec(n_rows, n_cols, wspace=wspace)
+
+        self.all_voxels_in_event = []
+        for ix, col in enumerate(cols):
+
+            # fetch data from specific voxel for each stimulus size
+            self.voxel_in_events = []
+            for idc,stim in enumerate(self.cond):
+                col_data = self.tc_condition[col][stim].values
+                
+                if add_offset:
+                    if col_data[0] > 0:
+                        col_data -= col_data[0]
+                    else:
+                        col_data += abs(col_data[0])
+
+                self.voxel_in_events.append(col_data)
+
+            # this one is in case we want the voxels in 1 figure
+            self.all_voxels_in_event.append(self.voxel_in_events[0])
+            # draw legend once
+            if ix == 0:
+                set_labels = labels
+            else:
+                set_labels = None
+
+            if make_figure:
+                # plot all stimulus sizes for a voxel
+                if n_cols != None:
+                    ax = fig.add_subplot(gs[ix])
+                    plotting.LazyPlot(self.voxel_in_events,
+                                      xx=self.time,
+                                      axs=ax,
+                                      title=col,
+                                      labels=set_labels,
+                                      font_size=16,
+                                      **kwargs)
+
+        if make_figure:
+            if n_cols == None:
+                if labels:
+                    labels = cols.copy()
+                else:
+                    labels = None
+                
+                if axs != None:
+                    plotting.LazyPlot(self.all_voxels_in_event,
+                                      xx=self.time,
+                                      axs=axs,
+                                      labels=labels,
+                                      font_size=16,
+                                      **kwargs)
+                else:
+                    plotting.LazyPlot(self.all_voxels_in_event,
+                                      xx=self.time,
+                                      font_size=16,
+                                      labels=labels,
+                                      **kwargs)
+
+
+    def plot_hrf_across_depth(self, axs=None, figsize=(8,8), markers_cmap='viridis', ci_color="#cccccc", ci_alpha=0.6, **kwargs):
+
+        if not hasattr(self, "all_voxels_in_event"):
+            self.plot_timecourses(make_figure=False)
+        
+        self.max_vals = np.array([np.amax(self.col_data[ii]) for ii in range(len(self.col_data))])
+        cf = CurveFitter(self.max_vals, order=3, verbose=False)
+        
+        if not axs:
+            fig,axs = plt.subplots(figsize=figsize)
+
+        color_list = sns.color_palette(markers_cmap, len(self.max_vals))
+        for ix, mark in enumerate(self.max_vals):
+            axs.plot(cf.x[ix], mark, 'o', color=color_list[ix], alpha=ci_alpha)
+
+        plotting.LazyPlot(cf.y_pred_upsampled,
+                        xx=cf.x_pred_upsampled,
+                        axs=axs,
+                        error=cf.ci_upsampled,
+                        color=ci_color,
+                        font_size=16,
+                        **kwargs)
