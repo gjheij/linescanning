@@ -551,7 +551,7 @@ class ParseExpToolsFile(ParseEyetrackerFile):
                     self.preprocess_exptools_file(self.tsv_file, run=self.run, delete_vols=self.deleted_first_timepoints)
                 else:
                     self.preprocess_exptools_file(self.tsv_file, run=self.run)
-                self.df_onsets = self.get_onset_df(index=False)
+                self.df_onsets = self.get_onset_df(index=True)
             else:
                 if self.attribute_tag == None:
                     hdf_store = pd.HDFStore(self.tsv_file)
@@ -561,6 +561,7 @@ class ParseExpToolsFile(ParseEyetrackerFile):
                         setattr(self, key, hdf_store.get(key))
                 else:
                     self.from_hdf(self.tsv_file, self.attribute_tag, key=self.hdf_key)
+
 
         elif isinstance(self.tsv_file, list):
             df_onsets = []
@@ -574,7 +575,7 @@ class ParseExpToolsFile(ParseEyetrackerFile):
                     self.blinks = self.fetch_blinks_run(run=self.run)
 
                 # check if we got different nr of vols to delete per run
-                delete_vols = check_input_is_list(self, "deleted_first_volumes", list_element=run)
+                delete_vols = check_input_is_list(self, "deleted_first_timepoints", list_element=run)
 
                 # read in the exptools-file
                 self.preprocess_exptools_file(onset_file, run=self.run, delete_vols=delete_vols)
