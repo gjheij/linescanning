@@ -47,7 +47,7 @@ if [[ $# -le 1 ]] ; then
 fi
 
 # Check for subject & session flags
-while getopts fs: argument
+while getopts s: argument
 do
   case ${argument} in
     s)  sub=${OPTARG}
@@ -55,25 +55,29 @@ do
   esac
 done
 
-fname=${@:$OPTIND:1}
-image=${@:$OPTIND+1:1}
 
-if [[ "${@}" == *"-f"* ]]; then
+#-----------------------------------------------------------------------------
+# Get bash helper functions
+source call_bashhelper
+
+if [[ "${@}" == *"-o"* ]]; then
   FSL=1
 else
   FSL=0
 fi
 
-function fetch_extension {
-  fname=$(basename -- "$1")
-  ext="${fname##*.}"
-  filename="${fname%.*}"
-  echo "$ext"
-}
+fname=${@:$OPTIND:1}
+image=${@:$OPTIND+1:1}
 
+fname=`fetch_filepath ${fname}`
 ext=`fetch_extension ${fname}`
 
+if [ -f ${fname} ]; then
+  rm -r ${fname}
+fi
+
 if [[ ${FSL} -eq 1 ]]; then
+
   (
   echo "1 0 0 0"
   echo "0 1 0 0"
@@ -106,7 +110,7 @@ else
     echo "FixedParameters: 0 0 0"
     ) >> ${fname}
 
-  elif [[ ${ext} == "dat" ]]; then
+  elif [[ "${ext}" == "dat" ]]; then
 
     if [[ -z ${sub} ]]; then
       echo "ERROR: this option requires the subject ID"
