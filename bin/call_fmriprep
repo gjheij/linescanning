@@ -205,7 +205,7 @@ if [ ${system} == "SGE" ]; then
   fi
 
   if [[ ! -f ${fprep_container} ]]; then
-    echo "Could not find singularity image for fmriprep.."
+    echo "Could not find singularity image \"${fprep_container}\" for fmriprep.."
     exit 1
   fi
 
