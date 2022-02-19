@@ -29,6 +29,7 @@ Contents
 
    examples/lazyplot
    examples/genericglm
+   examples/nideconv
    
 .. toctree::
    :maxdepth: 2
