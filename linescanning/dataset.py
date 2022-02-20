@@ -862,7 +862,8 @@ class ParseFuncFile(ParseExpToolsFile):
                  phys_file=None,
                  use_bids=True,
                  button=False,
-                 verbose=True):
+                 verbose=True,
+                 **kwargs):
 
         self.sub                        = subject
         self.run                        = run
@@ -883,7 +884,8 @@ class ParseFuncFile(ParseExpToolsFile):
         self.phys_file                  = phys_file
         self.use_bids                   = use_bids
         self.verbose                    = verbose
-        
+        self.__dict__.update(kwargs)
+
         if isinstance(self.func_file, str):
             if not self.func_file.endswith("h5"):
                 
@@ -895,6 +897,7 @@ class ParseFuncFile(ParseExpToolsFile):
                             setattr(self, el, bids_comps[el])
                 
                 # preprocess
+                print(f"Preprocessing {self.func_file}")
                 self.preprocess_func_file(self.func_file,
                                           run=self.run, 
                                           lowpass=self.low_pass, 
@@ -918,6 +921,7 @@ class ParseFuncFile(ParseExpToolsFile):
             df_func = []
             df_raw = []
             for run, func in enumerate(self.func_file):
+                print(f"Preprocessing {func}")
                 if self.use_bids:
                     bids_comps = utils.split_bids_components(func)
                     for el in ['sub', 'run']:
@@ -998,7 +1002,7 @@ class ParseFuncFile(ParseExpToolsFile):
         # apply some filtering
         if highpass:
             if self.verbose:
-                print(f"Applying DCT-high pass filter [removes low frequencies >{self.lb} Hz]")
+                print(f" DCT-high pass filter [removes low frequencies <{self.lb} Hz]")
             
             self.high_passed, self._cosine_drift = self.highpass_dct(self.ts_corrected, self.lb, TR=self.TR)
             self.high_passed_psc    = utils.percent_change(self.high_passed, -1)
@@ -1010,7 +1014,7 @@ class ParseFuncFile(ParseExpToolsFile):
                                                       set_index=True)
         if lowpass:
             if self.verbose:
-                print(f"Applying Savitsky-Golay low pass filter [removes high frequences] (window = {self.window_size}, order = {self.poly_order})")            
+                print(f" Savitsky-Golay low pass filter [removes high frequences] (window = {self.window_size}, order = {self.poly_order})")            
             if hasattr(self, "high_passed"):
                 use_data = self.high_passed.copy()
             else:
@@ -1021,15 +1025,15 @@ class ParseFuncFile(ParseExpToolsFile):
         # percent signal change
         if hasattr(self, "low_passed"):
             if self.verbose:
-                print("Using low-passed [SG-filtered] data for PSC")
+                print(" Using low-passed [SG-filtered] data for PSC")
             self.data = self.low_passed.copy()
         elif hasattr(self, "high_passed"):
             if self.verbose:
-                print("Using high-passed [DCT-filtered] data for PSC")            
+                print(" Using high-passed [DCT-filtered] data for PSC")            
             self.data = self.high_passed.copy()
         else:
             if self.verbose:
-                print("Using non-filtered data for PSC")            
+                print(" Using non-filtered data for PSC")            
             self.data = self.ts_corrected.copy()
 
         self.psc_data       = utils.percent_change(self.data, -1)
@@ -1119,6 +1123,9 @@ class ParseFuncFile(ParseExpToolsFile):
         * Band-pass filters allow only certain frequencies and filter everything else out
         * Notch filters remove certain frequencies            
         """
+
+        if window_length % 2 == 0:
+            raise ValueError(f"Window-length must be uneven; not {window_length}")
         
         return savgol_filter(func, window_length, polyorder, axis=-1)
 
@@ -1248,7 +1255,8 @@ class Dataset(ParseFuncFile):
                  attribute_tag=None,
                  hdf_key="df",
                  use_bids=True,
-                 verbose=False):
+                 verbose=False,
+                 **kwargs):
 
         self.sub                        = subject
         self.run                        = run
@@ -1269,6 +1277,7 @@ class Dataset(ParseFuncFile):
         self.phys_file                  = phys_file
         self.use_bids                   = use_bids
         self.verbose                    = verbose
+        self.__dict__.update(kwargs)
 
         super().__init__(self.func_file,
                          TR=self.TR,
@@ -1285,7 +1294,8 @@ class Dataset(ParseFuncFile):
                          edf_file=self.edf_file,
                          phys_file=None,
                          use_bids=self.use_bids,
-                         verbose=self.verbose)
+                         verbose=self.verbose,
+                         **kwargs)
 
     def fetch_fmri(self, strip_index=False):
         if hasattr(self, 'df_func_psc'):
