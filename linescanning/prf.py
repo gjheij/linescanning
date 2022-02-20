@@ -1126,10 +1126,30 @@ class pRFmodelFitting():
     verbose: bool
         print messages to the terminal
 
+    Returns
+    ----------
+    npy-files
+        For each model (gauss/normalization), a npy-file with the grid/iterative parameters and an npy-file with the predictions (*only* for iterative stage!). The format of these files is as follows: <output_dir>/<output_base>_model-<gauss|norm>_stage-<grid|iter>_desc-<prf_params|predictions>.npy
+
     Example
     ----------
     >>> from linescanning.prf import pRFmodelFitting
     >>> fitting = pRFmodelFitting(func, design_matrix=dm, model='gauss')
+
+    >>> # we can use this class to read in existing parameter files
+    >>> prf_pfov = opj(prf_new, "sub-003_ses-3_task-pRF_acq-3DEPI_model-norm_stage-iter_desc-prf_params.npy")
+    >>> yml = utils.get_file_from_substring("settings", prf_new)
+    >>> if isinstance(yml, list):
+    >>>     yml = yml[-1]
+    >>> #
+    >>> modelling_pfov = prf.pRFmodelFitting(partial_nan.T,
+    >>>                                      design_matrix=design_pfov,
+    >>>                                      settings=yml,
+    >>>                                      model="norm",
+    >>>                                      output_dir=prf_new,
+    >>>                                      output_base="sub-003_ses-3_task-pRF_acq-3DEPI")
+    >>> #
+    >>> modelling_pfov.load_params(np.load(prf_pfov), model='norm', stage='iter')
     """
 
     def __init__(self, 
@@ -1167,6 +1187,9 @@ class pRFmodelFitting():
         self.prf_stim       = prf_stim
         self.model_obj      = model_obj
         self.rsq_threshold  = rsq_threshold
+        
+        if self.output_dir == None:
+            self.output_dir = os.getcwd()
 
         #----------------------------------------------------------------------------------------------------------------------------------------------------------
         # Fetch the settings
@@ -1251,7 +1274,7 @@ class pRFmodelFitting():
                 print("Mean rsq>"+str(self.rsq)+": "+str(np.nanmean(self.gauss_grid[self.gauss_grid[:, -1]>self.rsq, -1])))
             
             if self.write_files:
-                self.save_params(model="gauss", stage="grid")
+                self.save_params(model="gauss", stage="grid", predictions=False)
 
             #----------------------------------------------------------------------------------------------------------------------------------------------------------
             # Check if we should do Gaussian iterfit        
@@ -1262,23 +1285,23 @@ class pRFmodelFitting():
                 if self.verbose:
                     print("Starting gauss iterfit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S'))
 
-                self.gauss_bounds = [tuple(self.settings['bounds']['x']),               # x
-                                     tuple(self.settings['bounds']['y']),               # y
-                                     tuple(self.settings['bounds']['size']),            # prf size
-                                     tuple(self.settings['bounds']['prf_ampl']),        # prf amplitude
-                                     tuple(self.settings['bounds']['bold_bsl'])]        # bold baseline    
+                # fetch bounds
+                self.gauss_bounds = self.fetch_bounds(model='gauss') 
 
+                # fit
                 self.gaussian_fitter.iterative_fit(rsq_threshold=self.rsq, bounds=self.gauss_bounds)
 
-                elapsed = (time.time() - start)
-
-                
+                # print summary
+                elapsed = (time.time() - start)              
                 self.gauss_iter = utils.filter_for_nans(self.gaussian_fitter.iterative_search_params)
                 if self.verbose:
                     print("Gaussian iterfit completed at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+". Mean rsq>"+str(self.rsq)+": "+str(np.nanmean(self.gauss_iter[self.gaussian_fitter.rsq_mask, -1])))
                     print(f"Iterfit took {str(timedelta(seconds=elapsed))}")
+
+                # save intermediate files
                 if self.write_files:
-                    self.save_params(model="gauss", stage="iter")
+                    self.save_params(model="gauss", stage="iter", predictions=True)
+
 
         #----------------------------------------------------------------------------------------------------------------------------------------------------------
         # Check if we should do DN-model
@@ -1317,16 +1340,9 @@ class pRFmodelFitting():
             self.neural_baseline_grid    = np.array(self.settings['norm']['neural_baseline_grid'], dtype='float32')
             self.surround_baseline_grid  = np.array(self.settings['norm']['surround_baseline_grid'], dtype='float32')
 
-            self.norm_bounds = [tuple(settings['bounds']['x']),               # x
-                                tuple(settings['bounds']['y']),               # y
-                                tuple(settings['bounds']['size']),            # prf size
-                                tuple(settings['bounds']['prf_ampl']),        # prf amplitude
-                                tuple(settings['bounds']['bold_bsl']),        # bold baseline
-                                tuple(settings['bounds']['surr_ampl']),       # surround amplitude
-                                tuple(settings['bounds']['surr_size']),       # surround size
-                                tuple(settings['bounds']['neur_bsl']),        # neural baseline
-                                tuple(settings['bounds']['surr_bsl'])]        # surround baseline
-            # self.norm_bounds = None
+            # fetch bounds from settings
+            self.norm_bounds = self.fetch_bounds(model='norm')
+
             #----------------------------------------------------------------------------------------------------------------------------------------------------------
             ## Start grid fit
             start = time.time()
@@ -1370,8 +1386,31 @@ class pRFmodelFitting():
                 print("Norm iterfit completed at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+". Mean rsq>"+str(settings['rsq_threshold'])+": "+str(np.mean(self.norm_iter[self.norm_fitter.rsq_mask, -1])))
                 print(f"Iterfit took {str(timedelta(seconds=elapsed))}")
                 if self.write_files:
-                    self.save_params(model="norm", stage="iter")
+                    self.save_params(model="norm", stage="iter", predictions=True)
 
+    def fetch_bounds(self, model=None):
+        if model == "norm":
+            bounds = [tuple(self.settings['bounds']['x']),               # x
+                      tuple(self.settings['bounds']['y']),               # y
+                      tuple(self.settings['bounds']['size']),            # prf size
+                      tuple(self.settings['bounds']['prf_ampl']),        # prf amplitude
+                      tuple(self.settings['bounds']['bold_bsl']),        # bold baseline
+                      tuple(self.settings['bounds']['surr_ampl']),       # surround amplitude
+                      tuple(self.settings['bounds']['surr_size']),       # surround size
+                      tuple(self.settings['bounds']['neur_bsl']),        # neural baseline
+                      tuple(self.settings['bounds']['surr_bsl'])]        # surround baseline
+
+        elif model == "gauss":
+            bounds = [tuple(self.settings['bounds']['x']),               # x
+                      tuple(self.settings['bounds']['y']),               # y
+                      tuple(self.settings['bounds']['size']),            # prf size
+                      tuple(self.settings['bounds']['prf_ampl']),        # prf amplitude
+                      tuple(self.settings['bounds']['bold_bsl'])]        # bold baseline   
+
+        else:
+            raise ValueError(f"Unrecognized model '{model}'")
+
+        return bounds
 
     def load_params(self, params_file, model='gauss', stage='iter'):
 
@@ -1415,7 +1454,7 @@ class pRFmodelFitting():
 
         if hasattr(self, f"{model}_{stage}"):
             params = getattr(self, f"{model}_{stage}")
-            if params.ndim != 0:
+            if params.ndim == 1:
                 if vox_nr != None:
                     if vox_nr == "best":
                         vox,_ = utils.find_nearest(params[...,-1], np.amax(params[...,-1]))
@@ -1459,7 +1498,8 @@ class pRFmodelFitting():
                  title=None, 
                  font_size=18, 
                  line_width=1, 
-                 transpose=False):
+                 transpose=False,
+                 **kwargs):
 
         """plot real and predicted timecourses for a voxel. Also returns parameters, the numpy array representing the pRF in visual space, and timecourse of data"""
 
@@ -1505,13 +1545,14 @@ class pRFmodelFitting():
                               xkcd=xkcd,
                               font_size=font_size,
                               set_xlim_zero=True,
-                              line_width=line_width)
+                              line_width=line_width,
+                              **kwargs)
 
             return params, prf_array, tc
         else:
             return params, self.prediction
 
-    def save_params(self, model="gauss", stage="grid"):
+    def save_params(self, model="gauss", stage="grid", predictions=False):
 
         if hasattr(self, f"{model}_{stage}"):
             params = getattr(self, f"{model}_{stage}")
@@ -1520,20 +1561,14 @@ class pRFmodelFitting():
 
             if self.verbose:
                 print(f"Save {stage}-fit parameters in {output}")
-        
-        else:
-            raise ValueError(f"class does not have attribute '{model}_{stage}'. Not saving parameters")
 
-    def save_predictions(self, model="gauss", stage="grid"):
-
-        if hasattr(self, f"{model}_{stage}"):
-            predictions = self.make_predictions(model=model, stage=stage)
-            output = opj(self.output_dir, f'{self.output_base}_model-{model}_stage-{stage}_desc-predictions.npy')
-            np.save(output, predictions)
-
-            if self.verbose:
-                print(f"Save {stage}-fit predictions in {output}")
-        
+            if predictions:
+                predictions = self.make_predictions(model=model, stage=stage)
+                output = opj(self.output_dir, f'{self.output_base}_model-{model}_stage-{stage}_desc-predictions.npy')
+                np.save(output, predictions)
+                
+                if self.verbose:
+                    print(f"Save {stage}-fit predictions in {output}")
         else:
             raise ValueError(f"class does not have attribute '{model}_{stage}'. Not saving parameters")
 
