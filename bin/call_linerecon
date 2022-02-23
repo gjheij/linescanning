@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 #$ -S /bin/bash
 #$ -cwd
-#$ -j y
 #$ -q all.q@minerva
+#$ -j y
 #$ -V
-#$ -pe smp 6
 
 #---------------------------------------------------------------------------------------------------------
 # Create help text
@@ -23,8 +22,8 @@ Usage:
   call_linerecon <subject number> <run number> <raw data> <output basename>
 
 Arguments:
-  -n                if -n is specified, we'll run NORDIC during reconstruction
-  -m nr_echoes      number of echoes in a multi-echo acquisition. Leave empty if acquisition was 
+  -n                if -n is specified, we'll skip NORDIC during reconstruction
+  -m <nr_echoes>    number of echoes in a multi-echo acquisition. Leave empty if acquisition was 
                     single-echo
   <sub number>      number of subject's directory from which you can omit "sub-" (e.g.,
                     for "sub-001", enter "001")
@@ -35,9 +34,9 @@ Arguments:
   <basename>        basename for output. Will automatically store the output in a .mat file, so spe-
                     cify up until .mat
 
-
 Example:
   call_linerecon 001 1 sourcedata/sub-001/ses-2 sub-001_ses-2_task-2R_run-1_bold
+  call_linerecon -n -m 5 003 4 sourcedata/sub-003/ses-4 <project>/sub-003/ses-4/func/sub-003_ses-4_task-pRF_run-4_bold
 
 ---------------------------------------------------------------------------------------------------
 
@@ -70,10 +69,10 @@ RAW=${@:$OPTIND+2:1}
 OUT=${@:$OPTIND+3:1}
 
 if [[ "${@}" == *"-n"* ]]; then
-  echo "NORDIC is turned on"
-  do_nordic="on"
-else
+  echo "NORDIC is turned off"
   do_nordic="off"
+else
+  do_nordic="on"
 fi
 
 if [[ -z ${n_echos} ]]; then

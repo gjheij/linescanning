@@ -20,6 +20,11 @@ Usage:
   spinoza_linereconstruction <project root directory> <sourcedata>
 
 Arguments:
+  -s <subject>        subject ID (e.g., 01, 001, or 1)
+  -n <session>        session ID (e.g., 1, 2, or n)
+  -m <n_echoes>       number of echoes in the acquisition (e.g., 5)
+  -j                  submit job to cluster (SGE)
+  -o                  overwrite existing files
   <project root>      base directory containing the derivatives and the subject's folders.
   <sourcedata>        base directory containing the raw data for reconstruction
 
@@ -30,6 +35,13 @@ Notes:
   relies on matlab scripts stored in '/data1/projects/MicroFunc/common'. As it relies on MRecon,
   we can only run this on the spinoza server
 
+  run with master:  "master -m 03 -s 003 -n 4 -x 5" (sub-003, ses-4, multi-echo (5) acquisition)
+                    "master -m 03 -s 003 -n 4"      (sub-003, ses-4, single-echo acquisition)
+                    "master -m 03 -s 003 -n 4 -x 5 -j" (submit to cluster)
+                    "master -m 03 -s 003 -n 4 -x 5 -o" (overwrite existing files)
+                    "master -m 03 -s 003 -n 4 -x 5 -o -j" (overwrite and submit)
+
+  Runs by default NORDIC denoising!
 ---------------------------------------------------------------------------------------------------
 
 USAGE
@@ -42,18 +54,24 @@ if [[ $# -lt 2 ]] ; then
 fi
 
 # Check for subject & session flags
-while getopts ojs:n: argument
+while getopts ojs:n:m: argument
 do
     case ${argument} in
       s)  sub=${OPTARG}
             ;;
       n)  ses=${OPTARG}
-            ;;            
+            ;;
+      m)  n_echoes=${OPTARG}
+            ;;                
     esac
 done
 
 OUTPUT=${@:$OPTIND:1}
 INPUT=${@:$OPTIND+1:1}
+
+#-----------------------------------------------------------------------------
+# Get bash helper functions
+source call_bashhelper
 
 if [[ -z ${sub} ]]; then
   # loop through subjects
@@ -80,25 +98,11 @@ else
   SGE=0
 fi
 
-# define function to get task-ID
-function task_id {
-  func=${1}
-  if [[ ${func} != *"task-"* ]]; then
-    task=${TASK_SES2}
-  else
-    # need some operations to find the task ID
-    part_after_task=${func#*task-}
-    if [[ ! -z ${part_after_task} ]]; then
-      # use brute force underscore as delimiter an pray your sequences have been set correctly
-      task=$(echo ${part_after_task} | cut -d'_' -f1)
-    else
-      # could not derive task; assume its pRF
-      task=pRF
-    fi
-  fi
-
-  echo ${task}
-}
+if [[ ! -z ${n_echoes} ]]; then
+  echo_flag="-m ${n_echoes}"
+else
+  echo_flag=""
+fi
 
 #-----------------------------------------------------------------------------
 # Start clock
@@ -118,17 +122,20 @@ echo "==========================================================================
 
 for dir in ${search}; do
 
-  if [[ -d ${INPUT}/$(basename ${dir})/ses-${nr} ]]; then
+  lab_func=${INPUT}/$(basename ${dir})/ses-${nr}
+  if [[ -d ${lab_func} ]]; then
 
     bidsfunc=${OUTPUT}/$(basename ${dir})/ses-${nr}/func
     if [[ ! -d ${bidsfunc} ]]; then
       mkdir -p ${bidsfunc}
     fi
 
-    nr_runs=`echo ${INPUT}/$(basename ${dir})/ses-${nr}/*bold*.lab | wc -w`
-    # echo ${INPUT}/$(basename ${dir})/ses-2
+    # fetch and sort the lab-files
+    bold_files=`find "${lab_func}" -type f \( -name "*bold_*" -and -name "*.lab" \) 2>/dev/null`
+    IFS=$'\n' bold_files=($(sort <<<"${bold_files[*]}"))
+    unset IFS
 
-    if [[ -z ${nr_runs} ]]; then
+    if [[ -z ${bold_files} ]]; then
       echo "`basename ${dir}`: Could not find BOLD-data"
       continue
     fi
@@ -138,45 +145,59 @@ for dir in ${search}; do
       echo
       echo "**************************************** Processing `basename ${dir}` ***************************************"
 
-      for i in `seq 1 ${nr_runs}`; do
+      count=0
+      for bold in ${bold_files[@]}; do
 
-        lab_file=`find "${INPUT}/$(basename ${dir})/ses-${nr}" -type f \( -name "*run-${i}*" -and -name "*bold*" -and -name "*.lab" \) 2>/dev/null`
+        ((count++))
 
+        # fetch run
+        run=`run_id ${bold}`
+        if [[ ${run} -eq 0 ]]; then
+          run=${count}
+        fi
+
+        lab_file=`find ${lab_func} -type f \( -name "*run-${run}*" -and -name "*bold*" -and -name "*.lab" \) 2>/dev/null`
         if [[ ! -z ${lab_file} ]]; then
 
-          # find task ID
-          task=`task_id ${lab_file}`
-          out=`find "${bidsfunc}" -type f \( -name "*run-${i}*" -name "*task-${task}*" -and -name "*.mat" \) 2>/dev/null`
-
-          if [[ ${OW} -eq 1 ]]; then
-            rm -r ${out}
+          # fetch task
+          task=`task_id ${bold}`
+          if [[ ${task} == "prf" ]]; then
+            task="pRF"
+          else
+            task=${task^^}
           fi
 
-          if [[ ! -f ${out} ]]; then
-            # echo "  Running recon for run-${i}"
+          outputbase=${bidsfunc}/$(basename ${dir})_ses-${nr}_task-${task}_run-${run}_bold
+
+          if [[ ${OW} -eq 1 ]]; then
+            rm -r ${outputbase}.mat 2>/dev/null
+          fi
+
+          if [[ ! -f ${outputbase}.mat ]]; then
+            
             IDnr=`basename ${dir} | cut -d'-' -f2`
 
             if [[ ${SGE} -eq 1 ]]; then
-              job="qsub -N recon_${IDnr} -wd ${DIR_LOGS}"
+              echo "submitting run-${run}"
+              job="qsub -N recon_${IDnr}_${run} -wd ${OUTPUT}/$(basename ${dir})/ses-${nr} -q ${SGE_QUEUE_SHORT}"
             else
+              echo "Running recon for run-${run}"
               job="bash"
               echo "Using `basename ${lab_file}` for reconstruction"
             fi
+                        
+            cmd="${job} ${DIR_SCRIPTS}/bin/call_linerecon ${echo_flag} ${IDnr} ${run} ${lab_func} ${outputbase}"
+            echo ${cmd}
 
-            ${job} ${DIR_SCRIPTS}/bin/call_linerecon -n \
-              ${IDnr} \
-              ${i} \
-              ${INPUT}/$(basename ${dir})/ses-${nr} \
-              ${bidsfunc}/$(basename ${dir})_ses-${nr}_task-${task}_run-${i}_bold
+          else
 
-            if [[ $? != 0 ]]; then
-              exit 1
-            fi
+            echo "${outputbase}.mat exists"
+
           fi
 
         else
 
-          echo "`basename ${dir}`: could not find lab-file for run-${i}"
+          echo "`basename ${dir}`: could not find lab-file for run-${run}"
           
         fi
 
