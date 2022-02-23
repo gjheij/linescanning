@@ -187,7 +187,7 @@ for dir in ${search}; do
             fi
                         
             cmd="${job} ${DIR_SCRIPTS}/bin/call_linerecon ${echo_flag} ${IDnr} ${run} ${lab_func} ${outputbase}"
-            echo ${cmd}
+            exec ${cmd}
 
           else
 
