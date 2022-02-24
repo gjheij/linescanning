@@ -1412,7 +1412,7 @@ class pRFmodelFitting():
 
         return bounds
 
-    def load_params(self, params_file, model='gauss', stage='iter'):
+    def load_params(self, params_file, model='gauss', stage='iter', acq=None):
 
         """Load in a numpy array into the class; allows for quick plotting of voxel timecourses"""
 
@@ -1441,8 +1441,14 @@ class pRFmodelFitting():
 
         setattr(self, f'{model}_{stage}', params)
 
-        preds = utils.get_file_from_substring([model, stage, "predictions.npy"], os.path.dirname(self.settings_fn), return_msg=None)
+        if acq != None:
+            preds = utils.get_file_from_substring([model, stage, acq, "predictions.npy"], os.path.dirname(self.settings_fn), return_msg=None)
+        else:
+            preds = utils.get_file_from_substring([model, stage, "predictions.npy"], os.path.dirname(self.settings_fn), return_msg=None)
         if preds != None:
+            if isinstance(preds, list):
+                raise ValueError(f"Found multiple instances for [{model}, {acq}, {stage}, predictions.npy]: {preds}")
+
             setattr(self, f'{model}_{stage}_predictions', np.load(preds))
 
     def make_predictions(self, vox_nr=None, model='gauss', stage='iter'):
@@ -1499,6 +1505,9 @@ class pRFmodelFitting():
                  font_size=18, 
                  line_width=1, 
                  transpose=False,
+                 freq_spectrum=False,
+                 freq_type='fft',
+                 clip_power=None,
                  **kwargs):
 
         """plot real and predicted timecourses for a voxel. Also returns parameters, the numpy array representing the pRF in visual space, and timecourse of data"""
@@ -1511,7 +1520,11 @@ class pRFmodelFitting():
         if make_figure:
             prf_array = make_prf(self.prf_stim, size=params[2], mu_x=params[0], mu_y=params[1])
             fig = plt.figure(constrained_layout=True, figsize=(20,5))
-            gs00 = fig.add_gridspec(1,2, width_ratios=[10,20])
+
+            if freq_spectrum:
+                gs00 = fig.add_gridspec(1,3, width_ratios=[10,20,10])
+            else:
+                gs00 = fig.add_gridspec(1,2, width_ratios=[10,20])
 
             # make plot 
             ax1 = fig.add_subplot(gs00[0])
@@ -1547,6 +1560,23 @@ class pRFmodelFitting():
                               set_xlim_zero=True,
                               line_width=line_width,
                               **kwargs)
+
+            if freq_spectrum:
+                ax3 = fig.add_subplot(gs00[2])
+                self.freq = dataset.ParseFuncFile.get_freq(tc, TR=self.TR, spectrum_type=freq_type, clip_power=clip_power)
+
+                plotting.LazyPlot(self.freq[1],
+                                  xx=self.freq[0],
+                                  color="#1B9E77", 
+                                  x_label="frequency (Hz)",
+                                  y_label="power (a.u.)",
+                                  axs=ax3,
+                                  title=freq_type,
+                                  xkcd=xkcd,
+                                  font_size=font_size,
+                                  x_lim=[0,2],
+                                  line_width=line_width,
+                                  **kwargs)
 
             return params, prf_array, tc
         else:
