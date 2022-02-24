@@ -22,6 +22,7 @@ Args:
  -t <TR>        set by default to 0.105; 'pixdim4' if func = *.nii.gz
  -v <VOLUMES>   nr of volumes; 'dim4' if func = *.nii.gz or 'shape[-1]' if *.mat
  -f <FUNC FILE> functional file that contains information about the number of runs
+ -d <DUMMY VOL> number of dummy volumes before acquisition of actual data (1 dyn is typically 400 vols)
  <input file>   SCANPHYSLOG-file that you want to convert to text file
  <output image>	name of output image, including directory
 
@@ -42,11 +43,13 @@ if [[ $# -lt 1 ]] ; then
 fi
 
 # Check for subject & session flags
-while getopts s:f:t:r: argument
+while getopts s:f:t:r:d: argument
 do
   case ${argument} in
     s)  SPM=${OPTARG}
             ;;
+    d)  DUMMY_VOLS=${OPTARG}
+            ;;            
     f)  FUNC=${OPTARG}
             ;;            
     t)  TR=${OPTARG}
@@ -82,10 +85,14 @@ if [[ ! -d ${SPM_PATH} ]]; then
   exit 1
 fi
 
+# fetch full paths
+INPUT=`fetch_filepath ${INPUT}`
+OUTPUT=`fetch_filepath ${OUTPUT}`
 #-----------------------------------------------------------------------------
 # Fetch number of volumes
 if [[ -z ${VOLS} ]]; then
   if [[ ! -z ${FUNC} ]]; then
+    FUNC=`fetch_filepath ${FUNC}`
     if [[ -f ${FUNC} ]]; then
       # check if we're dealing with nifti or mat
       if [[ ${FUNC} == *".nii.gz"* ]]; then
@@ -116,6 +123,14 @@ else
 fi
 
 #-----------------------------------------------------------------------------
+# Fetch dummy scans
+if [[ -z ${DUMMY_VOLS} ]]; then
+  N_DUMMY=0
+else
+  N_DUMMY=${DUMMY_VOLS}
+fi
+
+#-----------------------------------------------------------------------------
 # Create new script
 new_script=$(dirname ${OUTPUT})/spm_physio.m
 if [[ -f ${new_script} ]]; then
@@ -130,7 +145,7 @@ fi
 INPUT=`fetch_filepath ${INPUT}`
 OUTPUT=`fetch_filepath ${OUTPUT}`
 
-make_physio_script ${SPM_PATH} ${INPUT} ${TR} ${VOLS} ${OUTPUT} ${new_script}
+make_physio_script ${SPM_PATH} ${INPUT} ${TR} ${VOLS} ${OUTPUT} ${N_DUMMY} ${new_script}
 if [[ $? -ne 0 ]]; then
   echo "ERROR in `basename ${0}`: make_physio_script exited with non-zero status"
   exit 1
