@@ -373,11 +373,11 @@ class LazyPlot():
                 axs.axhline(self.add_hline['pos'], color=self.add_hline['color'],
                             lw=self.add_hline['lw'], ls=self.add_hline['ls'])
 
-        if self.set_xlim_zero:
-            axs.set_xlim(0)
+        if self.x_lim:
+            axs.set_xlim(self.x_lim)
         else:
-            if self.x_lim:
-                axs.set_xlim(self.x_lim)
+            if self.set_xlim_zero:
+                axs.set_xlim(0)
 
         sns.despine(offset=self.sns_offset, trim=self.sns_trim, bottom=self.sns_bottom)
 
