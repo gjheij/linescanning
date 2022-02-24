@@ -4,11 +4,12 @@ import nibabel as nb
 from nilearn import signal
 from nilearn.glm.first_level.design_matrix import _cosine_drift
 from nitime.timeseries import TimeSeries
-from nitime.analysis import SpectralAnalyzer, FilterAnalyzer, NormalizationAnalyzer
+from nitime.analysis import SpectralAnalyzer
 import numpy as np
 import os
 import pandas as pd
 from scipy import io
+from scipy import fft
 from scipy.signal import savgol_filter
 import warnings
 
@@ -45,10 +46,10 @@ class ParseEyetrackerFile():
         subject number in the returned pandas DataFrame (should start with 1, ..., n)
     run: int
         run number you'd like to have the onset times for
-    button: bool
-        boolean whether to include onset times of button responses (default is false)
-    blinks: str, np.ndarray
-        string or array containing the onset times of eye blinks as extracted with hedfpy
+    low_pass_pupil_f: float, optional
+        Low-pass cutoff frequency
+    high_pass_pupil_f: float, optional
+        High-pass cutoff frequency
     TR: float
         repetition time to correct onset times for deleted volumes
     deleted_first_timepoints: int
@@ -84,7 +85,6 @@ class ParseEyetrackerFile():
                  func_file=None, 
                  TR1=0.105, 
                  TR2=None, 
-                 funcs=None,
                  verbose=False, 
                  use_bids=True):
 
@@ -99,6 +99,7 @@ class ParseEyetrackerFile():
         self.use_bids           = use_bids
         self.include_blinks     = False
 
+        print("\nEYETRACKER")
         # add all files to h5-file
         if isinstance(self.edf_file, str) or isinstance(self.edf_file, list):
             self.preprocess_edf_files()
@@ -115,13 +116,13 @@ class ParseEyetrackerFile():
             raise ValueError(f"Input must be 'str' or 'list', not '{type(self.edf_file)}'")
 
         # deal with edf-files
-        if isinstance(self.func_file, str):
-            self.func_file = [self.func_file]
-        elif isinstance(self.func_file, list):
-            self.func_file = self.func_file.copy()
-        else:
-            raise ValueError(
-                f"Input must be 'str' or 'list', not '{type(self.edf_file)}'")
+        if self.func_file != None:
+            if isinstance(self.func_file, str):
+                self.func_file = [str(self.func_file)]
+            elif isinstance(self.func_file, list):
+                self.func_file = self.func_file.copy()
+            else:
+                raise ValueError(f"Input must be 'str' or 'list', not '{type(self.edf_file)}'")
 
         h5_file = opj(os.path.dirname(edfs[0]), f"eye.h5")
         self.ho = hedfpy.HDFEyeOperator(h5_file)
@@ -129,21 +130,27 @@ class ParseEyetrackerFile():
             for i, edf_file in enumerate(edfs):
 
                 if self.use_bids:
-                    run_ID = utils.split_bids_components(edf_file)['run']
+                    comps = utils.split_bids_components(edf_file)
+                    try:
+                        run_ID = comps['run']
+                    except:
+                        run_ID = i+1
                 else:
                     run_ID = i+1
 
+                alias = f"run_{run_ID}"
+
                 self.ho.add_edf_file(edf_file)
-                self.ho.edf_message_data_to_hdf(alias=f'run_{run_ID}')
-                self.ho.edf_gaze_data_to_hdf(alias=f'run_{run_ID}',
+                self.ho.edf_message_data_to_hdf(alias=alias)
+                self.ho.edf_gaze_data_to_hdf(alias=alias,
                                              pupil_hp=self.high_pass_pupil_f,
                                              pupil_lp=self.low_pass_pupil_f)
         else:
             self.ho.open_hdf_file()
 
-        self.df_eye = []
-        self.blink_events = []
-        self.eye_in_func = []
+        self.df_eye         = []
+        self.blink_events   = []
+        self.eye_in_func    = []
         for i, edf_file in enumerate(edfs):
 
             if self.verbose:
@@ -154,8 +161,6 @@ class ParseEyetrackerFile():
                 self.sub, run_ID = bids_comps['sub'], bids_comps['run']
             else:
                 run_ID = i+1
-
-            alias = f"run_{run_ID}"
 
             # full output from 'fetch_relevant_info' > use sub as differentiator if multiple files were given
             if self.use_bids:
@@ -511,7 +516,7 @@ class ParseExpToolsFile(ParseEyetrackerFile):
                  button=False, 
                  blinks=None, 
                  TR=0.105, 
-                 deleted_first_timepoints=38, 
+                 deleted_first_timepoints=0, 
                  edfs=None, 
                  funcs=None, 
                  use_bids=True,
@@ -536,6 +541,7 @@ class ParseExpToolsFile(ParseEyetrackerFile):
                          use_bids=self.use_bids, 
                          verbose=self.verbose)
 
+        print("EXPTOOLS\n")
         if isinstance(self.tsv_file, str):
 
             # try to read bids-components from file-name if None's were specified
@@ -762,36 +768,125 @@ class ParsePhysioFile():
     >>> physio_df   = physio.get_physio(index=False)
     """
 
-    def __init__(self, physio_file, physio_mat=None, subject=1, run=1, TR=0.105, orders=[2,2,2], deleted_first_timepoints=38, deleted_last_timepoints=38):
+    def __init__(self, 
+                 physio_file, 
+                 physio_mat=None, 
+                 subject=1, 
+                 run=1, 
+                 TR=0.105, 
+                 orders=[3,4,1], 
+                 deleted_first_timepoints=0, 
+                 deleted_last_timepoints=0, 
+                 use_bids=False, 
+                 verbose=True,
+                 **kwargs):
 
         self.physio_file                = physio_file
-        self.sub                    = subject
+        self.physio_mat                 = physio_mat
+        self.sub                        = subject
         self.run                        = run
         self.TR                         = TR
         self.orders                     = orders
         self.deleted_first_timepoints   = deleted_first_timepoints
         self.deleted_last_timepoints    = deleted_last_timepoints
         self.physio_mat                 = physio_mat
+        self.use_bids                   = use_bids
+        self.verbose                    = verbose
+        self.__dict__.update(kwargs)
 
-        self.physio_cols = [f'c_{i}' for i in range(self.orders[0])] + [f'r_{i}' for i in range(self.orders[1])] + [f'cr_{i}' for i in range(self.orders[2])]
+        print("\nPHYSIO")
         
-        self.physio_data = pd.read_csv(self.physio_file,
-                                       header=None,
-                                       sep="\t",
-                                       engine='python',
-                                       skiprows=deleted_first_timepoints,
-                                       usecols=list(range(0, len(self.physio_cols))))
+        self.physio_cols = [f'c_{i}' for i in range(self.orders[0])] + [f'r_{i}' for i in range(self.orders[1])] + [f'cr_{i}' for i in range(self.orders[2])]
+
+        if isinstance(self.physio_file, str):
+                
+            # try to read bids-components from file-name if None's were specified
+            if self.use_bids:
+                bids_comps = utils.split_bids_components(self.physio_file)
+                for el in ['sub', 'run']:
+                    if getattr(self, el) == None:
+                        setattr(self, el, bids_comps[el])
+            
+            # preprocess
+            if self.verbose:
+                print(f"Preprocessing {self.physio_file}")
+            self.preprocess_physio_file(self.physio_file,
+                                        physio_mat=self.physio_mat,
+                                        deleted_first_timepoints=self.deleted_first_timepoints,
+                                        deleted_last_timepoints=self.deleted_last_timepoints)
+
+            self.df_physio = self.get_physio(index=True)
+                
+        elif isinstance(self.physio_file, list):
+
+            df_physio = []
+            for run, func in enumerate(self.physio_file):
+                if self.verbose:
+                    print(f"Preprocessing {func}")
+
+                if self.use_bids:
+                    bids_comps = utils.split_bids_components(func)
+                    for el in ['sub', 'run']:
+                        setattr(self, el, bids_comps[el])
+                else:
+                    self.run = run
+
+                # check if deleted_first_timepoints is list or not
+                delete_first = check_input_is_list(self, var="deleted_first_timepoints", list_element=run)
+
+                # check if deleted_last_timepoints is list or not
+                delete_last = check_input_is_list(self, var="deleted_last_timepoints", list_element=run)
+
+                if self.physio_mat != None:
+                    if isinstance(self.physio_mat, list):
+                        if len(self.physio_mat) == len(self.physio_file):
+                            mat_file = self.physio_mat[run]
+                        else:
+                            raise ValueError(f"Length of mat-files ({len(self.physio_mat)}) does not match length of physio-files ({len(self.physio_mat)})")
+                    else:
+                        raise ValueError("Please specify a list of mat-files of equal lengths to that of the list of physio files")
+                else:
+                    mat_file = None
+
+                self.preprocess_physio_file(func, 
+                                            physio_mat=mat_file,
+                                            deleted_first_timepoints=delete_first,
+                                            deleted_last_timepoints=delete_last)
+
+                df_physio.append(self.get_physio(index=False))
+
+            self.df_physio = pd.concat(df_physio).set_index(['subject', 'run', 't'])
+        
+    def preprocess_physio_file(self, 
+                               physio_tsv, 
+                               physio_mat=None, 
+                               deleted_first_timepoints=0, 
+                               deleted_last_timepoints=0):
+
+        self.physio_data = pd.read_csv(physio_tsv,
+                                        header=None,
+                                        sep="\t",
+                                        engine='python',
+                                        skiprows=deleted_first_timepoints,
+                                        usecols=list(range(0, len(self.physio_cols))))
 
         self.physio_df = pd.DataFrame(self.physio_data)
-        self.physio_df.drop(self.physio_df.tail(self.deleted_last_timepoints).index,inplace=True)
+        self.physio_df.drop(self.physio_df.tail(deleted_last_timepoints).index,inplace=True)
         self.physio_df.columns = self.physio_cols
 
         # Try to get the heart rate
-        if self.physio_mat != None:
-            self.mat = io.loadmat(self.physio_mat)
+        if physio_mat != None:
+            self.mat = io.loadmat(physio_mat)
             self.hr = self.mat['physio']['ons_secs'][0][0][0][0][12]
-            self.physio_df['hr'] = self.hr[self.deleted_first_timepoints:-self.deleted_last_timepoints,...]
-            self.physio_df['hr'] = (self.physio_df['hr'] - self.physio_df['hr'].mean())/self.physio_df['hr'].std(ddof=0)
+
+            # trim beginning and end
+            if deleted_last_timepoints != 0:
+                self.physio_df['hr'] = self.hr[:,deleted_first_timepoints:-deleted_last_timepoints]
+            else:
+                self.physio_df['hr'] = self.hr[:,deleted_first_timepoints:]
+
+            # self.physio_df['hr'] = (self.physio_df['hr'] - self.physio_df['hr'].mean())/self.physio_df['hr'].std(ddof=0)
+
         self.physio_df['subject'], self.physio_df['run'], self.physio_df['t'] = self.sub, self.run, list(self.TR*np.arange(self.physio_df.shape[0]))
 
     def get_physio(self, index=True):
@@ -801,7 +896,7 @@ class ParsePhysioFile():
             return self.physio_df
 
 
-class ParseFuncFile(ParseExpToolsFile):
+class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
 
     """ParseFuncFile()
 
@@ -851,8 +946,8 @@ class ParseFuncFile(ParseExpToolsFile):
                  low_pass=True,
                  lb=0.01, 
                  TR=0.105, 
-                 deleted_first_timepoints=38, 
-                 deleted_last_timepoints=38, 
+                 deleted_first_timepoints=0, 
+                 deleted_last_timepoints=0, 
                  window_size=19,
                  poly_order=3,
                  attribute_tag=None,
@@ -860,9 +955,11 @@ class ParseFuncFile(ParseExpToolsFile):
                  tsv_file=None,
                  edf_file=None,
                  phys_file=None,
+                 phys_mat=None,
                  use_bids=True,
                  button=False,
                  verbose=True,
+                 retroicor=False,
                  **kwargs):
 
         self.sub                        = subject
@@ -882,9 +979,25 @@ class ParseFuncFile(ParseExpToolsFile):
         self.tsv_file                   = tsv_file
         self.edf_file                   = edf_file
         self.phys_file                  = phys_file
+        self.phys_mat                   = phys_mat
         self.use_bids                   = use_bids
         self.verbose                    = verbose
+        self.retroicor                  = retroicor
         self.__dict__.update(kwargs)
+        
+        if self.phys_file != None: 
+            
+            # super(ParsePhysioFile, self).__init__(**kwargs)                                              
+            ParsePhysioFile.__init__(self, 
+                                     self.phys_file, 
+                                     physio_mat=self.phys_mat, 
+                                     use_bids=self.use_bids,
+                                     TR=self.TR,
+                                     deleted_first_timepoints=self.deleted_first_timepoints,
+                                     deleted_last_timepoints=self.deleted_last_timepoints,
+                                     **kwargs)
+        
+        print("\nFUNCTIONAL")
 
         if isinstance(self.func_file, str):
             if not self.func_file.endswith("h5"):
@@ -897,7 +1010,9 @@ class ParseFuncFile(ParseExpToolsFile):
                             setattr(self, el, bids_comps[el])
                 
                 # preprocess
-                print(f"Preprocessing {self.func_file}")
+                if self.verbose:
+                    print(f"Preprocessing {self.func_file}")
+
                 self.preprocess_func_file(self.func_file,
                                           run=self.run, 
                                           lowpass=self.low_pass, 
@@ -918,10 +1033,13 @@ class ParseFuncFile(ParseExpToolsFile):
                     self.from_hdf(func_file, self.attribute_tag, key=self.hdf_key)
                 
         elif isinstance(func_file, list):
-            df_func = []
-            df_raw = []
+            df_func     = []
+            df_raw      = []
+            df_retro    = []
+            df_r2       = []
             for run, func in enumerate(self.func_file):
-                print(f"Preprocessing {func}")
+                if self.verbose:
+                    print(f"Preprocessing {func}")
                 if self.use_bids:
                     bids_comps = utils.split_bids_components(func)
                     for el in ['sub', 'run']:
@@ -941,27 +1059,38 @@ class ParseFuncFile(ParseExpToolsFile):
                                           highpass=self.high_pass, 
                                           deleted_first_timepoints=delete_first,
                                           deleted_last_timepoints=delete_last)
-
+            
                 df_func.append(self.get_psc(index=False))
                 df_raw.append(self.get_raw(index=False))
 
+                if retroicor:
+                    df_retro.append(self.get_retroicor(index=False))
+                    df_r2.append(self.r2_physio_df)
+
             self.df_func_psc = pd.concat(df_func).set_index(['subject', 'run', 't'])
             self.df_func_raw = pd.concat(df_raw).set_index(['subject', 'run', 't'])
-        
+
+            if retroicor:
+                try:
+                    self.df_retro_zscore = pd.concat(df_retro).set_index(['subject', 'run', 't'])
+                    self.df_r2 = pd.concat(df_r2).set_index(['subject', 'run', 'vox'])
+                except:
+                    raise ValueError("RETROICOR did not complete successfully..")
+
+
         # now that we have nicely formatted functional data, initialize the ParseExpToolsFile-class
         if self.tsv_file != None: 
-            super().__init__(self.tsv_file, 
-                             subject=self.sub, 
-                             deleted_first_timepoints=self.deleted_first_timepoints, 
-                             TR=self.TR, 
-                             edfs=self.edf_file, 
-                             funcs=self.func_file, 
-                             use_bids=self.use_bids,
-                             button=self.button,
-                             verbose=self.verbose)
-
-        if self.phys_file != None:
-            raise NotImplementedError()
+            ParseExpToolsFile.__init__(self,
+                                       self.tsv_file, 
+                                       subject=self.sub, 
+                                       deleted_first_timepoints=self.deleted_first_timepoints, 
+                                       TR=self.TR, 
+                                       edfs=self.edf_file, 
+                                       funcs=self.func_file, 
+                                       use_bids=self.use_bids,
+                                       button=self.button,
+                                       verbose=self.verbose,
+                                       **kwargs)
 
     def preprocess_func_file(self, 
                              func_file, 
@@ -1022,7 +1151,67 @@ class ParseFuncFile(ParseExpToolsFile):
 
             self.low_passed = self.lowpass_savgol(use_data, window_length=self.window_size, polyorder=self.poly_order)
 
-        # percent signal change
+        # check if we should attempt RETROICOR
+        if self.retroicor:
+
+            # we should have df_physio dataframe from ParsePhysioFile
+            if hasattr(self, "df_physio"):
+                try:
+                    # select subset of df_physio. Run IDs must correspond!
+                    self.confs = utils.select_from_df(self.df_physio, expression=f"run = {self.run}")
+                except:
+                    raise ValueError(f"Could not extract dataframe from 'df_physio' with expression: 'run = {self.run}'")
+
+                # check what data we should use
+                if hasattr(self, "lowpass"):
+                    data = self.lowpass.copy()
+                elif hasattr(self, "highpass"):
+                    data = self.highpass.copy()
+                else:
+                    data = self.ts_corrected.copy()
+
+                self.z_score = signal.clean(data, standardize=True)
+
+                if "hr" in list(self.confs.columns):
+                    self.confs = self.confs.drop(columns=['hr'])
+
+                # regress out the confounds with signal.clean
+                if self.verbose:
+                    print(" RETROICOR with physio-regressors")
+
+                cardiac     = utils.select_from_df(self.confs, expression='ribbon', indices=[0,self.orders[0]])
+                respiration = utils.select_from_df(self.confs, expression='ribbon', indices=[self.orders[0],self.orders[0]+self.orders[1]])
+                interaction = utils.select_from_df(self.confs, expression='ribbon', indices=[self.orders[0]+self.orders[1],len(list(self.confs.columns))])
+
+                self.clean_all          = signal.clean(self.z_score.T, standardize=False, confounds=self.confs.values).T
+                self.clean_resp         = signal.clean(self.z_score.T, standardize=False, confounds=respiration.values).T
+                self.clean_cardiac      = signal.clean(self.z_score.T, standardize=False, confounds=cardiac.values).T
+                self.clean_interaction  = signal.clean(self.z_score.T, standardize=False, confounds=interaction.values).T
+
+                # create the dataframes
+                self.z_score_df    = self.index_func(self.z_score, columns=self.vox_cols, subject=self.sub, run=run, TR=self.TR)
+
+                self.z_score_retroicor_df    = self.index_func(self.clean_all, columns=self.vox_cols, subject=self.sub, run=run, TR=self.TR)
+
+                print(self.z_score.shape)
+                self.r2_all          = 1-(np.var(self.clean_all, -1) / np.var(self.z_score, -1))
+                self.r2_resp         = 1-(np.var(self.clean_resp, -1) / np.var(self.z_score, -1))
+                self.r2_cardiac      = 1-(np.var(self.clean_cardiac, -1) / np.var(self.z_score, -1))
+                self.r2_interaction  = 1-(np.var(self.clean_interaction, -1) / np.var(self.z_score, -1))
+                
+                # save in a subject X run X voxel manner
+                self.r2_physio = {'all': self.r2_all,   
+                                  'respiration': self.r2_resp, 
+                                  'cardiac': self.r2_cardiac, 
+                                  'interaction': self.r2_interaction}
+
+                self.r2_physio_df = pd.DataFrame(self.r2_physio)
+                self.r2_physio_df['subject'], self.r2_physio_df['run'], self.r2_physio_df['vox'] = self.sub, run, np.arange(0,self.r2_all.shape[0])
+
+            else:
+                print(" Could not find df_physio.. Retroicor failed")
+
+        # percent signal change       
         if hasattr(self, "low_passed"):
             if self.verbose:
                 print(" Using low-passed [SG-filtered] data for PSC")
@@ -1038,6 +1227,9 @@ class ParseFuncFile(ParseExpToolsFile):
 
         self.psc_data       = utils.percent_change(self.data, -1)
         self.psc_data_df    = self.index_func(self.psc_data, columns=self.vox_cols, subject=self.sub, run=run, TR=self.TR)
+
+        self.psc_raw       = utils.percent_change(self.ts_corrected, -1)
+        self.psc_raw_df    = self.index_func(self.psc_raw, columns=self.vox_cols, subject=self.sub, run=run, TR=self.TR)        
 
     @staticmethod
     def index_func(array, columns=None, subject=1, run=1, TR=0.105, set_index=False):
@@ -1130,37 +1322,79 @@ class ParseFuncFile(ParseExpToolsFile):
         return savgol_filter(func, window_length, polyorder, axis=-1)
 
     @staticmethod
-    def get_freq(func, TR=0.105, spectrum_type='psd'):
+    def get_freq(func, TR=0.105, spectrum_type='psd', clip_power=None):
+        
+        if spectrum_type != "fft":
+            TC      = TimeSeries(np.asarray(func), sampling_interval=1/TR)
+            spectra = SpectralAnalyzer(TC)
 
-        TC      = TimeSeries(np.asarray(func), sampling_interval=TR)
-        spectra = SpectralAnalyzer(TC)
+            if spectrum_type == "psd":
+                selected_spectrum = spectra.psd
+            elif spectrum_type == "fft":
+                selected_spectrum = spectra.spectrum_fourier
+            elif spectrum_type == "periodogram":
+                selected_spectrum = spectra.periodogram
+            elif spectrum_type == "mtaper":
+                selected_spectrum = spectra.spectrum_multi_taper
+            else:
+                raise ValueError(f"Requested spectrum was '{spectrum_type}'; available options are: 'psd', 'fft', 'periodogram', or 'mtaper'")
+            
+            freq,power = selected_spectrum[0],selected_spectrum[1]
+            if spectrum_type == "fft":
+                power[power < 0] = 0
 
-        if spectrum_type == "psd":
-            selected_spectrum = spectra.psd
-        elif spectrum_type == "fft":
-            selected_spectrum = spectra.spectrum_fourier
-        elif spectrum_type == "periodogram":
-            selected_spectrum = spectra.periodogram
-        elif spectrum_type == "mtaper":
-            selected_spectrum = spectra.spectrum_multi_taper
+            if clip_power != None:
+                power = np.clip(power, 0, clip_power)
+
+            return freq,power
+
         else:
-            raise ValueError(f"Requested spectrum was '{spectrum_type}'; available options are: 'psd', 'fft', 'periodogram', or 'mtaper'")
+            TR      = 0.105
+            freq    = np.fft.fftshift(np.fft.fftfreq(func.shape[0], d=TR))
+            power   = np.abs(np.fft.fftshift(np.fft.fft(func)))**2/func.shape[0]
 
-        return selected_spectrum[0], selected_spectrum[1]
+            if clip_power != None:
+                power[power>clip_power] = 0    
 
-    def get_psc(self, index=False):
-        if hasattr(self, 'psc_data_df'):
+            return freq, power
+
+    def get_zscore(self, index=False):
+        if hasattr(self, 'z_score_df'):
             if index:
-                return self.psc_data_df.set_index(['subject', 'run', 't'])
+                return self.z_score_df.set_index(['subject', 'run', 't'])
             else:
-                return self.psc_data_df
+                return self.z_score_df
 
-    def get_raw(self, index=False):
-        if hasattr(self, 'raw_data'):
+    def get_retroicor(self, index=False):
+        if hasattr(self, 'z_score_retroicor_df'):
             if index:
-                return self.raw_data.set_index(['subject', 'run', 't'])
+                return self.z_score_retroicor_df.set_index(['subject', 'run', 't'])
             else:
-                return self.raw_data
+                return self.z_score_retroicor_df                
+
+    def get_psc(self, index=False, psc=True):
+        if psc:
+            if hasattr(self, 'psc_data_df'):
+                if index:
+                    return self.psc_data_df.set_index(['subject', 'run', 't'])
+                else:
+                    return self.psc_data_df
+        else:
+            raise NotImplementedError("Not sure yet what this should be..")
+
+    def get_raw(self, index=False, psc=True):
+        if psc:
+            if hasattr(self, 'psc_raw_df'):
+                if index:
+                    return self.psc_raw_df.set_index(['subject', 'run', 't'])
+                else:
+                    return self.psc_raw_df
+        else:
+            if hasattr(self, 'raw_data'):
+                if index:
+                    return self.raw_data.set_index(['subject', 'run', 't'])
+                else:
+                    return self.raw_data
 
     def to_hdf(self, attribute_tag, output_file, key="df"):
         if hasattr(self, attribute_tag):
@@ -1244,18 +1478,20 @@ class Dataset(ParseFuncFile):
                  tsv_file=None,
                  edf_file=None,
                  phys_file=None,
+                 phys_mat=None,
                  high_pass=True,
                  low_pass=True,
                  button=False,
                  lb=0.01, 
-                 deleted_first_timepoints=38, 
-                 deleted_last_timepoints=38, 
+                 deleted_first_timepoints=0, 
+                 deleted_last_timepoints=0, 
                  window_size=20,
                  poly_order=3,
                  attribute_tag=None,
                  hdf_key="df",
                  use_bids=True,
                  verbose=False,
+                 retroicor=False,
                  **kwargs):
 
         self.sub                        = subject
@@ -1275,8 +1511,10 @@ class Dataset(ParseFuncFile):
         self.tsv_file                   = tsv_file
         self.edf_file                   = edf_file
         self.phys_file                  = phys_file
+        self.phys_mat                   = phys_mat
         self.use_bids                   = use_bids
         self.verbose                    = verbose
+        self.retroicor                  = retroicor
         self.__dict__.update(kwargs)
 
         super().__init__(self.func_file,
@@ -1292,20 +1530,34 @@ class Dataset(ParseFuncFile):
                          poly_order=self.poly_order,
                          tsv_file=self.tsv_file,
                          edf_file=self.edf_file,
-                         phys_file=None,
+                         phys_file=self.phys_file,
+                         phys_mat=self.phys_mat,
                          use_bids=self.use_bids,
                          verbose=self.verbose,
+                         retroicor=self.retroicor,
                          **kwargs)
 
-    def fetch_fmri(self, strip_index=False):
-        if hasattr(self, 'df_func_psc'):
-            if strip_index:
-                return self.df_func_psc.reset_index().drop(labels=['subject', 'run', 't'], axis=1) 
-            else:
-                return self.df_func_psc
+    print("DATASET")
+    def fetch_fmri(self, strip_index=False, type='filt+psc'):
+        if type == "filt+psc":
+            attr = 'df_func_psc'
+        elif type == "retroicor":
+            attr = 'df_retro_zscore'
+        elif type == "raw+psc":
+            attr = 'df_func_raw'
         else:
-            print("No functional data was provided")
+            raise ValueError(f"Unknown option '{type}'. Must be 'filt+psc', 'retroicor', or 'raw+psc'")
 
+        if hasattr(self, attr):
+            print(f"Fetching dataframe from attribute '{attr}'")
+            df = getattr(self, attr)
+            if strip_index:
+                return df.reset_index().drop(labels=['subject', 'run', 't'], axis=1) 
+            else:
+                return df
+        else:
+            print(f"Could not find '{attr}' attribute")
+            
     def fetch_onsets(self, strip_index=False):
         if hasattr(self, 'df_onsets'):
             if strip_index:
@@ -1314,6 +1566,15 @@ class Dataset(ParseFuncFile):
                 return self.df_onsets
         else:
             print("No event-data was provided")
+
+    def fetch_physio(self, strip_index=False):
+        if hasattr(self, 'df_physio'):
+            if strip_index:
+                return self.df_physio.reset_index().drop(labels=list(self.df_physio.index.names), axis=1)
+            else:
+                return self.df_physio
+        else:
+            print("No physio-data was provided")            
 
     def fetch_trace(self, strip_index=False):
         if hasattr(self, 'eye_in_func'):
