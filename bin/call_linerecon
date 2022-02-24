@@ -190,9 +190,9 @@ if [[ ${PLACE} == "SGE" ]]; then
   else
 
     if [[ ! -f ${reconlab} ]]; then
-      txt="No LAB-file containing information about reconstruction; should be like sub-xxx_desc-recon.lab"
+      txt="No recon LAB-file with \"*run-${RUN}*\", \"*recon*\", and \"*.lab\""
     elif [[ ! -f ${tasklab} ]]; then
-      txt="No LAB-file containing information about the line data; should be like sub-xxx_task-2R_bold.lab"
+      txt="No task LAB-file with \"*run-${RUN}*\", \"*bold*\", and \"*.lab\""
     fi
 
     echo
