@@ -366,6 +366,7 @@ for dir in ${search}; do
 
             func=`find "${outputdir}" -type f \( -name "*acq-3DEPI*" -and -name "*run-${i}*" -and -name "*bold.nii.gz" \) 2>/dev/null`
             fmap=`find "${outputdir}" -type f \( -name "*acq-3DEPI*" -and -name "*run-${i}*" -and -name "*epi.nii.gz" \) 2>/dev/null`
+            phase=`find "${outputdir}" -type f \( -name "*acq-3DEPI*" -and -name "*run-${i}*" -and -name "*bold_ph.nii.gz" \) 2>/dev/null`
             task=`task_id ${func}`
 
             # -acq needs to be after task to be compatible with fMRIprep
@@ -374,7 +375,8 @@ for dir in ${search}; do
               mkdir -p ${tmp_dir}
             fi
 
-            bids_func=${tmp_dir}/$(basename ${dir})_ses-${ses_id}_task-${task}_acq-3DEPI_run-${i}_bold.nii.gz
+            fname=${tmp_dir}/$(basename ${dir})_ses-${ses_id}_task-${task}_run-${i}_acq-3DEPI
+            bids_func=${fname}_bold.nii.gz
             if [[ ! -f ${bids_func} ]]; then
               if [[ -f ${func} ]]; then
                 echo "  renaming func-file to `basename ${bids_func}`"
@@ -387,7 +389,7 @@ for dir in ${search}; do
               echo "  $(basename ${bids_func}) exists"
             fi
 
-            bids_epi=${tmp_dir}/$(basename ${dir})_ses-${ses_id}_acq-3DEPI_task-${task}_run-${i}_epi.nii.gz
+            bids_func=${fname}_epi.nii.gz
             if [[ ! -f ${bids_epi} ]]; then
               if [[ -f ${fmap} ]]; then
                 echo "  renaming epi-file to `basename ${bids_epi}`"
@@ -395,6 +397,15 @@ for dir in ${search}; do
                 cp $(dirname ${fmap})/$(basename ${fmap} .nii.gz).json $(dirname ${bids_epi})/$(basename ${bids_epi} .nii.gz).json
               fi
             fi
+
+            bids_func=${fname}_bold_ph.nii.gz
+            if [[ ! -f ${bids_epi} ]]; then
+              if [[ -f ${fmap} ]]; then
+                echo "  renaming phase-file to `basename ${bids_epi}`"
+                cp ${fmap} ${bids_epi}
+                cp $(dirname ${fmap})/$(basename ${fmap} .nii.gz).json $(dirname ${bids_epi})/$(basename ${bids_epi} .nii.gz).json
+              fi
+            fi            
 
             echo " These files should be treated with \"partial_preprocess.py\" in the pRFline-package"
             echo " See also: https://github.com/spinoza-centre/pRFline/tree/main/scripts"    
