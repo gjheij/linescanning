@@ -512,7 +512,6 @@ def convolve_hrf(hrf, stim_v, make_figure=False, xkcd=False):
             convolved_stim_vector = {}
             for event in list(stim_v.keys()):
                 hrf_conv = np.zeros((stim_v[event].shape[0], len(hrf)))
-                print(f"Received {len(hrf)} HRFs")
                 for ix,rf in enumerate(hrf):
                     hrf_conv[...,ix] = np.convolve(stim_v[event], rf, 'full')[:stim_v[event].shape[0]]
                 
