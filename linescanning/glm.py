@@ -196,63 +196,63 @@ class GenericGLM():
             self.plot_design_matrix()
         # %%
         # Fit all
-        # if verbose:
-        #     print("Running fit")
+        if verbose:
+            print("Running fit")
         
-        # if self.nilearn_method:
-        #     # we're going to hack Nilearn's FirstLevelModel to be compatible with our line-data. First, we specify the model as usual
-        #     self.fmri_glm = first_level.FirstLevelModel(t_r=self.TR,
-        #                                                 noise_model='ar1',
-        #                                                 standardize=False,
-        #                                                 hrf_model='spm',
-        #                                                 drift_model='cosine',
-        #                                                 high_pass=.01)
+        if self.nilearn_method:
+            # we're going to hack Nilearn's FirstLevelModel to be compatible with our line-data. First, we specify the model as usual
+            self.fmri_glm = first_level.FirstLevelModel(t_r=self.TR,
+                                                        noise_model='ar1',
+                                                        standardize=False,
+                                                        hrf_model='spm',
+                                                        drift_model='cosine',
+                                                        high_pass=.01)
 
-        #     # Normally, we'd run `fmri_glm = fmri_glm.fit()`, but because this requires nifti-like inputs, we run `run_glm` outside of that function to get the labels:
-        #     if isinstance(data, pd.DataFrame):
-        #         data = data.values
-        #     elif isinstance(data, np.ndarray):
-        #         data = data.copy()
-        #     else:
-        #         raise ValueError(f"Unknown input type {type(data)} for functional data. Must be pd.DataFrame or np.ndarray [time, voxels]")
+            # Normally, we'd run `fmri_glm = fmri_glm.fit()`, but because this requires nifti-like inputs, we run `run_glm` outside of that function to get the labels:
+            if isinstance(data, pd.DataFrame):
+                data = data.values
+            elif isinstance(data, np.ndarray):
+                data = data.copy()
+            else:
+                raise ValueError(f"Unknown input type {type(data)} for functional data. Must be pd.DataFrame or np.ndarray [time, voxels]")
 
-        #     self.labels, self.results = first_level.run_glm(data, self.design, noise_model='ar1')
+            self.labels, self.results = first_level.run_glm(data, self.design, noise_model='ar1')
 
-        #     # Then, we inject this into the `fmri_glm`-class so we can compute contrasts
-        #     self.fmri_glm.labels_    = [self.labels]
-        #     self.fmri_glm.results_   = [self.results]
+            # Then, we inject this into the `fmri_glm`-class so we can compute contrasts
+            self.fmri_glm.labels_    = [self.labels]
+            self.fmri_glm.results_   = [self.results]
 
-        #     # insert the design matrix:
-        #     self.fmri_glm.design_matrices_ = []
-        #     self.fmri_glm.design_matrices_.append(self.design)
+            # insert the design matrix:
+            self.fmri_glm.design_matrices_ = []
+            self.fmri_glm.design_matrices_.append(self.design)
 
-        #     # Then we specify our contrast matrix:
-        #     if self.contrast_matrix == None:
-        #         if self.verbose:
-        #             print("Defining standard contrast matrix")
-        #         matrix                  = np.eye(len(self.condition_names))
-        #         icept                   = np.zeros((len(self.condition_names), 1))
-        #         matrix                  = np.hstack((icept, matrix)).astype(int)
-        #         self.contrast_matrix    = matrix.copy()
+            # Then we specify our contrast matrix:
+            if self.contrast_matrix == None:
+                if self.verbose:
+                    print("Defining standard contrast matrix")
+                matrix                  = np.eye(len(self.condition_names))
+                icept                   = np.zeros((len(self.condition_names), 1))
+                matrix                  = np.hstack((icept, matrix)).astype(int)
+                self.contrast_matrix    = matrix.copy()
 
-        #         self.conditions = {}
-        #         for idx, name in enumerate(self.condition_names):
-        #             self.conditions[name] = self.contrast_matrix[idx, ...]
+                self.conditions = {}
+                for idx, name in enumerate(self.condition_names):
+                    self.conditions[name] = self.contrast_matrix[idx, ...]
 
-        #     if self.verbose:
-        #         print("Computing contrasts")
-        #     self.tstats = []
-        #     for event in self.conditions:
-        #         tstat = self.fmri_glm.compute_contrast(self.conditions[event], 
-        #                                                stat_type='t', 
-        #                                                output_type='stat', 
-        #                                                return_type=None)
-        #         self.tstats.append(tstat)
+            if self.verbose:
+                print("Computing contrasts")
+            self.tstats = []
+            for event in self.conditions:
+                tstat = self.fmri_glm.compute_contrast(self.conditions[event], 
+                                                       stat_type='t', 
+                                                       output_type='stat', 
+                                                       return_type=None)
+                self.tstats.append(tstat)
 
-        #     self.tstats = np.array(self.tstats)
+            self.tstats = np.array(self.tstats)
             
-        # else:
-        #     self.results = fit_first_level(self.design, self.data, make_figure=self.make_figure, xkcd=self.xkcd, plot_vox=self.plot_vox, plot_event=self.plot_event)
+        else:
+            self.results = fit_first_level(self.design, self.data, make_figure=self.make_figure, xkcd=self.xkcd, plot_vox=self.plot_vox, plot_event=self.plot_event)
 
     def plot_contrast_matrix(self, save_as=None):
         if self.nilearn_method:
