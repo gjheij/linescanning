@@ -1336,15 +1336,33 @@ class NideconvFitter():
 
     def timecourses_condition(self):
 
-        # get the condition-wise timecoursee
-        self.tc_condition = self.model.get_conditionwise_timecourses()
+        # get the condition-wise timecourses
+        if self.fit_type == "ols":
+            self.tc_condition = self.model.get_conditionwise_timecourses()
+            
+            # get the standard error of mean
+            self.tc_error = self.model.get_subjectwise_timecourses().groupby(level=['event type', 'covariate', 'time']).sem()
 
+            # get r2
+            self.rsq_ = self.model.get_rsq()
+
+        elif self.fit_type == "ridge":
+            # here we need to stitch stuff back together
+            if not hasattr(self, 'ridge_models'):
+                raise ValueError("Ridge regression not yet performed")
+
+            tc  = []
+            rsq = []
+            for vox in list(self.ridge_models.keys()):
+                tc.append(self.ridge_models[vox].get_timecourses())
+                rsq.append(self.ridge_models[vox].get_rsq())
+            self.tc_condition = pd.concat(tc, axis=1)
+            self.rsq_ = pd.concat(rsq, axis=1)
+            
         # rename 'event type' to 'event_type' so it's compatible with utils.select_from_df
         tmp = self.tc_condition.reset_index().rename(columns={"event type": "event_type"})
         self.tc_condition = tmp.set_index(['event_type', 'covariate', 'time'])
 
-        # get the standard error of mean
-        self.tc_error = self.model.get_subjectwise_timecourses().groupby(level=['event type', 'covariate', 'time']).sem()
 
         # set time axis
         self.time = self.tc_condition.groupby(['time']).mean().reset_index()['time'].values
@@ -1377,20 +1395,46 @@ class NideconvFitter():
                                  n_regressors=self.n_regressors, 
                                  interval=self.interval)
 
+    def make_onsets_for_ridge(self):
+        return self.used_onsets.reset_index().drop(['subject', 'run'], axis=1).set_index('event_type').loc['stim'].onset
+
     def fit(self):
 
         if self.verbose:
             print(f"Fitting with '{self.fit_type}' minimization")
 
-        if self.fit_type.lower() == "rigde":
-            raise NotImplementedError("Ridge regression doesn't work with 2D-data yet, use 'ols' instead")
+        if self.fit_type.lower() == "ridge":
+            # raise NotImplementedError("Ridge regression doesn't work with 2D-data yet, use 'ols' instead")
+            
+            # format the onsets properly
+            vox_onsets = self.make_onsets_for_ridge()
+            
+            self.ridge_models = {}
+            for ix, signal in enumerate(self.func.columns):
+                
+                # select single voxel timecourse from main DataFrame
+                vox_signal = select_from_df(self.func, expression='ribbon', indices=[ix,ix+1])
+                
+                # specify voxel-specific model
+                vox_model = nd.ResponseFitter(input_signal=vox_signal, sample_rate=self.fs)
+
+                [vox_model.add_event(str(i),
+                                    onsets=vox_onsets,
+                                    basis_set=self.basis_sets,
+                                    n_regressors=self.n_regressors,
+                                    interval=self.interval) for i in self.cond]
+
+                vox_model.fit(type='ridge')
+                self.ridge_models[ix] = vox_model
+
         elif self.fit_type.lower() == "ols":
-            pass
+
+            # fitting
+            self.model.fit(type=self.fit_type)
+
         else:
             raise ValueError(f"Unrecognized minimizer '{self.fit_type}'; must be 'ols' or 'ridge'")
         
-        # fitting
-        self.model.fit(type=self.fit_type)
 
         if self.verbose:
             print("Done")
@@ -1430,7 +1474,7 @@ class NideconvFitter():
             self.timecourses_condition()
 
         cols = list(self.tc_condition.columns)
-        if cols > 30:
+        if len(cols) > 30:
             raise Exception(f"{len(cols)} were requested. Maximum number of plots is set to 30")
 
         if n_cols != None:
@@ -1457,6 +1501,7 @@ class NideconvFitter():
 
             # this one is in case we want the voxels in 1 figure
             self.all_voxels_in_event.append(self.voxel_in_events[0])
+
             # draw legend once
             if ix == 0:
                 set_labels = labels
@@ -1502,7 +1547,7 @@ class NideconvFitter():
         if not hasattr(self, "all_voxels_in_event"):
             self.plot_timecourses(make_figure=False)
         
-        self.max_vals = np.array([np.amax(self.col_data[ii]) for ii in range(len(self.col_data))])
+        self.max_vals = np.array([np.amax(self.all_voxels_in_event[ii]) for ii in range(len(self.all_voxels_in_event))])
         cf = CurveFitter(self.max_vals, order=3, verbose=False)
         
         if not axs:
