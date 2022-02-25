@@ -99,11 +99,16 @@ class ParseEyetrackerFile():
         self.use_bids           = use_bids
         self.include_blinks     = False
 
-        print("\nEYETRACKER")
+        if self.verbose:
+            print("\nEYETRACKER")
+
         # add all files to h5-file
         if isinstance(self.edf_file, str) or isinstance(self.edf_file, list):
             self.preprocess_edf_files()
             self.include_blinks = True
+        else:
+            if self.verbose:
+                print(" No eyetracking data used")
 
     def preprocess_edf_files(self):
 
@@ -418,50 +423,6 @@ class ParseEyetrackerFile():
 
         return onsets
 
-
-    def get_onset_df(self, index=False):
-
-        if index:
-            return self.onset_df.set_index(['subject', 'run', 'event_type'])
-        else:
-            return self.onset_df
-
-    def onsets_to_txt(self, subject=1, run=1, condition='right', fname=None):
-        """onset_to_txt
-
-        This function creates a text file with a single column containing the onset times of a given condition. Such a file can be used for SPM or FSL modeling, but it should be noted that the onset times have been corrected for the deleted volumes at the beginning. So make sure your inputting the correct functional data in these cases.
-
-        Parameters
-        ----------
-        subject: int
-            subject number you'd like to have the onset times for
-        run: int
-            run number you'd like to have the onset times for
-        condition: str
-            name of the condition you'd like to have the onset times for as specified in the data frame
-        fname: str
-            path to output name for text file
-
-        Returns
-        ----------
-        str
-            if `fname` was specified, a new file will be created and `fname` will be returned as string pointing to that file
-
-        list
-            if `fname` was *None*, the list of onset times will be returned
-        """
-
-        df = self.onset_df.set_index(['subject', 'run', 'event_type'])
-        onsets = list(df['onset'][subject][run]
-                      [condition].to_numpy().flatten().T)
-
-        if not fname:
-            return onsets
-        else:
-            np.savetxt(fname, onsets, fmt='%1.3f')
-            return fname
-
-
 class ParseExpToolsFile(ParseEyetrackerFile):
 
     """ParseExpToolsFile()
@@ -533,7 +494,7 @@ class ParseExpToolsFile(ParseEyetrackerFile):
         self.edfs                           = edfs
         self.use_bids                       = use_bids
         self.verbose                        = verbose
-
+    
         super().__init__(self.edfs, 
                          subject=self.sub, 
                          func_file=self.funcs, 
@@ -541,40 +502,20 @@ class ParseExpToolsFile(ParseEyetrackerFile):
                          use_bids=self.use_bids, 
                          verbose=self.verbose)
 
-        print("EXPTOOLS\n")
+        if self.verbose:
+            print("\nEXPTOOLS")
+
         if isinstance(self.tsv_file, str):
+            self.tsv_file = [self.tsv_file]
 
-            # try to read bids-components from file-name if None's were specified
-            if self.use_bids:
-                bids_comps = utils.split_bids_components(self.func_file)
-                for el in ['sub', 'run']:
-                    if getattr(self, el) == None:
-                        setattr(self, el, bids_comps[el])
-
-            if not self.tsv_file.endswith("h5"):
-                if self.include_blinks:
-                    self.blinks = self.fetch_blinks_run(run=self.run)
-                    self.preprocess_exptools_file(self.tsv_file, run=self.run, delete_vols=self.deleted_first_timepoints)
-                else:
-                    self.preprocess_exptools_file(self.tsv_file, run=self.run)
-                self.df_onsets = self.get_onset_df(index=True)
-            else:
-                if self.attribute_tag == None:
-                    hdf_store = pd.HDFStore(self.tsv_file)
-                    hdf_keys = hdf_store.keys()
-                    for key in hdf_keys:
-                        key = key.strip("/")
-                        setattr(self, key, hdf_store.get(key))
-                else:
-                    self.from_hdf(self.tsv_file, self.attribute_tag, key=self.hdf_key)
-
-
-        elif isinstance(self.tsv_file, list):
+        if isinstance(self.tsv_file, list):
             df_onsets = []
             for run, onset_file in enumerate(self.tsv_file):
-                bids_comps = utils.split_bids_components(onset_file)
-                for el in ['sub', 'run']:
-                    setattr(self, el, bids_comps[el])
+
+                if self.use_bids:
+                    bids_comps = utils.split_bids_components(onset_file)
+                    for el in ['sub', 'run']:
+                        setattr(self, el, bids_comps[el])
 
                 # include eyeblinks?
                 if self.include_blinks:
@@ -623,6 +564,10 @@ class ParseExpToolsFile(ParseEyetrackerFile):
         self.onset_times    = pd.DataFrame(self.data_cut_start[(self.data_cut_start['event_type'] == 'stim') & (self.data_cut_start['condition'].notnull()) | (self.data_cut_start['response'] == 'b')][['onset', 'condition']]['onset'])
         self.condition      = pd.DataFrame(self.data_cut_start[(self.data_cut_start['event_type'] == 'stim') & (self.data_cut_start['condition'].notnull()) | (self.data_cut_start['response'] == 'b')]['condition'])
 
+        if self.verbose:
+            print(f" 1st 't' @{round(float(self.start_times['onset']),2)}s")
+        
+
         # add button presses
         if self.button:
             self.response = self.data_cut_start[(self.data_cut_start['response'] == 'b')]
@@ -632,6 +577,10 @@ class ParseExpToolsFile(ParseEyetrackerFile):
 
         # add eyeblinks
         if isinstance(self.blinks, np.ndarray) or isinstance(self.blinks, str):
+
+            if self.verbose:
+                print(" Including eyeblinks")
+
             if isinstance(self.blinks, np.ndarray):
                 self.eye_blinks = self.blinks
             elif isinstance(self.blinks, str):
@@ -663,8 +612,10 @@ class ParseExpToolsFile(ParseEyetrackerFile):
             self.onset = np.concatenate((comb, event_array), axis=1)
 
         # correct for start time of experiment and deleted time due to removal of inital volumes
-        self.onset[:, 0] = self.onset[:, 0] - \
-            float(self.start_times['onset'] + delete_time)
+        self.onset[:, 0] = self.onset[:, 0] - float(self.start_times['onset'] + delete_time)
+
+        if self.verbose:
+            print(f" Cutting {round(float(self.start_times['onset'] + delete_time),2)}s from onsets")
 
         # make dataframe
         self.onset_df = self.index_onset(self.onset, columns=['onset', 'event_type'], subject=self.sub, run=run)
@@ -799,28 +750,13 @@ class ParsePhysioFile():
         self.physio_cols = [f'c_{i}' for i in range(self.orders[0])] + [f'r_{i}' for i in range(self.orders[1])] + [f'cr_{i}' for i in range(self.orders[2])]
 
         if isinstance(self.physio_file, str):
+            self.physio_file = [self.physio_file]
                 
-            # try to read bids-components from file-name if None's were specified
-            if self.use_bids:
-                bids_comps = utils.split_bids_components(self.physio_file)
-                for el in ['sub', 'run']:
-                    if getattr(self, el) == None:
-                        setattr(self, el, bids_comps[el])
-            
-            # preprocess
-            if self.verbose:
-                print(f"Preprocessing {self.physio_file}")
-            self.preprocess_physio_file(self.physio_file,
-                                        physio_mat=self.physio_mat,
-                                        deleted_first_timepoints=self.deleted_first_timepoints,
-                                        deleted_last_timepoints=self.deleted_last_timepoints)
-
-            self.df_physio = self.get_physio(index=True)
-                
-        elif isinstance(self.physio_file, list):
+        if isinstance(self.physio_file, list):
 
             df_physio = []
             for run, func in enumerate(self.physio_file):
+
                 if self.verbose:
                     print(f"Preprocessing {func}")
 
@@ -997,32 +933,11 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                                      deleted_last_timepoints=self.deleted_last_timepoints,
                                      **kwargs)
         
-        print("\nFUNCTIONAL")
+        if self.verbose:
+            print("\nFUNCTIONAL")
 
         if isinstance(self.func_file, str):
-            if not self.func_file.endswith("h5"):
-                
-                # try to read bids-components from file-name if None's were specified
-                if self.use_bids:
-                    bids_comps = utils.split_bids_components(self.func_file)
-                    for el in ['sub', 'run']:
-                        if getattr(self, el) == None:
-                            setattr(self, el, bids_comps[el])
-                
-                # preprocess
-                if self.verbose:
-                    print(f"Preprocessing {self.func_file}")
-
-                self.preprocess_func_file(self.func_file,
-                                          run=self.run, 
-                                          lowpass=self.low_pass, 
-                                          highpass=self.high_pass, 
-                                          deleted_first_timepoints=self.deleted_first_timepoints,
-                                          deleted_last_timepoints=self.deleted_last_timepoints)
-
-                self.df_func_psc = self.get_psc(index=True)
-                self.df_func_raw = self.get_raw(index=True)
-            else:
+            if self.func_file.endswith("h5"):
                 if self.attribute_tag == None:
                     hdf_store = pd.HDFStore(func_file)
                     hdf_keys = hdf_store.keys()
@@ -1031,12 +946,17 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                         setattr(self, key, hdf_store.get(key))
                 else:
                     self.from_hdf(func_file, self.attribute_tag, key=self.hdf_key)
+            else:
+                self.func_file = [self.func_file]
                 
-        elif isinstance(func_file, list):
-            df_func     = []
-            df_raw      = []
-            df_retro    = []
-            df_r2       = []
+        if isinstance(self.func_file, list):
+            
+            # initiate some dataframes
+            df_func     = []    # psc-data (filtered or not)
+            df_raw      = []    # raw-data (filtered or not)
+            df_retro    = []    # z-score data (retroicor'ed, `if retroicor=True`)
+            df_r2       = []    # r2 for portions of retroicor-regressors (e.g., 'all', 'cardiac', etc)
+
             for run, func in enumerate(self.func_file):
                 if self.verbose:
                     print(f"Preprocessing {func}")
@@ -1120,6 +1040,9 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
             self.ts_corrected = self.ts_magnitude[:,deleted_first_timepoints:-deleted_last_timepoints]
         else:
             self.ts_corrected = self.ts_magnitude[:,deleted_first_timepoints:]
+
+        if self.verbose:
+            print(f" Cutting {deleted_first_timepoints} volumes from beginning")
 
         self.vox_cols = [f'vox {x}' for x in range(self.ts_corrected.shape[0])]
         self.raw_data = self.index_func(self.ts_corrected, 
@@ -1517,6 +1440,9 @@ class Dataset(ParseFuncFile):
         self.retroicor                  = retroicor
         self.__dict__.update(kwargs)
 
+        if self.verbose:
+            print("DATASET")
+
         super().__init__(self.func_file,
                          TR=self.TR,
                          subject=self.sub,
@@ -1536,8 +1462,10 @@ class Dataset(ParseFuncFile):
                          verbose=self.verbose,
                          retroicor=self.retroicor,
                          **kwargs)
+        
+        if self.verbose:
+            print("\nDATASET: created")
 
-    print("DATASET")
     def fetch_fmri(self, strip_index=False, type='filt+psc'):
         if type == "filt+psc":
             attr = 'df_func_psc'
@@ -1549,7 +1477,10 @@ class Dataset(ParseFuncFile):
             raise ValueError(f"Unknown option '{type}'. Must be 'filt+psc', 'retroicor', or 'raw+psc'")
 
         if hasattr(self, attr):
-            print(f"Fetching dataframe from attribute '{attr}'")
+            
+            if self.verbose:
+                print(f"Fetching dataframe from attribute '{attr}'")
+                
             df = getattr(self, attr)
             if strip_index:
                 return df.reset_index().drop(labels=['subject', 'run', 't'], axis=1) 
