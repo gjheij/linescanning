@@ -1,7 +1,9 @@
+from multiprocessing.sharedctypes import Value
 import hedfpy
+from sympy import O
 from . import glm, utils
 import nibabel as nb
-from nilearn import signal
+from nilearn.signal import clean
 from nilearn.glm.first_level.design_matrix import _cosine_drift
 from nitime.timeseries import TimeSeries
 from nitime.analysis import SpectralAnalyzer
@@ -9,9 +11,7 @@ import numpy as np
 import os
 import pandas as pd
 from scipy import io
-from scipy import fft
-from scipy.signal import savgol_filter
-import tables
+from scipy import signal
 import warnings
 
 opj = os.path.join
@@ -881,8 +881,10 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                  run=1,
                  high_pass=True,
                  low_pass=True,
-                 lb=0.01, 
+                 lb=0.05, 
+                 hb=4,
                  TR=0.105, 
+                 filter=None,
                  deleted_first_timepoints=0, 
                  deleted_last_timepoints=0, 
                  window_size=19,
@@ -903,6 +905,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
         self.run                        = run
         self.TR                         = TR
         self.lb                         = lb
+        self.hb                         = hb
         self.high_pass                  = high_pass
         self.low_pass                   = low_pass
         self.deleted_first_timepoints   = deleted_first_timepoints
@@ -920,7 +923,12 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
         self.use_bids                   = use_bids
         self.verbose                    = verbose
         self.retroicor                  = retroicor
+        self.filter                     = filter
         self.__dict__.update(kwargs)
+
+        # sampling rate and nyquist freq
+        self.fs = 1/self.TR
+        self.fn = self.fs/2
         
         if self.phys_file != None: 
             
@@ -971,8 +979,8 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                                           deleted_first_timepoints=delete_first,
                                           deleted_last_timepoints=delete_last)
             
-                df_func.append(self.get_psc(index=False))
-                df_raw.append(self.get_raw(index=False))
+                df_func.append(self.get_psc(index=False, filt=self.filter))
+                df_raw.append(self.get_raw(index=False, psc=False))
 
                 if retroicor:
                     df_retro.append(self.get_retroicor(index=False))
@@ -1043,6 +1051,12 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                                         TR=self.TR)
 
         # apply some filtering
+        if self.filter == "band" or self.filter == "band-passed" or self.filter == "bp" or self.filter == "bandpass":
+            if self.verbose:
+                print(f" Butterworth bandpass filter [removes freqs <{self.lb}Hz and >{self.hb}Hz]")
+
+            self.band_passed = self.bandpass_butter([self.lb, self.hb], self.ts_corrected, nyquist=self.fn, polyorder=self.poly_order)
+
         if highpass:
             if self.verbose:
                 print(f" DCT-high pass filter [removes low frequencies <{self.lb} Hz]")
@@ -1077,19 +1091,21 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                     raise ValueError(f"Could not extract dataframe from 'df_physio' with expression: 'run = {self.run}'")
 
                 # check what data we should use
-                if hasattr(self, "lowpass"):
-                    data = self.lowpass.copy()
-                elif hasattr(self, "highpass"):
-                    data = self.highpass.copy()
+                if hasattr(self, "band_passed"):
+                    data = self.band_passed.copy()
+                if hasattr(self, "low_passed"):
+                    data = self.low_passed.copy()
+                elif hasattr(self, "high_passed"):
+                    data = self.high_passed.copy()
                 else:
                     data = self.ts_corrected.copy()
 
-                self.z_score = signal.clean(data, standardize=True)
+                self.z_score = clean(data, standardize=True)
 
                 if "hr" in list(self.confs.columns):
                     self.confs = self.confs.drop(columns=['hr'])
 
-                # regress out the confounds with signal.clean
+                # regress out the confounds with clean
                 if self.verbose:
                     print(" RETROICOR with physio-regressors")
 
@@ -1097,10 +1113,10 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                 respiration = utils.select_from_df(self.confs, expression='ribbon', indices=[self.orders[0],self.orders[0]+self.orders[1]])
                 interaction = utils.select_from_df(self.confs, expression='ribbon', indices=[self.orders[0]+self.orders[1],len(list(self.confs.columns))])
 
-                self.clean_all          = signal.clean(self.z_score.T, standardize=False, confounds=self.confs.values).T
-                self.clean_resp         = signal.clean(self.z_score.T, standardize=False, confounds=respiration.values).T
-                self.clean_cardiac      = signal.clean(self.z_score.T, standardize=False, confounds=cardiac.values).T
-                self.clean_interaction  = signal.clean(self.z_score.T, standardize=False, confounds=interaction.values).T
+                self.clean_all          = clean(self.z_score.T, standardize=False, confounds=self.confs.values).T
+                self.clean_resp         = clean(self.z_score.T, standardize=False, confounds=respiration.values).T
+                self.clean_cardiac      = clean(self.z_score.T, standardize=False, confounds=cardiac.values).T
+                self.clean_interaction  = clean(self.z_score.T, standardize=False, confounds=interaction.values).T
 
                 # create the dataframes
                 self.z_score_df    = self.index_func(self.z_score, columns=self.vox_cols, subject=self.sub, run=run, TR=self.TR)
@@ -1125,25 +1141,13 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
             else:
                 print(" Could not find df_physio.. Retroicor failed")
 
-        # percent signal change       
-        if hasattr(self, "low_passed"):
-            if self.verbose:
-                print(" Using low-passed [SG-filtered] data for PSC")
-            self.data = self.low_passed.copy()
-        elif hasattr(self, "high_passed"):
-            if self.verbose:
-                print(" Using high-passed [DCT-filtered] data for PSC")            
-            self.data = self.high_passed.copy()
-        else:
-            if self.verbose:
-                print(" Using non-filtered data for PSC")            
-            self.data = self.ts_corrected.copy()
+        # percent signal change
+        for dd in ["band_passed", "low_passed", "high_passed", "ts_corrected"]:
+            if hasattr(self, dd):
+                data = utils.percent_change(getattr(self, dd), -1)
+                data_ix = self.index_func(data, columns=self.vox_cols, subject=self.sub, run=run, TR=self.TR)
+                setattr(self, f"{dd}_psc", data_ix)
 
-        self.psc_data       = utils.percent_change(self.data, -1)
-        self.psc_data_df    = self.index_func(self.psc_data, columns=self.vox_cols, subject=self.sub, run=run, TR=self.TR)
-
-        self.psc_raw       = utils.percent_change(self.ts_corrected, -1)
-        self.psc_raw_df    = self.index_func(self.psc_raw, columns=self.vox_cols, subject=self.sub, run=run, TR=self.TR)        
 
     @staticmethod
     def index_func(array, columns=None, subject=1, run=1, TR=0.105, set_index=False):
@@ -1195,7 +1199,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
         st_ref          = 0  # offset frametimes by st_ref * tr
         ft              = np.linspace(st_ref * TR, (n_vol + st_ref) * TR, n_vol, endpoint=False)
         hp_set          = _cosine_drift(lb, ft)
-        dct_data        = signal.clean(func.T, detrend=False, standardize=False, confounds=hp_set).T
+        dct_data        = clean(func.T, detrend=False, standardize=False, confounds=hp_set).T
 
         return dct_data, hp_set
 
@@ -1233,13 +1237,22 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
         if window_length % 2 == 0:
             raise ValueError(f"Window-length must be uneven; not {window_length}")
         
-        return savgol_filter(func, window_length, polyorder, axis=-1)
+        return signal.savgol_filter(func, window_length, polyorder, axis=-1)
+
+    @staticmethod
+    def bandpass_butter(freqs, data, nyquist=None, polyorder=3):
+
+        low_freq = freqs[0]/nyquist
+        high_freq = freqs[1]/nyquist
+
+        [b,a] = signal.butter(polyorder, np.array([low_freq,high_freq]), btype='bandpass')
+        return signal.filtfilt(b,a, data, axis=0)        
 
     @staticmethod
     def get_freq(func, TR=0.105, spectrum_type='psd', clip_power=None):
         
         if spectrum_type != "fft":
-            TC      = TimeSeries(np.asarray(func), sampling_interval=1/TR)
+            TC      = TimeSeries(np.asarray(func), sampling_interval=TR)
             spectra = SpectralAnalyzer(TC)
 
             if spectrum_type == "psd":
@@ -1263,7 +1276,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
             return freq,power
 
         else:
-            TR      = 0.105
+
             freq    = np.fft.fftshift(np.fft.fftfreq(func.shape[0], d=TR))
             power   = np.abs(np.fft.fftshift(np.fft.fft(func)))**2/func.shape[0]
 
@@ -1284,31 +1297,47 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
             if index:
                 return self.z_score_retroicor_df.set_index(['subject', 'run', 't'])
             else:
-                return self.z_score_retroicor_df                
+                return self.z_score_retroicor_df
 
-    def get_psc(self, index=False, psc=True):
-        if psc:
-            if hasattr(self, 'psc_data_df'):
-                if index:
-                    return self.psc_data_df.set_index(['subject', 'run', 't'])
-                else:
-                    return self.psc_data_df
+    def get_psc(self, index=False, filt=None):
+
+        return_data = None
+        allowed = [None, "band", "band-passed", "bandpass", "bp", "lowpass", "low", "lp", "highpass", "high", "hp"]
+
+        if filt == None:
+            if hasattr(self, 'ts_corrected_psc'):
+                return_data = getattr(self, "ts_corrected_psc")
+        elif filt == "band" or filt == "band-passed" or filt == "bp" or filt == "bandpass":
+            if hasattr(self, 'band_pass_psc'):
+                return_data = getattr(self, "band_pass_psc")
+        elif filt == "lowpass" or filt == "low" or filt == "lp":
+            if hasattr(self, 'low_pass_psc'):
+                return_data = getattr(self, "low_pass_psc")
+        elif filt == "highpass" or filt == "high" or filt == "hp":
+            if hasattr(self, 'high_pass_psc'):
+                return_data = getattr(self, "high_pass_psc")
         else:
-            raise NotImplementedError("Not sure yet what this should be..")
+            raise ValueError(f"Unknown attribute '{filt}'. Must be one of: {allowed}")
+
+        if return_data != None:
+            if index:
+                return return_data.set_index(['subject', 'run', 't'])
+            else:
+                return return_data
+        else:
+            raise ValueError("No dataframe was found")
+
 
     def get_raw(self, index=False, psc=True):
         if psc:
-            if hasattr(self, 'psc_raw_df'):
-                if index:
-                    return self.psc_raw_df.set_index(['subject', 'run', 't'])
-                else:
-                    return self.psc_raw_df
+            data = getattr(self, 'ts_corrected_psc')
         else:
-            if hasattr(self, 'raw_data'):
-                if index:
-                    return self.raw_data.set_index(['subject', 'run', 't'])
-                else:
-                    return self.raw_data
+            data = getattr(self, 'raw_data')
+
+        if index:
+            return data.set_index(['subject', 'run', 't'])
+        else:
+            return data
 
 
 class Dataset(ParseFuncFile):
