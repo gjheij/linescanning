@@ -11,6 +11,7 @@ import pandas as pd
 from scipy import io
 from scipy import fft
 from scipy.signal import savgol_filter
+import tables
 import warnings
 
 opj = os.path.join
@@ -937,17 +938,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
             print("\nFUNCTIONAL")
 
         if isinstance(self.func_file, str):
-            if self.func_file.endswith("h5"):
-                if self.attribute_tag == None:
-                    hdf_store = pd.HDFStore(func_file)
-                    hdf_keys = hdf_store.keys()
-                    for key in hdf_keys:
-                        key = key.strip("/")
-                        setattr(self, key, hdf_store.get(key))
-                else:
-                    self.from_hdf(func_file, self.attribute_tag, key=self.hdf_key)
-            else:
-                self.func_file = [self.func_file]
+            self.func_file = [self.func_file]
                 
         if isinstance(self.func_file, list):
             
@@ -1319,17 +1310,6 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                 else:
                     return self.raw_data
 
-    def to_hdf(self, attribute_tag, output_file, key="df"):
-        if hasattr(self, attribute_tag):
-            add_df = getattr(self, attribute_tag)
-            if os.path.exists(output_file):
-                add_df.to_hdf(output_file,key=key, append=True, mode='r+', format='t')
-            else:
-                add_df.to_hdf(output_file, key=key, mode='w')
-            
-
-    def from_hdf(self, input_file, attribute_tag, key="df"):
-        setattr(self, attribute_tag, pd.read_hdf(input_file, key))
 
 class Dataset(ParseFuncFile):
     """Dataset
@@ -1442,27 +1422,62 @@ class Dataset(ParseFuncFile):
 
         if self.verbose:
             print("DATASET")
-
-        super().__init__(self.func_file,
-                         TR=self.TR,
-                         subject=self.sub,
-                         run=self.run,
-                         lb=self.lb,
-                         low_pass=self.low_pass,
-                         high_pass=self.high_pass,
-                         deleted_first_timepoints=self.deleted_first_timepoints,
-                         deleted_last_timepoints=self.deleted_last_timepoints,
-                         window_size=self.window_size,
-                         poly_order=self.poly_order,
-                         tsv_file=self.tsv_file,
-                         edf_file=self.edf_file,
-                         phys_file=self.phys_file,
-                         phys_mat=self.phys_mat,
-                         use_bids=self.use_bids,
-                         verbose=self.verbose,
-                         retroicor=self.retroicor,
-                         **kwargs)
         
+        self.read_attributes = ['df_func_psc', 
+                                'df_func_raw', 
+                                'df_retro_zscore', 
+                                'df_onsets', 
+                                'eye_in_func', 
+                                'blink_events']
+
+        if isinstance(self.func_file, str):
+            if self.func_file.endswith('.h5'):
+                print(f" Reading from {self.func_file}")
+                self.from_hdf(self.func_file)
+            else:
+                super().__init__(self.func_file,
+                                TR=self.TR,
+                                subject=self.sub,
+                                run=self.run,
+                                lb=self.lb,
+                                low_pass=self.low_pass,
+                                high_pass=self.high_pass,
+                                deleted_first_timepoints=self.deleted_first_timepoints,
+                                deleted_last_timepoints=self.deleted_last_timepoints,
+                                window_size=self.window_size,
+                                poly_order=self.poly_order,
+                                tsv_file=self.tsv_file,
+                                edf_file=self.edf_file,
+                                phys_file=self.phys_file,
+                                phys_mat=self.phys_mat,
+                                use_bids=self.use_bids,
+                                verbose=self.verbose,
+                                retroicor=self.retroicor,
+                                **kwargs)
+
+        
+
+        else:
+            super().__init__(self.func_file,
+                            TR=self.TR,
+                            subject=self.sub,
+                            run=self.run,
+                            lb=self.lb,
+                            low_pass=self.low_pass,
+                            high_pass=self.high_pass,
+                            deleted_first_timepoints=self.deleted_first_timepoints,
+                            deleted_last_timepoints=self.deleted_last_timepoints,
+                            window_size=self.window_size,
+                            poly_order=self.poly_order,
+                            tsv_file=self.tsv_file,
+                            edf_file=self.edf_file,
+                            phys_file=self.phys_file,
+                            phys_mat=self.phys_mat,
+                            use_bids=self.use_bids,
+                            verbose=self.verbose,
+                            retroicor=self.retroicor,
+                            **kwargs)
+
         if self.verbose:
             print("\nDATASET: created")
 
@@ -1521,6 +1536,37 @@ class Dataset(ParseFuncFile):
             return self.blink_events
         else:
             print("No eyetracking-data was provided")
+
+    def to_hdf(self, output_file):
+        
+        if self.verbose:
+            print(f"Saving to {output_file}")
+
+        for attr in self.read_attributes:
+            if hasattr(self, attr):
+                
+                if self.verbose:
+                    print(f" Saving attribute: {attr}")
+                    
+                add_df = getattr(self, attr)
+                if os.path.exists(output_file):
+                    add_df.to_hdf(output_file, key=attr, append=True, mode='r+', format='t')
+                else:
+                    add_df.to_hdf(output_file, key=attr, mode='w', format='t')
+        
+        if self.verbose:
+            print("Done")
+
+    def from_hdf(self, input_file):
+        hdf_store = pd.HDFStore(input_file)
+        hdf_keys = hdf_store.keys()
+        for key in hdf_keys:
+            key = key.strip("/")
+            
+            if self.verbose:
+                print(f" Setting attribute: {key}")
+
+            setattr(self, key, hdf_store.get(key))
 
 # this is basically a wrapper around pybest.utils.load_gifti
 class ParseGiftiFile():
