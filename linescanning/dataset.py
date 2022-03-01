@@ -1,7 +1,5 @@
-from multiprocessing.sharedctypes import Value
 import hedfpy
-from sympy import O
-from . import glm, utils
+from . import glm, utils, plotting
 import nibabel as nb
 from nilearn.signal import clean
 from nilearn.glm.first_level.design_matrix import _cosine_drift
@@ -818,9 +816,9 @@ class ParsePhysioFile():
 
             # trim beginning and end
             if deleted_last_timepoints != 0:
-                self.physio_df['hr'] = self.hr[:,deleted_first_timepoints:-deleted_last_timepoints]
+                self.physio_df['hr'] = self.hr[deleted_first_timepoints:-deleted_last_timepoints,:]
             else:
-                self.physio_df['hr'] = self.hr[:,deleted_first_timepoints:]
+                self.physio_df['hr'] = self.hr[deleted_first_timepoints:,:]
 
             # self.physio_df['hr'] = (self.physio_df['hr'] - self.physio_df['hr'].mean())/self.physio_df['hr'].std(ddof=0)
 
@@ -1057,6 +1055,8 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
 
             self.band_passed = self.bandpass_butter([self.lb, self.hb], self.ts_corrected, nyquist=self.fn, polyorder=self.poly_order)
 
+            print(f" {self.band_passed.shape}")
+
         if highpass:
             if self.verbose:
                 print(f" DCT-high pass filter [removes low frequencies <{self.lb} Hz]")
@@ -1240,13 +1240,13 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
         return signal.savgol_filter(func, window_length, polyorder, axis=-1)
 
     @staticmethod
-    def bandpass_butter(freqs, data, nyquist=None, polyorder=3):
+    def bandpass_butter(freqs, data, nyquist=None, polyorder=3, axis=-1):
 
         low_freq = freqs[0]/nyquist
         high_freq = freqs[1]/nyquist
 
         [b,a] = signal.butter(polyorder, np.array([low_freq,high_freq]), btype='bandpass')
-        return signal.filtfilt(b,a, data, axis=0)        
+        return signal.filtfilt(b,a, data, axis=axis)        
 
     @staticmethod
     def get_freq(func, TR=0.105, spectrum_type='psd', clip_power=None):
@@ -1304,28 +1304,31 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
         return_data = None
         allowed = [None, "band", "band-passed", "bandpass", "bp", "lowpass", "low", "lp", "highpass", "high", "hp"]
 
+        if self.verbose:
+            print(f" Data used for percent-change: '{filt}'")
+
         if filt == None:
             if hasattr(self, 'ts_corrected_psc'):
                 return_data = getattr(self, "ts_corrected_psc")
         elif filt == "band" or filt == "band-passed" or filt == "bp" or filt == "bandpass":
-            if hasattr(self, 'band_pass_psc'):
-                return_data = getattr(self, "band_pass_psc")
+            if hasattr(self, 'band_passed_psc'):
+                return_data = getattr(self, "band_passed_psc")
         elif filt == "lowpass" or filt == "low" or filt == "lp":
-            if hasattr(self, 'low_pass_psc'):
-                return_data = getattr(self, "low_pass_psc")
+            if hasattr(self, 'low_passed_psc'):
+                return_data = getattr(self, "low_passed_psc")
         elif filt == "highpass" or filt == "high" or filt == "hp":
-            if hasattr(self, 'high_pass_psc'):
-                return_data = getattr(self, "high_pass_psc")
+            if hasattr(self, 'high_passed_psc'):
+                return_data = getattr(self, "high_passed_psc")
         else:
             raise ValueError(f"Unknown attribute '{filt}'. Must be one of: {allowed}")
 
-        if return_data != None:
+        if isinstance(return_data, pd.DataFrame):
             if index:
                 return return_data.set_index(['subject', 'run', 't'])
             else:
                 return return_data
         else:
-            raise ValueError("No dataframe was found")
+            raise ValueError(f"No dataframe was found with search term: '{filt}'")
 
 
     def get_raw(self, index=False, psc=True):
@@ -1415,6 +1418,7 @@ class Dataset(ParseFuncFile):
                  low_pass=True,
                  button=False,
                  lb=0.01, 
+                 hb=4,
                  deleted_first_timepoints=0, 
                  deleted_last_timepoints=0, 
                  window_size=20,
@@ -1430,6 +1434,7 @@ class Dataset(ParseFuncFile):
         self.run                        = run
         self.TR                         = TR
         self.lb                         = lb
+        self.hb                         = hb
         self.high_pass                  = high_pass
         self.low_pass                   = low_pass
         self.deleted_first_timepoints   = deleted_first_timepoints
@@ -1469,6 +1474,7 @@ class Dataset(ParseFuncFile):
                                 subject=self.sub,
                                 run=self.run,
                                 lb=self.lb,
+                                hb=self.hb,
                                 low_pass=self.low_pass,
                                 high_pass=self.high_pass,
                                 deleted_first_timepoints=self.deleted_first_timepoints,
@@ -1492,6 +1498,7 @@ class Dataset(ParseFuncFile):
                             subject=self.sub,
                             run=self.run,
                             lb=self.lb,
+                            hb=self.hb,
                             low_pass=self.low_pass,
                             high_pass=self.high_pass,
                             deleted_first_timepoints=self.deleted_first_timepoints,
