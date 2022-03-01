@@ -847,7 +847,11 @@ def create_line_prf_matrix(log_dir,
         design_matrix = np.zeros((n_pix, n_pix, nr_trs))
 
         # get the onsets
-        onsets = dataset.ParseExpToolsFile(utils.get_file_from_substring(".tsv", log_dir), TR=TR, deleted_first_timepoints=deleted_first_timepoints, use_bids=False)
+        onsets = dataset.ParseExpToolsFile(utils.get_file_from_substring(".tsv", log_dir), 
+                                           TR=TR, 
+                                           deleted_first_timepoints=deleted_first_timepoints, 
+                                           use_bids=False)
+
         trial_df = onsets.df_onsets.copy()
         for tr in range(nr_trs):
     
@@ -1251,7 +1255,9 @@ class pRFmodelFitting():
         if not isinstance(self.old_params, tuple):
 
             ### add check whether we need to transpose data
-            self.gaussian_fitter = Iso2DGaussianFitter(data=self.data, model=self.gaussian_model, fit_css=False)
+            self.gaussian_fitter = Iso2DGaussianFitter(data=self.data, 
+                                                       model=self.gaussian_model, 
+                                                       fit_css=False)
             
             if self.verbose:
                 print("Starting gauss grid fit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S'))
