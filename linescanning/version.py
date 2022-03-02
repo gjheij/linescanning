@@ -72,4 +72,4 @@ MINOR = _version_minor
 MICRO = _version_micro
 VERSION = __version__
 PACKAGE_DATA = {'linescanning': [pjoin('test', 'data', '*')]}
-REQUIRES = ["numpy","scipy","pandas", "nilearn", "nibabel", "pyyaml", "pybids", "nitime", "lmfit"]
+REQUIRES = ["numpy","scipy","pandas", "nilearn", "nibabel", "pyyaml", "pybids", "nitime", "lmfit", "kneed", "seaborn"]
