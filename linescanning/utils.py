@@ -769,7 +769,14 @@ def select_from_df(df, expression="run = 1", index=True, indices=None):
         if indices == None:
             raise ValueError("You want specific voxels from DataFrame, but none were specified. Please specify indices=[start,stop]")
 
-        return df.iloc[:,indices[0]:indices[1]]
+        if isinstance(indices, tuple):
+            return df.iloc[:,indices[0]:indices[1]]
+        elif isinstance(indices, list):
+            return df.iloc[:,indices]
+        elif isinstance(indices, np.ndarray):
+            return df.iloc[:,list(indices)]
+        else:
+            raise TypeError(f"Unknown type '{type(indices)}' for indices; must be a tuple of 2 values representing a range, or a list/array of indices to select")
     else:
         # fetch existing indices
         idc = list(df.index.names)
