@@ -1,5 +1,8 @@
 import hedfpy
 from . import glm, utils, plotting
+from .segmentations import Segmentations
+from kneed import KneeLocator
+import matplotlib.pyplot as plt
 import nibabel as nb
 from nilearn.signal import clean
 from nilearn.glm.first_level.design_matrix import _cosine_drift
@@ -10,6 +13,7 @@ import os
 import pandas as pd
 from scipy import io
 from scipy import signal
+from sklearn import decomposition
 import warnings
 
 opj = os.path.join
@@ -831,7 +835,7 @@ class ParsePhysioFile():
             return self.physio_df
 
 
-class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
+class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
 
     """ParseFuncFile()
 
@@ -882,7 +886,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                  lb=0.05, 
                  hb=4,
                  TR=0.105, 
-                 filter=None,
+                 filter="highpass",
                  deleted_first_timepoints=0, 
                  deleted_last_timepoints=0, 
                  window_size=19,
@@ -897,6 +901,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                  button=False,
                  verbose=True,
                  retroicor=False,
+                 acompcor=False,
                  **kwargs):
 
         self.sub                        = subject
@@ -921,12 +926,39 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
         self.use_bids                   = use_bids
         self.verbose                    = verbose
         self.retroicor                  = retroicor
+        self.acompcor                   = acompcor
         self.filter                     = filter
+        self.foldover                   = "FH"
         self.__dict__.update(kwargs)
+
+        # check what to do regarding filtering
+        if self.filter == "bandpass" or self.filter == "bp" or self.filter == "band-pass":
+
+            if self.verbose:
+                print("Band-pass filtering selected; turning off individual high/low-pass filtering")
+
+            self.high_pass = False
+            self.low_pass = False
+
+        elif self.filter == None and low_pass == True and high_pass == True:
+            if self.verbose:
+                print("Filter set to None, but low_pass+high_pass=True, setting filter to 'lowpass'")
+            self.filter = "lowpass"
+        elif self.filter == None and low_pass == True and high_pass == False:
+            if self.verbose:
+                print("Filter set to None, but low_pass=True, setting filter to 'lowpass'")
+            self.filter = "lowpass"
+        elif self.filter == None and high_pass == True:
+            if self.verbose:
+                print("Filter set to None, but high_pass=True, setting filter to 'highpass'")
+            self.filter = "highpass"
 
         # sampling rate and nyquist freq
         self.fs = 1/self.TR
         self.fn = self.fs/2
+
+        # define possible outcomes:
+        self.possible_outcomes = ['band_passed', 'low_passed', 'high_passed', 'raw']
         
         if self.phys_file != None: 
             
@@ -939,6 +971,29 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                                      deleted_first_timepoints=self.deleted_first_timepoints,
                                      deleted_last_timepoints=self.deleted_last_timepoints,
                                      **kwargs)
+
+        if self.acompcor:
+            
+            if self.verbose:
+                print("\nSEGMENTATIONS")
+
+            assert hasattr(self, "ref_slice"), f"Please specify a reference slice image with 'ref_slice=<file>'"
+
+            if self.use_bids:
+                bids_comps = utils.split_bids_components(self.ref_slice)
+                setattr(self, "target_session", bids_comps['ses'])
+                setattr(self, "subject", f"sub-{bids_comps['sub']}")
+            else:
+                assert hasattr(self, "target_session"), f"Please specify a target_session with 'target_session=<int>'"
+                assert hasattr(self, "subject"), f"Please specify a subject with 'target_session=<int>'"
+
+            Segmentations.__init__(self,
+                                   self.subject,
+                                   reference_slice=self.ref_slice,
+                                   target_session=self.target_session,
+                                   foldover=self.foldover,
+                                   verbose=self.verbose)
+            
         
         if self.verbose:
             print("\nFUNCTIONAL")
@@ -949,10 +1004,12 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
         if isinstance(self.func_file, list):
             
             # initiate some dataframes
-            df_func     = []    # psc-data (filtered or not)
-            df_raw      = []    # raw-data (filtered or not)
-            df_retro    = []    # z-score data (retroicor'ed, `if retroicor=True`)
-            df_r2       = []    # r2 for portions of retroicor-regressors (e.g., 'all', 'cardiac', etc)
+            self.df_psc      = []    # psc-data (filtered or not)
+            self.df_raw      = []    # raw-data (filtered or not)
+            self.df_retro    = []    # z-score data (retroicor'ed, `if retroicor=True`)
+            self.df_r2       = []    # r2 for portions of retroicor-regressors (e.g., 'all', 'cardiac', etc)
+            self.df_acomp    = []    # aCompCor'ed data
+            self.df_zscore   = []    # zscore-d data
 
             for run, func in enumerate(self.func_file):
                 if self.verbose:
@@ -976,24 +1033,38 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                                           highpass=self.high_pass, 
                                           deleted_first_timepoints=delete_first,
                                           deleted_last_timepoints=delete_last)
-            
-                df_func.append(self.get_psc(index=False, filt=self.filter))
-                df_raw.append(self.get_raw(index=False, psc=False))
 
-                if retroicor:
-                    df_retro.append(self.get_retroicor(index=False))
-                    df_r2.append(self.r2_physio_df)
+                if self.verbose:
+                    print(f" Data used for percent-change: '{self.filter}'")
 
-            self.df_func_psc = pd.concat(df_func).set_index(['subject', 'run', 't'])
-            self.df_func_raw = pd.concat(df_raw).set_index(['subject', 'run', 't'])
+                self.df_psc.append(self.get_data(index=False, filt=self.filter, dtype='psc'))
+                self.df_zscore.append(self.get_data(index=False, filt=self.filter, dtype='zscore'))
+                self.df_raw.append(self.get_data(index=False, filt=None, dtype='raw'))
 
-            if retroicor:
+                if self.retroicor:
+                    self.df_retro.append(self.get_retroicor(index=False))
+                    self.df_r2.append(self.r2_physio_df)
+
+                if self.acompcor:
+                    self.df_acomp.append(self.get_acompcor(index=False))
+
+            self.df_func_psc    = pd.concat(self.df_psc)
+            self.df_func_raw    = pd.concat(self.df_raw)
+            self.df_func_zscore = pd.concat(self.df_zscore)
+
+            if self.retroicor:
                 try:
-                    self.df_retro_zscore = pd.concat(df_retro).set_index(['subject', 'run', 't'])
-                    self.df_r2 = pd.concat(df_r2).set_index(['subject', 'run', 'vox'])
+                    self.df_func_retroicor = pd.concat(self.df_retro).set_index(['subject', 'run', 't'])
+                    self.df_physio_r2 = pd.concat(self.df_r2).set_index(['subject', 'run', 't'])
                 except:
                     raise ValueError("RETROICOR did not complete successfully..")
 
+            if self.acompcor:
+                # check if elements of list contain dataframes
+                if all(elem is None for elem in self.df_acomp):
+                    print("WARNING: aCompCor did not execute properly. All runs have 'None'")
+                else:
+                    self.df_func_acomp = pd.concat(self.df_acomp).set_index(['subject', 'run', 't'])
 
         # now that we have nicely formatted functional data, initialize the ParseExpToolsFile-class
         if self.tsv_file != None: 
@@ -1016,6 +1087,9 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                              highpass=None, 
                              deleted_first_timepoints=0, 
                              deleted_last_timepoints=0):
+
+        #----------------------------------------------------------------------------------------------------------------------------------------------------
+        # BASIC DATA LOADING
 
         # Load in datasets with tag "wcsmtSNR"
         if func_file.endswith("nii") or func_file.endswith("gz"):
@@ -1042,33 +1116,96 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
             print(f" Cutting {deleted_first_timepoints} volumes from beginning")
 
         self.vox_cols = [f'vox {x}' for x in range(self.ts_corrected.shape[0])]
-        self.raw_data = self.index_func(self.ts_corrected, 
-                                        columns=self.vox_cols, 
-                                        subject=self.sub, 
-                                        run=run, 
-                                        TR=self.TR)
+
+        #----------------------------------------------------------------------------------------------------------------------------------------------------
+        # STANDARDIZATION OF UNFILTERED DATA & CREATE DATAFRAMES
+
+        # dataframe of raw, unfiltered data
+        self.data_raw_df = self.index_func(self.ts_corrected, 
+                                           columns=self.vox_cols, 
+                                           subject=self.sub, 
+                                           run=run, 
+                                           TR=self.TR,
+                                           set_index=True)
+
+        # dataframe of unfiltered PSC-data
+        self.data_psc = utils.percent_change(self.ts_corrected, -1)
+        self.data_psc_df = self.index_func(self.data_psc,
+                                            columns=self.vox_cols, 
+                                            subject=self.sub,
+                                            run=run, 
+                                            TR=self.TR, 
+                                            set_index=True)
+
+        # dataframe of unfiltered z-scored data
+        self.data_zscore = clean(self.ts_corrected.T, standardize=True).T
+        self.data_zscore_df = self.index_func(self.data_zscore,
+                                             columns=self.vox_cols, 
+                                             subject=self.sub, 
+                                             run=run, 
+                                             TR=self.TR,
+                                             set_index=True)
+
+        #----------------------------------------------------------------------------------------------------------------------------------------------------
+        # APPLY SEVERAL FILTERS, STANDARDIZATION & CREATE DATAFRAMES
 
         # apply some filtering
         if self.filter == "band" or self.filter == "band-passed" or self.filter == "bp" or self.filter == "bandpass":
             if self.verbose:
                 print(f" Butterworth bandpass filter [removes freqs <{self.lb}Hz and >{self.hb}Hz]")
 
-            self.band_passed = self.bandpass_butter([self.lb, self.hb], self.ts_corrected, nyquist=self.fn, polyorder=self.poly_order)
+            self.band_passed        = self.bandpass_butter([self.lb, self.hb], self.ts_corrected, nyquist=self.fn, polyorder=self.poly_order)
+            self.band_passed_raw_df = self.index_func(self.band_passed,
+                                                  columns=self.vox_cols, 
+                                                  subject=self.sub,
+                                                  run=run, 
+                                                  TR=self.TR, 
+                                                  set_index=True)
 
-            print(f" {self.band_passed.shape}")
+            self.band_passed_psc = utils.percent_change(self.band_passed, -1)
+            self.band_passed_psc_df = self.index_func(self.band_passed_psc,
+                                                  columns=self.vox_cols, 
+                                                  subject=self.sub,
+                                                  run=run, 
+                                                  TR=self.TR, 
+                                                  set_index=True)
+
+            self.band_passed_zscore = clean(self.band_passed.T, standardize=True).T
+            self.band_passed_zscore_df = self.index_func(self.band_passed_zscore,
+                                                  columns=self.vox_cols, 
+                                                  subject=self.sub,
+                                                  run=run, 
+                                                  TR=self.TR, 
+                                                  set_index=True)
+
 
         if highpass:
             if self.verbose:
                 print(f" DCT-high pass filter [removes low frequencies <{self.lb} Hz]")
             
             self.high_passed, self._cosine_drift = self.highpass_dct(self.ts_corrected, self.lb, TR=self.TR)
-            self.high_passed_psc    = utils.percent_change(self.high_passed, -1)
-            self.high_passed_df     = self.index_func(self.high_passed_psc, 
-                                                      columns=self.vox_cols, 
+            self.high_passed_df = self.index_func(self.high_passed,
+                                                  columns=self.vox_cols,
+                                                  subject=self.sub,
+                                                  run=run,
+                                                  TR=self.TR,
+                                                  set_index=True)
+
+            self.high_passed_psc = utils.percent_change(self.high_passed, -1)
+            self.high_passed_psc_df = self.index_func(self.high_passed_psc,
+                                                      columns=self.vox_cols,
                                                       subject=self.sub,
-                                                      run=run, 
-                                                      TR=self.TR, 
+                                                      run=run,
+                                                      TR=self.TR,
                                                       set_index=True)
+
+            self.high_passed_zscore = clean(self.high_passed.T, standardize=True).T
+            self.high_passed_zscore_df = self.index_func(self.high_passed_zscore,
+                                                         columns=self.vox_cols,
+                                                         subject=self.sub,
+                                                         run=run,
+                                                         TR=self.TR,
+                                                         set_index=True)
         if lowpass:
             if self.verbose:
                 print(f" Savitsky-Golay low pass filter [removes high frequences] (window = {self.window_size}, order = {self.poly_order})")            
@@ -1077,77 +1214,160 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
             else:
                 use_data = self.ts_corrected.copy()  
 
-            self.low_passed = self.lowpass_savgol(use_data, window_length=self.window_size, polyorder=self.poly_order)
+            self.low_passed     = self.lowpass_savgol(use_data, window_length=self.window_size, polyorder=self.poly_order)
+            self.low_passed_df = self.index_func(self.low_passed,
+                                                  columns=self.vox_cols,
+                                                  subject=self.sub,
+                                                  run=run,
+                                                  TR=self.TR,
+                                                  set_index=True)
 
-        # check if we should attempt RETROICOR
+            self.low_passed_psc = utils.percent_change(self.low_passed, -1)
+            self.low_passed_psc_df = self.index_func(self.low_passed_psc,
+                                                      columns=self.vox_cols,
+                                                      subject=self.sub,
+                                                      run=run,
+                                                      TR=self.TR,
+                                                      set_index=True)
+
+            self.low_passed_zscore = clean(self.low_passed.T, standardize=True).T
+            self.low_passed_zscore_df = self.index_func(self.low_passed_zscore,
+                                                         columns=self.vox_cols,
+                                                         subject=self.sub,
+                                                         run=run,
+                                                         TR=self.TR,
+                                                         set_index=True)
+        
+        #----------------------------------------------------------------------------------------------------------------------------------------------------
+        # FURTHER DENOISING STRATEGIES: RETROICIOR & aCOMPCOR
+        #         
+        # RETROICOR
         if self.retroicor:
+            self.apply_retroicor()
 
-            # we should have df_physio dataframe from ParsePhysioFile
-            if hasattr(self, "df_physio"):
-                try:
-                    # select subset of df_physio. Run IDs must correspond!
-                    self.confs = utils.select_from_df(self.df_physio, expression=f"run = {self.run}")
-                except:
-                    raise ValueError(f"Could not extract dataframe from 'df_physio' with expression: 'run = {self.run}'")
+        # aCompCor
+        if self.acompcor:
+            self.apply_acompor(run=run)
 
-                # check what data we should use
-                if hasattr(self, "band_passed"):
-                    data = self.band_passed.copy()
-                if hasattr(self, "low_passed"):
-                    data = self.low_passed.copy()
-                elif hasattr(self, "high_passed"):
-                    data = self.high_passed.copy()
+
+    def apply_retroicor(self):
+        # we should have df_physio dataframe from ParsePhysioFile
+        if hasattr(self, "df_physio"):
+            try:
+                # select subset of df_physio. Run IDs must correspond!
+                self.confs = utils.select_from_df(self.df_physio, expression=f"run = {self.run}")
+            except:
+                raise ValueError(f"Could not extract dataframe from 'df_physio' with expression: 'run = {self.run}'")
+
+
+            for data_type in self.possible_outcomes:
+
+                if hasattr(self, f"{data_type}_zscore"):
+
+                    self.z_score = getattr(self, f"{data_type}_zscore").copy()
+
+                    if "hr" in list(self.confs.columns):
+                        self.confs = self.confs.drop(columns=['hr'])
+
+                    # regress out the confounds with clean
+                    if self.verbose:
+                        print(" RETROICOR with physio-regressors")
+
+                    cardiac     = utils.select_from_df(self.confs, expression='ribbon', indices=(0,self.orders[0]))
+                    respiration = utils.select_from_df(self.confs, expression='ribbon', indices=(self.orders[0],self.orders[0]+self.orders[1]))
+                    interaction = utils.select_from_df(self.confs, expression='ribbon', indices=(self.orders[0]+self.orders[1],len(list(self.confs.columns))))
+
+                    self.clean_all          = clean(self.z_score.T, standardize=False, confounds=self.confs.values).T
+                    self.clean_resp         = clean(self.z_score.T, standardize=False, confounds=respiration.values).T
+                    self.clean_cardiac      = clean(self.z_score.T, standardize=False, confounds=cardiac.values).T
+                    self.clean_interaction  = clean(self.z_score.T, standardize=False, confounds=interaction.values).T
+
+                    # create the dataframes
+                    self.z_score_df    = self.index_func(self.z_score, columns=self.vox_cols, subject=self.sub, run=run, TR=self.TR)
+
+                    self.z_score_retroicor_df    = self.index_func(self.clean_all, columns=self.vox_cols, subject=self.sub, run=run, TR=self.TR)
+
+                    print(self.z_score.shape)
+                    self.r2_all          = 1-(np.var(self.clean_all, -1) / np.var(self.z_score, -1))
+                    self.r2_resp         = 1-(np.var(self.clean_resp, -1) / np.var(self.z_score, -1))
+                    self.r2_cardiac      = 1-(np.var(self.clean_cardiac, -1) / np.var(self.z_score, -1))
+                    self.r2_interaction  = 1-(np.var(self.clean_interaction, -1) / np.var(self.z_score, -1))
+                    
+                    # save in a subject X run X voxel manner
+                    self.r2_physio = {'all': self.r2_all,   
+                                        'respiration': self.r2_resp, 
+                                        'cardiac': self.r2_cardiac, 
+                                        'interaction': self.r2_interaction}
+
+                    self.r2_physio_df = pd.DataFrame(self.r2_physio)
+                    self.r2_physio_df['subject'], self.r2_physio_df['run'], self.r2_physio_df['vox'] = self.sub, run, np.arange(0,self.r2_all.shape[0])
+
+                    setattr(self, f"{data_type}_zscore_retroicor", self.z_score_retroicor_df)
+                    setattr(self, f"{data_type}_zscore_retroicor_r2", self.r2_physio_df)
+
                 else:
-                    data = self.ts_corrected.copy()
+                    print(" Could not find df_physio.. Retroicor failed")
 
-                self.z_score = clean(data, standardize=True)
+    def apply_acompor(self, run=1, n_components=5):
 
-                if "hr" in list(self.confs.columns):
-                    self.confs = self.confs.drop(columns=['hr'])
+        if not hasattr(self, "acompcor_voxels"):
+            raise AttributeError("aCompCor was requested, but Segmentation-module did not produce the expected 'acompcor_voxels'-attribute")
 
-                # regress out the confounds with clean
-                if self.verbose:
-                    print(" RETROICOR with physio-regressors")
+        if self.verbose:
+            print(f" Data used for aCompCor: '{self.filter}'")
 
-                cardiac     = utils.select_from_df(self.confs, expression='ribbon', indices=[0,self.orders[0]])
-                respiration = utils.select_from_df(self.confs, expression='ribbon', indices=[self.orders[0],self.orders[0]+self.orders[1]])
-                interaction = utils.select_from_df(self.confs, expression='ribbon', indices=[self.orders[0]+self.orders[1],len(list(self.confs.columns))])
+        # fetch fMRI data
+        self.data_for_acompcor = self.get_data(index=False, filt=self.filter, dtype='zscore')
+        
+        # fetch list representing WM/CSF voxels
+        self.tc_garbage = utils.select_from_df(self.data_for_acompcor, expression="ribbon", indices=self.acompcor_voxels)
 
-                self.clean_all          = clean(self.z_score.T, standardize=False, confounds=self.confs.values).T
-                self.clean_resp         = clean(self.z_score.T, standardize=False, confounds=respiration.values).T
-                self.clean_cardiac      = clean(self.z_score.T, standardize=False, confounds=cardiac.values).T
-                self.clean_interaction  = clean(self.z_score.T, standardize=False, confounds=interaction.values).T
+        # perform PCA
+        self.pca = decomposition.PCA(n_components=n_components)
+        self.acompcor_components = self.pca.fit_transform(self.tc_garbage)
 
-                # create the dataframes
-                self.z_score_df    = self.index_func(self.z_score, columns=self.vox_cols, subject=self.sub, run=run, TR=self.TR)
+        # find elbow with KneeLocator
+        xx = np.arange(0,n_components)
+        self.kn = KneeLocator(xx, self.pca.explained_variance_, curve='convex', direction='decreasing')
+        self.elbow_ = self.kn.knee
 
-                self.z_score_retroicor_df    = self.index_func(self.clean_all, columns=self.vox_cols, subject=self.sub, run=run, TR=self.TR)
+        if self.verbose:
+            print(f" Found {self.elbow_} components with total explained variance of {round(sum(self.pca.explained_variance_ratio_[:self.elbow_]), 2)}%")
 
-                print(self.z_score.shape)
-                self.r2_all          = 1-(np.var(self.clean_all, -1) / np.var(self.z_score, -1))
-                self.r2_resp         = 1-(np.var(self.clean_resp, -1) / np.var(self.z_score, -1))
-                self.r2_cardiac      = 1-(np.var(self.clean_cardiac, -1) / np.var(self.z_score, -1))
-                self.r2_interaction  = 1-(np.var(self.clean_interaction, -1) / np.var(self.z_score, -1))
-                
-                # save in a subject X run X voxel manner
-                self.r2_physio = {'all': self.r2_all,   
-                                  'respiration': self.r2_resp, 
-                                  'cardiac': self.r2_cardiac, 
-                                  'interaction': self.r2_interaction}
+        # select these components
+        if self.verbose:
+            fig = plt.figure(figsize=(16,8))
+            gs = fig.add_gridspec(1,2)
 
-                self.r2_physio_df = pd.DataFrame(self.r2_physio)
-                self.r2_physio_df['subject'], self.r2_physio_df['run'], self.r2_physio_df['vox'] = self.sub, run, np.arange(0,self.r2_all.shape[0])
+            ax = fig.add_subplot(gs[0])
+            self.plot_regressor_voxels(ax=ax)
+            
+            ax1 = fig.add_subplot(gs[1])
+            vline = {'pos': self.elbow_, 'color': "#cccccc", 'ls': 'dashed', 'lw': 0.5}
+            plotting.LazyPlot(self.pca.explained_variance_,
+                              xx=xx,
+                              add_vline=vline, 
+                              axs=ax1,
+                              color="#338EFF",
+                              line_width=2,
+                              title=f"Scree-plot run-{run}",
+                              x_label="nr of components",
+                              y_label="variance explained (%)",
+                              font_size=16)
 
-            else:
-                print(" Could not find df_physio.. Retroicor failed")
 
-        # percent signal change
-        for dd in ["band_passed", "low_passed", "high_passed", "ts_corrected"]:
-            if hasattr(self, dd):
-                data = utils.percent_change(getattr(self, dd), -1)
-                data_ix = self.index_func(data, columns=self.vox_cols, subject=self.sub, run=run, TR=self.TR)
-                setattr(self, f"{dd}_psc", data_ix)
+        if self.elbow_ != 0:
+            self.acompcor_components[:,:self.elbow_]
+        else:
+            raise ValueError("Found 0 components surviving the elbow-plot. Turn on verbose and inspect the plot")
 
+        # regress components out
+        self.acomp = clean(self.data_for_acompcor.values, standardize=False, confounds=self.tc_garbage.values).T
+        self.psc_acomp_df = self.index_func(self.acomp, 
+                                            columns=self.vox_cols, 
+                                            subject=self.sub, 
+                                            run=run, 
+                                            TR=self.TR)
 
     @staticmethod
     def index_func(array, columns=None, subject=1, run=1, TR=0.105, set_index=False):
@@ -1299,26 +1519,61 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
             else:
                 return self.z_score_retroicor_df
 
+    def get_acompcor(self, index=False):
+        if hasattr(self, 'psc_acomp_df'):
+            if index:
+                return self.psc_acomp_df.set_index(['subject', 'run', 't'])
+            else:
+                return self.psc_acomp_df
+
+    def get_data(self, index=False, filt=None, dtype="psc"):
+
+        if dtype != "psc" and dtype != "zscore" and dtype != "raw":
+            raise ValueError(f"Requested data type '{dtype}' is not supported. Use 'psc', 'zscore', or 'raw'")
+
+        return_data = None
+        allowed = [None, "raw", "band", "band-passed", "bandpass", "bp", "lowpass", "low", "lp", "highpass", "high", "hp"]
+
+        if filt == None or filt == "raw":
+            attr = f"data_{dtype}_df"
+        elif filt == "band" or filt == "band-passed" or filt == "bp" or filt == "bandpass":
+            attr = f"band_passed_{dtype}_df"
+        elif filt == "lowpass" or filt == "low" or filt == "lp":
+            attr = f"low_passed_{dtype}_df"
+        elif filt == "highpass" or filt == "high" or filt == "hp":
+            attr = f"high_passed_{dtype}_df"
+        else:
+            raise ValueError(f"Unknown attribute '{filt}'. Must be one of: {allowed}")
+
+        if hasattr(self, attr):
+            return_data = getattr(self, attr)
+
+        if isinstance(return_data, pd.DataFrame):
+            if index:
+                print("im here")
+                return return_data.set_index(['subject', 'run', 't'])
+            else:
+                return return_data
+        else:
+            raise ValueError(f"No dataframe was found with search term: '{filt}'")
+
     def get_psc(self, index=False, filt=None):
 
         return_data = None
-        allowed = [None, "band", "band-passed", "bandpass", "bp", "lowpass", "low", "lp", "highpass", "high", "hp"]
+        allowed = [None, "raw", "band", "band-passed", "bandpass", "bp", "lowpass", "low", "lp", "highpass", "high", "hp"]
 
-        if self.verbose:
-            print(f" Data used for percent-change: '{filt}'")
-
-        if filt == None:
-            if hasattr(self, 'ts_corrected_psc'):
-                return_data = getattr(self, "ts_corrected_psc")
+        if filt == None or filt == "raw":
+            if hasattr(self, 'data_raw'):
+                return_data = getattr(self, "raw_data_psc_df")
         elif filt == "band" or filt == "band-passed" or filt == "bp" or filt == "bandpass":
-            if hasattr(self, 'band_passed_psc'):
-                return_data = getattr(self, "band_passed_psc")
+            if hasattr(self, 'band_passed_psc_df'):
+                return_data = getattr(self, "band_passed_psc_df")
         elif filt == "lowpass" or filt == "low" or filt == "lp":
-            if hasattr(self, 'low_passed_psc'):
-                return_data = getattr(self, "low_passed_psc")
+            if hasattr(self, 'low_passed_psc_df'):
+                return_data = getattr(self, "low_passed_psc_df")
         elif filt == "highpass" or filt == "high" or filt == "hp":
-            if hasattr(self, 'high_passed_psc'):
-                return_data = getattr(self, "high_passed_psc")
+            if hasattr(self, 'high_passed_psc_df'):
+                return_data = getattr(self, "high_passed_psc_df")
         else:
             raise ValueError(f"Unknown attribute '{filt}'. Must be one of: {allowed}")
 
@@ -1328,7 +1583,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
             else:
                 return return_data
         else:
-            raise ValueError(f"No dataframe was found with search term: '{filt}'")
+            raise ValueError(f"No dataframe was found with search term: '{filt}'")            
 
 
     def get_raw(self, index=False, psc=True):
@@ -1428,6 +1683,7 @@ class Dataset(ParseFuncFile):
                  use_bids=True,
                  verbose=False,
                  retroicor=False,
+                 filter=None,
                  **kwargs):
 
         self.sub                        = subject
@@ -1452,6 +1708,7 @@ class Dataset(ParseFuncFile):
         self.use_bids                   = use_bids
         self.verbose                    = verbose
         self.retroicor                  = retroicor
+        self.filter                     = filter
         self.__dict__.update(kwargs)
 
         if self.verbose:
@@ -1488,6 +1745,7 @@ class Dataset(ParseFuncFile):
                                 use_bids=self.use_bids,
                                 verbose=self.verbose,
                                 retroicor=self.retroicor,
+                                filter=self.filter,
                                 **kwargs)
 
         
@@ -1512,20 +1770,26 @@ class Dataset(ParseFuncFile):
                             use_bids=self.use_bids,
                             verbose=self.verbose,
                             retroicor=self.retroicor,
+                            filter=self.filter,
                             **kwargs)
 
         if self.verbose:
             print("\nDATASET: created")
 
-    def fetch_fmri(self, strip_index=False, type='filt+psc'):
-        if type == "filt+psc":
+    def fetch_fmri(self, strip_index=False, dtype="psc"):
+
+        if dtype == "psc":
             attr = 'df_func_psc'
-        elif type == "retroicor":
-            attr = 'df_retro_zscore'
-        elif type == "raw+psc":
+        elif dtype == "retroicor":
+            attr = 'df_func_retroicor'
+        elif dtype == "raw":
             attr = 'df_func_raw'
+        elif dtype == "zscore":
+            attr = 'df_func_zscore'
+        elif dtype == "acompcor":
+            attr = 'df_func_acomp'
         else:
-            raise ValueError(f"Unknown option '{type}'. Must be 'filt+psc', 'retroicor', or 'raw+psc'")
+            raise ValueError(f"Unknown option '{dtype}'. Must be 'psc', 'retroicor', 'acompcor', or 'zscore'")
 
         if hasattr(self, attr):
             
