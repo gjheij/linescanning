@@ -763,7 +763,8 @@ def create_line_prf_matrix(log_dir,
                            stim_duration=1, 
                            baseline_before=24,
                            baseline_after=24,
-                           skip_first_img=True):
+                           skip_first_img=True,
+                           verbose=False):
 
     """create_line_prf_matrix
 
@@ -850,7 +851,8 @@ def create_line_prf_matrix(log_dir,
         onsets = dataset.ParseExpToolsFile(utils.get_file_from_substring(".tsv", log_dir), 
                                            TR=TR, 
                                            deleted_first_timepoints=deleted_first_timepoints, 
-                                           use_bids=False)
+                                           use_bids=False,
+                                           verbose=verbose)
 
         trial_df = onsets.df_onsets.copy()
         for tr in range(nr_trs):
@@ -861,23 +863,24 @@ def create_line_prf_matrix(log_dir,
             else:
                 tr_in_sec = (tr * onsets.TR)
 
+            # ix now represents the trial ID in the onset dataframe, which starts at the first 't'
             ix,_ = utils.find_nearest(trial_df['onset'].values, tr_in_sec)
             
-            # zero-pad number
-            # find how much we need to zfill > 
-            # https://stackoverflow.com/questions/2189800/how-to-find-length-of-digits-in-an-integer
+            # zero-pad number https://stackoverflow.com/questions/2189800/how-to-find-length-of-digits-in-an-integer
             zfilling = len(str(len(os.listdir(screenshot_path))))
-            if ix > 1:
-                img_number = str(ix-1).zfill(zfilling)
-            else:
-                img_number = "1".zfill(zfilling)
-
+            img_number = str(ix).zfill(zfilling)
             try:
                 image_file = utils.get_file_from_substring(f"{img_number}.png", screenshot_path)
             except:
                 image_file = None
             
             if image_file != None:
+                
+                # if verbose:
+                #     if tr < 10:
+                #         print(f"TR = {tr} \t\t(@{round(tr_in_sec,2)}s| trial={ix}) \timg={os.path.basename(image_file)}")
+                #     else:
+                #         print(f"TR = {tr} \t(@{round(tr_in_sec,2)}s| trial={ix}) \timg={os.path.basename(image_file)}")
 
                 img = (255*mpimg.imread(image_file)).astype('int')
 
