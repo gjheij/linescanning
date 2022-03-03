@@ -902,6 +902,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
                  verbose=True,
                  retroicor=False,
                  acompcor=False,
+                 n_pca=5,
                  **kwargs):
 
         self.sub                        = subject
@@ -929,6 +930,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
         self.acompcor                   = acompcor
         self.filter                     = filter
         self.foldover                   = "FH"
+        self.n_pca                      = n_pca
         self.__dict__.update(kwargs)
 
         # check what to do regarding filtering
@@ -1032,7 +1034,8 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
                                           lowpass=self.low_pass, 
                                           highpass=self.high_pass, 
                                           deleted_first_timepoints=delete_first,
-                                          deleted_last_timepoints=delete_last)
+                                          deleted_last_timepoints=delete_last,
+                                          **kwargs)
 
                 if self.verbose:
                     print(f" Data used for percent-change: '{self.filter}'")
@@ -1086,7 +1089,8 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
                              lowpass=None, 
                              highpass=None, 
                              deleted_first_timepoints=0, 
-                             deleted_last_timepoints=0):
+                             deleted_last_timepoints=0,
+                             **kwargs):
 
         #----------------------------------------------------------------------------------------------------------------------------------------------------
         # BASIC DATA LOADING
@@ -1247,7 +1251,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
 
         # aCompCor
         if self.acompcor:
-            self.apply_acompor(run=run)
+            self.apply_acompor(run=run, **kwargs)
 
 
     def apply_retroicor(self):
@@ -1308,13 +1312,13 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
                 else:
                     print(" Could not find df_physio.. Retroicor failed")
 
-    def apply_acompor(self, run=1, n_components=5):
+    def apply_acompor(self, run=1, **kwargs):
 
         if not hasattr(self, "acompcor_voxels"):
             raise AttributeError("aCompCor was requested, but Segmentation-module did not produce the expected 'acompcor_voxels'-attribute")
 
         if self.verbose:
-            print(f" Data used for aCompCor: '{self.filter}'")
+            print(f" Data used for aCompCor: '{self.filter}' ({self.n_pca} components)")
 
         # fetch fMRI data
         self.data_for_acompcor = self.get_data(index=False, filt=self.filter, dtype='zscore')
@@ -1323,24 +1327,40 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
         self.tc_garbage = utils.select_from_df(self.data_for_acompcor, expression="ribbon", indices=self.acompcor_voxels)
 
         # perform PCA
-        self.pca = decomposition.PCA(n_components=n_components)
+        self.pca = decomposition.PCA(n_components=self.n_pca)
         self.acompcor_components = self.pca.fit_transform(self.tc_garbage)
 
         # find elbow with KneeLocator
-        xx = np.arange(0,n_components)
+        xx = np.arange(0, self.n_pca)
         self.kn = KneeLocator(xx, self.pca.explained_variance_, curve='convex', direction='decreasing')
         self.elbow_ = self.kn.knee
 
         if self.verbose:
             print(f" Found {self.elbow_} components with total explained variance of {round(sum(self.pca.explained_variance_ratio_[:self.elbow_]), 2)}%")
 
+        # extract components before elbow of plot
+        if self.elbow_ != 0:
+            self.acompcor_components = self.acompcor_components[:,:self.elbow_]
+        else:
+            raise ValueError("Found 0 components surviving the elbow-plot. Turn on verbose and inspect the plot")
+
+        # get frequency spectra for components
+        self.nuisance_spectra, self.nuisance_freqs = [], []
+        for ii in range(self.elbow_):
+            self.freq_, self.power_ = self.get_freq(self.acompcor_components[:,ii], TR=self.TR, spectrum_type="fft")
+            self.nuisance_spectra.append(self.power_)
+            self.nuisance_freqs.append(self.freq_)
+
         # select these components
         if self.verbose:
-            fig = plt.figure(figsize=(16,8))
-            gs = fig.add_gridspec(1,2)
+            fig = plt.figure(figsize=(24,8))
+            gs = fig.add_gridspec(1,3)
 
             ax = fig.add_subplot(gs[0])
             self.plot_regressor_voxels(ax=ax)
+
+            if not hasattr(self, 'line_width'):
+                self.line_width = 2
             
             ax1 = fig.add_subplot(gs[1])
             vline = {'pos': self.elbow_, 'color': "#cccccc", 'ls': 'dashed', 'lw': 0.5}
@@ -1349,17 +1369,35 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
                               add_vline=vline, 
                               axs=ax1,
                               color="#338EFF",
-                              line_width=2,
                               title=f"Scree-plot run-{run}",
                               x_label="nr of components",
                               y_label="variance explained (%)",
-                              font_size=16)
+                              font_size=16, 
+                              line_width=self.line_width,
+                              **kwargs)
+
+            if self.elbow_ == 1:
+                color = "#338EFF"
+            elif self.elbow_ == 2:
+                color = ["#1B9E77", "#D95F02"]
+            else:
+                color = None
+                
+            ax2 = fig.add_subplot(gs[2])
+            plotting.LazyPlot(self.nuisance_spectra,
+                              xx=self.nuisance_freqs[0],
+                              axs=ax2,
+                              color=color,
+                              labels=[f"component {ii+1}" for ii in range(self.elbow_)],
+                              title="Power spectra of components",
+                              x_label="frequency (Hz)",
+                              y_label="power (a.u.)",
+                              x_lim=[0,1.5],
+                              font_size=16,
+                              line_width=self.line_width,
+                              **kwargs)                              
 
 
-        if self.elbow_ != 0:
-            self.acompcor_components[:,:self.elbow_]
-        else:
-            raise ValueError("Found 0 components surviving the elbow-plot. Turn on verbose and inspect the plot")
 
         # regress components out
         self.acomp = clean(self.data_for_acompcor.values, standardize=False, confounds=self.tc_garbage.values).T
@@ -1505,13 +1543,6 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
 
             return freq, power
 
-    def get_zscore(self, index=False):
-        if hasattr(self, 'z_score_df'):
-            if index:
-                return self.z_score_df.set_index(['subject', 'run', 't'])
-            else:
-                return self.z_score_df
-
     def get_retroicor(self, index=False):
         if hasattr(self, 'z_score_retroicor_df'):
             if index:
@@ -1556,46 +1587,6 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
                 return return_data
         else:
             raise ValueError(f"No dataframe was found with search term: '{filt}'")
-
-    def get_psc(self, index=False, filt=None):
-
-        return_data = None
-        allowed = [None, "raw", "band", "band-passed", "bandpass", "bp", "lowpass", "low", "lp", "highpass", "high", "hp"]
-
-        if filt == None or filt == "raw":
-            if hasattr(self, 'data_raw'):
-                return_data = getattr(self, "raw_data_psc_df")
-        elif filt == "band" or filt == "band-passed" or filt == "bp" or filt == "bandpass":
-            if hasattr(self, 'band_passed_psc_df'):
-                return_data = getattr(self, "band_passed_psc_df")
-        elif filt == "lowpass" or filt == "low" or filt == "lp":
-            if hasattr(self, 'low_passed_psc_df'):
-                return_data = getattr(self, "low_passed_psc_df")
-        elif filt == "highpass" or filt == "high" or filt == "hp":
-            if hasattr(self, 'high_passed_psc_df'):
-                return_data = getattr(self, "high_passed_psc_df")
-        else:
-            raise ValueError(f"Unknown attribute '{filt}'. Must be one of: {allowed}")
-
-        if isinstance(return_data, pd.DataFrame):
-            if index:
-                return return_data.set_index(['subject', 'run', 't'])
-            else:
-                return return_data
-        else:
-            raise ValueError(f"No dataframe was found with search term: '{filt}'")            
-
-
-    def get_raw(self, index=False, psc=True):
-        if psc:
-            data = getattr(self, 'ts_corrected_psc')
-        else:
-            data = getattr(self, 'raw_data')
-
-        if index:
-            return data.set_index(['subject', 'run', 't'])
-        else:
-            return data
 
 
 class Dataset(ParseFuncFile):
@@ -1684,6 +1675,7 @@ class Dataset(ParseFuncFile):
                  verbose=False,
                  retroicor=False,
                  filter=None,
+                 n_pca=5,
                  **kwargs):
 
         self.sub                        = subject
@@ -1709,6 +1701,7 @@ class Dataset(ParseFuncFile):
         self.verbose                    = verbose
         self.retroicor                  = retroicor
         self.filter                     = filter
+        self.n_pca                      = n_pca
         self.__dict__.update(kwargs)
 
         if self.verbose:
@@ -1746,6 +1739,7 @@ class Dataset(ParseFuncFile):
                                 verbose=self.verbose,
                                 retroicor=self.retroicor,
                                 filter=self.filter,
+                                n_pca=self.n_pca,
                                 **kwargs)
 
         
@@ -1771,6 +1765,7 @@ class Dataset(ParseFuncFile):
                             verbose=self.verbose,
                             retroicor=self.retroicor,
                             filter=self.filter,
+                            n_pca=self.n_pca,
                             **kwargs)
 
         if self.verbose:
