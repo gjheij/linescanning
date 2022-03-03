@@ -2,6 +2,7 @@ from multiprocessing.sharedctypes import Value
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+from matplotlib.ticker import MaxNLocator
 import seaborn as sns
 
 class LazyPRF():
@@ -211,30 +212,30 @@ class LazyPlot():
                  set_xlim_zero=True,
                  **kwargs):
 
-        self.array = ts
-        self.xx = xx
-        self.error = error
-        self.error_alpha = error_alpha
-        self.x_label = x_label
-        self.y_label = y_label
-        self.title = title
-        self.xkcd = xkcd
-        self.color = color
-        self.figsize = figsize
-        self.cmap = cmap
-        self.save_as = save_as
-        self.labels = labels
-        self.font_size = font_size
-        self.add_hline = add_hline
-        self.add_vline = add_vline
-        self.axs = axs
-        self.line_width = line_width
-        self.y_lim = y_lim
-        self.x_lim = x_lim
-        self.sns_offset = sns_offset
-        self.sns_trim = sns_trim
-        self.sns_bottom = sns_rm_bottom
-        self.set_xlim_zero = set_xlim_zero
+        self.array              = ts
+        self.xx                 = xx
+        self.error              = error
+        self.error_alpha        = error_alpha
+        self.x_label            = x_label
+        self.y_label            = y_label
+        self.title              = title
+        self.xkcd               = xkcd
+        self.color              = color
+        self.figsize            = figsize
+        self.cmap               = cmap
+        self.save_as            = save_as
+        self.labels             = labels
+        self.font_size          = font_size
+        self.add_hline          = add_hline
+        self.add_vline          = add_vline
+        self.axs                = axs
+        self.line_width         = line_width
+        self.y_lim              = y_lim
+        self.x_lim              = x_lim
+        self.sns_offset         = sns_offset
+        self.sns_trim           = sns_trim
+        self.sns_bottom         = sns_rm_bottom
+        self.set_xlim_zero      = set_xlim_zero
         self.__dict__.update(kwargs)
 
         if self.xkcd:
@@ -255,18 +256,30 @@ class LazyPlot():
         else:
             axs = self.axs
 
+        if isinstance(self.array, np.ndarray):
+            self.array = [self.array]
+            if not self.color:
+                self.color = sns.color_palette(self.cmap, 1)[0]
+            else:
+                self.color = [self.color]
+            
         if isinstance(self.array, list):
+            
+            if isinstance(self.color, str):
+                self.color = [self.color]
 
+            # decide on color scheme
             if not isinstance(self.color, list):
                 self.color_list = sns.color_palette(self.cmap, len(self.array))
             else:
                 self.color_list = self.color
                 if len(self.color_list) != len(self.array):
                     raise ValueError(
-                        f"Length color list {len(self.color_list)} does not match length of data list ({len(self.array)}")
-
+                        f"Length color list ({len(self.color_list)}) does not match length of data list ({len(self.array)})")
+                        
             for idx, el in enumerate(self.array):
-
+                
+                # decide on line-width
                 if isinstance(self.line_width, list):
                     if len(self.line_width) != len(self.array):
                         raise ValueError(
@@ -285,11 +298,19 @@ class LazyPlot():
                     x = self.xx.copy()
 
                 if self.labels:
-                    axs.plot(
-                        x, el, color=self.color_list[idx], label=self.labels[idx], lw=use_width)
+                    lbl = self.labels[idx]
                 else:
-                    axs.plot(x, el, color=self.color_list[idx], lw=use_width)
+                    lbl = None
 
+                # plot
+                axs.plot(x, el, color=self.color_list[idx], label=lbl, lw=use_width)
+
+                # check if our x-axis is all integers so we set the MajorTicks to integers
+                # https://www.scivision.dev/matplotlib-force-integer-labeling-of-axis/
+                if all(isinstance(ii, np.int64) for ii in x):
+                    axs.xaxis.set_major_locator(MaxNLocator(integer=True))
+
+                # plot shaded error bars
                 if isinstance(self.error, list) or isinstance(self.error, np.ndarray):
                     yerr = self.error[idx]
                     if np.isscalar(yerr) or len(yerr) == len(el):
@@ -297,65 +318,39 @@ class LazyPlot():
                         ymax = el + yerr
                     elif len(yerr) == 2:
                         ymin, ymax = yerr
-                    axs.fill_between(
-                        x, ymax, ymin, color=self.color_list[idx], alpha=self.error_alpha)
+                    axs.fill_between(x, ymax, ymin, color=self.color_list[idx], alpha=self.error_alpha)
 
-        else:
-            if not self.color:
-                self.color = sns.color_palette(self.cmap, 1)[0]
-
-            # decide on x-axis
-            if not isinstance(self.xx, np.ndarray) and not isinstance(self.xx, list):
-                x = np.arange(0, len(self.array))
-            else:
-                x = self.xx.copy()
-
-            axs.plot(x, self.array, color=self.color,
-                     label=self.labels, lw=self.line_width)
-
-            if isinstance(self.error, list) or isinstance(self.error, np.ndarray):
-                if np.isscalar(self.error) or len(self.error) == len(self.array):
-                    ymin = self.array - self.error
-                    ymax = self.array + self.error
-                elif len(self.error) == 2:
-                    ymin, ymax = self.error
-                else:
-                    raise ValueError(
-                        f"Don't underestimate input: {self.error}")
-                axs.fill_between(x, ymax, ymin, color=self.color,
-                                 alpha=self.error_alpha)
-
-        if isinstance(self.y_lim, list):
-            axs.set_ylim(self.y_lim)
-
+        # axis labels and titles
         if self.labels:
             axs.legend(frameon=False)
 
         if self.x_label:
-            axs.set_xlabel(self.x_label, fontname=self.fontname,
-                           fontsize=self.font_size)
+            axs.set_xlabel(self.x_label, fontname=self.fontname, fontsize=self.font_size)
 
         if self.y_label:
-            axs.set_ylabel(self.y_label, fontname=self.fontname,
-                           fontsize=self.font_size)
+            axs.set_ylabel(self.y_label, fontname=self.fontname, fontsize=self.font_size)
 
         if self.title:
-            axs.set_title(self.title, fontname=self.fontname,
-                          fontsize=self.font_size)
+            axs.set_title(self.title, fontname=self.fontname, fontsize=self.font_size)
 
+        # add vertical lines
         if self.add_vline:
             if self.add_vline == "default":
-                self.add_vline = {'pos': 0, 'color': 'k',
-                                  'ls': 'dashed', 'lw': 0.5}
+                self.add_vline = {'pos': 0, 'color': 'k', 'ls': 'dashed', 'lw': 0.5}
 
             if isinstance(self.add_vline['pos'], list) or isinstance(self.add_vline['pos'], np.ndarray):
                 for line in self.add_vline['pos']:
-                    axs.axvline(
-                        line, color=self.add_vline['color'], lw=self.add_vline['lw'], ls=self.add_vline['ls'])
+                    axs.axvline(line, 
+                                color=self.add_vline['color'], 
+                                lw=self.add_vline['lw'], 
+                                ls=self.add_vline['ls'])
             else:
-                axs.axvline(self.add_vline['pos'], color=self.add_vline['color'],
-                            lw=self.add_vline['lw'], ls=self.add_vline['ls'])
+                axs.axvline(self.add_vline['pos'], 
+                            color=self.add_vline['color'],
+                            lw=self.add_vline['lw'], 
+                            ls=self.add_vline['ls'])
 
+        # add horizontal lines
         if self.add_hline:
             if self.add_hline == "default":
                 self.add_hline = {'pos': 0, 'color': 'k', 'ls': 'dashed', 'lw': 0.5}
@@ -367,18 +362,27 @@ class LazyPlot():
 
             if isinstance(self.add_hline['pos'], list) or isinstance(self.add_hline['pos'], np.ndarray):
                 for line in self.add_hline['pos']:
-                    axs.axaxhlinevline(
-                        line, color=self.add_hline['color'], lw=self.add_hline['lw'], ls=self.add_hline['ls'])
+                    axs.axaxhlinevline(line, 
+                                       color=self.add_hline['color'], 
+                                       lw=self.add_hline['lw'], 
+                                       ls=self.add_hline['ls'])
             else:
-                axs.axhline(self.add_hline['pos'], color=self.add_hline['color'],
-                            lw=self.add_hline['lw'], ls=self.add_hline['ls'])
+                axs.axhline(self.add_hline['pos'], 
+                            color=self.add_hline['color'],
+                            lw=self.add_hline['lw'], 
+                            ls=self.add_hline['ls'])
 
+        # give priority to specify x-lims rather than seaborn's xlim
         if self.x_lim:
             axs.set_xlim(self.x_lim)
         else:
             if self.set_xlim_zero:
                 axs.set_xlim(0)
 
+        if isinstance(self.y_lim, list):
+            axs.set_ylim(self.y_lim)
+
+        # despine the axis
         sns.despine(offset=self.sns_offset, trim=self.sns_trim, bottom=self.sns_bottom)
 
 
