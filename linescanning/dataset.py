@@ -1714,58 +1714,31 @@ class Dataset(ParseFuncFile):
                                 'eye_in_func', 
                                 'blink_events']
 
-        if isinstance(self.func_file, str):
-            if self.func_file.endswith('.h5'):
-                print(f" Reading from {self.func_file}")
-                self.from_hdf(self.func_file)
-            else:
-                super().__init__(self.func_file,
-                                TR=self.TR,
-                                subject=self.sub,
-                                run=self.run,
-                                lb=self.lb,
-                                hb=self.hb,
-                                low_pass=self.low_pass,
-                                high_pass=self.high_pass,
-                                deleted_first_timepoints=self.deleted_first_timepoints,
-                                deleted_last_timepoints=self.deleted_last_timepoints,
-                                window_size=self.window_size,
-                                poly_order=self.poly_order,
-                                tsv_file=self.tsv_file,
-                                edf_file=self.edf_file,
-                                phys_file=self.phys_file,
-                                phys_mat=self.phys_mat,
-                                use_bids=self.use_bids,
-                                verbose=self.verbose,
-                                retroicor=self.retroicor,
-                                filter=self.filter,
-                                n_pca=self.n_pca,
-                                **kwargs)
-
-        
-
+        if isinstance(self.func_file, str) and self.func_file.endwith(".h5"):
+            print(f" Reading from {self.func_file}")
+            self.from_hdf(self.func_file)
         else:
             super().__init__(self.func_file,
-                            TR=self.TR,
-                            subject=self.sub,
-                            run=self.run,
-                            lb=self.lb,
-                            hb=self.hb,
-                            low_pass=self.low_pass,
-                            high_pass=self.high_pass,
-                            deleted_first_timepoints=self.deleted_first_timepoints,
-                            deleted_last_timepoints=self.deleted_last_timepoints,
-                            window_size=self.window_size,
-                            poly_order=self.poly_order,
-                            tsv_file=self.tsv_file,
-                            edf_file=self.edf_file,
-                            phys_file=self.phys_file,
-                            phys_mat=self.phys_mat,
-                            use_bids=self.use_bids,
-                            verbose=self.verbose,
-                            retroicor=self.retroicor,
-                            filter=self.filter,
-                            n_pca=self.n_pca,
+                             TR=self.TR,
+                             subject=self.sub,
+                             run=self.run,
+                             lb=self.lb,
+                             hb=self.hb,
+                             low_pass=self.low_pass,
+                             high_pass=self.high_pass,
+                             deleted_first_timepoints=self.deleted_first_timepoints,
+                             deleted_last_timepoints=self.deleted_last_timepoints,
+                             window_size=self.window_size,
+                             poly_order=self.poly_order,
+                             tsv_file=self.tsv_file,
+                             edf_file=self.edf_file,
+                             phys_file=self.phys_file,
+                             phys_mat=self.phys_mat,
+                             use_bids=self.use_bids,
+                             verbose=self.verbose,
+                             retroicor=self.retroicor,
+                             filter=self.filter,
+                             n_pca=self.n_pca,
                             **kwargs)
 
         if self.verbose:
