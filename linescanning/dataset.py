@@ -1714,7 +1714,7 @@ class Dataset(ParseFuncFile):
                                 'eye_in_func', 
                                 'blink_events']
 
-        if isinstance(self.func_file, str) and self.func_file.endwith(".h5"):
+        if isinstance(self.func_file, str) and self.func_file.endswith(".h5"):
             print(f" Reading from {self.func_file}")
             self.from_hdf(self.func_file)
         else:
