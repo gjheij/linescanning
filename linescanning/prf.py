@@ -831,7 +831,7 @@ def create_line_prf_matrix(log_dir,
         baseline_before = np.zeros((n_pix,n_pix,int(baseline_before/TR)))
         if deleted_first_timepoints != 0:
             baseline_before = baseline_before[...,deleted_first_timepoints:]
-
+        
         print(f"Baseline before has shape: {baseline_before.shape}")
 
         baseline_after = np.zeros((n_pix,n_pix,int(baseline_after/TR)))    
@@ -847,13 +847,18 @@ def create_line_prf_matrix(log_dir,
 
         design_matrix = np.zeros((n_pix, n_pix, nr_trs))
 
+        if verbose:
+            print("Reading onset times from log-file")
         # get the onsets
         onsets = dataset.ParseExpToolsFile(utils.get_file_from_substring(".tsv", log_dir), 
                                            TR=TR, 
                                            deleted_first_timepoints=deleted_first_timepoints, 
                                            use_bids=False,
                                            verbose=verbose)
-
+    
+        if verbose:
+            print("Creating design matrix (can take a few minutes with thousands of TRs)")
+        
         trial_df = onsets.df_onsets.copy()
         for tr in range(nr_trs):
     

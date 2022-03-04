@@ -102,16 +102,15 @@ class ParseEyetrackerFile():
         self.use_bids           = use_bids
         self.include_blinks     = False
 
-        if self.verbose:
-            print("\nEYETRACKER")
 
         # add all files to h5-file
         if isinstance(self.edf_file, str) or isinstance(self.edf_file, list):
+            
+            if self.verbose:
+                print("\nEYETRACKER")
+
             self.preprocess_edf_files()
             self.include_blinks = True
-        else:
-            if self.verbose:
-                print(" No eyetracking data used")
 
     def preprocess_edf_files(self):
 
