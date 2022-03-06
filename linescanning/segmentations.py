@@ -238,6 +238,7 @@ class Segmentations:
         
         
     def plot_segmentations(self, 
+                           subj_df=None,
                            include=['ref', 'cortex', 'layers'], 
                            cmaps=['Greys_r', 'Greys_r', 'hot'], 
                            cmap_color_line="#f0ff00", 
@@ -279,7 +280,12 @@ class Segmentations:
         """
         
         # because 'segmentation_df' can contain multiple subjects, decide on number of columns & rows for figure
-        subject_list        = list(self.segmentation_df.keys())
+        if subj_df == None:
+            use_df = self.segmentation_df.copy()
+        else:
+            use_df = subj_df.copy()
+            
+        subject_list = list(use_df.keys())
         nr_subjects         = len(subject_list)
         nr_segmentations    = len(include)
 
@@ -298,7 +304,7 @@ class Segmentations:
                 else:
                     ax = axs[ix,ic]
 
-                seg = self.get_plottable_segmentations(self.segmentation_df[sub][seg_type])
+                seg = self.get_plottable_segmentations(use_df[sub][seg_type])
                 if seg_type == "ref":
                     ax.imshow(np.rot90(seg), vmax=max_val_ref, cmap=cmaps[ic])
                 else:
@@ -309,7 +315,8 @@ class Segmentations:
                     beam_cmap = utils.make_binary_cm(cmap_color_line)
 
                     # load data
-                    line = self.get_plottable_segmentations(self.segmentation_df[sub]['line'])
+                    line = self.get_plottable_segmentations(
+                        use_df[sub]['line'])
 
                     # plot data
                     ax.imshow(np.rot90(line), cmap=beam_cmap, alpha=0.6)
@@ -319,10 +326,10 @@ class Segmentations:
         plt.tight_layout()
 
         if save_as:
-            fig.savefig(save_as)   
-
+            fig.savefig(save_as)
 
     def plot_line_segmentations(self, 
+                                subj_df=None,
                                 include=['ref', 'wm', 'gm', 'csf', 'cortex', 'layers', 'mask'], 
                                 cmap_color_mask="#08B2F0", 
                                 figsize=(8,4), 
@@ -393,7 +400,12 @@ class Segmentations:
         """
 
         # because 'segmentation_df' can contain multiple subjects, decide on number of columns & rows for figure
-        subject_list        = list(self.segmentation_df.keys())
+        if subj_df == None:
+            use_df = self.segmentation_df.copy()
+        else:
+            use_df = subj_df.copy()
+
+        subject_list        = list(use_df.keys())
         nr_subjects         = len(subject_list)
         nr_segmentations    = len(include)
 
@@ -406,7 +418,7 @@ class Segmentations:
                 print("WARNING: 'vertical' layout was specified, but I can't do that with multiple subjects. Changing to 'vertical'")
         
         # add gridspec per subject
-        beam_data = {}
+        self.beam_data = {}
         grids = []
         start_grid_right = 0.48
         start_grid_left = 0.05
@@ -441,8 +453,8 @@ class Segmentations:
 
                 # print(f" subplot: {idx}")
 
-                seg         = self.get_plottable_segmentations(self.segmentation_df[sub][ii])
-                line        = self.get_plottable_segmentations(self.segmentation_df[sub]['line'])
+                seg         = self.get_plottable_segmentations(use_df[sub][ii])
+                line        = self.get_plottable_segmentations(use_df[sub]['line'])
                 
                 if self.foldover == "FH":
                     beam[ii] = np.multiply(seg, line.astype(bool))[:, 352:368]
@@ -482,18 +494,21 @@ class Segmentations:
                             plot.set_xticks([])
                     plot.set_yticks([])
 
-            beam_data[sub] = beam.copy()
+            self.beam_data[sub] = beam.copy()
 
         plt.show()
 
         if save_as:
             fig.savefig(save_as)
-            return beam, save_as
-        else:
-            return beam
                 
 
     def wm_csf_voxels_for_regressors(self):
+
+        """wm_csf_voxels_for_regressors
+
+        Generate a list of voxels that consist entirely of WM/CSF-stuff. As the beam is 16 voxels wide, a voxel is considered WM/CSF if *all* values across the beam are the WM/CSF value in the CRUISE-output from Nighres. This list of voxels can then be used to perform aCompCor in :class:`linescanning.dataset.ParseFuncFile`.
+
+        """
             
         self.cortex     = self.get_plottable_segmentations(self.segmentation_df[self.subject]['cortex'])
         self.line       = self.get_plottable_segmentations(self.segmentation_df[self.subject]['line'])
@@ -545,6 +560,28 @@ class Segmentations:
             setattr(self, f"{t_type}_in_slice", template)
 
     def plot_regressor_voxels(self, figsize=(8,8), cmap_color=["#338EFF", "#FF4F33"], ax=None, title="WM/CSF voxels for nuisance regression", fontsize=16):
+        """plot_regressor_voxels
+
+        Make an image of where the white matter/CSF voxels from :func:`linescanning.segmentations.Segmentations.wm_csf_voxels_for_regressors` are located along the line. 
+
+        Parameters
+        ----------
+        figsize: tuple, optional
+            Figure size if default setting is insufficient, by default (8,8)
+        cmap_color: list, optional
+            Colors for the WM/CSF-voxels, by default ["#338EFF", "#FF4F33"]
+        ax: matplotlib-axis, optional
+            Use a custom matplotlib axis, by default None
+        title: str, optional
+            _description_, by default "WM/CSF voxels for nuisance regression"
+        fontsize: int, optional
+            _description_, by default 16
+
+        Example
+        ----------
+        >>> 
+        """
+
         
         if not hasattr(self, "wm_in_slice"):
             self.wm_csf_voxels_for_regressors()
@@ -562,3 +599,116 @@ class Segmentations:
     
         if title:
             ax.set_title(title, fontsize=fontsize)
+
+    def segmentations_to_beam(self, subj_df=None, subject=None):
+        
+        custom_input = False
+        if subject != None:
+            if subj_df != None:
+                custom_input = True
+                use_data = subj_df[subject]
+                use_subj = subject
+            else:
+                raise ValueError(f"Must provide dictionary containing {subject} for this operation")
+        elif subject == None and subj_df != None:
+            raise ValueError("Must provide a subject ID for this operation")
+        else:
+            use_data = self.segmentation_df[self.subject].copy()
+            subject = self.subject
+            
+        segmentations_in_beam  = {}; segmentations_in_beam[subject] = {}
+        beam_in_slice          = {}; beam_in_slice[subject] = {}
+        line                   = self.get_plottable_segmentations(use_data['line'])
+
+        # this bit extracts the middle 16 voxels along the line, resulting in a (720,16) array for each segmentation
+        for seg in list(use_data.keys()):
+            seg_in_slice = self.get_plottable_segmentations(use_data[seg])
+
+            if self.foldover == "FH":
+                seg_in_beam = np.multiply(seg_in_slice, line.astype(bool))[:, 352:368]
+            else:
+                segin_beam = np.multiply(seg_in_slice, line.astype(bool))[352:368, :]
+
+            segmentations_in_beam[subject][seg] = seg_in_beam
+
+            # this thing inserts the beam into an empty slice, so we can create nifti's of the beam arrays (720,720) with only middle 16 voxels
+            beam_in_slice[subject][seg] = image.create_line_from_slice(seg_in_slice, fold=self.foldover, keep_input=True)
+
+        # custom input can be the case of multiple subjects
+        if custom_input:
+            return segmentations_in_beam
+        else:
+            self.segmentations_in_beam = segmentations_in_beam
+            self.beam_in_slice = beam_in_slice
+
+    def plot_beam_in_slice(self, include='all', figsize=None, cmap_color_mask="#08B2F0", rot=True, save=False):
+        """plot_beam_in_slice
+
+        The format of this data is the segmentations in beam-representation. This means everything but the 16 middle voxels along the line are set to zero, ensuring that the slice has a shape (720,720). This function is primarily aimed at plotting these images, but we can also write them to nifti-files using the `save=True` flag. We take the affine and header from `self.segmentation_df[self.subject]['ref']` to create the nifti file.
+
+        Parameters
+        ----------
+        include: str, list, optional
+            Which segmentations to include in the plotting, by default 'all'. Can also be a list of desired segmentations, but then `include` must consist strings that exist as key in `self.segmentation_df`.
+        figsize: type, optional
+            Specified figure size if the default isn't sufficient, by default None. Defaults to the number of included specifications (via the `include`-flag)*5 by 5 (segmentations will be plotted as columns)
+        cmap_color_mask: str, optional
+            Hex code for colormap of binary mask, by default "#08B2F0"
+        rot: bool, optional
+            Rotate (or not) the input numpy array. This might be necessary for adequate visualization of slices where the foldover direction was set to FH, by default True
+        save: bool, optional
+            Save the arrays as nifti-files that we could potentially project to the surface, by default False
+
+        Example
+        ----------
+        >>> segs = segmentations.Segmentations(<subject>, pickle_file=<pickle file>, reference_slice=<reference slice>, target_session=<target session>)
+        >>> segs.plot_beam_in_slice(save=True)
+        """
+
+        if not hasattr(self, "beam_in_slice"):
+            self.segmentations_to_beam()
+
+        if include == "all":
+            include_seg = self.beam_in_slice[self.subject].keys()
+        elif isinstance(include, list):
+            include_seg = include.copy()
+        else:
+            raise ValueError(f"Unrecognized input for 'include': {include}. Must be a list of keys to include or 'all'")
+
+        if figsize == None:
+            figsize = (len(include_seg)*5,5)
+
+        fig = plt.figure(figsize=figsize)
+        gs = fig.add_gridspec(1,len(include_seg))
+
+        gs_ix = 0
+        for ix, seg in enumerate(self.beam_in_slice[self.subject].keys()):
+            if seg in include_seg:
+
+                if seg == "mask":
+                    use_cmap = utils.make_binary_cm(cmap_color_mask)
+                elif seg == "layers":
+                    use_cmap = "hot"
+                else:
+                    use_cmap = "Greys_r"
+                    
+                ax = fig.add_subplot(gs[gs_ix])
+                img = self.beam_in_slice[self.subject][seg]
+
+                if rot:
+                    plot_img = np.rot90(img)
+                else:
+                    plot_img = img.copy()
+
+                ax.imshow(plot_img, cmap=use_cmap)
+                ax.axis('off')
+                gs_ix += 1
+
+            if save:
+                # line-img already exists in 'func'
+                if seg != "line" and seg != "ref":
+                    ref_img = nb.load(self.segmentation_df[self.subject]['ref'])
+                    out_fn = opj(os.path.dirname(self.segmentation_df[self.subject][seg]), f"{self.subject}_ses-{self.target_session}_acq-beam_desc-{seg}.nii.gz")
+                    print(f"Writing {out_fn}")
+                    nb.Nifti1Image(img[..., np.newaxis], affine=ref_img.affine, header=ref_img.header).to_filename(out_fn)
+
