@@ -753,6 +753,9 @@ class ParsePhysioFile():
 
         if isinstance(self.physio_file, str):
             self.physio_file = [self.physio_file]
+
+        if isinstance(self.physio_mat, str):
+            self.physio_mat = [self.physio_mat]
                 
         if isinstance(self.physio_file, list):
 
@@ -767,7 +770,7 @@ class ParsePhysioFile():
                     for el in ['sub', 'run']:
                         setattr(self, el, bids_comps[el])
                 else:
-                    self.run = run
+                    self.run = run+1
 
                 # check if deleted_first_timepoints is list or not
                 delete_first = check_input_is_list(self, var="deleted_first_timepoints", list_element=run)
@@ -814,16 +817,25 @@ class ParsePhysioFile():
 
         # Try to get the heart rate
         if physio_mat != None:
+
             self.mat = io.loadmat(physio_mat)
-            self.hr = self.mat['physio']['ons_secs'][0][0][0][0][12]
+            try:
+                self.hr = self.mat['physio']['ons_secs'][0][0][0][0][12]
+            except:
+                print(" WARNING: no heart rate trace found..")
+            
+            try:
+                self.rvt = self.mat['physio']['ons_secs'][0][0][0][0][13]
+            except:
+                print(" WARNING: no respiration trace found..")
 
             # trim beginning and end
-            if deleted_last_timepoints != 0:
-                self.physio_df['hr'] = self.hr[deleted_first_timepoints:-deleted_last_timepoints,:]
-            else:
-                self.physio_df['hr'] = self.hr[deleted_first_timepoints:,:]
-
-            # self.physio_df['hr'] = (self.physio_df['hr'] - self.physio_df['hr'].mean())/self.physio_df['hr'].std(ddof=0)
+            for trace in ['hr', 'rvt']:
+                if hasattr(self, trace):
+                    if deleted_last_timepoints != 0:
+                        self.physio_df[trace] = getattr(self, trace)[deleted_first_timepoints:-deleted_last_timepoints,:]
+                    else:
+                        self.physio_df[trace] = getattr(self, trace)[deleted_first_timepoints:, :]
 
         self.physio_df['subject'], self.physio_df['run'], self.physio_df['t'] = self.sub, self.run, list(self.TR*np.arange(self.physio_df.shape[0]))
 
@@ -888,7 +900,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
                  filter="highpass",
                  deleted_first_timepoints=0, 
                  deleted_last_timepoints=0, 
-                 window_size=19,
+                 window_size=11,
                  poly_order=3,
                  attribute_tag=None,
                  hdf_key="df",
@@ -902,6 +914,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
                  retroicor=False,
                  acompcor=False,
                  n_pca=5,
+                 func_tag=None,
                  **kwargs):
 
         self.sub                        = subject
@@ -929,6 +942,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
         self.acompcor                   = acompcor
         self.filter                     = filter
         self.foldover                   = "FH"
+        self.func_tag                   = func_tag
         self.n_pca                      = n_pca
         self.__dict__.update(kwargs)
 
@@ -994,7 +1008,6 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
                                    target_session=self.target_session,
                                    foldover=self.foldover,
                                    verbose=self.verbose)
-            
         
         if self.verbose:
             print("\nFUNCTIONAL")
@@ -1013,6 +1026,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
             self.df_zscore   = []    # zscore-d data
 
             for run, func in enumerate(self.func_file):
+
                 if self.verbose:
                     print(f"Preprocessing {func}")
                 if self.use_bids:
@@ -1020,7 +1034,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
                     for el in ['sub', 'run']:
                         setattr(self, el, bids_comps[el])
                 else:
-                    self.run = run
+                    self.run = run+1
 
                 # check if deleted_first_timepoints is list or not
                 delete_first = check_input_is_list(self, var="deleted_first_timepoints", list_element=run)
@@ -1037,7 +1051,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
                                           **kwargs)
 
                 if self.verbose:
-                    print(f" Data used for percent-change: '{self.filter}'")
+                    print(f" Data used for standardization: '{self.filter}'")
 
                 self.df_psc.append(self.get_data(index=False, filt=self.filter, dtype='psc'))
                 self.df_zscore.append(self.get_data(index=False, filt=self.filter, dtype='zscore'))
@@ -1057,7 +1071,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
             if self.retroicor:
                 try:
                     self.df_func_retroicor = pd.concat(self.df_retro).set_index(['subject', 'run', 't'])
-                    self.df_physio_r2 = pd.concat(self.df_r2).set_index(['subject', 'run', 't'])
+                    self.df_physio_r2 = pd.concat(self.df_r2)
                 except:
                     raise ValueError("RETROICOR did not complete successfully..")
 
@@ -1099,11 +1113,21 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
             raise NotImplementedError("This datatype is not supported because of different nr of voxels compared to line data.. This make concatenation of dataframes not possible")
         
         if func_file.endswith("mat"):
+
+            # load matlab file
             self.ts_wcsmtSNR    = io.loadmat(func_file)
-            self.tag            = list(self.ts_wcsmtSNR.keys())[-1]
+
+            # decide which key to read from the .mat file
+            if self.func_tag == None:
+                self.tag            = list(self.ts_wcsmtSNR.keys())[-1]
+            else:
+                self.tag = self.func_tag
+
+            # select data
             self.ts_wcsmtSNR    = self.ts_wcsmtSNR[self.tag]
             self.ts_complex     = self.ts_wcsmtSNR
             self.ts_magnitude   = np.abs(self.ts_wcsmtSNR)
+
         elif func_file.endswith("npy"):
             self.ts_magnitude   = np.load(func_file)
         elif func_file.endswith("nii") or func_file.endswith("gz"):
@@ -1246,14 +1270,14 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
         #         
         # RETROICOR
         if self.retroicor:
-            self.apply_retroicor()
+            self.apply_retroicor(run=run, **kwargs)
 
         # aCompCor
         if self.acompcor:
             self.apply_acompor(run=run, **kwargs)
 
+    def apply_retroicor(self, run=1, **kwargs):
 
-    def apply_retroicor(self):
         # we should have df_physio dataframe from ParsePhysioFile
         if hasattr(self, "df_physio"):
             try:
@@ -1262,19 +1286,19 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
             except:
                 raise ValueError(f"Could not extract dataframe from 'df_physio' with expression: 'run = {self.run}'")
 
-
             for data_type in self.possible_outcomes:
 
                 if hasattr(self, f"{data_type}_zscore"):
 
                     self.z_score = getattr(self, f"{data_type}_zscore").copy()
 
-                    if "hr" in list(self.confs.columns):
-                        self.confs = self.confs.drop(columns=['hr'])
+                    for trace in ['hr', 'rvt']:
+                        if trace in list(self.confs.columns):
+                            self.confs = self.confs.drop(columns=[trace])
 
                     # regress out the confounds with clean
                     if self.verbose:
-                        print(" RETROICOR with physio-regressors")
+                        print(f" RETROICOR on '{data_type}_zscore'")
 
                     cardiac     = utils.select_from_df(self.confs, expression='ribbon', indices=(0,self.orders[0]))
                     respiration = utils.select_from_df(self.confs, expression='ribbon', indices=(self.orders[0],self.orders[0]+self.orders[1]))
@@ -1298,18 +1322,15 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
                     
                     # save in a subject X run X voxel manner
                     self.r2_physio = {'all': self.r2_all,   
-                                        'respiration': self.r2_resp, 
-                                        'cardiac': self.r2_cardiac, 
-                                        'interaction': self.r2_interaction}
+                                      'respiration': self.r2_resp, 
+                                      'cardiac': self.r2_cardiac, 
+                                      'interaction': self.r2_interaction}
 
                     self.r2_physio_df = pd.DataFrame(self.r2_physio)
                     self.r2_physio_df['subject'], self.r2_physio_df['run'], self.r2_physio_df['vox'] = self.sub, run, np.arange(0,self.r2_all.shape[0])
 
                     setattr(self, f"{data_type}_zscore_retroicor", self.z_score_retroicor_df)
                     setattr(self, f"{data_type}_zscore_retroicor_r2", self.r2_physio_df)
-
-                else:
-                    print(" Could not find df_physio.. Retroicor failed")
 
     def apply_acompor(self, run=1, **kwargs):
 
@@ -1666,7 +1687,7 @@ class Dataset(ParseFuncFile):
                  hb=4,
                  deleted_first_timepoints=0, 
                  deleted_last_timepoints=0, 
-                 window_size=20,
+                 window_size=11,
                  poly_order=3,
                  attribute_tag=None,
                  hdf_key="df",
