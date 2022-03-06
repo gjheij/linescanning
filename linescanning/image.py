@@ -97,6 +97,8 @@ def create_line_from_slice(in_file, out_file=None, width=16, fold="FH", keep_inp
         how many voxels should we use to define the line. Remember that the center of the line is width/2, so if it's set to 16, we take 8 voxels below center and 8 voxels above center.
     fold: str, optional
         string denoting the type of foldover direction that was used. We can find this in the info-file in the pycortex directory and can either be *FH* (line = `LR`), or *LR* (line = `FH`)
+    keep_input: boolean, optional
+        Keep the native input of the input data rather than binarizing the input image
     
     Returns
     ----------
@@ -114,8 +116,14 @@ def create_line_from_slice(in_file, out_file=None, width=16, fold="FH", keep_inp
     >>> img.to_filename('sub-001_ses-2_task-LR_run-8_bold.nii.gz')
     """
 
-    in_img = nb.load(in_file)
-    in_data = in_img.get_fdata()
+    img = False
+
+    if isinstance(in_file, str):
+        img = True
+        in_img = nb.load(in_file)
+        in_data = in_img.get_fdata()
+    elif isinstance(in_file, np.ndarray):
+        in_data = in_file.copy()
 
     if len(in_data.shape) == 4:
         in_data = np.squeeze(in_data, 3)
@@ -126,15 +134,23 @@ def create_line_from_slice(in_file, out_file=None, width=16, fold="FH", keep_inp
 
     # print(fold.lower())
     if fold.lower() == "rl" or fold.lower() == "lr":
-        beam = np.ones((int(width), empty_img.shape[0], 1))
+        
+        # add axis if we're dealing with nifti-image, otherwise return 2D-array
+        beam = np.ones((int(width), empty_img.shape[0]))
+        if img:
+            beam = beam[...,np.newaxis]
 
         if keep_input == False:
-            empty_img[int(lower):int(upper)] = beam*1e8
+            empty_img[int(lower):int(upper)] = beam
         elif keep_input == True:
             empty_img[int(lower):int(upper)] = beam*in_data[int(lower):int(upper)]
 
     elif fold.lower() == "fh" or fold.lower() == "hf":
-        beam = np.ones((empty_img.shape[0], int(width), 1))
+
+        # add axis if we're dealing with nifti-image, otherwise return 2D-array
+        beam = np.ones((empty_img.shape[0], int(width)))
+        if img:
+            beam = beam[...,np.newaxis]
 
         if keep_input == False:
             empty_img[:, int(lower):int(upper)] = beam
@@ -143,12 +159,15 @@ def create_line_from_slice(in_file, out_file=None, width=16, fold="FH", keep_inp
             
     else:
         raise NotImplementedError(f"Unknown option {fold}, probably not implemented yet..")
-
-    line = nb.Nifti1Image(empty_img, affine=in_img.affine,header=in_img.header)
-    if out_file != None:
-        line.to_filename(out_file)
+    
+    if img:
+        line = nb.Nifti1Image(empty_img, affine=in_img.affine,header=in_img.header)
+        if out_file != None:
+            line.to_filename(out_file)
+        else:
+            return line
     else:
-        return line
+        return empty_img
 
 
 def get_max_coordinate(in_img):
