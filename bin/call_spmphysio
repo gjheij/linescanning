@@ -23,6 +23,7 @@ Args:
  -v <VOLUMES>   nr of volumes; 'dim4' if func = *.nii.gz or 'shape[-1]' if *.mat
  -f <FUNC FILE> functional file that contains information about the number of runs
  -d <DUMMY VOL> number of dummy volumes before acquisition of actual data (1 dyn is typically 400 vols)
+ -n             do not run PhysIO-toolbox, only 'scanphyslog2bids'
  <input file>   SCANPHYSLOG-file that you want to convert to text file
  <output image>	name of output image, including directory
 
@@ -43,7 +44,7 @@ if [[ $# -lt 1 ]] ; then
 fi
 
 # Check for subject & session flags
-while getopts s:f:t:r:d: argument
+while getopts ns:f:t:r:d: argument
 do
   case ${argument} in
     s)  SPM=${OPTARG}
@@ -61,6 +62,13 @@ done
 
 INPUT=${@:$OPTIND:1}
 OUTPUT=${@:$OPTIND+1:1}
+
+# check for flag that turns off matlab
+if [[ "${@}" == *"-n"* ]]; then
+  RUN_MATLAB=0
+else
+  RUN_MATLAB=1
+fi
 
 #-----------------------------------------------------------------------------
 # Get bash helper functions
@@ -81,7 +89,7 @@ fi
 
 # double check if directory exists
 if [[ ! -d ${SPM_PATH} ]]; then
-  echo "ERROR: Could not fined SPM-directory \"${SPM_PATH}\""
+  echo "ERROR: Could not find SPM-directory \"${SPM_PATH}\""
   exit 1
 fi
 
@@ -141,20 +149,42 @@ if [[ ! -d $(dirname ${OUTPUT}) ]]; then
   mkdir -p $(dirname ${OUTPUT})
 fi
 
+#-----------------------------------------------------------------------------
 # fetch full paths in case only a filename was specified
 INPUT=`fetch_filepath ${INPUT}`
 OUTPUT=`fetch_filepath ${OUTPUT}`
 
-make_physio_script ${SPM_PATH} ${INPUT} ${TR} ${VOLS} ${OUTPUT} ${N_DUMMY} ${new_script}
-if [[ $? -ne 0 ]]; then
-  echo "ERROR in `basename ${0}`: make_physio_script exited with non-zero status"
-  exit 1
-fi
+#-----------------------------------------------------------------------------
+# Do some preprocessing with 'scanphyslog2bids' from Lukas Snoek:
+scanphyslog2bids \
+    --file ${INPUT} \
+    --tr ${TR} \
+    --ndyns ${VOLS} \
+    --sf 500 \ 
+    --triggermethod interpolate \ # gradient_log doesn't work
+    --outdir $(dirname ${INPUT}) \  # default
+    --plottraces \
+    --plotalignment \
+    --derivdir $(dirname ${INPUT})  # for plots
 
-# call_matlab = in call_bashhelper
-call_matlab ${new_script}
+# fetch the output from scanphyslog2bids
+PHYSIO_INPUT=$(dirname ${INPUT})/$(basename ${INPUT} .log).tsv.gz
 
-if [[ $? -ne 0 ]]; then
-  echo "ERROR: matlab exited with non-zero status"
-  exit 1
+if [[ ${RUN_MATLAB} -eq 1 ]]; then
+  # create the matlab script
+  make_physio_script ${SPM_PATH} ${PHYSIO_INPUT} ${TR} ${VOLS} ${OUTPUT} ${N_DUMMY} ${new_script}
+  if [[ $? -ne 0 ]]; then
+    echo "ERROR in `basename ${0}`: make_physio_script exited with non-zero status"
+    exit 1
+  fi
+
+  # execute the script with matlab
+  call_matlab ${new_script}
+
+  if [[ $? -ne 0 ]]; then
+    echo "ERROR: matlab exited with non-zero status"
+    exit 1
+  fi
+else
+  echo "-n flag was specified; not running matlab"
 fi
