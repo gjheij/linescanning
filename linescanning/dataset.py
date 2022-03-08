@@ -915,6 +915,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
                  func_tag=None,
                  select_component=None,
                  standardization="zscore",
+                 filter_pca=None,
                  **kwargs):
 
         self.sub                        = subject
@@ -943,6 +944,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
         self.func_tag                   = func_tag
         self.n_pca                      = n_pca
         self.select_component           = select_component
+        self.filter_pca                 = filter_pca
         self.standardization            = standardization
         self.__dict__.update(kwargs)
 
@@ -1209,12 +1211,13 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
 
             Segmentations.__init__(self,
                                    self.subject,
+                                   run=self.run,
                                    reference_slice=reference_slice,
                                    target_session=self.target_session,
                                    foldover=self.foldover,
-                                   verbose=self.verbose)                      
+                                   verbose=self.verbose)
 
-            self.apply_acompor(run=run, select_component=self.select_component, **kwargs)
+            self.apply_acompor(run=run, select_component=self.select_component, filter_pca=self.filter_pca, **kwargs)
         
         #----------------------------------------------------------------------------------------------------------------------------------------------------
         # LOW PASS FILTER
@@ -1235,7 +1238,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
 
             if self.verbose:
                 print(info)
-                print(f" Savitsky-Golay low pass filter [removes high frequences] (window = {self.window_size}, order = {self.poly_order})")
+                print(f" Savitsky-Golay low-pass filter [removes high frequences] (window={self.window_size}, order={self.poly_order})")
 
             tmp_filtered = self.lowpass_savgol(data_for_filtering, window_length=self.window_size, polyorder=self.poly_order)
 
@@ -1303,7 +1306,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
                 setattr(self, f"data_zscore_retroicor", self.z_score_retroicor_df)
                 setattr(self, f"data_zscore_retroicor_r2", self.r2_physio_df)
 
-    def apply_acompor(self, run=1, select_component=None, **kwargs):
+    def apply_acompor(self, run=1, select_component=None, filter_pca=None, **kwargs):
 
         if not hasattr(self, "acompcor_voxels"):
             raise AttributeError("aCompCor was requested, but Segmentation-module did not produce the expected 'acompcor_voxels'-attribute")
@@ -1415,13 +1418,23 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
 
         # regress components out
         if select_component == None:
-            confs = self.acompcor_components
+            self.confs = self.acompcor_components
         else:
             if self.verbose:
                 print(f" Only regressing out component {select_component}")
-            confs = self.acompcor_components[:,select_component-1]
+            self.confs = self.acompcor_components[:,select_component-1]
 
-        self.hp_acomp = clean(self.data_for_acompcor.values, standardize=False, confounds=confs).T
+        if filter_pca != None:
+            if self.verbose:
+                print(f" DCT high-pass filter on components [removes low frequencies <{filter_pca} Hz]")
+
+            if self.confs.ndim >= 2:
+                self.confs, _ = self.highpass_dct(self.confs.T, filter_pca, TR=self.TR)
+                self.confs = self.confs.T
+            else:
+                self.confs, _ = self.highpass_dct(self.confs, filter_pca, TR=self.TR)
+
+        self.hp_acomp = clean(self.data_for_acompcor.values, standardize=False, confounds=self.confs).T
         self.hp_acomp_df = self.index_func(self.hp_acomp,
                                            columns=self.vox_cols, 
                                            subject=self.sub, 
@@ -1722,6 +1735,7 @@ class Dataset(ParseFuncFile):
                  filter=None,
                  n_pca=5,
                  select_component=None,
+                 filter_pca=None,
                  **kwargs):
 
         self.sub                        = subject
@@ -1749,6 +1763,7 @@ class Dataset(ParseFuncFile):
         self.filter                     = filter
         self.n_pca                      = n_pca
         self.select_component           = select_component
+        self.filter_pca                 = filter_pca
         self.__dict__.update(kwargs)
 
         if self.verbose:
@@ -1787,6 +1802,7 @@ class Dataset(ParseFuncFile):
                              filter=self.filter,
                              n_pca=self.n_pca,
                              select_component=self.select_component,
+                             filter_pca=self.filter_pca,
                             **kwargs)
 
         if self.verbose:
