@@ -11,6 +11,7 @@ class Segmentations:
 
     def __init__(self, 
                  subject, 
+                 run=None,
                  derivatives=None, 
                  trafo_file=None, 
                  reference_slice=None, 
@@ -30,6 +31,8 @@ class Segmentations:
         ----------
         subject: str
             Subject ID as used in `SUBJECTS_DIR` and used throughout the pipeline
+        run: int, optional
+            run number you'd like to have the segmentations for            
         derivatives: str, optional
             Path to derivatives folder of the project. Generally should be the path specified with `DIR_DATA_DERIV` in the bash environment (if using https://github.com/gjheij/linescanning).
         trafo_file: str, optional
@@ -84,6 +87,7 @@ class Segmentations:
         """
 
         self.subject            = subject
+        self.run                = run
         self.project_home       = derivatives
         self.trafo_file         = trafo_file
         self.reference_slice    = reference_slice
@@ -147,9 +151,9 @@ class Segmentations:
             #  6 = mask     ("brainmask")
 
             if self.verbose:
-                print(f"Source dir: {self.nighres_source}")
-                print(f"Target session: ses-{self.target_session}")
-                print(f"Foldover: {self.foldover}")
+                print(f" Source dir: {self.nighres_source}")
+                print(f" Target session: ses-{self.target_session}")
+                print(f" Foldover: {self.foldover}")
 
             in_type = ['prob', 'prob', 'prob', 'tissue', 'layer', 'prob', 'tissue']
             tag = ['wm', 'gm', 'csf', 'cortex', 'layers', 'depth', 'mask']
@@ -179,7 +183,11 @@ class Segmentations:
             self.resampled['ref'] = self.reference_slice; self.resampled_data['ref'] = nb.load(self.reference_slice).get_fdata()
             self.resampled['line'] = image.create_line_from_slice(self.reference_slice, fold=self.foldover); self.resampled_data['line'] = nb.load(self.reference_slice).get_fdata()
 
-            self.pickle_file = opj(self.nighres_target, f'{subject}_ses-{self.target_session}_desc-segmentations.pkl')
+            if self.run != None:
+                self.pickle_file = opj(self.nighres_target, f'{subject}_ses-{self.target_session}_run-{self.run}_desc-segmentations.pkl')
+            else:
+                self.pickle_file = opj(self.nighres_target, f'{subject}_ses-{self.target_session}_desc-segmentations.pkl')
+                
             pickle_file = open(self.pickle_file, "wb")
             pickle.dump(self.resampled, pickle_file)
             pickle_file.close()
@@ -200,8 +208,8 @@ class Segmentations:
         self.wm_csf_voxels_for_regressors()
 
         if self.verbose:
-            print(f"Found {len(self.acompcor_voxels)} voxels for nuisance regression")
-            print("We're good to go!")
+            print(f" Found {len(self.acompcor_voxels)} voxels for nuisance regression")
+            print(" We're good to go!")
 
     def get_plottable_segmentations(self, input_seg, return_dimensions=2):
         """get_plottable_segmentations
@@ -589,8 +597,9 @@ class Segmentations:
         if ax == None:
             fig,ax = plt.subplots(figsize=figsize)
         
-        cmap_csf = utils.make_binary_cm(cmap_color[0])
-        cmap_wm = utils.make_binary_cm(cmap_color[1])
+        self.regressor_voxel_colors = cmap_color
+        cmap_csf = utils.make_binary_cm(self.regressor_voxel_colors[0])
+        cmap_wm = utils.make_binary_cm(self.regressor_voxel_colors[1])
 
         ax.imshow(np.rot90(self.cortex), cmap="Greys_r")
         ax.imshow(np.rot90(self.csf_in_slice), cmap=cmap_csf)
