@@ -57,7 +57,7 @@ def ants_registration(fixed=None,moving=None,reg_type="rigid",output=None):
         raise FileNotFoundError(f"Could not find file '{trafo}'")
 
 
-def ants_applytrafo(fixed, moving, trafo=None, invert=0, interp='nn', output=None, return_type="file"):
+def ants_applytrafo(fixed, moving, trafo=None, invert=0, interp='nn', output=None, return_type="file", verbose=False):
     """ants_applytrafo
 
     Python wrapper for call_antsapplytransforms to apply a given transformation, and a set fixed/moving
@@ -152,7 +152,8 @@ def ants_applytrafo(fixed, moving, trafo=None, invert=0, interp='nn', output=Non
     # build command
     try:
         cmd_txt = f'call_antsapplytransforms -i "{inv_list}" -t {interp} {fix} {mov} {output} "{trafo_list}"'
-        print(cmd_txt)
+        if verbose:
+            print(cmd_txt)
         os.system(cmd_txt)
     except:
         raise OSError("Could not execute call_antsapplytransforms; check your distribution or install the linescanning repository")
