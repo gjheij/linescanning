@@ -154,6 +154,7 @@ class Segmentations:
                 print(f" Source dir: {self.nighres_source}")
                 print(f" Target session: ses-{self.target_session}")
                 print(f" Foldover: {self.foldover}")
+                print(f" Ref slice: {self.reference_slice}")
 
             in_type = ['prob', 'prob', 'prob', 'tissue', 'layer', 'prob', 'tissue']
             tag = ['wm', 'gm', 'csf', 'cortex', 'layers', 'depth', 'mask']
@@ -162,7 +163,10 @@ class Segmentations:
             for nr,file in enumerate([self.wb_wm, self.wb_gm, self.wb_csf, self.wb_cruise, self.wb_layers, self.wb_depth, self.wb_brainmask]):
 
                 # replace acq-MP2RAGE with acq-1slice
-                new_fn = utils.replace_string(file, "acq-MP2RAGE", "acq-1slice")
+                if self.run == None:
+                    new_fn = utils.replace_string(file, "acq-MP2RAGE", "acq-1slice")
+                else:
+                    new_fn = utils.replace_string(file, "acq-MP2RAGE", f"acq-1slice_run-{self.run}")
                 new_file = opj(self.nighres_target, os.path.basename(new_fn))
                 
                 if not os.path.exists(new_file):
