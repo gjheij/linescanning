@@ -335,6 +335,60 @@ def remove_files(path, string, ext=False):
         path_to_file = os.path.join(path, file)
         os.remove(path_to_file)
 
+def match_lists_on(ref_list, search_list, matcher="run"):
+    """match_lists_on
+
+    Match two list based on a BIDS-specifier such as 'sub', 'run', etc. Can be any key that is extracted using :func:`linescanning.utils.split_bids_components`.
+
+    Parameters
+    ----------
+    ref_list: list
+        List to use as reference
+    search_list: list
+        List to search for items in `ref_list`
+    matcher: str, optional
+        BIDS-identifier, by default "run"
+
+    Returns
+    ----------
+    list
+        new `search_list` filtered for items in `ref_list`
+
+    Example
+    ----------
+    >>> # Let's say I have functional files for 3 runs
+    >>> func_file
+    >>> ['sub-003_ses-3_task-SR_run-3_bold.mat',
+    >>> 'sub-003_ses-3_task-SR_run-4_bold.mat',
+    >>> 'sub-003_ses-3_task-SR_run-6_bold.mat']
+
+    >>> # and anatomical slices for 5 runs
+    >>> anat_slices
+    >>> ['sub-003_ses-3_acq-1slice_run-2_T1w.nii.gz',
+    >>> 'sub-003_ses-3_acq-1slice_run-3_T1w.nii.gz',
+    >>> 'sub-003_ses-3_acq-1slice_run-4_T1w.nii.gz',
+    >>> 'sub-003_ses-3_acq-1slice_run-5_T1w.nii.gz',
+    >>> 'sub-003_ses-3_acq-1slice_run-6_T1w.nii.gz']
+
+    >>> # I can then use `match_list_on` to find the anatomical slices corresponding to the functional files
+    >>> from linescanning import utils
+    >>> utils.match_lists_on(func_file, anat_slices, matcher='run')
+    >>> ['sub-003_ses-3_acq-1slice_run-3_T1w.nii.gz',
+    >>> 'sub-003_ses-3_acq-1slice_run-4_T1w.nii.gz',
+    >>> 'sub-003_ses-3_acq-1slice_run-6_T1w.nii.gz']
+    """
+
+    new_list = []
+    for ii in ref_list:
+        comps = split_bids_components(ii)
+        ff = get_file_from_substring(f"{matcher}-{comps[matcher]}", search_list, return_msg="None")
+
+        if ff != None:
+            if ff == search_list:
+                raise ValueError(f"Output list is equal to input list with identifier '{matcher}'. Please use unique identifier")
+            new_list.append(ff)
+
+    return new_list
 
 def get_file_from_substring(filt, path, return_msg='error', exclude=None):
     """get_file_from_substring
@@ -1180,7 +1234,7 @@ class CurveFitter():
     >>> plt.show()
     """
 
-    def __init__(self, y_data, x=None, func=None, order="3rd", verbose=True, interpolate='linear'):
+    def __init__(self, y_data, x=None, func=None, order=1, verbose=True, interpolate='linear'):
 
         self.y_data         = y_data
         self.func           = func
@@ -1190,20 +1244,34 @@ class CurveFitter():
         self.interpolate    = interpolate
 
         if self.func == None:
-            if order == "1st" or order == 1:
-                self.func = self.first_order
-            elif order == "2nd" or order == 2:
-                self.func = self.second_order
-            elif order == "3rd" or order == 3:
-                self.func = self.third_order
-            else:
-                raise NotImplementedError(f"polynomial of order {order} is not available")
+            self.guess = True
+            if isinstance(self.order, int):
+                if self.order == 1:
+                    self.pmodel = lmfit.models.LinearModel()
+                elif self.order == 2:
+                    self.pmodel = lmfit.models.QuadraticModel()
+                else:
+                    self.pmodel = lmfit.models.PolynomialModel(order=self.order)
+            elif instance(self.order, str):
+                if self.order == 'gauss' or self.order == 'gaussian':
+                    self.pmodel = lmfit.models.GaussianModel()
+                elif self.order == 'exp' or self.order == 'exponential':
+                    self.pmodel = lmfit.models.ExponentialModel()
+                else:
+                    raise NotImplementedError(f"Model {self.order} is not implemented because I'm lazy..")
+        else:
+            self.guess = False
+            self.pmodel = lmfit.Model(self.func)
 
         if self.x == None:
             self.x = np.arange(self.y_data.shape[0])
 
-        self.pmodel = lmfit.Model(self.func)
-        self.params = self.pmodel.make_params(a=1, b=2, c=1, d=1)
+        # self.params = self.pmodel.make_params(a=1, b=1, c=1, d=1)
+        if self.guess:
+            self.params = self.pmodel.guess(self.y_data, self.x)
+        else:
+            self.params = self.pmodel.make_params(a=1, b=1, c=1, d=1)
+
         self.result = self.pmodel.fit(self.y_data, self.params, x=self.x)
 
         if self.verbose:
@@ -1227,6 +1295,10 @@ class CurveFitter():
     @staticmethod
     def third_order(x, a, b, c, d):
 	    return (a * x) + (b * x**2) + (c * x**3) + d
+    
+    @staticmethod
+    def gaussian(x, amp, cen, wid):
+        return amp * np.exp(-(x-cen)**2 / wid)
 
 
 class NideconvFitter():
@@ -1549,13 +1621,13 @@ class NideconvFitter():
                                       **kwargs)
 
 
-    def plot_hrf_across_depth(self, axs=None, figsize=(8,8), markers_cmap='viridis', ci_color="#cccccc", ci_alpha=0.6, **kwargs):
+    def plot_hrf_across_depth(self, axs=None, figsize=(8,8), markers_cmap='viridis', ci_color="#cccccc", ci_alpha=0.6, order=2, **kwargs):
 
         if not hasattr(self, "all_voxels_in_event"):
             self.plot_timecourses(make_figure=False)
         
         self.max_vals = np.array([np.amax(self.all_voxels_in_event[ii]) for ii in range(len(self.all_voxels_in_event))])
-        cf = CurveFitter(self.max_vals, order=3, verbose=False)
+        cf = CurveFitter(self.max_vals, order=order, verbose=False)
         
         if not axs:
             fig,axs = plt.subplots(figsize=figsize)
