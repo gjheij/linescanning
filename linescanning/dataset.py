@@ -1,19 +1,11 @@
 import hedfpy
-from . import glm, utils, plotting
-from .segmentations import Segmentations
-from kneed import KneeLocator
-import matplotlib.pyplot as plt
+from . import glm, utils, preproc
 import nibabel as nb
 from nilearn.signal import clean
-from nilearn.glm.first_level.design_matrix import _cosine_drift
-from nitime.timeseries import TimeSeries
-from nitime.analysis import SpectralAnalyzer
 import numpy as np
 import os
 import pandas as pd
 from scipy import io
-from scipy import signal
-from sklearn import decomposition
 import warnings
 
 opj = os.path.join
@@ -483,7 +475,8 @@ class ParseExpToolsFile(ParseEyetrackerFile):
                  edfs=None, 
                  funcs=None, 
                  use_bids=True,
-                 verbose=False):
+                 verbose=False,
+                 **kwargs):
 
         self.tsv_file                       = tsv_file
         self.sub                            = int(subject)
@@ -496,7 +489,8 @@ class ParseExpToolsFile(ParseEyetrackerFile):
         self.edfs                           = edfs
         self.use_bids                       = use_bids
         self.verbose                        = verbose
-    
+        self.__dict__.update(kwargs)
+
         super().__init__(self.edfs, 
                          subject=self.sub, 
                          func_file=self.funcs, 
@@ -846,7 +840,7 @@ class ParsePhysioFile():
             return self.physio_df
 
 
-class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
+class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
 
     """ParseFuncFile()
 
@@ -860,10 +854,10 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
         subject number in the returned pandas DataFrame (should start with 1, ..., n)
     run: int, optional
         run number you'd like to have the onset times for
-    bp_filter: str, optional
-        method for filtering. Possible options include: "boxcar", "hanning", "rolling", "iir", "fir", and fourier". If you just want percent signal changed non-filtered data, choose `bp_filter="rolling"` and select `self.dct_psc_df` as data
     standardize: str, optional
-        method of standardization (e.g., "zscore" or "psc"). If `bp_filter=="rolling"`, data is automatically converted to *percent signal change*
+        method of standardization (e.g., "zscore" or "psc")
+    low_pass: bool, optional
+        Temporally smooth the data. It's a bit of a shame if this is needed. The preferred option is to use aCompCor with `filter_pca=0.2`
     lb: float, optional
         lower bound for signal filtering
     TR: float, optional
@@ -878,6 +872,22 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
         The order of the polynomial used to fit the samples. polyorder must be less than window_length.
     use_bids: bool, optional
         If true, we'll read BIDS-components such as 'sub', 'run', 'task', etc from the input file and use those as indexers, rather than sequential 1,2,3.
+    verbose: bool, optional
+        Print details to the terminal, default is False
+    retroicor: bool, optional
+        WIP: implementation of retroicor, requires the specification of `phys_file` and `phys_mat` containing the output from the PhysIO-toolbox
+    n_pca: int, optional
+        Number of components to use for WM/CSF PCA during aCompCor
+    select_component: int, optional
+        If `verbose=True` and `aCompcor=True`, we'll create a scree-plot of the PCA components. With this flag, you can re-run this call but regress out only this particular component. [Deprecated: `filter_pca` is much more effective]
+    filter_pca: float, optional
+        High-pass filter the components from the PCA during aCompCor. This seems to be pretty effective. Default is 0.2Hz.
+    ses1_2_ls: str, optional:
+        Transformation mapping `ses-1` anatomy to current linescanning-session, ideally the multi-slice image that is acquired directly before the first `1slice`-image. Default is None.
+    run_2_run: str, list, optional
+        (List of) Transformation(s) mapping the slices of subsequent runs to the first acquired `1slice` image. Default is None.
+    save_as: str, optional
+        Directory + basename for several figures that can be created during the process (mainly during aCompCor)
 
     Example
     ----------
@@ -916,6 +926,9 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
                  select_component=None,
                  standardization="zscore",
                  filter_pca=None,
+                 ses1_2_ls=None,
+                 run_2_run=None,
+                 save_as=None,
                  **kwargs):
 
         self.sub                        = subject
@@ -946,6 +959,9 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
         self.select_component           = select_component
         self.filter_pca                 = filter_pca
         self.standardization            = standardization
+        self.ses1_2_ls                   = ses1_2_ls
+        self.run_2_run                  = run_2_run
+        self.save_as                    = save_as
         self.__dict__.update(kwargs)
 
         # sampling rate and nyquist freq
@@ -1025,6 +1041,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
                                           deleted_last_timepoints=delete_last,
                                           acompcor=self.acompcor,
                                           reference_slice=ref_slice,
+                                          save_as=self.save_as,
                                           **kwargs)
                 
                 if self.standardization == "psc":
@@ -1093,6 +1110,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
                              deleted_last_timepoints=0,
                              acompcor=False,
                              reference_slice=None,
+                             save_as=None,
                              **kwargs):
 
         #----------------------------------------------------------------------------------------------------------------------------------------------------
@@ -1170,7 +1188,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
         if self.verbose:
             print(f" DCT-high pass filter [removes low frequencies <{self.lb} Hz]")
 
-        self.hp_raw, self._cosine_drift = self.highpass_dct(self.data_raw, self.lb, TR=self.TR)
+        self.hp_raw, self._cosine_drift = preproc.highpass_dct(self.data_raw, self.lb, TR=self.TR)
         self.hp_raw_df = self.index_func(self.hp_raw,
                                          columns=self.vox_cols, 
                                          subject=self.sub, 
@@ -1200,6 +1218,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
         # ACOMPCOR AFTER HIGH-PASS FILTERING
         if acompcor:
 
+            # do some checks beforehand
             if reference_slice != None:
                 if self.use_bids:
                     bids_comps = utils.split_bids_components(reference_slice)
@@ -1209,16 +1228,41 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
                     assert hasattr(self, "target_session"), f"Please specify a target_session with 'target_session=<int>'"
                     assert hasattr(self, "subject"), f"Please specify a subject with 'target_session=<int>'"
 
-            Segmentations.__init__(self,
-                                   self.subject,
-                                   run=self.run,
-                                   reference_slice=reference_slice,
-                                   target_session=self.target_session,
-                                   foldover=self.foldover,
-                                   verbose=self.verbose)
+            # check the transformations inputs
+            assert hasattr(self, "ses1_2_ls"), f"Please specify a transformation matrix mapping FreeSurfer to ses-{self.target_session}"
 
-            self.apply_acompor(run=run, select_component=self.select_component, filter_pca=self.filter_pca, **kwargs)
-        
+            if hasattr(self, "run_2_run"):
+                if isinstance(self.run_2_run, list):
+                    run_trafo =  utils.get_file_from_substring(f"to-run{self.run}", self.run_2_run)
+                    self.trafos = [self.ses1_2_ls, run_trafo]
+                else:
+                    self.trafos = [self.ses1_2_ls, self.run_2_run]
+            else:
+                self.trafos = self.ses1_2_ls            
+
+            # aCompCor implemented in `preproc` module
+            self.acomp = preproc.aCompCor(self.hp_zscore_df,
+                                          subject=self.subject,
+                                          run=self.run,
+                                          trg_session=self.target_session,
+                                          trafo_list=self.trafos,
+                                          n_pca=self.n_pca,
+                                          filter_pca=self.filter_pca,
+                                          save_as=self.save_as,
+                                          select_component=self.select_component, 
+                                          summary_plot=self.verbose,
+                                          TR=self.TR,
+                                          foldover=self.foldover,
+                                          verbose=self.verbose,
+                                          **kwargs)
+            
+            self.hp_acomp_df = self.index_func(self.acomp.acomp_data,
+                                               columns=self.vox_cols, 
+                                               subject=self.sub, 
+                                               run=run, 
+                                               TR=self.TR,
+                                               set_index=True)  
+            
         #----------------------------------------------------------------------------------------------------------------------------------------------------
         # LOW PASS FILTER
         if self.low_pass:
@@ -1227,7 +1271,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
                 info = " Using aCompCor-data for low-pass filtering"
                 data_for_filtering = self.get_acompcor(index=True, filter_strategy="hp").T.values
                 out_attr = "lp_acomp"
-            elif self.high_pass:
+            elif hasattr(self, f"lp_{self.standardization}"):
                 info = " Using high-pass filtered data for low-pass filtering"
                 data_for_filtering = getattr(self, f"hp_{self.standardization}")
                 out_attr = f"lp_{self.standardization}"
@@ -1240,7 +1284,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
                 print(info)
                 print(f" Savitsky-Golay low-pass filter [removes high frequences] (window={self.window_size}, order={self.poly_order})")
 
-            tmp_filtered = self.lowpass_savgol(data_for_filtering, window_length=self.window_size, polyorder=self.poly_order)
+            tmp_filtered = preproc.lowpass_savgol(data_for_filtering, window_length=self.window_size, polyorder=self.poly_order)
 
             tmp_filtered_df = self.index_func(tmp_filtered,
                                               columns=self.vox_cols,
@@ -1306,293 +1350,6 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
                 setattr(self, f"data_zscore_retroicor", self.z_score_retroicor_df)
                 setattr(self, f"data_zscore_retroicor_r2", self.r2_physio_df)
 
-    def apply_acompor(self, run=1, select_component=None, filter_pca=None, **kwargs):
-
-        if not hasattr(self, "acompcor_voxels"):
-            raise AttributeError("aCompCor was requested, but Segmentation-module did not produce the expected 'acompcor_voxels'-attribute")
-
-        if self.verbose:
-            print(f" Using {self.n_pca} components for aCompCor (WM/CSF separately)")
-
-        # fetch fMRI data
-        self.data_for_acompcor = self.get_data(index=False, filter_strategy="hp", dtype='zscore')
-        
-        self.acompcor_components = []
-        self.elbows = []
-        self.pcas   = []
-        for tissue in ['csf', 'wm']:
-
-            tissue_voxels = getattr(self, f"{tissue}_voxels")
-            tissue_tc = utils.select_from_df(self.data_for_acompcor,  expression="ribbon", indices=tissue_voxels)
-            setattr(self, f"tc_{tissue}", tissue_tc)
-            
-            pca = decomposition.PCA(n_components=self.n_pca)
-            components = pca.fit_transform(tissue_tc)
-
-            self.pcas.append(pca)
-            # find elbow with KneeLocator
-            xx = np.arange(0, self.n_pca)
-            kn = KneeLocator(xx, pca.explained_variance_, curve='convex', direction='decreasing')
-            elbow_ = kn.knee
-            self.elbows.append(elbow_)
-
-            if self.verbose:
-                print(f" Found {elbow_} component(s) in '{tissue}'-voxels with total explained variance of {round(sum(pca.explained_variance_ratio_[:elbow_]), 2)}%")
-
-            # extract components before elbow of plot
-            if elbow_ != 0:
-                include_components = components[:, :elbow_]
-                if include_components.ndim == 1:
-                    include_components = include_components[...,np.newaxis]
-
-                self.acompcor_components.append(include_components)
-            else:
-                raise ValueError("Found 0 components surviving the elbow-plot. Turn on verbose and inspect the plot")
-        
-        self.acompcor_components = np.concatenate(self.acompcor_components, axis=1)
-
-        # get frequency spectra for components
-        self.nuisance_spectra, self.nuisance_freqs = [], []
-        for ii in range(self.acompcor_components.shape[-1]):
-            self.freq_, self.power_ = self.get_freq(self.acompcor_components[:,ii], TR=self.TR, spectrum_type="fft")
-            self.nuisance_spectra.append(self.power_)
-            self.nuisance_freqs.append(self.freq_)
-
-        # select these components
-        if self.verbose:
-            fig = plt.figure(figsize=(24,8))
-            gs = fig.add_gridspec(1,3)
-
-            ax = fig.add_subplot(gs[0])
-            self.plot_regressor_voxels(ax=ax)
-
-            if not hasattr(self, 'line_width'):
-                self.line_width = 2
-            
-            if hasattr(self, "regressor_voxel_colors"):
-                use_colors = self.regressor_voxel_colors
-            else:
-                use_colors = None
-
-            ax1 = fig.add_subplot(gs[1])
-            for ix,ii in enumerate(self.elbows):
-                if use_colors != None:
-                    color = use_colors[ix]
-                else:
-                    color = "#cccccc"
-
-                ax1.axvline(ii, color=color, ls='dashed', lw=0.5, alpha=0.5)
-
-            plotting.LazyPlot([self.pcas[ii].explained_variance_ratio_ for ii in range(len(self.pcas))],
-                              xx=xx,
-                              color=use_colors,
-                              axs=ax1,
-                              title=f"Scree-plot run-{run}",
-                              x_label="nr of components",
-                              y_label="variance explained (%)",
-                              labels=["csf", "wm"],
-                              font_size=16, 
-                              line_width=self.line_width,
-                              **kwargs)
-
-
-            # if self.elbow_ == 1:
-            #     color = "#338EFF"
-            # elif self.elbow_ == 2:
-            #     color = ["#1B9E77", "#D95F02"]
-            # else:
-            #     color = None
-                
-            ax2 = fig.add_subplot(gs[2])
-            plotting.LazyPlot(self.nuisance_spectra,
-                              xx=self.nuisance_freqs[0],
-                              axs=ax2,
-                              labels=[f"component {ii+1}" for ii in range(self.acompcor_components.shape[-1])],
-                              title="Power spectra of components",
-                              x_label="frequency (Hz)",
-                              y_label="power (a.u.)",
-                              x_lim=[0,1.5],
-                              font_size=16,
-                              line_width=self.line_width,
-                              **kwargs)                              
-
-        # regress components out
-        if select_component == None:
-            self.confs = self.acompcor_components
-        else:
-            if self.verbose:
-                print(f" Only regressing out component {select_component}")
-            self.confs = self.acompcor_components[:,select_component-1]
-
-        if filter_pca != None:
-            if self.verbose:
-                print(f" DCT high-pass filter on components [removes low frequencies <{filter_pca} Hz]")
-
-            if self.confs.ndim >= 2:
-                self.confs, _ = self.highpass_dct(self.confs.T, filter_pca, TR=self.TR)
-                self.confs = self.confs.T
-            else:
-                self.confs, _ = self.highpass_dct(self.confs, filter_pca, TR=self.TR)
-
-        self.hp_acomp = clean(self.data_for_acompcor.values, standardize=False, confounds=self.confs).T
-        self.hp_acomp_df = self.index_func(self.hp_acomp,
-                                           columns=self.vox_cols, 
-                                           subject=self.sub, 
-                                           run=run, 
-                                           TR=self.TR)
-
-    @staticmethod
-    def index_func(array, columns=None, subject=1, run=1, TR=0.105, set_index=False):
-        
-        if columns == None:
-            df = pd.DataFrame(array.T)
-        else:
-            df = pd.DataFrame(array.T, columns=columns)
-            
-        df['subject']   = subject
-        df['run']       = run
-        df['t']         = list(TR*np.arange(df.shape[0]))
-
-        if set_index:
-            return df.set_index(['subject', 'run', 't'])
-        else:
-            return df
-
-    @staticmethod
-    def highpass_dct(func, lb, TR=0.105):
-        """highpass_dct
-
-        Discrete cosine transform (DCT) is a basis set of cosine regressors of varying frequencies up to a filter cutoff of a specified number of seconds. Many software use 100s or 128s as a default cutoff, but we encourage caution that the filter cutoff isn't too short for your specific experimental design. Longer trials will require longer filter cutoffs. See this paper for a more technical treatment of using the DCT as a high pass filter in fMRI data analysis (https://canlab.github.io/_pages/tutorials/html/high_pass_filtering.html).
-
-        Parameters
-        ----------
-        func: np.ndarray
-            <n_voxels, n_timepoints> representing the functional data to be fitered
-        lb: float
-            cutoff-frequency for low-pass
-        TR: float, optional
-            _description_, by default 0.105
-
-        Returns
-        ----------
-        _type_
-            _description_
-
-        Notes
-        ----------
-        * *High-pass* filters remove low-frequency (slow) noise and pass high-freqency signals. 
-        * Low-pass filters remove high-frequency noise and thus smooth the data.  
-        * Band-pass filters allow only certain frequencies and filter everything else out
-        * Notch filters remove certain frequencies
-        """
-
-        # Create high-pass filter and clean
-        n_vol           = func.shape[-1]
-        st_ref          = 0  # offset frametimes by st_ref * tr
-        ft              = np.linspace(st_ref * TR, (n_vol + st_ref) * TR, n_vol, endpoint=False)
-        hp_set          = _cosine_drift(lb, ft)
-        dct_data        = clean(func.T, detrend=False, standardize=False, confounds=hp_set).T
-
-        return dct_data, hp_set
-
-    @staticmethod
-    def lowpass_savgol(func, window_length=None, polyorder=None):
-
-        """lowpass_savgol
-
-        The Savitzky-Golay filter is a low pass filter that allows smoothing data. To use it, you should give as input parameter of the function the original noisy signal (as a one-dimensional array), set the window size, i.e. n° of points used to calculate the fit, and the order of the polynomial function used to fit the signal. We might be interested in using a filter, when we want to smooth our data points; that is to approximate the original function, only keeping the important features and getting rid of the meaningless fluctuations. In order to do this, successive subsets of points are fitted with a polynomial function that minimizes the fitting error.
-
-        The procedure is iterated throughout all the data points, obtaining a new series of data points fitting the original signal. If you are interested in knowing the details of the Savitzky-Golay filter, you can find a comprehensive description [here](https://en.wikipedia.org/wiki/Savitzky%E2%80%93Golay_filter).
-
-        Parameters
-        ----------
-        func: np.ndarray
-            <n_voxels, n_timepoints> representing the functional data to be fitered
-        window_length: int
-            Length of window to use for filtering. Must be an uneven number according to the scipy-documentation
-        poly_order: int
-            Order of polynomial fit to employ within `window_length`.
-
-        Returns
-        ----------
-        np.ndarray:
-            <n_voxels, n_timepoints> from which high-frequences have been removed
-
-        Notes
-        ----------
-        * High-pass filters remove low-frequency (slow) noise and pass high-freqency signals. 
-        * *Low-pass* filters remove high-frequency noise and thus smooth the data.  
-        * Band-pass filters allow only certain frequencies and filter everything else out
-        * Notch filters remove certain frequencies            
-        """
-
-        if window_length % 2 == 0:
-            raise ValueError(f"Window-length must be uneven; not {window_length}")
-        
-        return signal.savgol_filter(func, window_length, polyorder, axis=-1)
-
-    @staticmethod
-    def bandpass_butter(freqs, data, nyquist=None, polyorder=5, axis=-1):
-        
-        # design filter
-        # low_freq = freqs[0]/nyquist
-        # high_freq = freqs[1]/nyquist
-        # b,a = signal.butter(polyorder, [low_freq,high_freq], analog=False, btype='bandpass')
-
-        # # check if input is 2D
-        # if isinstance(data, np.ndarray):
-        #     if data.ndim >= 2:
-
-        #         filt = np.zeros_like(data)
-        #         print(f" {filt.shape}")
-        #         for el in range(filt.shape[0]):
-        #             filt[el,:] = signal.filtfilt(b,a, data[el,:])
-            
-        #         return filt
-        #     else:
-        #         return signal.filtfilt(b, a, data)
-        # else:
-        #     return signal.filtfilt(b,a, data)
-
-        return clean(data.T, standardize=False, low_pass=freqs[1], high_pass=freqs[0], t_r=0.105).T
-
-    @staticmethod
-    def get_freq(func, TR=0.105, spectrum_type='psd', clip_power=None):
-        
-        if spectrum_type != "fft":
-            TC      = TimeSeries(np.asarray(func), sampling_interval=TR)
-            spectra = SpectralAnalyzer(TC)
-
-            if spectrum_type == "psd":
-                selected_spectrum = spectra.psd
-            elif spectrum_type == "fft":
-                selected_spectrum = spectra.spectrum_fourier
-            elif spectrum_type == "periodogram":
-                selected_spectrum = spectra.periodogram
-            elif spectrum_type == "mtaper":
-                selected_spectrum = spectra.spectrum_multi_taper
-            else:
-                raise ValueError(f"Requested spectrum was '{spectrum_type}'; available options are: 'psd', 'fft', 'periodogram', or 'mtaper'")
-            
-            freq,power = selected_spectrum[0],selected_spectrum[1]
-            if spectrum_type == "fft":
-                power[power < 0] = 0
-
-            if clip_power != None:
-                power[power > clip_power] = clip_power
-
-            return freq,power
-
-        else:
-
-            freq    = np.fft.fftshift(np.fft.fftfreq(func.shape[0], d=TR))
-            power   = np.abs(np.fft.fftshift(np.fft.fft(func)))**2/func.shape[0]
-
-            if clip_power != None:
-                power[power>clip_power] = clip_power
-
-            return freq, power
-
     def get_retroicor(self, index=False):
         if hasattr(self, 'z_score_retroicor_df'):
             if index:
@@ -1646,6 +1403,22 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile, Segmentations):
         else:
             raise ValueError(f"No dataframe was found with search term: '{filter_strategy}' and standardization method '{dtype}'")
 
+    @staticmethod
+    def index_func(array, columns=None, subject=1, run=1, TR=0.105, set_index=False):
+    
+        if columns == None:
+            df = pd.DataFrame(array.T)
+        else:
+            df = pd.DataFrame(array.T, columns=columns)
+            
+        df['subject']   = subject
+        df['run']       = run
+        df['t']         = list(TR*np.arange(df.shape[0]))
+
+        if set_index:
+            return df.set_index(['subject', 'run', 't'])
+        else:
+            return df
 
 class Dataset(ParseFuncFile):
     """Dataset
@@ -1659,7 +1432,11 @@ class Dataset(ParseFuncFile):
     tsv_file: str
         path pointing to the output file of the experiment 
     edf_file: str, list
-        path pointing to the output file of the experiment; can be a list of multiple               
+        path pointing to the output file of the experiment; can be a list of multiple
+    phys_file: str, list
+        output from PhysIO-toolbox containing the regressors that we need to implement for RETROICOR
+    phys_mat: str, list
+        output *.mat file containing the heart rate and respiration traces
     subject: int, optional
         subject number in the returned pandas DataFrame (should start with 1, ..., n)
     run: int, optional
@@ -1680,6 +1457,22 @@ class Dataset(ParseFuncFile):
         The order of the polynomial used to fit the samples. polyorder must be less than window_length.
     use_bids: bool, optional
         If true, we'll read BIDS-components such as 'sub', 'run', 'task', etc from the input file and use those as indexers, rather than sequential 1,2,3.
+    verbose: bool, optional
+        Print details to the terminal, default is False
+    retroicor: bool, optional
+        WIP: implementation of retroicor, requires the specification of `phys_file` and `phys_mat` containing the output from the PhysIO-toolbox
+    n_pca: int, optional
+        Number of components to use for WM/CSF PCA during aCompCor
+    select_component: int, optional
+        If `verbose=True` and `aCompcor=True`, we'll create a scree-plot of the PCA components. With this flag, you can re-run this call but regress out only this particular component. [Deprecated: `filter_pca` is much more effective]
+    filter_pca: float, optional
+        High-pass filter the components from the PCA during aCompCor. This seems to be pretty effective. Default is 0.2Hz.
+    ses1_2_ls: str, optional:
+        Transformation mapping `ses-1` anatomy to current linescanning-session, ideally the multi-slice image that is acquired directly before the first `1slice`-image. Default is None.
+    run_2_run: str, list, optional
+        (List of) Transformation(s) mapping the slices of subsequent runs to the first acquired `1slice` image. Default is None.
+    save_as: str, optional
+        Directory + basename for several figures that can be created during the process (mainly during aCompCor)        
 
     Example
     ----------
@@ -1718,8 +1511,7 @@ class Dataset(ParseFuncFile):
                  edf_file=None,
                  phys_file=None,
                  phys_mat=None,
-                 high_pass=True,
-                 low_pass=True,
+                 low_pass=False,
                  button=False,
                  lb=0.01, 
                  hb=4,
@@ -1735,7 +1527,10 @@ class Dataset(ParseFuncFile):
                  filter=None,
                  n_pca=5,
                  select_component=None,
-                 filter_pca=None,
+                 filter_pca=0.2,
+                 ses1_2_ls=None,
+                 run_2_run=None,
+                 save_as=None,
                  **kwargs):
 
         self.sub                        = subject
@@ -1743,7 +1538,6 @@ class Dataset(ParseFuncFile):
         self.TR                         = TR
         self.lb                         = lb
         self.hb                         = hb
-        self.high_pass                  = high_pass
         self.low_pass                   = low_pass
         self.deleted_first_timepoints   = deleted_first_timepoints
         self.deleted_last_timepoints    = deleted_last_timepoints
@@ -1760,10 +1554,12 @@ class Dataset(ParseFuncFile):
         self.use_bids                   = use_bids
         self.verbose                    = verbose
         self.retroicor                  = retroicor
-        self.filter                     = filter
         self.n_pca                      = n_pca
         self.select_component           = select_component
         self.filter_pca                 = filter_pca
+        self.ses1_2_ls                   = ses1_2_ls
+        self.run_2_run                  = run_2_run
+        self.save_as                    = save_as
         self.__dict__.update(kwargs)
 
         if self.verbose:
@@ -1787,7 +1583,6 @@ class Dataset(ParseFuncFile):
                              lb=self.lb,
                              hb=self.hb,
                              low_pass=self.low_pass,
-                             high_pass=self.high_pass,
                              deleted_first_timepoints=self.deleted_first_timepoints,
                              deleted_last_timepoints=self.deleted_last_timepoints,
                              window_size=self.window_size,
@@ -1799,10 +1594,12 @@ class Dataset(ParseFuncFile):
                              use_bids=self.use_bids,
                              verbose=self.verbose,
                              retroicor=self.retroicor,
-                             filter=self.filter,
                              n_pca=self.n_pca,
                              select_component=self.select_component,
                              filter_pca=self.filter_pca,
+                             ses1_2_ls=self.ses1_2_ls,
+                             run_2_run=self.run_2_run,
+                             save_as=self.save_as,
                             **kwargs)
 
         if self.verbose:
