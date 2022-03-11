@@ -408,7 +408,7 @@ class SurfaceCalc(object):
         else:
             self.fs_dir = fs_dir
 
-        if not os.path.isdir(self.ctx_path):
+        if not os.path.exists(self.ctx_path):
             # import subject from freesurfer (will have the same names)
             cortex.freesurfer.import_subj(fs_subject=self.subject,
                                             cx_subject=self.subject,
@@ -633,12 +633,12 @@ class pRFCalc(object):
 
                 # print(" Extracting pRF-parameters from file")
 
-                self.prffile = prffile
+                self.prffile    = prffile
                 self.prf_params = np.load(self.prffile)
 
-                self.r2 = self.prf_params[:,-1]; np.save(opj(os.path.dirname(prffile), f"{self.fname}_desc-R2_map.npy"), self.r2)
-                self.ecc = np.sqrt(self.prf_params[:,0]**2+self.prf_params[:,1]**2); np.save(opj(os.path.dirname(prffile), f"{self.fname}_desc-eccentricity_map.npy"), self.ecc)
-                self.polar = np.angle(self.prf_params[:,0]+self.prf_params[:,1]*1j); np.save(opj(os.path.dirname(prffile), f"{self.fname}_desc-polarangle_map.npy"), self.polar)
+                self.r2     = self.prf_params[:,-1]; np.save(opj(os.path.dirname(prffile), f"{self.fname}_desc-R2_map.npy"), self.r2)
+                self.ecc    = np.sqrt(self.prf_params[:,0]**2+self.prf_params[:,1]**2); np.save(opj(os.path.dirname(prffile), f"{self.fname}_desc-eccentricity_map.npy"), self.ecc)
+                self.polar  = np.angle(self.prf_params[:,0]+self.prf_params[:,1]*1j); np.save(opj(os.path.dirname(prffile), f"{self.fname}_desc-polarangle_map.npy"), self.polar)
 
             else:
                 raise FileNotFoundError("pRF-parameter file does not exist")
@@ -650,9 +650,9 @@ class pRFCalc(object):
             # self.polar_v    = cortex.Vertex2D(self.polar, self.r2, vmin=-np.pi, vmax=np.pi, vmin2=0.05, vmax2=0.4, subject=self.subject, cmap="hsv_alpha")
 
             r2_thr = 0.1
-            self.r2_v = pycortex.make_r2(self.subject, r2=self.r2)
-            self.ecc_v = pycortex.make_ecc(self.subject, ecc=self.ecc, r2=self.r2, r2_thresh=r2_thr)
-            self.polar_v = pycortex.make_polar(self.subject, polar=self.polar, r2=self.r2, r2_thresh=r2_thr)
+            self.r2_v       = pycortex.make_r2(self.subject, r2=self.r2)
+            self.ecc_v      = pycortex.make_ecc(self.subject, ecc=self.ecc, r2=self.r2, r2_thresh=r2_thr)
+            self.polar_v    = pycortex.make_polar(self.subject, polar=self.polar, r2=self.r2, r2_thresh=r2_thr)
 
 
 class CalcBestVertex(object):
