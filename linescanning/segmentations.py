@@ -1,10 +1,11 @@
-from . import image, utils, transform
+from . import image, utils, transform, plotting, dataset
 import os
 import nibabel as nb
 import numpy as np
 import pickle
 from bids import BIDSLayout
 import matplotlib.pyplot as plt
+from statsmodels.api import stats
 opj = os.path.join
 
 class Segmentations:
@@ -138,8 +139,13 @@ class Segmentations:
                 self.trafo_file = utils.get_file_from_substring([f"from-fs_to-ses{self.target_session}", ".mat"], opj(self.cortex_dir, 'transforms'), return_msg="None")
                 if self.trafo_file == None:
                     raise ValueError(f"Could not find default trafo-file 'from-fs_to-ses{self.target_session}*.mat' in {opj(self.cortex_dir, 'transforms')}")
-            elif not os.path.exists(self.trafo_file):
-                raise ValueError(f"Could not find trafo_file {self.trafo_file}")
+            else:
+                if isinstance(self.trafo_file, str):
+                    if not os.path.exists(self.trafo_file):
+                        raise ValueError(f"Could not find trafo_file {self.trafo_file}")
+                    invert = 0
+                elif isinstance(self.trafo_file, list):
+                    invert = [0,0]
     
             # start warping (in brackets file suffixes)
             #  0 = wm prob  ("label-WM")
@@ -171,15 +177,18 @@ class Segmentations:
                 
                 if not os.path.exists(new_file):
                     if in_type[nr] == "tissue":
-                        # Use MultiLabel-interpolation for tissue-segmentation
-                        transform.ants_applytrafo(self.reference_slice, file, interp="mul", trafo=self.trafo_file, output=new_file)
+                        interp = "mul"
                     elif in_type[nr] == "layer":
-                        # Use GenericLabel-interpolation for layer-segmentation
-                        transform.ants_applytrafo(self.reference_slice, file, interp="gen", trafo=self.trafo_file, output=new_file)
+                        interp = "gen"
                     else:
-                        # Use nearest neighbor-interpolation for probability maps
-                        transform.ants_applytrafo(self.reference_slice, file, interp="nn", trafo=self.trafo_file, output=new_file)
+                        interp = "nn"
                 
+                    transform.ants_applytrafo(self.reference_slice, 
+                                              file, interp=interp, 
+                                              invert=invert,
+                                              trafo=self.trafo_file, 
+                                              output=new_file)
+
                 # collect them in 'resampled' dictionary
                 self.resampled[tag[nr]] = new_file
                 self.resampled_data[tag[nr]] = nb.load(new_file).get_fdata()
@@ -725,3 +734,187 @@ class Segmentations:
                     print(f"Writing {out_fn}")
                     nb.Nifti1Image(img[..., np.newaxis], affine=ref_img.affine, header=ref_img.header).to_filename(out_fn)
 
+class Align():
+
+    def __init__(self, moving_object, target_object, verbose=False, weights=None, save_as=None):
+
+        self.moving_object  = moving_object
+        self.target_object  = target_object
+        self.verbose        = verbose
+        self.weights        = weights
+        self.save_as        = save_as
+
+        # fetch the segmentations in beam representation
+        for obj in self.moving_object, self.target_object:
+            if isinstance(obj, dataset.Dataset) or isinstance(obj, Segmentations):
+                if not hasattr(obj, "segmentations_in_beam"):
+                    obj.segmentations_to_beam()
+            else:
+                raise TypeError(f"Input must be instance of linescanning.dataset.Dataset or linescanning.segmentations.Segmentations, not '{type(obj)}'")
+
+        # get the CRUISE segmentation
+        self.moving_cortex  = self.moving_object.segmentations_in_beam[self.moving_object.subject]['cortex']
+
+        self.target_cortex = self.target_object.segmentations_in_beam[self.target_object.subject]['cortex']
+
+        # average across line
+        self.moving_cortex_line = self.moving_cortex.mean(axis=-1)
+        self.target_cortex_line = self.target_cortex.mean(axis=-1)
+        
+        # should we include weights?
+        if isinstance(self.weights, str):
+            
+            # take the brainmask from the 'moving' object
+            if self.weights == "moving":
+                weights_object = self.moving_object
+            # take the brainmask from the 'target' object
+            elif self.weights == "target":
+                weights_object = self.target_object
+            else:
+                raise NotImplementedError(f"Unknown option '{self.weights}' for weights. Must be one of None, 'moving', or 'target'")
+
+            self.weights = weights_object.segmentations_in_beam[weights_object.subject]['mask'].mean(axis=-1)
+
+        # get the shift, correlations, and more
+        self.aligner = get_voxel_shift(self.moving_cortex_line, 
+                                       self.target_cortex_line, 
+                                       weights=self.weights,
+                                       plot=self.verbose,
+                                       save_as=self.save_as)
+
+        # get GM voxels
+        self.moving_gm_voxels = get_gm_voxels(self.moving_cortex_line)
+        self.target_gm_voxels = get_gm_voxels(self.target_cortex_line)
+    
+def get_gm_voxels(cortex_img, threshold=1.75):
+    return np.where(cortex_img > threshold)[0]
+
+def get_voxel_shift(moving,target,vox_range=[-15,15], plot=False, weights=None, save_as=None):
+    """get_voxel_shift
+
+    Obtain shift in line direction between 'real' and 'predicted' slice. If the output is positive, it means `moving` need to be shifted X-voxels to the right in order to maximally match `target`.
+
+    Parameters
+    ----------
+    moving: np.ndarray
+        array to be shifted ('moving')
+    target: np.ndarray
+        array to move to ('reference')
+    vox_range: list, optional
+        this list represents the possible voxel shifts that are being used to construct a list of correlations. Can be narrower when the arrays are already pretty well aligned. Default = [-15,15]
+    plot: bool, optional
+        plot the correlation coefficients
+    save_as: str, optional
+        save the plot (recommended to save as pdf for retaining resolution)
+
+    Returns:
+        voxel shift: int
+            shift in voxel dimensions, 
+        correlations across range: list
+            list of correlations across range
+        attempted voxel range: list
+            the range of voxels used for correlation
+    """
+    
+    corr_vals = []
+    range_vox = range(*vox_range)
+
+    # do some checking first
+    for arr in moving,target:
+        if not isinstance(arr, np.ndarray):
+            raise ValueError("Inputs must be numpy arrays (1D)")
+        else:
+            if arr.ndim > 1:
+                raise ValueError("Inputs must be 1D-arrays")
+    
+    if isinstance(weights, np.ndarray):
+        if weights.ndim > 1:
+            raise ValueError("Weights must be 1D-array")
+        else:
+            if weights.shape[0] != moving.shape[0] != target.shape[0]:
+                raise ValueError(f"Shape of weights ({weights.shape[0]}) does not match that of input array 1 ({moving.shape[0]}) and/or input array 2 ({target.shape[0]})")
+
+    # loop through the range of voxels
+    for ix,ii in enumerate(range_vox):
+
+        padding = np.zeros(abs(ii))
+        
+        # shift to the right
+        if ii > 0:
+            padded_moving = np.append(padding, moving)
+            padded_moving = padded_moving[:moving.shape[0]]
+
+            # shift the weights with the profiles
+            if isinstance(weights, np.ndarray):
+                padded_weights = np.append(padding, weights)
+                padded_weights = padded_weights[:moving.shape[0]]
+        
+        # shift to the left
+        else:
+            padded_moving = np.append(moving, padding)
+            padded_moving = padded_moving[abs(ii):]
+
+            # shift the weights with the profiles
+            if isinstance(weights, np.ndarray):
+                padded_weights = np.append(weights, padding)
+                padded_weights = padded_weights[abs(ii):]
+
+        if isinstance(weights, np.ndarray):
+            # use weighted correlation
+            corr_array  = np.hstack((target[...,np.newaxis], padded_moving[...,np.newaxis]))
+            descr       = stats.DescrStatsW(corr_array, weights=padded_weights)
+            corr        = descr.corrcoef[0,1]
+        else:
+            corr = np.corrcoef(target,padded_moving)[0,1]
+            
+        corr_vals.append(corr)
+
+    max_corr = np.amax(corr_vals)
+    vox_pad_ix = utils.find_nearest(corr_vals, max_corr)[0]
+    print(f"max correlation = {max_corr.round(2)}; padding of {range_vox[vox_pad_ix]} voxels")
+
+    if plot:
+        fig = plt.figure(figsize=(20,5))
+        gs = fig.add_gridspec(1,2, width_ratios=[3,1])
+
+        ax1 = fig.add_subplot(gs[0])
+
+        if isinstance(weights, np.ndarray):
+            inputs = [moving, target, weights]
+            labels = ['moving array', 'target array', 'mask']
+            colors = ["#1B9E77", "#D95F02", '#cccccc']
+        else:
+            inputs = [moving, target]
+            labels = ['moving array', 'target array']
+            colors = ["#1B9E77", "#D95F02"]
+
+        plotting.LazyPlot(inputs, 
+                          axs=ax1, 
+                          color=colors,
+                          labels=labels, 
+                          x_label="voxels along line",
+                          y_label="amplitude (a.u.)",
+                          title="Line profiles",
+                          font_size=16)
+
+        # get the shift in line-direction
+        ax2 = fig.add_subplot(gs[1])
+        plotting.LazyPlot(np.array(corr_vals),
+                          xx=range_vox,
+                          axs=ax2, 
+                          color="#D01B47", 
+                          x_label="# voxels padded",
+                          y_label="correlation coefficient",
+                          title=f"Max correlation with {range_vox[vox_pad_ix]} voxel shift",
+                          font_size=16,
+                          set_xlim_zero=False,
+                          line_width=1.5)
+
+        ax2.axvline(range_vox[vox_pad_ix], lw=0.5, ls='--', color='k')
+
+        plt.show()
+
+    if save_as:
+        fig.savefig(save_as)
+
+    return range_vox[vox_pad_ix],corr_vals,range_vox
