@@ -292,10 +292,14 @@ class LazyPlot():
                     use_width = ""
 
                 # decide on x-axis
-                if not isinstance(self.xx, np.ndarray) and not isinstance(self.xx, list):
+                if not isinstance(self.xx, np.ndarray) and not isinstance(self.xx, list) and not isinstance(self.xx, range):
                     x = np.arange(0, len(el))
                 else:
-                    x = self.xx.copy()
+                    # range has no copy attribute
+                    if isinstance(self.xx, range):
+                        x = self.xx
+                    else:
+                        x = self.xx.copy()
 
                 if self.labels:
                     lbl = self.labels[idx]
@@ -362,10 +366,10 @@ class LazyPlot():
 
             if isinstance(self.add_hline['pos'], list) or isinstance(self.add_hline['pos'], np.ndarray):
                 for line in self.add_hline['pos']:
-                    axs.axaxhlinevline(line, 
-                                       color=self.add_hline['color'], 
-                                       lw=self.add_hline['lw'], 
-                                       ls=self.add_hline['ls'])
+                    axs.axhline(line,
+                                color=self.add_hline['color'], 
+                                lw=self.add_hline['lw'], 
+                                ls=self.add_hline['ls'])
             else:
                 axs.axhline(self.add_hline['pos'], 
                             color=self.add_hline['color'],
