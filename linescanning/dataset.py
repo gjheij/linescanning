@@ -498,6 +498,8 @@ class ParseExpToolsFile(ParseEyetrackerFile):
                             TR1=self.TR, 
                             use_bids=self.use_bids, 
                             verbose=self.verbose)
+        else:
+            self.include_blinks = False
 
         if self.verbose:
             print("\nEXPTOOLS")
