@@ -680,21 +680,17 @@ class ParseExpToolsFile(ParseEyetrackerFile):
             n_runs = self.get_runs(df)
 
             for run in n_runs:
-                onsets_per_run = utils.select_from_df(
-                    df, expression=f"run = {run}")
+                onsets_per_run = utils.select_from_df(df, expression=f"run = {run}")
                 events_per_run = self.get_events(onsets_per_run)
 
                 for ix, ev in enumerate(events_per_run):
-                    onsets_per_event = utils.select_from_df(
-                        onsets_per_run, expression=f"event_type = {events_per_run[ix]}").values.flatten()[..., np.newaxis]
+                    onsets_per_event = utils.select_from_df(onsets_per_run, expression=f"event_type = {events_per_run[ix]}").values.flatten()[..., np.newaxis]
 
-                    fname = f"{output_base}{ix+1}_run-{run}.txt"
+                    fname = f"{ev}_run-{run}.txt"
                     if fmt == "3-column":
-                        duration_arr = np.full_like(onsets_per_event, duration)
-                        amplitude_arr = np.full_like(
-                            onsets_per_event, amplitude)
-                        three_col = np.hstack(
-                            (onsets_per_event, duration_arr, amplitude_arr))
+                        duration_arr    = np.full_like(onsets_per_event, duration)
+                        amplitude_arr   = np.full_like(onsets_per_event, amplitude)
+                        three_col       = np.hstack((onsets_per_event, duration_arr, amplitude_arr))
 
                         print(f"Writing {fname}; {three_col.shape}")
                         np.savetxt(fname, three_col,
