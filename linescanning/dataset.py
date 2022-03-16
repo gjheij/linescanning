@@ -672,7 +672,7 @@ class ParseExpToolsFile(ParseEyetrackerFile):
             if `fname` was *None*, the list of onset times will be returned
         """
 
-        onsets = self.fetch_onsets()
+        onsets = self.df_onsets.copy()
         subj_list = self.get_subjects(onsets)
         for sub in subj_list:
             df = utils.select_from_df(onsets, expression=f"subject = {sub}")
