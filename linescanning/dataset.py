@@ -491,12 +491,13 @@ class ParseExpToolsFile(ParseEyetrackerFile):
         self.verbose                        = verbose
         self.__dict__.update(kwargs)
 
-        super().__init__(self.edfs, 
-                         subject=self.sub, 
-                         func_file=self.funcs, 
-                         TR1=self.TR, 
-                         use_bids=self.use_bids, 
-                         verbose=self.verbose)
+        if self.edfs != None:
+            super().__init__(self.edfs, 
+                            subject=self.sub, 
+                            func_file=self.funcs, 
+                            TR1=self.TR, 
+                            use_bids=self.use_bids, 
+                            verbose=self.verbose)
 
         if self.verbose:
             print("\nEXPTOOLS")
@@ -554,7 +555,7 @@ class ParseExpToolsFile(ParseEyetrackerFile):
 
         delete_time         = delete_vols*self.TR
         self.data           = data_onsets[0]
-        self.start_time     = float(timings.loc[(timings['event_type'] == "pulse") & (timings['response'] == "t")].loc[(timings['trial_nr'] == 1)]['onset'].values)
+        self.start_time     = float(timings.loc[(timings['event_type'] == "pulse") & (timings['response'] == "t")].loc[(timings['trial_nr'] == 1) & (timings['phase'] == 0)]['onset'].values)
         # self.data_cut_start = self.data.drop([q for q in np.arange(0,self.start_times.index[0])])
         # self.onset_times    = pd.DataFrame(self.data_cut_start[(self.data_cut_start['event_type'] == 'stim') & (self.data_cut_start['condition'].notnull()) | (self.data_cut_start['response'] == 'b')][['onset', 'condition']]['onset'])
         self.trimmed = timings.loc[(timings['event_type'] == "stim") & (timings['phase'] == 1)].iloc[1:,:]
