@@ -533,7 +533,6 @@ class ParseExpToolsFile(ParseEyetrackerFile):
         self.events_per_run = self.events_per_run()
 
 
-
     def events_per_run(self):
         n_runs = np.unique(self.df_onsets.reset_index()['run'].values)
         events = {}
@@ -555,21 +554,25 @@ class ParseExpToolsFile(ParseEyetrackerFile):
 
         delete_time         = delete_vols*self.TR
         self.data           = data_onsets[0]
-        self.start_times    = pd.DataFrame(self.data[(self.data['response'] == 't') & (self.data['trial_nr'] == 1) & (self.data['phase'] == 0)][['onset']])
-        self.data_cut_start = self.data.drop([q for q in np.arange(0,self.start_times.index[0])])
-        self.onset_times    = pd.DataFrame(self.data_cut_start[(self.data_cut_start['event_type'] == 'stim') & (self.data_cut_start['condition'].notnull()) | (self.data_cut_start['response'] == 'b')][['onset', 'condition']]['onset'])
-        self.condition      = pd.DataFrame(self.data_cut_start[(self.data_cut_start['event_type'] == 'stim') & (self.data_cut_start['condition'].notnull()) | (self.data_cut_start['response'] == 'b')]['condition'])
+        self.start_time     = float(timings.loc[(timings['event_type'] == "pulse") & (timings['response'] == "t")].loc[(timings['trial_nr'] == 1)]['onset'].values)
+        # self.data_cut_start = self.data.drop([q for q in np.arange(0,self.start_times.index[0])])
+        # self.onset_times    = pd.DataFrame(self.data_cut_start[(self.data_cut_start['event_type'] == 'stim') & (self.data_cut_start['condition'].notnull()) | (self.data_cut_start['response'] == 'b')][['onset', 'condition']]['onset'])
+        self.trimmed = timings.loc[(timings['event_type'] == "stim") & (timings['phase'] == 1)].iloc[1:,:]
 
+        self.onset_times = self.trimmed['onset'].values[...,np.newaxis]
+        # self.condition      = pd.DataFrame(self.data_cut_start[(self.data_cut_start['event_type'] == 'stim') & (self.data_cut_start['condition'].notnull()) | (self.data_cut_start['response'] == 'b')]['condition'])
+
+        self.condition = self.trimmed['condition'].values[..., np.newaxis]
         if self.verbose:
-            print(f" 1st 't' @{round(float(self.start_times['onset']),2)}s")
+            print(f" 1st 't' @{round(self.start_time,2)}s")
         
-
         # add button presses
         if self.button:
             self.response = self.data_cut_start[(self.data_cut_start['response'] == 'b')]
             self.condition.loc[self.response.index] = 'response'
 
-        self.onset = np.concatenate((self.onset_times, self.condition), axis=1)
+        # self.onset = np.concatenate((self.onset_times, self.condition), axis=1)
+        self.onset = np.hstack((self.onset_times, self.condition))
 
         # add eyeblinks
         if isinstance(self.blinks, np.ndarray) or isinstance(self.blinks, str):
@@ -608,10 +611,10 @@ class ParseExpToolsFile(ParseEyetrackerFile):
             self.onset = np.concatenate((comb, event_array), axis=1)
 
         # correct for start time of experiment and deleted time due to removal of inital volumes
-        self.onset[:, 0] = self.onset[:, 0] - float(self.start_times['onset'] + delete_time)
+        self.onset[:, 0] = self.onset[:, 0] - (self.start_time + delete_time)
 
         if self.verbose:
-            print(f" Cutting {round(float(self.start_times['onset'] + delete_time),2)}s from onsets")
+            print(f" Cutting {round(self.start_time + delete_time,2)}s from onsets")
 
         # make dataframe
         self.onset_df = self.index_onset(self.onset, columns=['onset', 'event_type'], subject=self.sub, run=run)
@@ -641,8 +644,8 @@ class ParseExpToolsFile(ParseEyetrackerFile):
         else:
             return self.onset_df
 
-    def onsets_to_txt(self, subject=1, run=1, condition='right', fname=None):
-        """onset_to_txt
+    def onsets_to_fsl(self, fmt='3-column', duration=1, amplitude=1, output_base="ev"):
+        """onsets_to_fsl
 
         This function creates a text file with a single column containing the onset times of a given condition. Such a file can be used for SPM or FSL modeling, but it should be noted that the onset times have been corrected for the deleted volumes at the beginning. So make sure your inputting the correct functional data in these cases.
 
@@ -666,15 +669,63 @@ class ParseExpToolsFile(ParseEyetrackerFile):
             if `fname` was *None*, the list of onset times will be returned
         """
 
-        df = self.onset_df.set_index(['subject', 'run', 'event_type'])
-        onsets = list(df['onset'][subject][run][condition].to_numpy().flatten().T)
+        onsets = self.fetch_onsets()
+        subj_list = self.get_subjects(onsets)
+        for sub in subj_list:
+            df = utils.select_from_df(onsets, expression=f"subject = {sub}")
 
-        if not fname:
-            return onsets
-        else:
-            np.savetxt(fname, onsets, fmt='%1.3f')
-            return fname
+            n_runs = self.get_runs(df)
 
+            for run in n_runs:
+                onsets_per_run = utils.select_from_df(
+                    df, expression=f"run = {run}")
+                events_per_run = self.get_events(onsets_per_run)
+
+                for ix, ev in enumerate(events_per_run):
+                    onsets_per_event = utils.select_from_df(
+                        onsets_per_run, expression=f"event_type = {events_per_run[ix]}").values.flatten()[..., np.newaxis]
+
+                    fname = f"{output_base}{ix+1}_run-{run}.txt"
+                    if fmt == "3-column":
+                        duration_arr = np.full_like(onsets_per_event, duration)
+                        amplitude_arr = np.full_like(
+                            onsets_per_event, amplitude)
+                        three_col = np.hstack(
+                            (onsets_per_event, duration_arr, amplitude_arr))
+
+                        print(f"Writing {fname}; {three_col.shape}")
+                        np.savetxt(fname, three_col,
+                                   delimiter='\t', fmt='%1.3f')
+                    else:
+                        np.savetxt(fname, onsets_per_event,
+                                   delimiter='\t', fmt='%1.3f')
+
+    @staticmethod
+    def get_subjects(df):
+        try:
+            df = df.reset_index()
+        except:
+            pass
+
+        return np.unique(df['subject'].values)
+
+    @staticmethod
+    def get_runs(df):
+        try:
+            df = df.reset_index()
+        except:
+            pass
+
+        return np.unique(df['run'].values)
+
+    @staticmethod
+    def get_events(df):
+        try:
+            df = df.reset_index()
+        except:
+            pass
+
+        return np.unique(df['event_type'].values)
 
 class ParsePhysioFile():
 
@@ -1245,6 +1296,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                                           subject=self.subject,
                                           run=self.run,
                                           trg_session=self.target_session,
+                                          reference_slice=reference_slice,
                                           trafo_list=self.trafos,
                                           n_pca=self.n_pca,
                                           filter_pca=self.filter_pca,
