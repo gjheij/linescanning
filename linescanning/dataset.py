@@ -647,7 +647,7 @@ class ParseExpToolsFile(ParseEyetrackerFile):
         else:
             return self.onset_df
 
-    def onsets_to_fsl(self, fmt='3-column', duration=1, amplitude=1, output_base="ev"):
+    def onsets_to_fsl(self, fmt='3-column', duration=1, amplitude=1, output_base=None):
         """onsets_to_fsl
 
         This function creates a text file with a single column containing the onset times of a given condition. Such a file can be used for SPM or FSL modeling, but it should be noted that the onset times have been corrected for the deleted volumes at the beginning. So make sure your inputting the correct functional data in these cases.
@@ -686,7 +686,11 @@ class ParseExpToolsFile(ParseEyetrackerFile):
                 for ix, ev in enumerate(events_per_run):
                     onsets_per_event = utils.select_from_df(onsets_per_run, expression=f"event_type = {events_per_run[ix]}").values.flatten()[..., np.newaxis]
 
-                    fname = f"{ev}_run-{run}.txt"
+                    if output_base == None:
+                        fname = f"{ev}_run-{run}.txt"
+                    else:
+                        fname = f"{output_base}{ix+1}_run-{run}.txt"
+
                     if fmt == "3-column":
                         duration_arr    = np.full_like(onsets_per_event, duration)
                         amplitude_arr   = np.full_like(onsets_per_event, amplitude)
