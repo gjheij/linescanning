@@ -736,13 +736,14 @@ class Segmentations:
 
 class Align():
 
-    def __init__(self, moving_object, target_object, verbose=False, weights=None, save_as=None):
+    def __init__(self, moving_object, target_object, verbose=False, weights=None, save_as=None, axs=None):
 
         self.moving_object  = moving_object
         self.target_object  = target_object
         self.verbose        = verbose
         self.weights        = weights
         self.save_as        = save_as
+        self.axs            = axs
 
         # fetch the segmentations in beam representation
         for obj in self.moving_object, self.target_object:
@@ -780,7 +781,8 @@ class Align():
                                        self.target_cortex_line, 
                                        weights=self.weights,
                                        plot=self.verbose,
-                                       save_as=self.save_as)
+                                       save_as=self.save_as,
+                                       axs=self.axs)
 
         # get GM voxels
         self.moving_gm_voxels = get_gm_voxels(self.moving_cortex_line)
@@ -789,7 +791,7 @@ class Align():
 def get_gm_voxels(cortex_img, threshold=1.75):
     return np.where(cortex_img > threshold)[0]
 
-def get_voxel_shift(moving,target,vox_range=[-15,15], plot=False, weights=None, save_as=None):
+def get_voxel_shift(moving,target,vox_range=[-15,15], plot=False, weights=None, save_as=None, axs=None):
     """get_voxel_shift
 
     Obtain shift in line direction between 'real' and 'predicted' slice. If the output is positive, it means `moving` need to be shifted X-voxels to the right in order to maximally match `target`.
