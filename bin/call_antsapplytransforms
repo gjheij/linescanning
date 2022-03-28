@@ -112,7 +112,7 @@ WARP=`echo "${@: $#}"`
 
 ARRAY=()
 if [[ ${WARP} == "identity" ]] || [[ ${WARP} == "ident" ]] || [[ ${WARP} == "identty" ]]; then
-  call_makeitkident $(dirname ${OUT})/ident.mat
+  call_createident -s "tmp" $(dirname ${OUT})/ident.mat
   INITIAL=$(echo "-t [$(dirname ${OUT})/ident.mat,0]")
   ARRAY+=("${INITIAL}")
 else
