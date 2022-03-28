@@ -21,6 +21,69 @@ warnings.filterwarnings("ignore")
 
 
 class aCompCor(Segmentations):
+    """aCompCor
+
+    _summary_
+
+    Parameters
+    ----------
+    data: np.ndarray
+        Data with the format (voxels,timepoints) on which we need to perfom aCompCor
+    run: int, optional
+        Run identifier, by default None. Can be useful for filenames of certain outputs
+    subject: str, optional
+        Full subject identifier (e.g., 'sub-001'), by default None
+    wm_voxels: list, optional
+        List of voxel IDs that are classified as white matter, by default None. Can be specified if you don't have a line-scanning session and, therefore, no :class:`linescanning.segmentations.Segmentation` object
+    csf_voxels: list, optional
+        List of voxel IDs that are classified as CSF, by default None. Can be specified if you don't have a line-scanning session and, therefore, no :class:`linescanning.segmentations.Segmentations` object
+    n_pca: int, optional
+        Number of PCA-components to extract for each of the WM/CSF voxels, by default 5
+    select_component: int, optional
+        Select one particular component to regress out rather than all extracted components, by default None because high-pass filtering the PCAs is much more effective
+    filter_pca: float, optional
+        Cut-off frequency for high-pass filter of PCA-components that survived the scree-plot, by default None but ~0.2Hz generally leaves in task-related frequencies while removing garbage
+    save_as: str, optional
+        Basename for several output plots/files, by default None. For example, you can save the summary plot of the aCompCor process ('-desc_acompcor.pdf' is appended). Generally a good idea to save in PDF-format, then edit in Inkscape
+    summary_plot: bool, optional
+        Make the summary plot describing the effect of aCompCor, by default True. Includes an imshow of selected WM/CSF-voxels, the scree-plot for both PCAs (WM+CSF), the power spectra of the surviving components, and the power spectra for the timecourse of voxel 359 (in line-scanning, the middle of the line) for both un-aCompCor'ed and aCompCor'ed data
+    TR: float, optional
+        Repetition time, by default 0.105. Required for correctly creating power spectra
+    verbose: bool, optional
+        Print a bunch of details to the terminal, by default False
+    ref_slice: str, optional
+        Path representing the reference anatomy slice of a particular run, by default None. Required to transform the segmentations to the correct space
+    trg_session: int, optional
+        Target session, by default None. Required for output names
+    trafo_list: str, list, optional
+        List or string representing transformation files that need to be applied, by default None.
+    foldover: str, optional
+        Foldover direction during the line-scanning acquisition, by default "FH". This is to make sure the line is specified correctly when initializing :class:`linescanning.segmentations.Segmentations`
+
+    Raises
+    ----------
+    ValueError
+        When no PCA-components survived the scree-plot
+
+    Returns
+    ----------
+    self
+        The most interesting attribute will be `self.acomp_data`
+
+    Example
+    ----------
+    >>> from linescanning import preproc
+    >>> # data = (voxels,timepoints)
+    >>> acomp = preproc.aCompCor(data,
+    >>>                          subject="sub-003",
+    >>>                          run=1,
+    >>>                          trg_session=4,
+    >>>                          n_pca=5,
+    >>>                          trafo_list=['ses_to_motion.mat', 'run_to_run.mat'],
+    >>>                          filter_pca=0.2,
+    >>>                          TR=0.105,
+    >>>                          verbose=True)
+    """
     
     def __init__(self, 
                  data, 
@@ -35,12 +98,11 @@ class aCompCor(Segmentations):
                  summary_plot=True, 
                  TR=0.105, 
                  verbose=False, 
-                 ref_slice=None, 
+                 reference_slice=None,
                  trg_session=None, 
                  trafo_list=None, 
                  foldover="FH", 
                  **kwargs):
-        
         self.data               = data
         self.subject            = subject
         self.run                = run
@@ -52,7 +114,7 @@ class aCompCor(Segmentations):
         self.save_as            = save_as
         self.summary_plot       = summary_plot
         self.verbose            = verbose
-        self.ref_slice          = ref_slice
+        self.reference_slice    = reference_slice
         self.trafo_list         = trafo_list
         self.trg_session        = trg_session
         self.TR                 = TR
@@ -61,12 +123,12 @@ class aCompCor(Segmentations):
 
         if self.wm_voxels == None and self.csf_voxels == None:
             super().__init__(self.subject,
-                            run=self.run,
-                            reference_slice=ref_slice,
-                            target_session=self.trg_session,
-                            foldover=self.foldover,
-                            verbose=self.verbose,
-                            trafo_file=self.trafo_list)
+                             run=self.run,
+                             reference_slice=self.reference_slice,
+                             target_session=self.trg_session,
+                             foldover=self.foldover,
+                             verbose=self.verbose,
+                             trafo_file=self.trafo_list)
 
         if self.verbose:
             print(f" Using {self.n_pca} components for aCompCor (WM/CSF separately)")
@@ -220,7 +282,7 @@ class aCompCor(Segmentations):
                             line_width=2)
 
         if self.save_as != None:
-            fname = self.save_as+f"run-{self.run}-desc_acompcor.png"
+            fname = self.save_as+f"run-{self.run}-desc_acompcor.pdf"
             
             if self.verbose:
                 print(f" Saving {fname}")
@@ -239,12 +301,14 @@ def highpass_dct(func, lb, TR=0.105):
     lb: float
         cutoff-frequency for low-pass
     TR: float, optional
-        _description_, by default 0.105
+        Repetition time of functional run, by default 0.105
 
     Returns
     ----------
-    _type_
-        _description_
+    dct_data: np.ndarray
+        array of shape(n_voxels, n_timepoints)
+    cosine_drift: np.ndarray 
+        Cosine drifts of shape(n_scans, n_drifts) plus a constant regressor at cosine_drift[:, -1]
 
     Notes
     ----------
@@ -299,7 +363,35 @@ def lowpass_savgol(func, window_length=None, polyorder=None):
     return signal.savgol_filter(func, window_length, polyorder, axis=-1)
 
 def get_freq(func, TR=0.105, spectrum_type='psd', clip_power=None):
-    
+    """get_freq
+
+    Create power spectra of input timeseries with the ability to select implementations from `nitime`. Fourier transform is implemented as per J. Siero's implementation.
+
+    Parameters
+    ----------
+    func: np.ndarray
+        Array of shape(timepoints,) 
+    TR: float, optional
+        Repetition time, by default 0.105
+    spectrum_type: str, optional
+        Method for extracting power spectra, by default 'psd'. Must be one of 'mtaper', 'fft', 'psd', or 'periodogram', as per `nitime`'s implementations. 
+    clip_power: _type_, optional
+        _description_, by default None
+
+    Returns
+    ----------
+    _type_
+        _description_
+
+    Raises
+    ----------
+    ValueError
+        _description_
+
+    Example
+    ----------
+    >>> 
+    """
     if spectrum_type != "fft":
         TC      = TimeSeries(np.asarray(func), sampling_interval=TR)
         spectra = SpectralAnalyzer(TC)
