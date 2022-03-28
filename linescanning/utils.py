@@ -1255,7 +1255,7 @@ class CurveFitter():
                     self.pmodel = lmfit.models.QuadraticModel()
                 else:
                     self.pmodel = lmfit.models.PolynomialModel(order=self.order)
-            elif instance(self.order, str):
+            elif isinstance(self.order, str):
                 if self.order == 'gauss' or self.order == 'gaussian':
                     self.pmodel = lmfit.models.GaussianModel()
                 elif self.order == 'exp' or self.order == 'exponential':
@@ -1287,23 +1287,19 @@ class CurveFitter():
         self.ci                 = self.result.eval_uncertainty()
         self.ci_upsampled       = glm.resample_stim_vector(self.ci, len(self.x_pred_upsampled), interpolate=self.interpolate)
 
-    @staticmethod
     def first_order(x, a, b):
         return a * x + b
     
-    @staticmethod
     def second_order(x, a, b, c):
         return a * x + b * x**2 + c
     
-    @staticmethod
     def third_order(x, a, b, c, d):
 	    return (a * x) + (b * x**2) + (c * x**3) + d
     
-    @staticmethod
     def gaussian(x, amp, cen, wid):
         return amp * np.exp(-(x-cen)**2 / wid)
 
-
+        
 class NideconvFitter():
     """NideconvFitter
 
@@ -1521,7 +1517,7 @@ class NideconvFitter():
         if self.verbose:
             print("Done")
 
-    def plot_average_per_event(self, add_offset=True, axs=None, title="Average HRF", **kwargs):
+    def plot_average_per_event(self, add_offset=True, axs=None, title="Average HRF", save_as=None, **kwargs):
 
         if not hasattr(self, "tc_condition"):
             self.timecourses_condition()
@@ -1548,9 +1544,10 @@ class NideconvFitter():
                           error=self.event_sem,
                           title=title,
                           font_size=16,
+                          save_as=save_as,
                           **kwargs)
 
-    def plot_average_per_voxel(self, add_offset=True, axs=None, n_cols=4, wspace=0, figsize=(30,15), make_figure=True, labels=None, **kwargs):
+    def plot_average_per_voxel(self, add_offset=True, axs=None, n_cols=4, wspace=0, figsize=(30,15), make_figure=True, labels=None, save_as=None, **kwargs):
             
         if not hasattr(self, "tc_condition"):
             self.timecourses_condition()
@@ -1623,8 +1620,11 @@ class NideconvFitter():
                                       labels=labels,
                                       **kwargs)
 
+        if save_as:
+            fig.savefig(save_as)
 
-    def plot_hrf_across_depth(self, axs=None, figsize=(8,8), markers_cmap='viridis', ci_color="#cccccc", ci_alpha=0.6, order=2, **kwargs):
+
+    def plot_hrf_across_depth(self, axs=None, figsize=(8,8), markers_cmap='viridis', ci_color="#cccccc", ci_alpha=0.6, order=2, save_as=None, **kwargs):
 
         if not hasattr(self, "all_voxels_in_event"):
             self.plot_timecourses(make_figure=False)
@@ -1646,3 +1646,6 @@ class NideconvFitter():
                         color=ci_color,
                         font_size=16,
                         **kwargs)
+
+        if save_as:
+            fig.savefig(save_as)
