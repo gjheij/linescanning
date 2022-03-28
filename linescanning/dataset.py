@@ -476,6 +476,7 @@ class ParseExpToolsFile(ParseEyetrackerFile):
                  funcs=None, 
                  use_bids=True,
                  verbose=False,
+                 phase_onset=1,
                  **kwargs):
 
         self.tsv_file                       = tsv_file
@@ -489,6 +490,7 @@ class ParseExpToolsFile(ParseEyetrackerFile):
         self.edfs                           = edfs
         self.use_bids                       = use_bids
         self.verbose                        = verbose
+        self.phase_onset                    = phase_onset
         self.__dict__.update(kwargs)
 
         if self.edfs != None:
@@ -524,7 +526,7 @@ class ParseExpToolsFile(ParseEyetrackerFile):
                 delete_vols = check_input_is_list(self, "deleted_first_timepoints", list_element=run)
 
                 # read in the exptools-file
-                self.preprocess_exptools_file(onset_file, run=self.run, delete_vols=delete_vols)
+                self.preprocess_exptools_file(onset_file, run=self.run, delete_vols=delete_vols, phase_onset=self.phase_onset)
 
                 # append to df
                 df_onsets.append(self.get_onset_df(index=False))
@@ -548,7 +550,7 @@ class ParseExpToolsFile(ParseEyetrackerFile):
     def events_single_run(self, run=1):
         return self.events_per_run[run]
 
-    def preprocess_exptools_file(self, tsv_file, run=1, delete_vols=0):
+    def preprocess_exptools_file(self, tsv_file, run=1, delete_vols=0, phase_onset=1):
         
         data_onsets = []
         with open(tsv_file) as f:
@@ -560,8 +562,8 @@ class ParseExpToolsFile(ParseEyetrackerFile):
         self.start_time     = float(timings.loc[(timings['event_type'] == "pulse") & (timings['response'] == "t")].loc[(timings['trial_nr'] == 1) & (timings['phase'] == 0)]['onset'].values)
         # self.data_cut_start = self.data.drop([q for q in np.arange(0,self.start_times.index[0])])
         # self.onset_times    = pd.DataFrame(self.data_cut_start[(self.data_cut_start['event_type'] == 'stim') & (self.data_cut_start['condition'].notnull()) | (self.data_cut_start['response'] == 'b')][['onset', 'condition']]['onset'])
-        self.trimmed = timings.loc[(timings['event_type'] == "stim") & (timings['phase'] == 1)].iloc[1:,:]
 
+        self.trimmed = timings.loc[(timings['event_type'] == "stim") & (timings['phase'] == phase_onset)].iloc[1:,:]
         self.onset_times = self.trimmed['onset'].values[...,np.newaxis]
         # self.condition      = pd.DataFrame(self.data_cut_start[(self.data_cut_start['event_type'] == 'stim') & (self.data_cut_start['condition'].notnull()) | (self.data_cut_start['response'] == 'b')]['condition'])
 
@@ -896,7 +898,7 @@ class ParsePhysioFile():
 
 class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
 
-    """ParseFuncFile()
+    """ParseFuncFile
 
     Class for parsing func-files created with Luisa's reconstruction. It can do filtering, conversion to percent signal change, and create power spectra. It is supposed to look similar to :class:`linescanning.utils.ParseExpToolsFile` to make it easy to translate between the functional data and experimental data.
 
