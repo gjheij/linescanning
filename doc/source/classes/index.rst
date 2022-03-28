@@ -10,8 +10,10 @@ Python functions
    optimal
    planning
    plotting
+   preproc
    prf
    pycortex
    scanner
+   segmentations
    transform
    utils
