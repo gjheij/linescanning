@@ -1169,7 +1169,7 @@ class CollectSubject:
         """return the vertex ID of target vertex"""
         return self.vert_info.get('index', hemi=hemi)
 
-    def target_prediction_prf(self, xkcd=False, line_width=1):
+    def target_prediction_prf(self, xkcd=False, line_width=1, freq_spectrum=None, save_as=None):
         _, self.prediction, _ = self.modelling.plot_vox(vox_nr=self.target_vertex, 
                                                         model=self.model, 
                                                         stage='iter', 
@@ -1177,7 +1177,10 @@ class CollectSubject:
                                                         xkcd=xkcd,
                                                         title='pars',
                                                         transpose=True, 
-                                                        line_width=line_width)
+                                                        line_width=line_width,
+                                                        freq_spectrum=freq_spectrum, 
+                                                        freq_type="fft",
+                                                        save_as=save_as)
 
 class CurveFitter():
     """CurveFitter
