@@ -11,6 +11,51 @@ import subprocess
 
 opj = os.path.join
 
+def bin_fov(img, thresh=0,out=None, fsl=False):
+    """bin_fov
+
+    This function returns a binarized version of the input image. If no output name was specified,
+    it will return the dataframe in nifti-format.
+
+    Parameters
+    ----------
+    img: str
+        path to input image
+    thresh: int
+        threshold to use (default = 0)
+    out: str
+        path to output image (default is None, and will return the data array of the image)
+    fsl: bool
+        if you reeeally want a binary image also run fslmaths -bin.. Can only be in combination with an output image and on a linux system with FSL (default is false)
+    
+    Example
+    ---------
+    >>> from linescanning.image import bin_fov
+    >>> file = bin_fov("/path/to/image.nii.gz")
+    >>> bin_fov("/path/to/image.nii.gz", thresh=1, out="/path/to/image.nii.gz", fsl=True)
+    >>> bin_fov("/path/to/image.nii.gz", thres=2)
+    """
+
+    img_file = nb.load(img)                                     # load file
+    img_data = img_file.get_fdata()                             # get data
+    empty = np.zeros_like(img_data)
+    empty[img_data <= thresh] = 1
+    img_bin_img = nb.Nifti1Image(empty, header=img_file.header, affine=img_file.affine)
+
+    if out != None:
+        img_bin_img.to_filename(out)
+
+        # also run fslmaths for proper binarization
+        if fsl == True:
+            cmd_txt = "fslmaths {in_img} -bin {out_img}".format(in_img=out, out_img=out)
+
+            try:
+                os.system(cmd_txt)
+            except:
+                raise Exception(f"Could not execute command '{cmd_txt}'")
+    else:
+        return img_bin_img
+
 
 def reorient_img(img, code="RAS", out=None, qform="orig"):
     """reorient_img
