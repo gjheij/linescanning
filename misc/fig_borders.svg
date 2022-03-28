@@ -15,8 +15,8 @@
    xmlns:svg="http://www.w3.org/2000/svg">
   <sodipodi:namedview
      id="namedview7"
-     pagecolor="#505050"
-     bordercolor="#ffffff"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
      borderopacity="1"
      inkscape:pageshadow="0"
      inkscape:pageopacity="0"
@@ -26,8 +26,8 @@
      showguides="true"
      inkscape:guide-bbox="true"
      inkscape:zoom="2.1506845"
-     inkscape:cx="397.31537"
-     inkscape:cy="104.85034"
+     inkscape:cx="434.51283"
+     inkscape:cy="179.24526"
      inkscape:window-width="2400"
      inkscape:window-height="1271"
      inkscape:window-x="2391"
@@ -94,7 +94,26 @@
        inkscape:color="rgb(0,0,255)" />
   </sodipodi:namedview>
   <defs
-     id="defs2" />
+     id="defs2">
+    <clipPath
+       id="clip57">
+      <rect
+         x="0"
+         y="0"
+         width="914400"
+         height="1.2192e+06"
+         id="rect286" />
+    </clipPath>
+    <clipPath
+       id="clip59">
+      <rect
+         x="0"
+         y="0"
+         width="914400"
+         height="1.21366e+06"
+         id="rect290" />
+    </clipPath>
+  </defs>
   <g
      inkscape:label="Laag 1"
      inkscape:groupmode="layer"
