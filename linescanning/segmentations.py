@@ -9,6 +9,70 @@ from statsmodels.api import stats
 opj = os.path.join
 
 class Segmentations:
+    """Segmentations
+
+    Class to project segmentations created using the pipeline described on https://linescanning.readthedocs.io/en/latest/ to a single slice image of a new session (typically a line-scanning session). By default, it will look for files in the *Nighres*-directory, as these segmentations are generally of most interest. The output of the class will be a pickle-file containing the following segmentations: CRUISE-tissue segmentation (as per the output of https://github.com/gjheij/linescanning/blob/main/shell/spinoza_cortexreconstruction), the layer+depth segmentation (https://github.com/gjheij/linescanning/blob/main/shell/spinoza_layering), the brain mask, tissue probability maps (https://github.com/gjheij/linescanning/blob/main/shell/spinoza_extractregions), the reference slice, and the line as acquired in the session.
+
+    To warp the files, you'll need to specify a forward-transformation matrix (e.g., from *reference session* to *target session*), the reference slice, and the foldover direction (e.g., FH or AP) describing the nature of the applied saturation slabs. You can also specify an earlier pickle file, in which case the segmentations embedded in that file are loaded in for later manipulation with e.g., :func:`pRFline.segmentations.plot_segmentations` to create overview figures.
+
+    Parameters
+    ----------
+    subject: str
+        Subject ID as used in `SUBJECTS_DIR` and used throughout the pipeline
+    run: int, optional
+        run number you'd like to have the segmentations for            
+    derivatives: str, optional
+        Path to derivatives folder of the project. Generally should be the path specified with `DIR_DATA_DERIV` in the bash environment (if using https://github.com/gjheij/linescanning).
+    trafo_file: str, optional
+        Forward matrix mapping *reference session* (typically `ses-1`) to *target session* (typically `ses-2`) [ANTs file], by default None as it's not required when specifying an earlier created *pickle_file*
+    reference_slice: str, optional
+        Path to nifti image of a *acq-1slice* image that is used as reference to project the segmentations into, by default None
+    reference_session: int, optional
+        Origin of the segmentations, by default 1
+    target_session: int, optional
+        Target of the segmentations, by default 2
+    foldover: str, optional
+        Direction of applied saturation slabs, by default "FH". You can find this in the *derivatives/pycortex/<subject>/line_pycortex.csv*-file if using https://github.com/gjheij/linescanning.
+    pickle_file: str, optional
+        Existing pickle file containing filepaths to segmentations in *target session* space, by default None.
+
+    Raises
+    ----------
+    ValueError
+        If either transformation file or reference file do not exists. These are required for the projection of segmentations into the slice. This error will not be thrown if *pickle_file* was specified.
+
+    Example
+    ----------
+    >>> # load existing pickle file
+    >>> from pRFline import segmentations
+    >>> ff = "<some_path>/segmentations.pkl"
+    >>> ref = "<some_path>/ref_slice.nii.gz"
+    >>> segs = segmentations.Segmentations(<subject>, pickle_file=ff, reference_slice=ref)
+
+    >>> # create pickle file with segmentations for a  single subject
+    >>> from linescanning import segmentations
+    >>> import os
+    >>> ref = "<some_path>/ref_slice.nii.gz"
+    >>> to_ses = 3
+    >>> sub = "sub-003"
+    >>> derivatives = os.environ.get('DIR_DATA_DERIV')
+    >>> segs = segmentations.Segmentations(sub, reference_slice=ref, trafo_file=trafo, target_session=to_ses, foldover="FH")
+
+    >>> # loop over a bunch of subjects
+    >>> subject_list = ['sub-001','sub-003','sub-004','sub-005','sub-006']
+    >>> all_segmentations = {}
+    >>> for ii in subject_list:
+    >>>     ref = f"{subject}_ref_slice.nii.gz"
+    >>>     matrix_file = f"{subject}_from-ses1_to-ses2.mat"
+    >>>     segs = segmentations.Segmentations(ii, reference_slice=ref, trafo_file=matrix_file)
+    >>>     all_segmentations[ii] = segs.segmentations_df.copy
+    >>> # plot all subjects
+    >>> segmentations.plot_segmentations(all_segmentations, , max_val_ref=3000, figsize=(15,5*len(subject_list))))
+
+    Notes
+    ----------
+    Assumes your anatomical segmentation files have the *acq-MP2RAGE*-tag. This tag will be replaced by *1slice* in segmentation-to-slice images
+    """
 
     def __init__(self, 
                  subject, 
@@ -22,70 +86,6 @@ class Segmentations:
                  pickle_file=None,
                  verbose=False):
 
-        """Segmentations
-
-        Class to project segmentations created using the pipeline described on https://linescanning.readthedocs.io/en/latest/ to a single slice image of a new session (typically a line-scanning session). By default, it will look for files in the *Nighres*-directory, as these segmentations are generally of most interest. The output of the class will be a pickle-file containing the following segmentations: CRUISE-tissue segmentation (as per the output of https://github.com/gjheij/linescanning/blob/main/shell/spinoza_cortexreconstruction), the layer+depth segmentation (https://github.com/gjheij/linescanning/blob/main/shell/spinoza_layering), the brain mask, tissue probability maps (https://github.com/gjheij/linescanning/blob/main/shell/spinoza_extractregions), the reference slice, and the line as acquired in the session.
-
-        To warp the files, you'll need to specify a forward-transformation matrix (e.g., from *reference session* to *target session*), the reference slice, and the foldover direction (e.g., FH or AP) describing the nature of the applied saturation slabs. You can also specify an earlier pickle file, in which case the segmentations embedded in that file are loaded in for later manipulation with e.g., :func:`pRFline.segmentations.plot_segmentations` to create overview figures.
-
-        Parameters
-        ----------
-        subject: str
-            Subject ID as used in `SUBJECTS_DIR` and used throughout the pipeline
-        run: int, optional
-            run number you'd like to have the segmentations for            
-        derivatives: str, optional
-            Path to derivatives folder of the project. Generally should be the path specified with `DIR_DATA_DERIV` in the bash environment (if using https://github.com/gjheij/linescanning).
-        trafo_file: str, optional
-            Forward matrix mapping *reference session* (typically `ses-1`) to *target session* (typically `ses-2`) [ANTs file], by default None as it's not required when specifying an earlier created *pickle_file*
-        reference_slice: str, optional
-            Path to nifti image of a *acq-1slice* image that is used as reference to project the segmentations into, by default None
-        reference_session: int, optional
-            Origin of the segmentations, by default 1
-        target_session: int, optional
-            Target of the segmentations, by default 2
-        foldover: str, optional
-            Direction of applied saturation slabs, by default "FH". You can find this in the *derivatives/pycortex/<subject>/line_pycortex.csv*-file if using https://github.com/gjheij/linescanning.
-        pickle_file: str, optional
-            Existing pickle file containing filepaths to segmentations in *target session* space, by default None.
-
-        Raises
-        ----------
-        ValueError
-            If either transformation file or reference file do not exists. These are required for the projection of segmentations into the slice. This error will not be thrown if *pickle_file* was specified.
-
-        Example
-        ----------
-        >>> # load existing pickle file
-        >>> from pRFline import segmentations
-        >>> ff = "<some_path>/segmentations.pkl"
-        >>> ref = "<some_path>/ref_slice.nii.gz"
-        >>> segs = segmentations.Segmentations(<subject>, pickle_file=ff, reference_slice=ref)
-
-        >>> # create pickle file with segmentations for a  single subject
-        >>> from linescanning import segmentations
-        >>> import os
-        >>> ref = "<some_path>/ref_slice.nii.gz"
-        >>> to_ses = 3
-        >>> sub = "sub-003"
-        >>> derivatives = os.environ.get('DIR_DATA_DERIV')
-        >>> segs = segmentations.Segmentations(sub, reference_slice=ref, trafo_file=trafo, target_session=to_ses, foldover="FH")
-
-        >>> # loop over a bunch of subjects
-        >>> subject_list = ['sub-001','sub-003','sub-004','sub-005','sub-006']
-        >>> all_segmentations = {}
-        >>> for ii in subject_list:
-        >>>     ref = f"{subject}_ref_slice.nii.gz"
-        >>>     matrix_file = f"{subject}_from-ses1_to-ses2.mat"
-        >>>     segs = segmentations.Segmentations(ii, reference_slice=ref, trafo_file=matrix_file)
-        >>>     all_segmentations[ii] = segs.segmentations_df.copy
-        >>> # plot all subjects
-        >>> segmentations.plot_segmentations(all_segmentations, , max_val_ref=3000, figsize=(15,5*len(subject_list))))
-
-        Notes
-        ----------
-        Assumes your anatomical segmentation files have the *acq-MP2RAGE*-tag. This tag will be replaced by *1slice* in segmentation-to-slice images
-        """
 
         self.subject            = subject
         self.run                = run
