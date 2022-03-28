@@ -1,6 +1,6 @@
 import ast
 from datetime import datetime, timedelta
-from linescanning import utils, plotting, dataset
+from linescanning import utils, plotting, dataset, preproc
 import math
 import matplotlib.image as mpimg
 import matplotlib.patches as patches
@@ -854,7 +854,8 @@ def create_line_prf_matrix(log_dir,
                                            TR=TR, 
                                            deleted_first_timepoints=deleted_first_timepoints, 
                                            use_bids=False,
-                                           verbose=verbose)
+                                           verbose=verbose,
+                                           phase_onset=0)
     
         if verbose:
             print("Creating design matrix (can take a few minutes with thousands of TRs)")
@@ -1180,7 +1181,8 @@ class pRFmodelFitting():
                  nr_jobs=1000,
                  rsq_threshold=None,
                  prf_stim=None,
-                 model_obj=None):
+                 model_obj=None,
+                 **kwargs):
     
 
         self.data           = data
@@ -1199,6 +1201,7 @@ class pRFmodelFitting():
         self.prf_stim       = prf_stim
         self.model_obj      = model_obj
         self.rsq_threshold  = rsq_threshold
+        self.__dict__.update(kwargs)
         
         if self.output_dir == None:
             self.output_dir = os.getcwd()
@@ -1522,6 +1525,7 @@ class pRFmodelFitting():
                  freq_spectrum=False,
                  freq_type='fft',
                  clip_power=None,
+                 save_as=None,
                  **kwargs):
 
         """plot real and predicted timecourses for a voxel. Also returns parameters, the numpy array representing the pRF in visual space, and timecourse of data"""
@@ -1577,7 +1581,7 @@ class pRFmodelFitting():
 
             if freq_spectrum:
                 ax3 = fig.add_subplot(gs00[2])
-                self.freq = dataset.ParseFuncFile.get_freq(tc, TR=self.TR, spectrum_type=freq_type, clip_power=clip_power)
+                self.freq = preproc.get_freq(tc, TR=self.TR, spectrum_type=freq_type, clip_power=clip_power)
 
                 plotting.LazyPlot(self.freq[1],
                                   xx=self.freq[0],
@@ -1588,9 +1592,12 @@ class pRFmodelFitting():
                                   title=freq_type,
                                   xkcd=xkcd,
                                   font_size=font_size,
-                                  x_lim=[0,2],
+                                  x_lim=[0,1.5],
                                   line_width=line_width,
                                   **kwargs)
+            
+            if save_as:
+                fig.savefig(save_as)
 
             return params, prf_array, tc
         else:
