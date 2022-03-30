@@ -1068,6 +1068,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
             self.df_acomp    = []    # aCompCor'ed data
             self.df_zscore   = []    # zscore-d data
             self.df_gm_only  = []    # aCompCor'ed data, only GM voxels
+            self.gm_per_run  = []    # keep track of GM-voxel indices
             for run, func in enumerate(self.func_file):
                 
                 if self.verbose:
@@ -1120,6 +1121,8 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
 
                     # select GM-voxels based on segmentations
                     self.select_gm_voxels = [ii for ii in self.acomp.gm_voxels if ii in range(*self.gm_range)]
+
+                    self.gm_per_run.append(self.select_gm_voxels)
                     
                     # fetch the data
                     self.df_gm_only.append(utils.select_from_df(acomp_data, expression='ribbon', indices=self.select_gm_voxels))
