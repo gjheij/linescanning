@@ -128,7 +128,8 @@ class aCompCor(Segmentations):
                              target_session=self.trg_session,
                              foldover=self.foldover,
                              verbose=self.verbose,
-                             trafo_file=self.trafo_list)
+                             trafo_file=self.trafo_list,
+                             **kwargs)
 
         if self.verbose:
             print(f" Using {self.n_pca} components for aCompCor (WM/CSF separately)")
