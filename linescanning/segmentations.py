@@ -145,7 +145,7 @@ class Segmentations:
                         raise ValueError(f"Could not find trafo_file {self.trafo_file}")
                     invert = 0
                 elif isinstance(self.trafo_file, list):
-                    invert = [0,0]
+                    invert = list(np.zeros(len(self.trafo_file)).astype(int))
     
             # start warping (in brackets file suffixes)
             #  0 = wm prob  ("label-WM")
@@ -161,6 +161,7 @@ class Segmentations:
                 print(f" Target session: ses-{self.target_session}")
                 print(f" Foldover: {self.foldover}")
                 print(f" Ref slice: {self.reference_slice}")
+                print(f" Trafo's: {self.trafo_file}")
 
             in_type = ['prob', 'prob', 'prob', 'tissue', 'layer', 'prob', 'tissue']
             tag = ['wm', 'gm', 'csf', 'cortex', 'layers', 'depth', 'mask']
@@ -542,8 +543,9 @@ class Segmentations:
             self.beam_ctx   = np.multiply(self.cortex, self.line.astype(bool))[352:368, :]
             self.mask_beam  = np.multiply(self.mask, self.line.astype(bool))[352:368, :]
 
-        self.wm_voxels = []
+        self.wm_voxels  = []
         self.csf_voxels = []
+        self.gm_voxels  = []
         self.acompcor_voxels = []
         for vox in range(self.beam_ctx.shape[0]):
 
@@ -551,14 +553,18 @@ class Segmentations:
             if all(mas == 1 for mas in self.mask_beam[vox,:]):
 
                 # fetch voxel id's where all 16 voxels across beam are 2
-                wm_vox = all(elem == 2 for elem in self.beam_ctx[vox,:])
-                if wm_vox == True:
-                    self.wm_voxels.append(vox)
-                    self.acompcor_voxels.append(vox)
-
                 csf_vox = all(elem == 0 for elem in self.beam_ctx[vox, :])
                 if csf_vox == True:
                     self.csf_voxels.append(vox)
+                    self.acompcor_voxels.append(vox)
+
+                gm_vox = all(elem == 1 for elem in self.beam_ctx[vox, :])
+                if gm_vox == True:
+                    self.gm_voxels.append(vox)                
+
+                wm_vox = all(elem == 2 for elem in self.beam_ctx[vox,:])
+                if wm_vox == True:
+                    self.wm_voxels.append(vox)
                     self.acompcor_voxels.append(vox)
 
         # list of voxels

@@ -234,6 +234,7 @@ class aCompCor(Segmentations):
                           labels=["csf", "wm"],
                           font_size=16,
                           line_width=line_width,
+                          sns_trim=True,
                           **kwargs)
 
         # create dashed line on cut-off frequency if specified
@@ -255,6 +256,7 @@ class aCompCor(Segmentations):
                             font_size=16,
                             line_width=line_width,
                             add_vline=add_vline,
+                            sns_trim=True,
                             **kwargs)
 
         # plot power spectra from non-aCompCor'ed vs aCompCor'ed data
@@ -276,13 +278,14 @@ class aCompCor(Segmentations):
                             title="Effect aCompCor on timecourses",
                             labels=['no aCompCor', 'aCompCor'],
                             axs=ax3,
-                            xkcd=False,
                             font_size=16,
                             x_lim=[0, 1.5],
-                            line_width=2)
+                            line_width=2,
+                            sns_trim=True,
+                            **kwargs)
 
         if self.save_as != None:
-            fname = self.save_as+f"run-{self.run}-desc_acompcor.pdf"
+            fname = self.save_as+f"_run-{self.run}_desc-acompcor.pdf"
             
             if self.verbose:
                 print(f" Saving {fname}")

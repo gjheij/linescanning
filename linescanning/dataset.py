@@ -985,6 +985,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                  ses1_2_ls=None,
                  run_2_run=None,
                  save_as=None,
+                 gm_range=[300,400],
                  **kwargs):
 
         self.sub                        = subject
@@ -1015,9 +1016,10 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
         self.select_component           = select_component
         self.filter_pca                 = filter_pca
         self.standardization            = standardization
-        self.ses1_2_ls                   = ses1_2_ls
+        self.ses1_2_ls                  = ses1_2_ls
         self.run_2_run                  = run_2_run
         self.save_as                    = save_as
+        self.gm_range                   = gm_range
         self.__dict__.update(kwargs)
 
         # sampling rate and nyquist freq
@@ -1065,9 +1067,9 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
             self.df_r2       = []    # r2 for portions of retroicor-regressors (e.g., 'all', 'cardiac', etc)
             self.df_acomp    = []    # aCompCor'ed data
             self.df_zscore   = []    # zscore-d data
-
+            self.df_gm_only  = []    # aCompCor'ed data, only GM voxels
             for run, func in enumerate(self.func_file):
-
+                
                 if self.verbose:
                     print(f"Preprocessing {func}")
                 if self.use_bids:
@@ -1113,7 +1115,14 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                     self.df_r2.append(self.r2_physio_df)
 
                 if self.acompcor:
-                    self.df_acomp.append(self.get_acompcor(index=False, filter_strategy=self.filter_strategy))
+                    acomp_data = self.get_acompcor(index=False, filter_strategy=self.filter_strategy)
+                    self.df_acomp.append(acomp_data)
+
+                    # select GM-voxels based on segmentations
+                    self.select_gm_voxels = [ii for ii in self.acomp.gm_voxels if ii in range(*self.gm_range)]
+                    
+                    # fetch the data
+                    self.df_gm_only.append(utils.select_from_df(acomp_data, expression='ribbon', indices=self.select_gm_voxels))
 
             # check for standardization method
             if self.standardization == "psc":
@@ -1144,6 +1153,11 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                         self.df_func_acomp = pd.concat(self.df_acomp)
 
                 self.df_func_zscore = self.df_func_acomp.copy()
+
+                try:
+                    self.df_gm_only = pd.concat(self.df_gm_only)
+                except:
+                    pass
 
         # now that we have nicely formatted functional data, initialize the ParseExpToolsFile-class
         if self.tsv_file != None: 
@@ -1292,7 +1306,10 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                     run_trafo =  utils.get_file_from_substring(f"to-run{self.run}", self.run_2_run)
                     self.trafos = [self.ses1_2_ls, run_trafo]
                 else:
-                    self.trafos = [self.ses1_2_ls, self.run_2_run]
+                    if self.run_2_run != None:
+                        self.trafos = [self.ses1_2_ls, self.run_2_run]
+                    else:
+                        self.trafos = [self.ses1_2_ls]
             else:
                 self.trafos = self.ses1_2_ls            
 
@@ -1318,8 +1335,8 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                                                subject=self.sub, 
                                                run=run, 
                                                TR=self.TR,
-                                               set_index=True)  
-            
+                                               set_index=True)
+
         #----------------------------------------------------------------------------------------------------------------------------------------------------
         # LOW PASS FILTER
         if self.low_pass:
@@ -1427,7 +1444,10 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
         if hasattr(self, attr):
             data = getattr(self, attr)
             if index:
-                return data.set_index(['subject', 'run', 't'])
+                try:
+                    return data.set_index(['subject', 'run', 't'])
+                except:
+                    return data
             else:
                 return data
 
@@ -1588,6 +1608,7 @@ class Dataset(ParseFuncFile):
                  ses1_2_ls=None,
                  run_2_run=None,
                  save_as=None,
+                 gm_range=[300,400],
                  **kwargs):
 
         self.sub                        = subject
@@ -1614,9 +1635,10 @@ class Dataset(ParseFuncFile):
         self.n_pca                      = n_pca
         self.select_component           = select_component
         self.filter_pca                 = filter_pca
-        self.ses1_2_ls                   = ses1_2_ls
+        self.ses1_2_ls                  = ses1_2_ls
         self.run_2_run                  = run_2_run
         self.save_as                    = save_as
+        self.gm_range                   = gm_range
         self.__dict__.update(kwargs)
 
         if self.verbose:
@@ -1657,6 +1679,7 @@ class Dataset(ParseFuncFile):
                              ses1_2_ls=self.ses1_2_ls,
                              run_2_run=self.run_2_run,
                              save_as=self.save_as,
+                             gm_range=self.gm_range,
                             **kwargs)
 
         if self.verbose:
