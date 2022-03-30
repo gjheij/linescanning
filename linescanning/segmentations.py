@@ -35,6 +35,10 @@ class Segmentations:
         Direction of applied saturation slabs, by default "FH". You can find this in the *derivatives/pycortex/<subject>/line_pycortex.csv*-file if using https://github.com/gjheij/linescanning.
     pickle_file: str, optional
         Existing pickle file containing filepaths to segmentations in *target session* space, by default None.
+    voxel_cutoff: int, optional
+        When using surface coils, the signal that you pick up drops off rapidly with increasing distance from the coil. With this flag we can set as of which voxel we should ignore signal, which is relevant for selecting of WM/CSF voxels
+    verbose: bool, optional
+        Print details to the terminal, default is False        
 
     Raises
     ----------
@@ -84,8 +88,9 @@ class Segmentations:
                  target_session=2, 
                  foldover="FH", 
                  pickle_file=None,
-                 verbose=False):
-
+                 voxel_cutoff=0,
+                 verbose=False,
+                 **kwargs):
 
         self.subject            = subject
         self.run                = run
@@ -96,8 +101,9 @@ class Segmentations:
         self.target_session     = target_session
         self.foldover           = foldover
         self.pickle_file        = pickle_file
+        self.voxel_cutoff       = voxel_cutoff
         self.verbose            = verbose
-
+        self.__dict__.update(kwargs)
     
         if self.pickle_file == None:
 
@@ -222,7 +228,7 @@ class Segmentations:
         self.wm_csf_voxels_for_regressors()
 
         if self.verbose:
-            print(f" Found {len(self.acompcor_voxels)} voxels for nuisance regression")
+            print(f" Found {len(self.acompcor_voxels)} voxel for nuisance regression; (indices<{self.voxel_cutoff} are ignored due to distance from coil)")
             print(" We're good to go!")
 
     def get_plottable_segmentations(self, input_seg, return_dimensions=2):
@@ -549,23 +555,25 @@ class Segmentations:
         self.acompcor_voxels = []
         for vox in range(self.beam_ctx.shape[0]):
 
-            # remove outer stuff from beam
-            if all(mas == 1 for mas in self.mask_beam[vox,:]):
+            if vox >= self.voxel_cutoff:
 
-                # fetch voxel id's where all 16 voxels across beam are 2
-                csf_vox = all(elem == 0 for elem in self.beam_ctx[vox, :])
-                if csf_vox == True:
-                    self.csf_voxels.append(vox)
-                    self.acompcor_voxels.append(vox)
+                # remove outer stuff from beam
+                if all(mas == 1 for mas in self.mask_beam[vox,:]):
 
-                gm_vox = all(elem == 1 for elem in self.beam_ctx[vox, :])
-                if gm_vox == True:
-                    self.gm_voxels.append(vox)                
+                    # fetch voxel id's where all 16 voxels across beam are 2
+                    csf_vox = all(elem == 0 for elem in self.beam_ctx[vox, :])
+                    if csf_vox == True:
+                        self.csf_voxels.append(vox)
+                        self.acompcor_voxels.append(vox)
 
-                wm_vox = all(elem == 2 for elem in self.beam_ctx[vox,:])
-                if wm_vox == True:
-                    self.wm_voxels.append(vox)
-                    self.acompcor_voxels.append(vox)
+                    gm_vox = all(elem == 1 for elem in self.beam_ctx[vox, :])
+                    if gm_vox == True:
+                        self.gm_voxels.append(vox)                
+
+                    wm_vox = all(elem == 2 for elem in self.beam_ctx[vox,:])
+                    if wm_vox == True:
+                        self.wm_voxels.append(vox)
+                        self.acompcor_voxels.append(vox)
 
         # list of voxels
         self.acompcor_voxels = sorted(self.acompcor_voxels)
