@@ -3,7 +3,6 @@ from linescanning import transform, utils
 from numpy.lib.arraysetops import isin
 import matplotlib.pyplot as plt
 import nibabel as nb
-from nighres.parcellation.massp import labels_17structures
 import numpy as np
 import os
 from sklearn.preprocessing import MinMaxScaler
