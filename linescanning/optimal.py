@@ -4,7 +4,7 @@ from datetime import datetime
 from linescanning import (
     planning,
     plotting,
-    prf, 
+    dataset, 
     pycortex, 
     transform, 
     utils
@@ -429,7 +429,12 @@ class SurfaceCalc(object):
 
         # try:
         setattr(self, 'roi_label', fs_label.replace('.', '_'))
-        tmp = self.read_fs_label(subject=self.subject, fs_dir=self.fs_dir, fs_label=fs_label, hemi="both")
+        if not fs_label.endswith('.gii'):
+            tmp = self.read_fs_label(subject=self.subject, fs_dir=self.fs_dir, fs_label=fs_label, hemi="both")
+        else:
+            gifti = dataset.ParseGiftiFile(opj(fs_dir, subject, 'label', f"lh.{fs_label}"))
+            tmp = gifti.data.copy()
+
         setattr(self, f'lh_{self.roi_label}', tmp['lh'])
         setattr(self, f'rh_{self.roi_label}', tmp['rh'])
 
