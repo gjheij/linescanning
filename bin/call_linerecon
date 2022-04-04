@@ -111,10 +111,17 @@ if [[ ${PLACE} == "SGE" ]]; then
   #   cp ${DIR_SCRIPTS}/bin/utils/recon_template.m ${newrecon}
   # fi
 
-  # reconpar=`find "${RAW}" -type f \( -name "*run-${RUN}*" -name "*recon*" -and -name "*.PAR" \) 2>/dev/null`
-  reconlab=`find "${RAW}" -type f \( -name "*run-1*" -name "*recon*" -and -name "*.lab" \) 2>/dev/null`
+  # rtry to look for run-specific LSD-image
+  reconlab=`find "${RAW}" -type f \( -name "*run-${RUN}*" -name "*recon*" -and -name "*.lab" \) 2>/dev/null`
   tasklab=`find "${RAW}" -type f \( -name "*run-${RUN}*" -name "*bold*" -and -name "*.lab" \) 2>/dev/null`
 
+  # If run-specific LSD-image does not exist, default to run-1. This might introduce tiiiiny effects, but can become big if subject moves a lot
+  if [[ -z ${reconlab} ]]; then
+    echo "WARNING: could not find LSD-image for run-${RUN}, defaulting to run-1"
+    reconlab=`find "${RAW}" -type f \( -name "*run-1*" -name "*recon*" -and -name "*.lab" \) 2>/dev/null`
+  fi
+
+  # make single-/multi-echo script
   if [[ -f ${reconlab} && -f ${tasklab} ]]; then
 
     if [[ ${multiecho} -eq 0 ]]; then
