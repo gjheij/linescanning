@@ -100,7 +100,13 @@ rh_point=`find ${FS}/${SUBJECT}/mri -type f \( -name "*space-fs*" -and -name "*h
 if [[ ${VIEWPORT} -eq 1 ]]; then
 
   echo "Opening FreeView3D"
-  freeview -f ${SUBJECTS_DIR}/${SUBJECT}/surf/lh.inflated ${SUBJECTS_DIR}/${SUBJECT}/surf/rh.inflated -viewport 3d
+  if [[ ${SUBJECT} == "fsaverage" ]]; then
+    surface="inflated"
+  else
+    surface="fiducial"
+  fi
+
+  freeview -f ${SUBJECTS_DIR}/${SUBJECT}/surf/lh.${surface} ${SUBJECTS_DIR}/${SUBJECT}/surf/rh.${surface} -viewport 3d
 
 else
   if [[ ${type} == "surf" ]]; then
