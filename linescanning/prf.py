@@ -1433,7 +1433,7 @@ class pRFmodelFitting():
 
         return bounds
 
-    def load_params(self, params_file, model='gauss', stage='iter', acq=None):
+    def load_params(self, params_file, model='gauss', stage='iter', acq=None, run=None):
 
         """Load in a numpy array into the class; allows for quick plotting of voxel timecourses"""
 
@@ -1463,12 +1463,19 @@ class pRFmodelFitting():
         setattr(self, f'{model}_{stage}', params)
 
         if acq != None:
-            preds = utils.get_file_from_substring([model, stage, acq, "predictions.npy"], os.path.dirname(self.settings_fn), return_msg=None)
+            search_list = [model, stage, acq, "predictions.npy"]
         else:
-            preds = utils.get_file_from_substring([model, stage, "predictions.npy"], os.path.dirname(self.settings_fn), return_msg=None)
+            search_list = [model, stage, "predictions.npy"]
+
+        if run != None:
+            search_list.extend(f"run-{run}")          
+
+        preds = utils.get_file_from_substring(search_list, os.path.dirname(self.settings_fn), return_msg=None)
         if preds != None:
             if isinstance(preds, list):
-                raise ValueError(f"Found multiple instances for [{model}, {acq}, {stage}, predictions.npy]: {preds}")
+                raise ValueError(f"Found multiple instances for {search_list}: {preds}")
+            else:
+                print(f"Predictions: {preds}")
 
             setattr(self, f'{model}_{stage}_predictions', np.load(preds))
 
