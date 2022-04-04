@@ -1202,7 +1202,7 @@ class pRFmodelFitting():
         self.model_obj      = model_obj
         self.rsq_threshold  = rsq_threshold
         self.__dict__.update(kwargs)
-        
+    
         if self.output_dir == None:
             self.output_dir = os.getcwd()
 
@@ -1216,8 +1216,12 @@ class pRFmodelFitting():
 
         # overwrite rsq-threshold from settings file
         if self.rsq_threshold != None:
+            if self.verbose:
+                print(f"Setting rsq-threshold to user-defined value: {self.rsq_threshold}")
             self.rsq = self.rsq_threshold
         else:
+            if self.verbose:
+                print(f"Setting rsq-threshold to default value: {self.settings['rsq_threshold']}")
             self.rsq = self.settings['rsq_threshold']
 
         # check if we got a pRF-stim object
