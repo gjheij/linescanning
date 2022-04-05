@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_antsmotioncorr
+
+Do motion correction with ANTs' antsMotionCorr. Seems to deal better with partial FOV compared to 
+McFlirt.
+
+Args:
+  <to-be-corrected>   file to warp
+  <output>            moving-in-ref output name (WITHOUT EXTENSION! nii.gz will be appended)
+
+Usage:
+  call_antsmotioncorr <4D nifti file> <output file>
+
+Example:
+  call_antsmotioncorr bold.nii.gz bold_motioncorr.nii.gz
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+source call_bashhelper
+
+if [[ $# -lt 2 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+# define input/output
+INPUT=${@:$OPTIND:1}
+OUTPUT=${@:$OPTIND+1:1}
+
+INPUT=`fetch_filepath ${INPUT}`
+OUTPUT=`fetch_filepath ${OUTPUT}`
+
+# do stuff
+if [[ ${INPUT} == "*_bold.nii.gz" ]]; then
+  base=$(basename ${INPUT} _bold.nii.gz)
+else
+  base=$(basename ${INPUT} .nii.gz)
+fi
+
+ref=$(dirname ${INPUT})/${base}_desc-boldref.nii.gz
+if [[ ! -f ${ref} ]]; then
+  antsMotionCorr -d 3 -a $INPUT -o $ref
+fi
+
+antsMotionCorr -d 3 \
+               -o [${OUTPUT},${OUTPUT}.nii.gz] \
+               -m MI[${ref}, ${INPUT}, 1, 32, Regular, 0.1] \
+               -t Rigid[0.1] \
+               -u 1 \
+               -i 15 \
+               -f 1 \
+               -s 1
