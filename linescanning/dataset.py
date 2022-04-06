@@ -1,11 +1,12 @@
 import hedfpy
-from . import glm, utils, preproc
+from . import glm, plotting, preproc, utils
+import matplotlib.pyplot as plt
 import nibabel as nb
 from nilearn.signal import clean
 import numpy as np
 import os
 import pandas as pd
-from scipy import io
+from scipy import io, stats
 import warnings
 
 opj = os.path.join
@@ -985,7 +986,9 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                  ses1_2_ls=None,
                  run_2_run=None,
                  save_as=None,
-                 gm_range=[300,400],
+                 gm_range=[355, 375],
+                 tissue_thresholds=[0.7,0.7,0.7],
+                 save_ext="pdf",
                  **kwargs):
 
         self.sub                        = subject
@@ -1020,6 +1023,8 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
         self.run_2_run                  = run_2_run
         self.save_as                    = save_as
         self.gm_range                   = gm_range
+        self.tissue_thresholds          = tissue_thresholds
+        self.save_ext                   = save_ext
         self.__dict__.update(kwargs)
 
         # sampling rate and nyquist freq
@@ -1067,6 +1072,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
             self.df_r2       = []    # r2 for portions of retroicor-regressors (e.g., 'all', 'cardiac', etc)
             self.df_acomp    = []    # aCompCor'ed data
             self.df_zscore   = []    # zscore-d data
+            self.acomp_objs  = []    # keep track of all aCompCor elements
             self.df_gm_only  = []    # aCompCor'ed data, only GM voxels
             self.gm_per_run  = []    # keep track of GM-voxel indices
             for run, func in enumerate(self.func_file):
@@ -1118,10 +1124,12 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                 if self.acompcor:
                     acomp_data = self.get_acompcor(index=False, filter_strategy=self.filter_strategy)
                     self.df_acomp.append(acomp_data)
+                    
+                    # append the linescanning.preproc.aCompCor object in case we have multiple runs
+                    self.acomp_objs.append(self.acomp)
 
-                    # select GM-voxels based on segmentations
+                    # select GM-voxels based on segmentations in case we have single run
                     self.select_gm_voxels = [ii for ii in self.acomp.gm_voxels if ii in range(*self.gm_range)]
-
                     self.gm_per_run.append(self.select_gm_voxels)
                     
                     # fetch the data
@@ -1157,10 +1165,14 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
 
                 self.df_func_zscore = self.df_func_acomp.copy()
 
-                try:
-                    self.df_gm_only = pd.concat(self.df_gm_only)
-                except:
-                    pass
+                # decide on GM-voxels across runs by averaging tissue probabilities
+                if len(self.acomp_objs) > 1:
+                    self.select_voxels_across_runs()
+                    self.gm_df = utils.select_from_df(self.df_func_zscore, expression='ribbon', indices=self.voxel_classification['gm'])
+                    self.ribbon_voxels = [ii for ii in range(*self.gm_range) if ii in self.voxel_classification['gm']]
+                    self.ribbon_df = utils.select_from_df(self.df_func_zscore, expression='ribbon', indices=self.ribbon_voxels)                    
+                else:
+                    self.gm_df = self.df_gm_only[0].copy()
 
         # now that we have nicely formatted functional data, initialize the ParseExpToolsFile-class
         if self.tsv_file != None: 
@@ -1209,9 +1221,13 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
             self.ts_complex     = self.ts_wcsmtSNR
             self.ts_magnitude   = np.abs(self.ts_wcsmtSNR)
 
-        elif func_file.endswith("npy"):
+        elif func_file.endswith("npy") or isinstance(func_file, np.ndarray):
             self.ts_magnitude   = np.load(func_file)
         elif func_file.endswith("nii") or func_file.endswith("gz"):
+            fdata = nb.load(func_file).get_fdata()
+            xdim,ydim,zdim,time_points = fdata.shape
+            self.ts_magnitude = fdata.reshape(xdim*ydim*zdim, time_points)
+        else:
             raise NotImplementedError()
 
         # trim beginning and end
@@ -1331,6 +1347,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                                           TR=self.TR,
                                           foldover=self.foldover,
                                           verbose=self.verbose,
+                                          save_ext=self.save_ext,
                                           **kwargs)
             
             self.hp_acomp_df = self.index_func(self.acomp.acomp_data,
@@ -1372,6 +1389,64 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
 
             setattr(self, out_attr, tmp_filtered.copy())
             setattr(self, f'{out_attr}_df', tmp_filtered_df.copy())
+
+
+    def select_voxels_across_runs(self):
+
+        if self.verbose:
+            fig = plt.figure(figsize=(20,10))
+            gs = fig.add_gridspec(3,1, hspace=0.4)
+
+        self.voxel_classification = {}
+        self.tissue_probabilities = {}
+
+        # get the nice blue from CSF-regressor
+        if hasattr(self.acomp_objs[0], "regressor_voxel_colors"):
+            use_color = self.acomp_objs[0].regressor_voxel_colors[0]
+        else:
+            use_color = "#0062C7"
+
+        for ix, seg in enumerate(['wm', 'csf', 'gm']):
+            
+            self.tissue_probabilities[seg] = []
+            for compcor in self.acomp_objs:
+                compcor.segmentations_to_beam()
+                self.tissue_probabilities[seg].append(
+                    compcor.segmentations_in_beam[compcor.subject][seg][..., np.newaxis])
+
+            img         = np.concatenate((self.tissue_probabilities[seg]), axis=-1)
+            avg_runs    = img.mean(axis=-1).mean(axis=-1)
+            # avg_err     = stats.sem(avg_runs, axis=-1)
+            avg_err     = img.mean(axis=-1).std(axis=-1)
+
+            if self.verbose:
+                ax = fig.add_subplot(gs[ix])
+                add_hline = {'pos': self.tissue_thresholds[ix], 'color': 'k', 'ls': '--', 'lw': 1}
+
+                # add indication for new classification
+                self.voxel_classification[seg] = np.where(avg_runs > self.tissue_thresholds[ix])[0]
+                for ii in self.voxel_classification[seg]:
+                    ax.axvline(ii, alpha=0.3, color="#cccccc")
+
+                plotting.LazyPlot(avg_runs,
+                                  axs=ax,
+                                  error=avg_err,
+                                  title=f'Average probability of {seg.upper()}',
+                                  font_size=16,
+                                  linewidth=2,
+                                  color=use_color,
+                                  sns_trim=True,
+                                  line_width=2,
+                                  add_hline=add_hline)
+
+    
+        if self.save_as != None:
+            fname = self.save_as+f"_desc-tissue_classification.{self.save_ext}"
+            
+            if self.verbose:
+                print(f" Saving {fname}")
+
+            fig.savefig(fname)        
                                    
     def apply_retroicor(self, run=1, **kwargs):
 
@@ -1612,39 +1687,11 @@ class Dataset(ParseFuncFile):
                  run_2_run=None,
                  save_as=None,
                  gm_range=[300,400],
+                 tissue_thresholds=[0.7,0.7,0.7],
+                 save_ext="pdf",
                  **kwargs):
 
-        self.sub                        = subject
-        self.run                        = run
-        self.TR                         = TR
-        self.lb                         = lb
-        self.hb                         = hb
-        self.low_pass                   = low_pass
-        self.deleted_first_timepoints   = deleted_first_timepoints
-        self.deleted_last_timepoints    = deleted_last_timepoints
-        self.window_size                = window_size
-        self.poly_order                 = poly_order
-        self.attribute_tag              = attribute_tag
-        self.hdf_key                    = hdf_key
-        self.button                     = button
-        self.func_file                  = func_file
-        self.tsv_file                   = tsv_file
-        self.edf_file                   = edf_file
-        self.phys_file                  = phys_file
-        self.phys_mat                   = phys_mat
-        self.use_bids                   = use_bids
-        self.verbose                    = verbose
-        self.retroicor                  = retroicor
-        self.n_pca                      = n_pca
-        self.select_component           = select_component
-        self.filter_pca                 = filter_pca
-        self.ses1_2_ls                  = ses1_2_ls
-        self.run_2_run                  = run_2_run
-        self.save_as                    = save_as
-        self.gm_range                   = gm_range
-        self.__dict__.update(kwargs)
-
-        if self.verbose:
+        if verbose:
             print("DATASET")
         
         self.read_attributes = ['df_func_psc', 
@@ -1654,38 +1701,40 @@ class Dataset(ParseFuncFile):
                                 'eye_in_func', 
                                 'blink_events']
 
-        if isinstance(self.func_file, str) and self.func_file.endswith(".h5"):
-            print(f" Reading from {self.func_file}")
-            self.from_hdf(self.func_file)
+        if isinstance(func_file, str) and func_file.endswith(".h5"):
+            print(f" Reading from {func_file}")
+            self.from_hdf(func_file)
         else:
-            super().__init__(self.func_file,
-                             TR=self.TR,
-                             subject=self.sub,
-                             run=self.run,
-                             lb=self.lb,
-                             hb=self.hb,
-                             low_pass=self.low_pass,
-                             deleted_first_timepoints=self.deleted_first_timepoints,
-                             deleted_last_timepoints=self.deleted_last_timepoints,
-                             window_size=self.window_size,
-                             poly_order=self.poly_order,
-                             tsv_file=self.tsv_file,
-                             edf_file=self.edf_file,
-                             phys_file=self.phys_file,
-                             phys_mat=self.phys_mat,
-                             use_bids=self.use_bids,
-                             verbose=self.verbose,
-                             retroicor=self.retroicor,
-                             n_pca=self.n_pca,
-                             select_component=self.select_component,
-                             filter_pca=self.filter_pca,
-                             ses1_2_ls=self.ses1_2_ls,
-                             run_2_run=self.run_2_run,
-                             save_as=self.save_as,
-                             gm_range=self.gm_range,
+            super().__init__(func_file,
+                             TR=TR,
+                             subject=subject,
+                             run=run,
+                             lb=lb,
+                             hb=hb,
+                             low_pass=low_pass,
+                             deleted_first_timepoints=deleted_first_timepoints,
+                             deleted_last_timepoints=deleted_last_timepoints,
+                             window_size=window_size,
+                             poly_order=poly_order,
+                             tsv_file=tsv_file,
+                             edf_file=edf_file,
+                             phys_file=phys_file,
+                             phys_mat=phys_mat,
+                             use_bids=use_bids,
+                             verbose=verbose,
+                             retroicor=retroicor,
+                             n_pca=n_pca,
+                             select_component=select_component,
+                             filter_pca=filter_pca,
+                             ses1_2_ls=ses1_2_ls,
+                             run_2_run=run_2_run,
+                             save_as=save_as,
+                             gm_range=gm_range,
+                             tissue_thresholds=tissue_thresholds,
+                             save_ext=save_ext,
                             **kwargs)
 
-        if self.verbose:
+        if verbose:
             print("\nDATASET: created")
 
     def fetch_fmri(self, strip_index=False, dtype=None):
@@ -1783,6 +1832,28 @@ class Dataset(ParseFuncFile):
                 print(f" Setting attribute: {key}")
 
             setattr(self, key, hdf_store.get(key))
+
+class DatasetCollector():
+
+    def __init__(self, dataset_objects):
+
+        self.datasets = dataset_objects
+        if len(self.datasets) != None:
+            self.data = []
+            self.onsets = []
+            for dataset in self.datasets:
+                self.data.append(dataset.fetch_fmri())
+
+                # check if we got onsets
+                if hasattr(dataset, 'df_onsets'):
+                    onsets = True
+                    self.onsets.append(dataset.fetch_onsets())
+                else:
+                    onsets = False
+
+            self.data = pd.concat(self.data)
+            if onsets:
+                self.onsets = pd.concat(self.onsets)
 
 # this is basically a wrapper around pybest.utils.load_gifti
 class ParseGiftiFile():
