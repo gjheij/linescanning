@@ -1117,7 +1117,12 @@ class CollectSubject:
             self.settings = yaml.safe_load(self.analysis_yaml)
 
             with open(self.analysis_yaml) as file:
-                self.settings = yaml.safe_load(file)            
+                self.settings = yaml.safe_load(file)      
+
+        try:
+            self.gauss_iter_pars = np.load(get_file_from_substring(["model-gauss", "stage-iter"], self.prf_dir))
+        except:
+            pass
         
         # load the most recent analysis file. This is fine for screens/stimulus information
         if settings == "recent":
