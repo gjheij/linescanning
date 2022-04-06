@@ -820,9 +820,6 @@ def select_from_df(df, expression="run = 1", index=True, indices=None):
 
     if expression == "ribbon":
         
-        if indices == None:
-            raise ValueError("You want specific voxels from DataFrame, but none were specified. Please specify indices=[start,stop]")
-
         if isinstance(indices, tuple):
             return df.iloc[:,indices[0]:indices[1]]
         elif isinstance(indices, list):
