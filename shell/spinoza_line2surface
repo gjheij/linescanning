@@ -202,7 +202,7 @@ qq=`find ${outputdir}/${SUB}/warped -type f -name "*space-fs*" -and -name "*.nii
 for f in ${qq[@]}; do
 
   # use linescanning.utils.replace_string to replace 'space-fs' with 'space-ctx'
-  transform_ctx=`python -c "from linescanning.utils import replace_string; new = replace_string(\"${f}\", 'space-fs', 'space-ctx'); print(new)"`
+  transform_ctx=$(echo ${f} | sed 's,space-fs,space-ctx,')
   if [[ ! -f ${transform_ctx} ]]; then
 
     echo " creating `basename ${transform_ctx}`"
