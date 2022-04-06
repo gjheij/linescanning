@@ -354,27 +354,6 @@ class LazyPlot():
                             lw=self.add_vline['lw'], 
                             ls=self.add_vline['ls'])
 
-        # add horizontal lines
-        if self.add_hline:
-            if self.add_hline == "default":
-                self.add_hline = {'pos': 0, 'color': 'k', 'ls': 'dashed', 'lw': 0.5}
-            elif self.add_hline == "mean":
-                if isinstance(self.array, list):
-                    raise ValueError("This option can't be used with multiple inputs..")
-                    
-                self.add_hline = {'pos': self.array.mean(), 'color': 'k', 'ls': 'dashed', 'lw': 0.5}
-
-            if isinstance(self.add_hline['pos'], list) or isinstance(self.add_hline['pos'], np.ndarray):
-                for line in self.add_hline['pos']:
-                    axs.axhline(line,
-                                color=self.add_hline['color'], 
-                                lw=self.add_hline['lw'], 
-                                ls=self.add_hline['ls'])
-            else:
-                axs.axhline(self.add_hline['pos'], 
-                            color=self.add_hline['color'],
-                            lw=self.add_hline['lw'], 
-                            ls=self.add_hline['ls'])
 
         # give priority to specify x-lims rather than seaborn's xlim
         if self.x_lim:
@@ -387,8 +366,40 @@ class LazyPlot():
             axs.set_ylim(self.y_lim)
 
         # despine the axis
+        old_xlim = axs.get_xlim()[-1]
         sns.despine(offset=self.sns_offset, trim=self.sns_trim, bottom=self.sns_bottom)
 
+        # add horizontal lines
+        if self.add_hline:
+            # correct for axis shortening induced by trimming with sns.despine
+            if self.sns_trim:
+                set_xlim = x.shape[0]/old_xlim
+            else:
+                set_xlim = 1
+
+            if self.add_hline == "default":
+                self.add_hline = {'pos': 0, 'color': 'k', 'ls': 'dashed', 'lw': 0.5}
+            elif self.add_hline == "mean":
+                if isinstance(self.array, list):
+                    raise ValueError("This option can't be used with multiple inputs..")
+                    
+                self.add_hline = {'pos': self.array.mean(), 'color': 'k', 'ls': 'dashed', 'lw': 0.5}
+
+            if isinstance(self.add_hline['pos'], list) or isinstance(self.add_hline['pos'], np.ndarray):
+                
+
+                for line in self.add_hline['pos']:
+                    axs.axhline(line,
+                                color=self.add_hline['color'], 
+                                lw=self.add_hline['lw'], 
+                                ls=self.add_hline['ls'],
+                                xmax=set_xlim)
+            else:
+                axs.axhline(self.add_hline['pos'], 
+                            color=self.add_hline['color'],
+                            lw=self.add_hline['lw'], 
+                            ls=self.add_hline['ls'],
+                            xmax=set_xlim)
 
 class LazyCorr():
     """LazyCorr
