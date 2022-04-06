@@ -43,6 +43,8 @@ class aCompCor(Segmentations):
         Select one particular component to regress out rather than all extracted components, by default None because high-pass filtering the PCAs is much more effective
     filter_pca: float, optional
         Cut-off frequency for high-pass filter of PCA-components that survived the scree-plot, by default None but ~0.2Hz generally leaves in task-related frequencies while removing garbage
+    save_ext: str, optional
+        Extension to use for saved figures (default = 'pdf')
     save_as: str, optional
         Basename for several output plots/files, by default None. For example, you can save the summary plot of the aCompCor process ('-desc_acompcor.pdf' is appended). Generally a good idea to save in PDF-format, then edit in Inkscape
     summary_plot: bool, optional
@@ -95,6 +97,7 @@ class aCompCor(Segmentations):
                  select_component=None, 
                  filter_pca=None, 
                  save_as=None, 
+                 save_ext="pdf",
                  summary_plot=True, 
                  TR=0.105, 
                  verbose=False, 
@@ -112,6 +115,7 @@ class aCompCor(Segmentations):
         self.select_component   = select_component
         self.filter_pca         = filter_pca
         self.save_as            = save_as
+        self.save_ext           = save_ext
         self.summary_plot       = summary_plot
         self.verbose            = verbose
         self.reference_slice    = reference_slice
@@ -286,7 +290,7 @@ class aCompCor(Segmentations):
                             **kwargs)
 
         if self.save_as != None:
-            fname = self.save_as+f"_run-{self.run}_desc-acompcor.pdf"
+            fname = self.save_as+f"_run-{self.run}_desc-acompcor.{self.save_ext}"
             
             if self.verbose:
                 print(f" Saving {fname}")
