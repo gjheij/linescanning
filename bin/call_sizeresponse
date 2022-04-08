@@ -128,7 +128,7 @@ Examples:
 
     # make pRF plot
     ax1 = fig.add_subplot(gs00[0])
-    plotting.plot_prf(subject_info.prf_array, subject_info.settings['vf_extent'], ax=ax1)    
+    plotting.LazyPRF(subject_info.prf_array, subject_info.settings['vf_extent'], ax=ax1)    
 
     # Get and plot fMRI signal
     data_fn = utils.get_file_from_substring(f"avg_bold_{hemi_tag}.npy", subject_info.prf_dir)
@@ -142,7 +142,7 @@ Examples:
     insert_params =(np.array(subject_info.target_params)[np.newaxis,...],"gauss+iter")
 
     # initiate class
-    fitting = prf.pRFmodelFitting(data[...,np.newaxis].T, 
+    fitting = prf.pRFmodelFitting(data[...,np.newaxis].T,
                                   design_matrix=subject_info.design_matrix, 
                                   TR=subject_info.settings['TR'], 
                                   model="norm", 
@@ -187,14 +187,14 @@ Examples:
     #---------------------------------------------------------------------------------------------------
     # make plot 
     ax3 = fig.add_subplot(gs00[2])
-    utplottingls.LazyPlot([sr_curve1, sr_curve2], 
-                          xx=SR.stims_fill_sizes,
-                          color=["#1B9E77","#D95F02"], 
-                          labels=['superficial', 'middle'],
-                          axs=ax3,
-                          y_label="Response",
-                          x_label="Stimulus size (°)",
-                          font_size=14)
+    plotting.LazyPlot([sr_curve1, sr_curve2], 
+                      xx=SR.stims_fill_sizes,
+                      color=["#1B9E77","#D95F02"], 
+                      labels=['superficial', 'middle'],
+                      axs=ax3,
+                      y_label="Response",
+                      x_label="Stimulus size (°)",
+                      font_size=14)
 
     #---------------------------------------------------------------------------------------------------
     # find stim sizes
