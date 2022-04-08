@@ -172,7 +172,14 @@ for dir in ${search}; do
         if [ ! -z ${diff_anat} ]; then
           cp ${diff_anat} ${func_dir}/${base}/anat
         else
-          echo "Could not find T1w-file. fMRIprep might complain.."
+          # last option: look in pymp2rage-folder
+          diff_anat=`find "${DIR_DATA_DERIV}/pymp2rage/${base}" -type f \( -name "*T1w.nii.gz" \) 2>/dev/null`
+          if [ ! -z ${diff_anat} ]; then
+            cp ${diff_anat} ${func_dir}/${base}/anat
+          else
+            echo "ERROR in `basename ${0}`: Could not find T1w-file in \"${input_dir}/anat\" and \"${DIR_DATA_DERIV}/pymp2rage/${base}\". Please copy your FreeSurfer input to \"${func_dir}/${base}/anat\" as a T1w-file needs to be present. If you've already ran the anatomical workflows, the file will be ignored. Nevertheless, it's needs to be present for fMRIprep to initiate"
+            exit 1
+          fi
         fi
       fi
     else
