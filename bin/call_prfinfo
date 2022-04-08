@@ -101,7 +101,13 @@ Example:
 
     vert_info = np.append(vert_info,(polar,ecc))
     info = {'x': vert_info[0],'y': vert_info[1],'size': vert_info[2],'beta': vert_info[3],'baseline': vert_info[4],'r2': vert_info[5],'polar': vert_info[6],'ecc': vert_info[7]}
-    print(info)
+    
+    print(f"pRF parameters ID: {vertex}")
+    print(f" x-coord: {round(vert_info[0],2)}")
+    print(f" y-coord: {round(vert_info[1],2)}")
+    print(f" size:    {round(vert_info[2],2)}")
+    print(f" ecc:     {round(ecc,2)}")
+    print(f" r2:      {round(vert_info[5],2)}")
 
 if __name__ == "__main__":
     main(sys.argv[1:])
