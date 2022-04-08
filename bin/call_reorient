@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import linescanning.bin.utils.utils as line
+from linescanning import image
 import sys, getopt
 
 def main(argv):
@@ -73,7 +73,7 @@ Example:
     if outfile == None:
         outfile = infile
 
-    line.reorient_img(infile, code=code, qform=qform, out=outfile)
+    image.reorient_img(infile, code=code, qform=qform, out=outfile)
 
     # try:
     #     line.reorient_img(infile, code=code, qform=qform, out=outfile)
