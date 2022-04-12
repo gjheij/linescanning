@@ -1,5 +1,7 @@
 import csv
 import json
+
+from attr import has
 from . import prf, glm, plotting
 import lmfit
 import matplotlib.colors as mcolors
@@ -1081,7 +1083,7 @@ class CollectSubject:
     >>> subject_info = utils.CollectSubject(subject, derivatives=<path_to_derivatives>, settings='recent', hemi="lh")
     """
 
-    def __init__(self, subject, derivatives=None, cx_dir=None, prf_dir=None, ses=1, analysis_yaml=None, hemi="lh", settings=None, model="gauss", correct_screen=True):
+    def __init__(self, subject, derivatives=None, cx_dir=None, prf_dir=None, ses=1, analysis_yaml=None, hemi="lh", settings=None, model="gauss", correct_screen=True, verbose=True):
 
         self.subject        = subject
         self.derivatives    = derivatives
@@ -1092,6 +1094,7 @@ class CollectSubject:
         self.model          = model
         self.analysis_yaml  = analysis_yaml
         self.correct_screen = correct_screen
+        self.verbose        = verbose
 
         if self.hemi == "lh" or self.hemi.lower() == "l" or self.hemi.lower() == "left":
             self.hemi_tag = "L"
@@ -1120,7 +1123,7 @@ class CollectSubject:
                 self.settings = yaml.safe_load(file)      
 
         try:
-            self.gauss_iter_pars = np.load(get_file_from_substring(["model-gauss", "stage-iter"], self.prf_dir))
+            self.gauss_iter_pars = np.load(get_file_from_substring(["model-gauss", "stage-iter", "params"], self.prf_dir))
         except:
             pass
         
@@ -1159,9 +1162,18 @@ class CollectSubject:
         if self.prf_dir != None:
             self.modelling      = prf.pRFmodelFitting(self.func_data_lr,
                                                       design_matrix=self.design_matrix,
-                                                      settings=self.analysis_yaml)
-                                
-            self.modelling.load_params(self.normalization_params, model=self.model, stage="iter")
+                                                      settings=self.analysis_yaml,
+                                                      verbose=self.verbose)
+
+            if self.model == "gauss":
+                if hasattr(self, "gauss_iter_pars"):
+                    self.pars = self.gauss_iter_pars.copy()
+                else:
+                    raise AttributeError("Could not find 'gauss_iter_pars' attribute")
+            else:
+                self.pars = self.normalization_params.copy()
+
+            self.modelling.load_params(self.pars, model=self.model, stage="iter")
 
     def return_prf_params(self, hemi="lh"):
         """return pRF parameters from :class:`linescanning.utils.VertexInfo`"""
@@ -1171,7 +1183,7 @@ class CollectSubject:
         """return the vertex ID of target vertex"""
         return self.vert_info.get('index', hemi=hemi)
 
-    def target_prediction_prf(self, xkcd=False, line_width=1, freq_spectrum=None, save_as=None):
+    def target_prediction_prf(self, xkcd=False, line_width=1, freq_spectrum=None, save_as=None, **kwargs):
         _, self.prediction, _ = self.modelling.plot_vox(vox_nr=self.target_vertex, 
                                                         model=self.model, 
                                                         stage='iter', 
@@ -1182,7 +1194,8 @@ class CollectSubject:
                                                         line_width=line_width,
                                                         freq_spectrum=freq_spectrum, 
                                                         freq_type="fft",
-                                                        save_as=save_as)
+                                                        save_as=save_as,
+                                                        **kwargs)
 
 class CurveFitter():
     """CurveFitter
@@ -1297,10 +1310,6 @@ class CurveFitter():
     
     def third_order(x, a, b, c, d):
 	    return (a * x) + (b * x**2) + (c * x**3) + d
-    
-    def gaussian(x, amp, cen, wid):
-        return amp * np.exp(-(x-cen)**2 / wid)
-
         
 class NideconvFitter():
     """NideconvFitter
