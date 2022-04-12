@@ -398,7 +398,6 @@ def make_ecc(subject, ecc=None, r2=None, vmin1=0, vmax1=12, cmap="nipy_spectral"
     """Create eccentricity vertex map as a function of R2 from data array as per output for call_prf"""
     if isinstance(r2,np.ndarray):
         if r2_thresh != None:
-            print(f"thresholding eccentricity-map with r2 = {r2_thresh}")
             thresholded_ecc = np.zeros_like(ecc)
             thresholded_ecc[r2>r2_thresh] = ecc[r2>r2_thresh]
             return cortex.Vertex(thresholded_ecc, vmin=vmin1, vmax=vmax1, subject=subject, cmap=cmap)
