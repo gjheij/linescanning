@@ -1351,7 +1351,7 @@ class pRFmodelFitting():
 
             # make n_units x 4 array, with X,Y,size,r2
             self.old_params_filt = np.hstack((self.old_params_arr[:,:3], self.old_params_arr[:,-1][...,np.newaxis]))
-
+            
             # define fitter
             self.norm_fitter = Norm_Iso2DGaussianFitter(self.norm_model, self.data)
 
@@ -1458,7 +1458,7 @@ class pRFmodelFitting():
             else:
                 raise NotImplementedError()
         else:
-            raise ValueError("Unrecognized input type for 'params_file'")
+            raise ValueError(f"Unrecognized input type for '{params_file}'")
 
         setattr(self, f'{model}_{stage}', params)
 
@@ -1548,11 +1548,12 @@ class pRFmodelFitting():
 
         if make_figure:
             prf_array = make_prf(self.prf_stim, size=params[2], mu_x=params[0], mu_y=params[1])
-            fig = plt.figure(constrained_layout=True, figsize=(20,5))
 
             if freq_spectrum:
+                fig = plt.figure(constrained_layout=True, figsize=(20,5))
                 gs00 = fig.add_gridspec(1,3, width_ratios=[10,20,10])
             else:
+                fig = plt.figure(constrained_layout=True, figsize=(15,5))
                 gs00 = fig.add_gridspec(1,2, width_ratios=[10,20])
 
             # make plot 
@@ -1577,7 +1578,7 @@ class pRFmodelFitting():
                 set_title = None
 
             plotting.LazyPlot([tc, self.prediction],
-                              color=['#08B2F0', '#cccccc'], 
+                              color=['#cccccc', 'r'], 
                               labels=['real', 'pred'], 
                               add_hline='default',
                               x_label="Volumes",
@@ -1586,8 +1587,8 @@ class pRFmodelFitting():
                               title=set_title,
                               xkcd=xkcd,
                               font_size=font_size,
-                              set_xlim_zero=True,
-                              line_width=line_width,
+                              line_width=[0.5, 3],
+                              markers=['.', None],
                               **kwargs)
 
             if freq_spectrum:
@@ -1603,8 +1604,8 @@ class pRFmodelFitting():
                                   title=freq_type,
                                   xkcd=xkcd,
                                   font_size=font_size,
-                                  x_lim=[0,1.5],
-                                  line_width=line_width,
+                                  x_lim=[0,0.5],
+                                  line_width=2,
                                   **kwargs)
             
             if save_as:
@@ -1745,7 +1746,7 @@ class SizeResponse():
     >>> #
     >>> new_params = fitting.norm_grid[0]
     >>> #
-    >>> # size response functionsf
+    >>> # size response functions
     >>> SR = prf.SizeResponse(fitting.prf_stim, new_params)
 
     >>> # add subject info object
@@ -1775,24 +1776,50 @@ class SizeResponse():
         # create stimuli
         self.stims_fill, self.stims_fill_sizes = make_stims(self.n_pix, self.prf_stim, factr=factor)
     
-
-    def parse_normalization_parameters(self, params, save_as=None):
+    @staticmethod
+    def parse_normalization_parameters(params, save_as=None):
         """store the Divisive Normalization model parameters in a DataFrame"""
-        params_dict = {"x": [params[0]], 
-                       "y": [params[1]], 
-                       "prf_size": [params[2]],
-                       "prf_ampl": [params[3]],
-                       "bold_bsl": [params[4]],
-                       "neur_bsl": [params[7]],
-                       "surr_ampl": [params[5]],
-                       "surr_size": [params[6]], 
-                       "surr_bsl": [params[4]],
-                       "A": [params[3]], 
-                       "B": [params[-3]/params[3]], 
-                       "C": [params[5]], 
-                       "D": [params[-2]], 
-                       "r2": [params[-1]],
-                       "norm": [params[6]/params[3]]}
+
+        # see: https://github.com/VU-Cog-Sci/prfpy_tools/blob/master/utils/postproc_utils.py#L377
+        if params.ndim == 1:
+            params_dict = {"x": [params[0]], 
+                        "y": [params[1]], 
+                        "prf_size": [params[2]],
+                        "prf_ampl": [params[3]],
+                        "bold_bsl": [params[4]],
+                        "neur_bsl": [params[7]],
+                        "surr_ampl": [params[5]],
+                        "surr_size": [params[6]], 
+                        "surr_bsl": [params[4]],
+                        "A": [params[3]], 
+                        "B": [params[7]], #/params[:,3], 
+                        "C": [params[5]], 
+                        "D": [params[8]],
+                        "ratio (B/D)": [params[7]/params[8]],
+                        "r2": [params[-1]],
+                        "size ratio": [params[6]/params[2]],
+                        "suppression index": [(params[5]*params[6]**2)/(params[3]*params[2]**2)]}        
+
+        elif params.ndim == 2:
+            params_dict = {"x": params[:,0], 
+                        "y": params[:,1], 
+                        "prf_size": params[:,2],
+                        "prf_ampl": params[:,3],
+                        "bold_bsl": params[:,4],
+                        "neur_bsl": params[:,7],
+                        "surr_ampl": params[:,5],
+                        "surr_size": params[:,6], 
+                        "surr_bsl": params[:,4],
+                        "A": params[:,3], 
+                        "B": params[:,7], #/params[:,3], 
+                        "C": params[:,5], 
+                        "D": params[:,8],
+                        "ratio (B/D)": params[:,7]/params[:,8],
+                        "r2": params[:,-1],
+                        "size ratio": params[:,6]/params[:,2],
+                        "suppression index": (params[:,5]*params[:,6]**2)/(params[:,3]*params[:,2]**2)}
+        else:
+            raise TypeError(f"Parameters must have 1 or 2 dimensions, not {params.ndim}")
 
         df = pd.DataFrame(params_dict)
         if save_as:
