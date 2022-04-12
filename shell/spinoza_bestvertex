@@ -170,11 +170,6 @@ for dir in ${search}; do
       continue
     fi
 
-    if [[ ! -d ${prf_dir} ]]; then
-      echo "`basename ${dir}`: No pRF directory found > \"${prf_dir}\""
-      continue
-    fi
-
     echo
     echo "**************************************** Processing `basename ${dir}` ***************************************"
     echo "Creating line_pycortex.csv file"
@@ -201,6 +196,10 @@ for dir in ${search}; do
       use_prfs=""
     else
       use_prfs="--use-prf"
+      if [[ ! -d ${prf_dir} ]]; then
+        echo "`basename ${dir}`: No pRF directory found > \"${prf_dir}\""
+        continue
+      fi
     fi
 
     # set the call_pycortex2 flag for skipping FreeView
