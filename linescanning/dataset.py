@@ -1301,7 +1301,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                                             subject=self.sub, 
                                             run=run, 
                                             TR=self.TR,
-                                            set_index=True)                                         
+                                            set_index=True)
 
         #----------------------------------------------------------------------------------------------------------------------------------------------------
         # ACOMPCOR AFTER HIGH-PASS FILTERING
@@ -1365,7 +1365,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                 info = " Using aCompCor-data for low-pass filtering"
                 data_for_filtering = self.get_acompcor(index=True, filter_strategy="hp").T.values
                 out_attr = "lp_acomp"
-            elif hasattr(self, f"lp_{self.standardization}"):
+            elif hasattr(self, f"hp_{self.standardization}"):
                 info = " Using high-pass filtered data for low-pass filtering"
                 data_for_filtering = getattr(self, f"hp_{self.standardization}")
                 out_attr = f"lp_{self.standardization}"
@@ -1686,7 +1686,7 @@ class Dataset(ParseFuncFile):
                  ses1_2_ls=None,
                  run_2_run=None,
                  save_as=None,
-                 gm_range=[300,400],
+                 gm_range=[355,375],
                  tissue_thresholds=[0.7,0.7,0.7],
                  save_ext="pdf",
                  **kwargs):
