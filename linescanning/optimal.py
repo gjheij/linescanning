@@ -33,10 +33,9 @@ def set_threshold(name=None, borders=None, set_default=None):
         For verbosity reasons, a string of the property's name that needs thresholding
     borders: tuple, optional
         Specific range the user input needs to fall in. Default is None to not enforce a range
-
     set_default: int, float, optional
-                Minimum/maximum of array (depending on the kind of thresholding to be applied) if
-                you do not wish to enforce a threshold
+        Minimum/maximum of array (depending on the kind of thresholding to be applied) if
+        you do not wish to enforce a threshold
 
     Returns
     ----------
@@ -138,13 +137,19 @@ def target_vertex(subject,
 
         prf_dir, fs_dir, cx_dir = dirs['prf'], dirs['fs'], dirs['ctx']
     else:
-        if not prf_dir and not fs_dir and not cx_dir:
-            raise ValueError("Need the paths to pRF/pycortex/FreeSurfer output. Either specify them separately or specify a derivatives folder. See doc!")
-        else:
-            # This is mainly for displaying purposes
-            dirs = {'prf': prf_dir,
-                    'fs': fs_dir,
-                    'ctx': cx_dir}
+        # This is mainly for displaying purposes
+        dirs = {'prf': prf_dir,
+                'fs': fs_dir,
+                'ctx': cx_dir}
+
+        for element in list(dirs.keys()):
+            if element != "prf":
+                if dirs[element] == None:
+                    raise ValueError(f"Need the {element}-directory")
+            else:
+                if use_prf:
+                    if dirs[element] == None:
+                        raise ValueError(f"Need the {element}-directory")
 
     print("Using following directories:")
     [print(f" {i}:\t{dirs[i]}") for i in dirs]
@@ -187,12 +192,14 @@ def target_vertex(subject,
                 print("Set thresholds (leave empty and press [ENTER] to not use a particular property):")
                 # get user input with set_threshold > included the possibility to have only pRF or structure only!
                 if hasattr(GetBestVertex, 'prf'):
-                    ecc_val     = set_threshold(name="eccentricity", borders=(0,15), set_default=round(min(GetBestVertex.prf.ecc)))
+                    size_val    = set_threshold(name="pRF size (beta)", borders=(0,5), set_default=round(min(GetBestVertex.prf.size)))
                     r2_val      = set_threshold(name="r2 (variance)", borders=(0,1), set_default=round(min(GetBestVertex.prf.r2)))
+                    ecc_val     = set_threshold(name="eccentricity", borders=(0,15), set_default=round(min(GetBestVertex.prf.ecc)))
                     pol_val_lh  = set_threshold(name="polar angle lh", borders=(0,np.pi), set_default=round(np.pi))
                     pol_val_rh  = set_threshold(name="polar angle rh", borders=(-np.pi,0), set_default=round(-np.pi))
                     pol_val     = [pol_val_lh,pol_val_rh]
                 else:
+                    size_val    = 0
                     ecc_val     = 0
                     r2_val      = 0
                     pol_val     = 0
@@ -206,6 +213,7 @@ def target_vertex(subject,
 
                 # print out to confirm
                 print("Using these parameters to find vertex with minimal curvature:")
+                print(f" pRF size:        {round(size_val,2)}")
                 print(f" eccentricity:    {round(ecc_val,4)}")
                 print(f" r2:              {round(r2_val,4)}")
                 print(f" polar angle:     {pol_val}")
@@ -214,6 +222,7 @@ def target_vertex(subject,
 
                 # Create mask using selected criteria
                 GetBestVertex.apply_thresholds(ecc_thresh=ecc_val,
+                                               size_thresh=size_val,
                                                r2_thresh=r2_val,
                                                polar_thresh=pol_val,
                                                depth_thresh=depth_val,
@@ -286,6 +295,7 @@ def target_vertex(subject,
 
                 if not isinstance(vert, np.ndarray):
                     textList = ["# Created on {date}\n".format(date=datetime.now().strftime("%d/%m/%Y %H:%M:%S")),
+                                f"size: {size_val}\n",
                                 f"ecc: {ecc_val}\n",
                                 f"r2: {r2_val}\n",
                                 f"polar: {pol_val}\n",
@@ -342,7 +352,7 @@ def target_vertex(subject,
                     hemi_tag = "hemi-R"
 
                 # fetch subject's pRF-stuff
-                subject_info = utils.CollectSubject(subject, cx_dir=opj(cx_dir, subject), prf_dir=prf_dir, settings='recent', hemi=hemi)
+                subject_info = utils.CollectSubject(subject, cx_dir=opj(cx_dir, subject), prf_dir=prf_dir, settings='recent', hemi=hemi, verbose=False)
 
                 # initiate figure
                 fig = plt.figure(constrained_layout=True, figsize=(20,5))
@@ -432,14 +442,15 @@ class SurfaceCalc(object):
         if not fs_label.endswith('.gii'):
             tmp = self.read_fs_label(subject=self.subject, fs_dir=self.fs_dir, fs_label=fs_label, hemi="both")
         else:
-            gifti = dataset.ParseGiftiFile(opj(fs_dir, subject, 'label', f"lh.{fs_label}"))
-            tmp = gifti.data.copy()
+            tmp = {}
+            for ii in ['lh', 'rh']:
+                gifti = dataset.ParseGiftiFile(opj(fs_dir, subject, 'label', f"{ii}.{fs_label}"), set_tr=1)
+                tmp[ii] = gifti.data.copy()
 
         setattr(self, f'lh_{self.roi_label}', tmp['lh'])
         setattr(self, f'rh_{self.roi_label}', tmp['rh'])
 
         # this way we can also use read_fs_label for more custom purposes
-        # self.read_fs_label(fs_label=fs_label)
         pp = self.label_to_mask(subject=self.subject, lh_arr=getattr(self, f'lh_{self.roi_label}'), rh_arr=getattr(self, f'rh_{self.roi_label}'), hemi="both")
         self.lh_roi_mask = pp['lh_mask']
         self.rh_roi_mask = pp['rh_mask']
@@ -555,19 +566,17 @@ class SurfaceCalc(object):
             rh_mask[rh_arr] = True
             # self.rh_roi_mask = rh_mask
 
-        else:
-            if lh_arr and not rh_arr:
-                lh_mask = np.zeros(getattr(self, f"lh_surf_data")[0].shape[0], dtype=bool)
-                lh_mask[lh_arr] = True
-                rh_mask = np.zeros(getattr(self, f"rh_surf_data")[0].shape[0], dtype=bool)
+        elif hemi == "lh":
+            lh_mask = np.zeros(getattr(self, f"lh_surf_data")[0].shape[0], dtype=bool)
+            lh_mask[lh_arr] = True
+            rh_mask = np.zeros(getattr(self, f"rh_surf_data")[0].shape[0], dtype=bool)
 
-            elif rh_arr and not lh_arr:
-                lh_mask = np.zeros(getattr(self, f"lh_surf_data")[0].shape[0], dtype=bool)
-                rh_mask = np.zeros(getattr(self, f"rh_surf_data")[0].shape[0], dtype=bool)
-                
-                rh_mask[rh_arr] = True
-            else:
-                raise ValueError(f"You entered both rh_arr and lh_arr, but 'hemi' = {hemi}")
+        elif hemi == "rh":
+            lh_mask = np.zeros(getattr(self, f"lh_surf_data")[0].shape[0], dtype=bool)
+            rh_mask = np.zeros(getattr(self, f"rh_surf_data")[0].shape[0], dtype=bool)    
+            rh_mask[rh_arr] = True
+        else:
+            raise ValueError(f"Invalid option '{hemi}' for hemi. Must be one of 'both', 'lh', or 'rh'")
 
         whole_roi = np.concatenate((lh_mask, rh_mask))
         whole_roi_v = cortex.Vertex(whole_roi, subject=subject, vmin=-0.5, vmax=1)
@@ -641,6 +650,7 @@ class pRFCalc(object):
                 self.prffile    = prffile
                 self.prf_params = np.load(self.prffile)
 
+                self.size   = self.prf_params[:,2].copy(); np.save(opj(os.path.dirname(prffile), f"{self.fname}_desc-size_map.npy"), self.size)
                 self.r2     = self.prf_params[:,-1]; np.save(opj(os.path.dirname(prffile), f"{self.fname}_desc-R2_map.npy"), self.r2)
                 self.ecc    = np.sqrt(self.prf_params[:,0]**2+self.prf_params[:,1]**2); np.save(opj(os.path.dirname(prffile), f"{self.fname}_desc-eccentricity_map.npy"), self.ecc)
                 self.polar  = np.angle(self.prf_params[:,0]+self.prf_params[:,1]*1j); np.save(opj(os.path.dirname(prffile), f"{self.fname}_desc-polarangle_map.npy"), self.polar)
@@ -725,7 +735,7 @@ class CalcBestVertex(object):
         if self.prffile != None:
             self.prf = pRFCalc(subject=self.subject, prf_dir=self.prf_dir, prffile=self.prffile)
 
-    def apply_thresholds(self, r2_thresh=None, ecc_thresh=None, polar_thresh=None, thick_thresh=None, depth_thresh=None):
+    def apply_thresholds(self, r2_thresh=None, size_thresh=None, ecc_thresh=None, polar_thresh=None, thick_thresh=None, depth_thresh=None):
 
         """apply_thresholds
 
@@ -735,6 +745,8 @@ class CalcBestVertex(object):
         ----------
         r2_thres: int, float, optional
             refers to amount of variance explained. Usually between 0 and 1 (defaults to the minimum `r2`). Threshold is specified as 'greater than <value>'
+        size_thres: int, float, optional
+            refers to size of the pRF in visual space. Usually between 0 and 5 (defaults to 0). Threshold is specified as 'greater than <value>'            
         ecc_thresh: int, float, optional
             refers to `size` of pRF (smaller = foveal, larger = peripheral). Usually between 0 and 15. Defaults to minimum of `r2 array`. Threshold is specified as 'lower than <value>'
         polar_thresh: list, float, optional 
@@ -772,24 +784,25 @@ class CalcBestVertex(object):
         # set cutoff criteria
 
         if hasattr(self, 'prf'):
-
+            
+            self.size_thresh    = size_thresh or min(self.prf.size)
             self.r2_thresh      = r2_thresh or min(self.prf.r2)
             self.ecc_thresh     = ecc_thresh or max(self.prf.ecc)
             self.polar_thresh   = polar_thresh or [min(self.prf.polar[:self.surface.lh_surf_data[0].shape[0]]),min(self.prf.polar[self.surface.lh_surf_data[0].shape[0]:])]
 
             # print(self.polar_thresh)
-            lh_polar = self.prf.polar[:self.surface.lh_surf_data[0].shape[0]] < self.polar_thresh[0]
-            rh_polar = self.prf.polar[self.surface.lh_surf_data[0].shape[0]:] > self.polar_thresh[1]
+            lh_polar = self.prf.polar[:self.surface.lh_surf_data[0].shape[0]] <= self.polar_thresh[0]
+            rh_polar = self.prf.polar[self.surface.lh_surf_data[0].shape[0]:] >= self.polar_thresh[1]
 
             # print(lh_polar.shape,rh_polar.shape)
             polar = np.concatenate((lh_polar,rh_polar))
-            self.prf_mask = ((self.prf.r2 > self.r2_thresh) * (self.prf.ecc < self.ecc_thresh) * (polar))
+            self.prf_mask = ((self.prf.r2 >= self.r2_thresh) * (self.prf.ecc <= self.ecc_thresh) * (polar) * (self.prf.r2 >= self.r2_thresh) * (self.prf.size >= self.size_thresh))
 
         if hasattr(self, 'surface'):
             self.thick_thresh   = thick_thresh or max(self.surface.thickness.data)
             self.depth_thresh   = depth_thresh or min(self.surface.depth.data)
 
-            self.struct_mask =  ((self.surface.thickness.data < self.thick_thresh) * (self.surface.depth.data > self.depth_thresh))
+            self.struct_mask =  ((self.surface.thickness.data <= self.thick_thresh) * (self.surface.depth.data >= self.depth_thresh))
 
         # apply to label mask
         if hasattr(self, 'prf_mask') and hasattr(self, 'struct_mask'):
