@@ -91,7 +91,16 @@ Args:
   -n <session>      session nr, used to create file structure according to BIDS
   -t <type>         used for fMRIprep, to run either the 'anat' workflow only, or also include func
                     data ('func)
-  -l <which mod>    look for a module number given a string to search for (e.g., master -l layer)
+  -l <which mod>    look for a module number given a string to search for (e.g., master -l layer); can
+                    also be used with spinoza_bestvertex to use a particular label-file (default = 
+                    V1_exvivo.thresh).
+                    If label file is being specified, the following applies:
+                      - File must live in SUBJECTS_DIR/<subject>/label
+                      - File must be preceded by '?h.', representing a file for both hemispheres 
+                        separately
+                      - Can be either a FreeSurfer-defined label file or gitfi-files (e.g., 'handknob
+                        _fsnative.gii' means there's a 'lh.handknob_fsnative.gii' and 'rh.handknob_
+                        fsnative.gii' file)
   -q <info mod>     query the usage-information of a given module number: e.g., master -m 00 -q
                     brings up the help-text from module 00 (spinoza_lineplanning)
   -v <vertices>     manually insert vertices to use as "best_vertex" (module 18). Should be format-
@@ -1269,9 +1278,15 @@ if [[ $? -eq 0 ]]; then
     KWARGS="-f"
   else
     KWARGS=${KWARGS}
-  fi      
+  fi
 
-  spinoza_bestvertex ${SUBJECT} ${SESSION} ${VERT} ${KWARGS} ${OW} ${DIR_DATA_HOME} ${DIR_DATA_DERIV} "V1_exvivo.thresh"
+  if [[ ! -z ${WHICH_MOD} ]]; then
+    LABEL_FILE=${WHICH_MOD}
+  else
+    LABEL_FILE="V1_exvivo.thresh"
+  fi
+
+  spinoza_bestvertex ${SUBJECT} ${SESSION} ${VERT} ${KWARGS} ${OW} ${DIR_DATA_HOME} ${DIR_DATA_DERIV} ${LABEL_FILE}
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_bestvertex exited with non-zero status"
