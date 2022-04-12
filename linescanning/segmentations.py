@@ -81,20 +81,20 @@ class Segmentations:
     def __init__(self, 
                  subject, 
                  run=None,
-                 derivatives=None, 
+                 project_home=None, 
                  trafo_file=None, 
                  reference_slice=None, 
                  reference_session=1, 
                  target_session=2, 
                  foldover="FH", 
                  pickle_file=None,
-                 voxel_cutoff=0,
+                 voxel_cutoff=300,
                  verbose=False,
                  **kwargs):
 
         self.subject            = subject
         self.run                = run
-        self.project_home       = derivatives
+        self.project_home       = project_home
         self.trafo_file         = trafo_file
         self.reference_slice    = reference_slice
         self.reference_session  = reference_session
