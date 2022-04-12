@@ -1,4 +1,5 @@
 from multiprocessing.sharedctypes import Value
+from matplotlib import markers
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
@@ -45,7 +46,9 @@ class LazyPRF():
                  cross_color="white", 
                  alpha=None,
                  shrink_factor=1, 
-                 xkcd=False):
+                 xkcd=False,
+                 font_size=None,
+                 title=None):
         
         self.prf            = prf
         self.vf_extent      = vf_extent
@@ -56,6 +59,8 @@ class LazyPRF():
         self.alpha          = alpha
         self.xkcd           = xkcd
         self.shrink_factor  = shrink_factor
+        self.title          = title
+        self.font_size      = font_size
 
         if self.xkcd:
             with plt.xkcd():
@@ -86,6 +91,9 @@ class LazyPRF():
             radius = self.vf_extent[-1]*self.shrink_factor
         else:
             radius = self.vf_extent[-1]
+
+        if self.title != None:
+            self.ax.set_title(self.title, fontsize=self.font_size, fontname="Arial")
             
         self.patch = patches.Circle((0, 0),
                                     radius=radius,
@@ -210,6 +218,7 @@ class LazyPlot():
                  sns_trim=False,
                  sns_rm_bottom=False,
                  set_xlim_zero=True,
+                 markers=None,
                  **kwargs):
 
         self.array              = ts
@@ -236,6 +245,7 @@ class LazyPlot():
         self.sns_trim           = sns_trim
         self.sns_bottom         = sns_rm_bottom
         self.set_xlim_zero      = set_xlim_zero
+        self.markers            = markers
         self.__dict__.update(kwargs)
 
         if self.xkcd:
@@ -267,6 +277,12 @@ class LazyPlot():
             
             if isinstance(self.color, str):
                 self.color = [self.color]
+
+            if not isinstance(self.markers, list):
+                if self.markers == None:
+                    self.markers = [None for ii in range(len(self.array))]
+                else:
+                    self.markers = [self.markers]
 
             # decide on color scheme
             if not isinstance(self.color, list):
@@ -307,7 +323,7 @@ class LazyPlot():
                     lbl = None
 
                 # plot
-                axs.plot(x, el, color=self.color_list[idx], label=lbl, lw=use_width)
+                axs.plot(x, el, color=self.color_list[idx], label=lbl, lw=use_width, marker=self.markers[idx])
 
                 # check if our x-axis is all integers so we set the MajorTicks to integers
                 # https://www.scivision.dev/matplotlib-force-integer-labeling-of-axis/
@@ -379,15 +395,14 @@ class LazyPlot():
 
             if self.add_hline == "default":
                 self.add_hline = {'pos': 0, 'color': 'k', 'ls': 'dashed', 'lw': 0.5}
-            elif self.add_hline == "mean":
+            elif self.add_hline == "mean" or self.add_hline == "average":
                 if isinstance(self.array, list):
-                    raise ValueError("This option can't be used with multiple inputs..")
+                    if len(self.array) > 1:
+                        raise ValueError("This option can't be used with multiple inputs..")
                     
-                self.add_hline = {'pos': self.array.mean(), 'color': 'k', 'ls': 'dashed', 'lw': 0.5}
+                self.add_hline = {'pos': np.array(self.array).mean(), 'color': 'k', 'ls': 'dashed', 'lw': 0.5}
 
             if isinstance(self.add_hline['pos'], list) or isinstance(self.add_hline['pos'], np.ndarray):
-                
-
                 for line in self.add_hline['pos']:
                     axs.axhline(line,
                                 color=self.add_hline['color'], 
