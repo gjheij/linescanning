@@ -41,7 +41,7 @@ USAGE
     exit 1
 }
 
-if [[ $# -le 1 ]] ; then
+if [[ $# -le 0 ]] ; then
   Usage >&2
   exit 1
 fi
