@@ -2,14 +2,10 @@
 
 import os
 import numpy as np
-import cortex
-import random
 import sys, getopt
-import pandas as pd
-from datetime import datetime
-import warnings
 import ast
 from linescanning import optimal
+import warnings
 warnings.filterwarnings('ignore')
 opj = os.path.join
 
@@ -84,9 +80,9 @@ Notes:
     task        = f"{os.environ['TASK_SES1']}_model-gauss_stage-iter"
     out         = None
     roi         = "V1_exvivo.thresh"
-    use_prf     = 0
+    use_prf     = False
     verts       = None
-    open_fv     = 1
+    open_fv     = True
     deriv       = None
     fs_dir      = None
     cx_dir      = None
@@ -118,13 +114,14 @@ Notes:
         elif opt in ("--prf"):
             prf_dir = arg
         elif opt in ("-u", "--use-prf"):
-            use_prf = 1
+            use_prf = True
         elif opt in ("-t", "--task"):
             task = arg
         elif opt in ("-f", "--no-freeview"):
-            open_fv = 0
+            open_fv = False
         elif opt in ("--vert"):
             verts = arg
+
     if len(argv) < 1:
         print("\nNEED AT LEAST A SUBJECT ID")
         print(main.__doc__)
@@ -141,51 +138,27 @@ Notes:
     # set output file
     if out == None:
         out = opj(os.environ['CTX'], subject, 'line_pycortex.csv')
-
-    # use pRFs or not when selecting vertex
-    if use_prf == 1:
-        use_prf = True
-    else:
-        use_prf = False
-
-    # open FreeView or not?
-    if open_fv == 1:
-        open_fv = True
-    else:
-        open_fv = False
         
     # when including pRF-parameters, use individual directories as pRF-directory has an additional 'ses-' directory that's unaccounted for when looking for defaults
-    if use_prf:
-        if not fs_dir:
-            fs_dir = os.environ['SUBJECTS_DIR']
+    if not fs_dir:
+        fs_dir = os.environ.get('SUBJECTS_DIR')
 
-        if not cx_dir:
-            raise ValueError("Pycortex directory not specified. Use '--cx <path to pycortex directory>'")
+    if not cx_dir:
+        raise ValueError("Pycortex directory not specified. Use '--cx <path to pycortex directory>'")
 
-        if not prf_dir:
-            raise ValueError("pRF-directory not specified. Use '--prf <path to pycortex directory>'")
+    if not prf_dir:
+        raise ValueError("pRF-directory not specified. Use '--prf <path to pycortex directory>'")
 
-        optimal.target_vertex(subject,
-                              fs_dir=fs_dir,
-                              cx_dir=cx_dir,
-                              prf_dir=prf_dir,
-                              task=task, 
-                              vert=verts,
-                              use_prf=use_prf,
-                              out=out,
-                              roi=roi,
-                              webshow=open_fv)
+    optimal.target_vertex(subject,
+                          fs_dir=fs_dir,
+                          cx_dir=cx_dir,
+                          prf_dir=prf_dir,
+                          task=task, 
+                          vert=verts,
+                          use_prf=use_prf,
+                          out=out,
+                          roi=roi,
+                          webshow=open_fv)
     
-    else:
-        # using 'deriv=deriv' should work fine if 'use_prf=False'
-        optimal.target_vertex(subject,
-                              deriv=deriv,
-                              task=task,
-                              vert=verts,
-                              use_prf=use_prf,
-                              out=out,
-                              roi=roi,
-                              webshow=open_fv)
-
 if __name__ == "__main__":
     main(sys.argv[1:])
