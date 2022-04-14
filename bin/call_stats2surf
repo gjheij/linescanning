@@ -115,22 +115,10 @@ if [[ ! -f ${warp} ]]; then
 fi
 
 if [[ ! -z ${search} ]]; then
-
-  # ARRAY=()
-  # for i in ${search[@]}; do
-  #   INITIAL=$(echo "-and -name \"*${i}*\"")
-  #   ARRAY+=("${INITIAL}")
-  # done
-  #
-  # echo "${INITIAL[@]}"
-
   zstat=`find "${featdir}" -maxdepth 1 -type f \( -name "*.nii.gz" -and -name "*${search}*" \) 2>/dev/null`
-  # echo "find \"${featdir}\" -maxdepth 1 -type f \( -name \"*.nii.gz\" ${ARRAY[@]} \)"
-
 else
-
   zstat=`find "${featdir}" -maxdepth 1 -type f \( -name "*rendered_thresh*" -and -name "*.nii.gz" \) 2>/dev/null`
-
+  search="zstat"
 fi
 
 for i in ${zstat[@]}; do
@@ -162,34 +150,7 @@ for i in ${zstat[@]}; do
     exit 1
   fi
 
-  for h in "rh" "lh"; do
-
-    if [[ ! -f ${featdir}/${subj_ID}.${h}.zstat${nr}${q}.fsnative.mgh ]]; then
-      echo "  creating ${h}_zstat${nr}_fsnative.mgh"
-      mri_vol2surf --src ${new_warp} --out ${featdir}/${subj_ID}.${h}.zstat${nr}${q}_fsnative.mgh --regheader ${subj_ID} --hemi ${h}
-    fi
-
-    if [[ -f ${featdir}/${h}_zstat${nr}_fsnative.mgh ]]; then
-
-      if [[ -d ${SUBJECTS_DIR}/fsaverage ]]; then
-        if [[ ! -f ${featdir}/${subj_ID}.${h}.zstat${nr}${q}_fsaverage.mgh ]]; then
-          echo "  creating ${h}_zstat${nr}_fsaverage.mgh"
-          mri_surf2surf \
-            --srcsubject ${subj_ID} \
-            --trgsubject fsaverage \
-            --hemi ${h} \
-            --sval ${featdir}/${subj_ID}.${h}.zstat${nr}${q}_fsnative.mgh \
-            --tval ${featdir}/${subj_ID}.${h}.zstat${nr}${q}_fsaverage.mgh
-        fi
-      fi
-
-    fi
-
-    if [[ $? -ne 0 ]]; then
-      echo "  mri_vol2surf exited with nonzero status"
-      exit 1
-    fi
-
-  done
+  # project to fsaverage through fsnative of subj_ID
+  call_vol2fsaverage ${subj_ID} ${new_warp} "${search}${nr}${q}"
 
 done
