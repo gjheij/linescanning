@@ -98,6 +98,8 @@ if [[ -z ${fsdir} ]]; then
   if [[ -z ${SUBJECTS_DIR} ]]; then
     echo "  SUBJECTS_DIR variable not set and no new path specified.."
     exit 1
+  else
+    fsdir=${SUBJECTS_DIR}
   fi
 else
   export SUBJECTS_DIR=${fsdir}
