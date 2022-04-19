@@ -1080,6 +1080,8 @@ if [[ $? -eq 0 ]]; then
         exit 1
       fi
     fi
+  else
+    confFile=""
   fi
 
   if [[ -d ${DIR_DATA_DERIV}/masked_${space,,} ]]; then
