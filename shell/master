@@ -90,7 +90,7 @@ Args:
   -o <overwrite>    used for multiple modules to overwrite (i.e., delete) files
   -n <session>      session nr, used to create file structure according to BIDS
   -t <type>         used for fMRIprep, to run either the 'anat' workflow only, or also include func
-                    data ('func)
+                    data ('func') or a direct task-identifier such as '${TASK_SES1}'
   -l <which mod>    look for a module number given a string to search for (e.g., master -l layer); can
                     also be used with spinoza_bestvertex to use a particular label-file (default = 
                     V1_exvivo.thresh).
@@ -1059,13 +1059,7 @@ if [[ $? -eq 0 ]]; then
   if [[ -z ${TYPE} ]]; then
     TYPE="anat"
   else
-    if [[ ${TYPE,,} == "func" ]] || [[ ${TYPE,,} == "anat" ]]; then
-      TYPE=${TYPE}
-    else
-      echo
-      echo "ERROR: You specified \"${TYPE}\", should be either \"anat\" or \"func\""
-      exit 1
-    fi
+    TYPE=${TYPE}
   fi
 
   if [[ ! -z ${KWARGS} ]]; then

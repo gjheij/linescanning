@@ -236,7 +236,8 @@ for dir in ${search}; do
       -r ${INPUT} \
       -d ${OUTPUT} \
       -w ${workdir} \
-      -x ${confFile}
+      -x ${confFile} \
+      -t ${MODE}
 
     if [[ $? != 0 ]]; then
       echo

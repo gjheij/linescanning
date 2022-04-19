@@ -40,7 +40,9 @@ Arguments:
                     packages/fmriprep
   -l <license>      path to freesurfer license. Make sure license is after the path specified with the
                     -b flag (binding point) if SGE is specified!
-  -x <config>       specify config file to guide fMRIprep                    
+  -x <config>       specify config file to guide fMRIprep
+  -t <task ID>      limit the preprocessing to a certain task; instead of this flag you can also 
+                    use a configuration file to make the criteria more explicit                
 
 Example:
   call_fmriprep -s 001 (simplest form, runs the entire pipeline)
@@ -54,7 +56,7 @@ USAGE
 
 #-----------------------------------------------------------------------------
 # Deal with arguments
-while getopts s:m:r:d:c:i:b:w:l:x: arg
+while getopts s:m:r:d:c:i:b:w:l:x:t: arg
 do
     case ${arg} in
       s)  subj_ID=${OPTARG}
@@ -76,7 +78,9 @@ do
       l)  LIC=${OPTARG}
             ;;
       x)  CONFIG=${OPTARG}
-            ;;            
+            ;;
+      t)  TASK_ID=${OPTARG}
+            ;;     
     esac
 done
 
@@ -172,6 +176,18 @@ else
 fi
 
 #-----------------------------------------------------------------------------
+# Check if we received task ID
+if [[ -z ${TASK_ID} ]]; then
+  if [[ ${TASK_ID} != "func" ]]; then
+    task_flag="--task-id ${TASK_ID}"
+  else
+    task_flag=""
+  fi
+else
+  task_flag=""
+fi
+
+#-----------------------------------------------------------------------------
 # Check if we need to output CIFTIs
 if [[ -z ${DO_SYN} ]]; then
   syn_flag="--use-syn-sdc"
@@ -241,6 +257,7 @@ if [ ${system} == "SGE" ]; then
       ${cifti_flag} \
       ${syn_flag} \
       ${config_flag} \
+      ${task_flag} \
       --nthreads ${nthreads} \
       --stop-on-first-crash \
       -w ${work}
