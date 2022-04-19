@@ -96,7 +96,7 @@ fi
 # we need SUBJECTS_DIR for mri_vol2surf
 if [[ -z ${fsdir} ]]; then
   if [[ -z ${SUBJECTS_DIR} ]]; then
-    echo "  SUBJECTS_DIR variable not set and no new path specified.."
+    echo "ERROR in `basename ${0}`: SUBJECTS_DIR variable not set and no new path specified.."
     exit 1
   else
     fsdir=${SUBJECTS_DIR}
@@ -107,52 +107,63 @@ fi
 
 # start by warping file from template to anat-space
 if [[ ! -d ${fsdir} ]] || [[ ! -d ${featdir} ]]; then
-  echo "  Could not find FreeSurfer and FEAT-directory.."
+  echo "ERROR in `basename ${0}`: Could not find FreeSurfer and FEAT-directory.."
   exit 1
 fi
 
 if [[ ! -f ${warp} ]]; then
-  echo "  Could not find warp file.."
+  echo "ERROR in `basename ${0}`: Please specify transformation file"
   exit 1
 fi
 
 if [[ ! -z ${search} ]]; then
-  zstat=`find "${featdir}" -maxdepth 1 -type f \( -name "*.nii.gz" -and -name "*${search}*" \) 2>/dev/null`
+  zstat=`find "${featdir}" -maxdepth 1 -type f \( -name "*.nii.gz" -and -name "*${search}*" -and -not -name "*space-*" \) 2>/dev/null`
 else
   zstat=`find "${featdir}" -maxdepth 1 -type f \( -name "*rendered_thresh*" -and -name "*.nii.gz" \) 2>/dev/null`
   search="zstat"
 fi
 
+# sort array
+IFS=$'\n' zstat=($(sort <<<"${zstat[*]}"))
+unset IFS
+
+# get the reference anatomy (in native space)
+if [[ ${featdir} == *".gfeat"* ]]; then
+  T1=`find $(dirname ${warp}) -type f \( -name "*preproc_T1w.nii.gz" -and -not -name "*space-*" \) 2>/dev/null`
+else
+  T1=`find "${featdir}" -type f \( -name "*highres*" -and -name "*.nii.gz" \) 2>/dev/null`
+fi
+
+if [[ ! -f ${T1} ]]; then
+  echo "ERROR in `basename ${0}`: Could not locate highres.nii.gz image.. Need this as reference"
+  exit 1
+fi
+
 for i in ${zstat[@]}; do
 
-  char=`awk -F\"zstat\" '{print length($1)+1}' <<< "$(basename $i)"`
-  nr=$(basename ${i} | cut -c "$(( ${char} + 5))")
-  new_warp=${featdir}/${subj_ID}_space-T1w_desc-zstat${nr}.nii.gz
-
-  T1=`find "${featdir}" -type f \( -name "*highres*" -and -name "*.nii.gz" \) 2>/dev/null`
-  if [[ ! -f ${T1} ]]; then
-    echo "  Could not locate highres.nii.gz image.. Need this as reference"
-    exit 1
-  fi
+  # extract number from filename
+  STRING=$(basename ${i})
+  nr=`echo "${STRING//[!0-9]/}"`
+  new_warp=${featdir}/${subj_ID}_space-T1w_desc-${search}${nr}.nii.gz
 
   if [[ ! -f ${new_warp} ]]; then
-    echo "  warping `basename ${i}` image to T1w-space"
-    call_antsapplytransforms ${T1} ${i} ${new_warp} 0 ${warp}x
-  fi
-
-  if [[ ! -z ${thresh} ]]; then
-     if [[ `fslstats ${i} -R | awk '{print $1}'` != "0.000000" ]]; then
-       echo "  thresholding `basename ${new_warp}` with z=${thresh}"
-       fslmaths ${new_warp} -thr ${thresh} ${new_warp}
-     fi
+    echo "Warping `basename ${i}` image to T1w-space"
+    call_antsapplytransforms ${T1} ${i} ${new_warp} ${warp}
   fi
 
   if [[ $? -ne 0 ]]; then
-    echo "  call_antsapplytransforms exited with nonzero status"
+    echo "ERROR in `basename ${0}`: call_antsapplytransforms exited with nonzero status"
     exit 1
   fi
 
+  if [[ ! -z ${thresh} ]]; then
+    if [[ `fslstats ${i} -R | awk '{print $1}'` != "0.000000" ]]; then
+      echo "  thresholding `basename ${new_warp}` with z=${thresh}"
+      fslmaths ${new_warp} -thr ${thresh} ${new_warp}
+    fi
+  fi
+
   # project to fsaverage through fsnative of subj_ID
-  call_vol2fsaverage ${subj_ID} ${new_warp} "${search}${nr}${q}"
+  call_vol2fsaverage -p "group" ${subj_ID} ${new_warp} "${search}${nr}${q}"
 
 done
