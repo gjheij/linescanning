@@ -177,12 +177,8 @@ fi
 
 #-----------------------------------------------------------------------------
 # Check if we received task ID
-if [[ -z ${TASK_ID} ]]; then
-  if [[ ${TASK_ID} != "func" ]]; then
-    task_flag="--task-id ${TASK_ID}"
-  else
-    task_flag=""
-  fi
+if [[ ! -z ${TASK_ID} ]]; then
+  task_flag="--task-id ${TASK_ID}"
 else
   task_flag=""
 fi
@@ -227,8 +223,6 @@ if [ ${system} == "SGE" ]; then
 
   if [[ ${mode} == "anat" ]]; then
 
-    # echo "derivatives = ${derivatives}"
-    # echo "binding     = ${binding}"
     unset PYTHONPATH; singularity run --cleanenv -B ${binding}:${binding} ${fprep_container} \
       ${project} ${derivatives} \
       participant \

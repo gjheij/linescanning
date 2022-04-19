@@ -22,6 +22,7 @@ exists, we will copy it to the directory where the T1-weighted is located (<inpu
 that it is included by fMRIprep.
 
 Arguments:
+  <-l>            don't submit to SGE, run locally
   <-s subject>    subject ID (optional)
   <-n session>    session ID (optional)
   <-c config>     configuration file as specified in /misc/fmriprep_config?.json
@@ -67,7 +68,7 @@ if [[ $# -lt 2 ]] ; then
 fi
 
 # Check for subject & session flags
-while getopts rs:n:f:m:c: argument
+while getopts lrs:n:f:m:c: argument
 do
     case ${argument} in
       s)  sub=${OPTARG}
@@ -224,11 +225,22 @@ for dir in ${search}; do
       confFile=""
     else
       echo "Using config file: ${conf}"
-      confFile=${conf}
+      confFile="-x ${conf}"
+    fi
+
+    if [[ ! -z ${MODE} ]]; then # && [[ ${MODE} != "anat" ]] && [[ ${MODE} != "func" ]]; then
+      task_id="-t ${MODE}"
+    else
+      task_id=""
     fi
     
-    qsub -q ${SGE_QUEUE_LONG} -N fprep_$(basename ${dir} | cut -d'-' -f2) -o ${workdir} \
-      ${DIR_SCRIPTS}/bin/call_fmriprep \
+    if [[ "${@}" == *"-l"* ]]; then
+      job="call_fmriprep"
+    else
+      job="qsub -q ${SGE_QUEUE_LONG} -N fprep_$(basename ${dir} | cut -d'-' -f2) -o ${workdir} ${DIR_SCRIPTS}/bin/call_fmriprep"
+    fi 
+    
+    ${job} \
       -s $(basename ${dir} | cut -d'-' -f2) \
       -m ${MODE} \
       -c "SGE" \
@@ -236,8 +248,8 @@ for dir in ${search}; do
       -r ${INPUT} \
       -d ${OUTPUT} \
       -w ${workdir} \
-      -x ${confFile} \
-      -t ${MODE}
+      ${confFile} \
+      ${task_id}
 
     if [[ $? != 0 ]]; then
       echo

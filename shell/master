@@ -92,15 +92,17 @@ Args:
   -t <type>         used for fMRIprep, to run either the 'anat' workflow only, or also include func
                     data ('func') or a direct task-identifier such as '${TASK_SES1}'
   -l <which mod>    look for a module number given a string to search for (e.g., master -l layer); can
-                    also be used with spinoza_bestvertex to use a particular label-file (default = 
-                    V1_exvivo.thresh).
-                    If label file is being specified, the following applies:
-                      - File must live in SUBJECTS_DIR/<subject>/label
-                      - File must be preceded by '?h.', representing a file for both hemispheres 
-                        separately
-                      - Can be either a FreeSurfer-defined label file or gitfi-files (e.g., 'handknob
-                        _fsnative.gii' means there's a 'lh.handknob_fsnative.gii' and 'rh.handknob_
-                        fsnative.gii' file)
+                    also be used with:
+                    - spinoza_bestvertex to use a particular label-file (default = V1_exvivo.thresh).
+                      If label file is being specified, the following applies:
+                        - File must live in SUBJECTS_DIR/<subject>/label
+                        - File must be preceded by '?h.', representing a file for both hemispheres 
+                          separately
+                        - Can be either a FreeSurfer-defined label file or gitfi-files (e.g., 'handknob
+                          _fsnative.gii' means there's a 'lh.handknob_fsnative.gii' and 'rh.handknob_
+                          fsnative.gii' file)
+                    - spinoza_fmriprep; run locally instead of submitting the job to SGE. Use it with
+                      '-l local' or something; as long as you provide some argument it'll be fine.
   -q <info mod>     query the usage-information of a given module number: e.g., master -m 00 -q
                     brings up the help-text from module 00 (spinoza_lineplanning)
   -v <vertices>     manually insert vertices to use as "best_vertex" (module 18). Should be format-
@@ -1090,7 +1092,13 @@ if [[ $? -eq 0 ]]; then
     ANAT_DIR=${DIR_DATA_HOME}
   fi
 
-  spinoza_fmriprep ${SUBJECT} ${SESSION} ${confFile} ${REMOVE_WF} -f ${DIR_DATA_HOME} -m ${TYPE} ${ANAT_DIR} ${DIR_DATA_DERIV} ${DIR_DATA_HOME}
+  if [[ ! -z ${WHICH_MOD} ]]; then
+    run_local="-l"
+  else
+    run_local=""
+  fi
+
+  spinoza_fmriprep ${run_local} ${SUBJECT} ${SESSION} ${confFile} ${REMOVE_WF} -f ${DIR_DATA_HOME} -m ${TYPE} ${ANAT_DIR} ${DIR_DATA_DERIV} ${DIR_DATA_HOME}
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_fmriprep exited with non-zero status"
