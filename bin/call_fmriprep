@@ -164,6 +164,14 @@ else
 fi
 
 #-----------------------------------------------------------------------------
+# Check if we received configuration file
+if [[ -z ${CONFIG} ]]; then
+  config_flag=""
+else
+  config_flag="--bids-filter-file ${CONFIG}"
+fi
+
+#-----------------------------------------------------------------------------
 # Check if we need to output CIFTIs
 if [[ -z ${DO_SYN} ]]; then
   syn_flag="--use-syn-sdc"
@@ -232,7 +240,7 @@ if [ ${system} == "SGE" ]; then
       --output-spaces ${FPREP_OUT_SPACES} \
       ${cifti_flag} \
       ${syn_flag} \
-      --bids-filter-file ${CONFIG} \
+      ${config_flag} \
       --nthreads ${nthreads} \
       --stop-on-first-crash \
       -w ${work}
