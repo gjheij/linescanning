@@ -228,8 +228,12 @@ for dir in ${search}; do
       confFile="-x ${conf}"
     fi
 
-    if [[ ! -z ${MODE} ]]; then # && [[ ${MODE} != "anat" ]] && [[ ${MODE} != "func" ]]; then
-      task_id="-t ${MODE}"
+    if [[ ! -z ${MODE} ]]; then
+      if [[ ${MODE} != "anat" ]] && [[ ${MODE} != "func" ]]; then
+        task_id="-t ${MODE}"
+      else
+        task_id=""
+      fi
     else
       task_id=""
     fi
