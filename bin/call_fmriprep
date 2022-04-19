@@ -156,14 +156,6 @@ else
 fi
 
 #-----------------------------------------------------------------------------
-# Set default config file if none specified
-if [[ -z ${CONFIG} ]]; then
-  cfile=${DIR_SCRIPTS}/misc/fmriprep_config.json
-else
-  cfile=${CONFIG}
-fi
-
-#-----------------------------------------------------------------------------
 # Check if we need to output CIFTIs
 if [[ -z ${CIFTI} ]]; then
   cifti_flag=""
@@ -224,7 +216,7 @@ if [ ${system} == "SGE" ]; then
       ${cifti_flag} \
       --anat-only \
       --nthreads ${nthreads} \
-      --bids-filter-file ${cfile} \
+      --bids-filter-file ${CONFIG} \
       --stop-on-first-crash \
       -w ${work}
 
@@ -240,7 +232,7 @@ if [ ${system} == "SGE" ]; then
       --output-spaces ${FPREP_OUT_SPACES} \
       ${cifti_flag} \
       ${syn_flag} \
-      --bids-filter-file ${cfile} \
+      --bids-filter-file ${CONFIG} \
       --nthreads ${nthreads} \
       --stop-on-first-crash \
       -w ${work}
@@ -251,7 +243,7 @@ elif [[ ${system} == "local" ]]; then
 
   if [[ ${mode} == "anat" ]]; then
 
-    echo "  Running fMRIprep with --anat-only option locally"
+    echo "Running fMRIprep with --anat-only option locally"
     export PYTHONPATH=${FREESURFER_HOME}/python
     fmriprep ${project} ${derivatives}/derivatives \
       participant \
@@ -268,7 +260,7 @@ elif [[ ${system} == "local" ]]; then
 
   else
 
-    echo "  Running full fMRIprep pipeline locally"
+    echo "Running full fMRIprep pipeline locally"
     export PYTHONPATH=${FREESURFER_HOME}/python
     fmriprep ${project} ${derivatives}/derivatives \
       participant \
@@ -286,6 +278,6 @@ elif [[ ${system} == "local" ]]; then
 
 else
 
-  echo "Unknown option ${system}. Please specify \"anat\" or leave empty for anat+func"
+  echo "ERROR in `basename ${0}`: Unknown option ${system}. Please specify \"anat\" or leave empty for anat+func"
 
 fi

@@ -191,6 +191,8 @@ Notes:
   - To know which mode we're running, type from your programs directory "call_whichmode"
 
 Edits:
+  - 19/04/2022: remove default use of config file for fMRIprep; now specify it explicitly with the
+                '-u' flag.
   - 20/12/2021: added '-u' flag for custom configurations file for fMRIprep
   - 29/10/2021: added '-x' flag for various options. Mainly to specify the session number for
                 pRF-sessions, as you'd have to specify '-n prf' as session, but you'll probably
@@ -1046,14 +1048,6 @@ if [[ $? -eq 0 ]]; then
     SESSION="-n 1"
   else
     SESSION="-n ${SES}"
-  fi
-
-  # first set default configuration files; overwrite later if we don't want it
-  if [[ $((${SES})) -gt 1 ]]; then
-    # dealing with a non-standard acquisition
-    confFile="-c ${DIR_SCRIPTS}/misc/fmriprep_config2.json"
-  else
-    confFile="-c ${DIR_SCRIPTS}/misc/fmriprep_config.json"
   fi
 
   if [[ -z ${SUB} ]]; then
