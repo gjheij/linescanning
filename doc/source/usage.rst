@@ -110,7 +110,7 @@ You will have to set a few things yourself:
     # fMRIPREP
     $ export MRIQC_SIMG=<path to MRIQC container>
     $ export FPREP_SIMG=<path to fMRIprep container> 
-    $ export FPREP_OUT_SPACES="fsnative fsaverage MNI152NLin6Asym:res-1"
+    $ export FPREP_OUT_SPACES="fsnative fsaverage MNI152NLin6Asym:res-1 T1w func"
     $ export FPREP_BINDING=<binding path>
     $ export CIFTI=170k
     $ export DO_SYN=1  
@@ -286,47 +286,65 @@ Below is the ``help``-information from the ``master`` script:
     Have fun!
 
     Args:
-    -m <module>       always required, specifies which module to run. Multiple modules should be com-
-                        ma separated
+    -m <module>       always required, specifies which module to run. Multiple modules should be comma 
+                      separated
     -h <hemisphere>   used for lineplanning, denotes which hemisphere to process
     -o <overwrite>    used for multiple modules to overwrite (i.e., delete) files
     -n <session>      session nr, used to create file structure according to BIDS
     -t <type>         used for fMRIprep, to run either the 'anat' workflow only, or also include func
-                        data ('func)
-    -l <which mod>    look for a module number given a string to search for (e.g., master -l layer)
+                      data ('func') or a direct task-identifier such as '2R'
+    -l <which mod>    look for a module number given a string to search for (e.g., master -l layer); can
+                      also be used with:
+                      - spinoza_bestvertex to use a particular label-file (default = V1_exvivo.thresh).
+                        If label file is being specified, the following applies:
+                          - File must live in SUBJECTS_DIR/<subject>/label
+                          - File must be preceded by '?h.', representing a file for both hemispheres 
+                          separately
+                          - Can be either a FreeSurfer-defined label file or gitfi-files (e.g., 'handknob
+                          _fsnative.gii' means there's a 'lh.handknob_fsnative.gii' and 'rh.handknob_
+                          fsnative.gii' file)
+                      - spinoza_fmriprep; run locally instead of submitting the job to SGE. Use it with
+                      '-l local' or something; as long as you provide some argument it'll be fine.
     -q <info mod>     query the usage-information of a given module number: e.g., master -m 00 -q
-                        brings up the help-text from module 00 (spinoza_lineplanning)
+                      brings up the help-text from module 00 (spinoza_lineplanning)
     -v <vertices>     manually insert vertices to use as "best_vertex" (module 18). Should be format-
-                        ted as -v "lh,rh" (please use two vertices; one for left hemi and one for right
-                        hemi > makes life easier)
+                      ted as -v "lh,rh" (please use two vertices; one for left hemi and one for right
+                      hemi > makes life easier)
     -p <prf_model>    switch to specify what type of model to use for the pRF-modeling. For now, the
-                        accepted options are 'gauss' for Gaussian model, and 'norm' for Normalization
-                        model. Should/can be use for module 17, pRF-fitting
+                      accepted options are 'gauss' for Gaussian model, and 'norm' for Normalization
+                      model. Should/can be use for module 17, pRF-fitting
     -c <cat_run>      Do full processing with CAT12, assuming module 8 was skipped. This does itera-
-                        tive SANLM-filtering, bias correction, and intensity normalization. Can some-
-                        times be overkill, so generally we use CAT12 for the additional segmentations
-                        and brain extraction
+                      tive SANLM-filtering, bias correction, and intensity normalization. Can some-
+                      times be overkill, so generally we use CAT12 for the additional segmentations
+                      and brain extraction
     -w <wagstyl>      Use Wagstyl's equivolumetric layering for layerification. Use Nighres otherwise
     -x <**kwargs>     Can be used for a variety of options by setting it to ANYTHING other than empty. 
-                        Usages include:
+                      Usages include:
+                        - spinoza_linereconstruction; specify the amount of echoes of the acquisition
                         - spinoza_scanner2bids; denote the session number when you have a regular 
-                            pRF-session, as the "-n" flag is used to specify this. 
+                          pRF-session, as the "-n" flag is used to specify this. 
                         - spinoza_qmrimaps; turn on Universal Pulses
+                        - spinoza_biassanlm; don't perform bias correction after denoising
                         - spinoza_fmriprep; remove surface_recon_wf folder. Handy for re-running with
-                            new reconstruction
-                        - spinoza_bestvertex; disable FreeView during vertex selection                        
+                          new reconstruction
+                        - spinoza_denoising; submit job to SGE, use master -m 16 -x sge
+                        - spinoza_fitprfs; run grid stage only '-x grid' OR run locally '-x local'; 
+                          not both!
+                        - spinoza_bestvertex; disable FreeView during vertex selection
+                        - spinoza_extractregions: skip nighres, only do combination of segmentations.
+                          Works with '-o' flag.                
                         - spinoza_profiling; specify the type of file to use
-    -u <config>       specify configuration file for fMRIprep (see linescanning/bin/data for examp-
-                        les). If not specified, no configuration will be used. If ses-1 is specified,
-                        linescanning/bin/data/fmriprep_config.json is used; above that, fmriprep_con-
-                        fig2.json is used. Enter '-u none' if you have multiple sessions and you want
-                        to process everything without filtering
+    -u <config>       specify configuration file for fMRIprep (see linescanning/misc for examp-
+                      les). If not specified, no configuration will be used. If ses-1 is specified,
+                      linescanning/misc/fmriprep_config.json is used; above that, fmriprep_con-
+                      fig2.json is used. Enter '-u none' if you have multiple sessions and you want
+                      to process everything without filtering
 
     Usage:
     master -m <MODULES TO RUN>
-    master -m 01,02,03,04 (comma-separated for running multiple modules in succession)
-    master -m 00 -q   (print help-text of module 00)
-    master -l mgdm    (fetch module number mgdm-module)
+    master -m 01,02,03,04     (comma-separated for running multiple modules in succession)
+    master -m 00 -q           (print help-text of module 00)
+    master -l mgdm            (fetch module number mgdm-module)
     master -m 02 -n prf -x 2
 
     Additional options:
@@ -336,7 +354,7 @@ Below is the ``help``-information from the ``master`` script:
     - Specify a particular session to use:              master -m <module> -n 1
     - Specify processing type fMRIprep (anat|func)      master -m <module> -t anat
 
-    Available modules:                                     Script                         Time (pp)
+    Available modules:                                   Script                           Time (pp)
     - 00: Register anat ses-1 to ms ses-1 for planning   (spinoza_lineplanning)
     - 01: Make new session for subject                   (spinoza_newBIDSsession)
     - 02: Convert raw files to nifti                     (spinoza_scanner2bids)
@@ -345,7 +363,7 @@ Below is the ``help``-information from the ``master`` script:
     - 05: Register T1 from memp2rage to T1 from mp2rage  (spinoza_registration)           00:03:00
     - 06: Register T1 from mp2rage to MNI152             (spinoza_registration)             -
     - 07: Averaging of (me)mp2rages and other qMRI-maps  (spinoza_averagesanatomies)      00:03:00
-    - 08: Perform bias field correction on 2nd inversion (spinoza_biascorrection)         00:07:00
+    - 08: Bias correction + SANLM denoising              (spinoza_biassanlm)              00:07:00
     - 09: Brain extract (CAT12 || ANTs || FSL)           (spinoza_brainextraction)        00:10:00
     - 10: Noise level estimation                         (spinoza_noiselevelestimation)   00:00:30
     - 11: Dura estimation and skull estimations          (spinoza_createduraskullmasks)   00:08:00
@@ -367,13 +385,13 @@ Below is the ``help``-information from the ``master`` script:
 
     Notes:
     - Module 5 (register T1 to MNI152) and 13 (brain extract T1 with ANTs) are relatively obsolete
-        These commands are therefore commented out.
+      These commands are therefore commented out.
     - Time = approximate run time per subject > Run time of total pipeline is about 1hr30 on SGE
     - There are two modes we can run this pipeline in, to be specified in the setup:
-        a session where we have both MP2RAGE and MP2RAGEME data, and a solo MP2RAGE mode. This can be
-        specified by setting the "DATA" variable in the setup script.
-        You can see if it was the MP2RAGEME-mode with the "space-average" flag, while the MP2RAGE-mode
-        is annotated by "space-mp2rage".
+      a session where we have both MP2RAGE and MP2RAGEME data, and a solo MP2RAGE mode. This can be
+      specified by setting the "DATA" variable in the setup script.
+      You can see if it was the MP2RAGEME-mode with the "space-average" flag, while the MP2RAGE-mode
+      is annotated by "space-mp2rage".
     - To know which mode we're running, type from your programs directory "call_whichmode"
  
 All of these modules loop, by default, through *all* the subjects present in ``$DIR_PROJECTS/$PROJECT`` (which is defined as ``DIR_DATA_HOME``. Also by default, it assumes that we only want to process ``ses-1``. To steer the pipeline towards particular directories, such as individual subjects, you can use additional flags when calling the ``master`` script. For instance:
@@ -423,14 +441,15 @@ Then, run the FreeSurfer_ reconstruction *outside* of fMRIprep_. This is because
 
     $ master -m 14
 
-Once you're satisfied with the surface reconstruction, you can proceed with fMRIprep_. First, we'll run the *anatomical workflow* only. This is to safe some time, because these steps we need to do iteratively; if you're already confident in the reconstruction, you can use ``-t func`` to include functional data in fMRIprep_ as well. 
+Once you're satisfied with the surface reconstruction, you can proceed with fMRIprep_. First, we'll run the *anatomical workflow* only. This is to safe some time, because these steps we need to do iteratively; if you're already confident in the reconstruction, you can use ``-t func`` to include functional data in fMRIprep_ as well. If you have multiple tasks in your session and you'd like to preprocess only a particular task, you can specify ``-t <task ID>`` instead of ``-t func``. Alternatively, you can use ``-u <config file>`` (see `DIR_SCRIPTS/misc/fmriprep_config.json`). I use this because most of my sessions will have line-scanning data that cannot be preprocessed by fMRIprep_. Therefore, I use `DIR_SCRIPTS/misc/fmriprep_config.json` to only include data from `ses-1`.
 
 .. code:: bash
 
     $ master -m 15 # spinoza_fmriprep
     $ master -m 15 -t func 
+    $ master -m 15 -t $TASK_SES1 # preprocess a specific task (maps to '--task-ID' from fMRIprep) 
 
-We then proceed by denoising the functional data using Pybest_. This takes the ``confound``-file generated by fMRIprep_ and denoised the functional data. By default I do this in ``fsnative``, so if you want a different space to be processed you'll need to adapt ``spinoza_denoising`` accordingly.
+We then proceed by denoising the functional data using Pybest_. This takes the ``confound``-file generated by fMRIprep_ and denoised the functional data. By default I do this in ``fsnative``, so if you want a different space to be processed you'll need to adapt ``spinoza_setup`` accordingly (`PYBEST_SPACE`). Pybest_ also requires the newest version of *nilearn*, so you need to run this in a python environment that has access to this. Alternatively, you can specify `PYBEST_ENV` in the setup file to run Pybest_ in.
 
 .. code:: bash
 

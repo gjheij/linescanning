@@ -6,7 +6,7 @@
 .. _Singularity: https://github.com/singularityware/singularity
 ..  _SPM: https://www.fil.ion.ucl.ac.uk/spm/software/spm12/
 .. _ITK-Snap: http://www.itksnap.org/pmwiki/pmwiki.php?n=Downloads.SNAP3
-.. _Nideconv: https://github.com/VU-Cog-Sci/nideconv
+.. _Nideconv: https://github.com/gjheij/nideconv
 .. _pRFpy: https://github.com/VU-Cog-Sci/prfpy
 .. _CAT12: http://www.neuro.uni-jena.de/cat/index.html#DOWNLOAD
 .. _Nighres: https://github.com/nighres/nighres
@@ -14,3 +14,4 @@
 .. _fMRIprep: https://fmriprep.org/en/stable/usage.html
 .. _Pybest: https://github.com/lukassnoek/pybest/tree/master/pybest
 .. _Pycortex: https://github.com/gallantlab/pycortex
+.. _Hedfpy: https://github.com/gjheij/hedfpy

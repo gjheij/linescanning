@@ -81,7 +81,7 @@ if [[ $1 == "setup" ]]; then
   fi
 
   # setup python packages
-  declare -a INSTALL_PACKAGES=("Pycortex" "pRFpy" "Nideconv" "Pymp2rage" "Pybest" "Nighres")
+  declare -a INSTALL_PACKAGES=("Pycortex" "pRFpy" "Nideconv" "Pymp2rage" "Pybest" "Hedfpy")
   echo
   echo "---------------------------------------------------------------------------------------------------"
   echo "Checking specific python packages"
@@ -92,68 +92,32 @@ if [[ $1 == "setup" ]]; then
     PACKAGE_LINK=`cat ${REPO_DIR}/doc/source/links.rst | grep ${package,,} | cut -d' ' -f3`
     # pycortex's package name == 'cortex'
     if [[ ${package,,} != "pycortex" ]]; then
-
-      # pybest = command-line function
-      if [[ ${package,,} == "pybest" ]]; then
-        pybest_exists=`check_function pybest`
-        if [[ $? -ne 0 ]]; then
-          echo "INSTALLING: pybest.."
-          if [ ! -d ${PATH_HOME}/${package,,} ]; then
-            git clone ${PACKAGE_LINK}
-          fi
-          cd ${PATH_HOME}/${package,,}
-          pip install -e .
-        else
-          echo "Found pybest installation"
+      # regular python package install
+      python -c "import ${package,,}" 2>/dev/null
+      if [[ $? -ne 0 ]]; then
+        echo "INSTALLING: ${package}.."        
+        if [ ! -d ${PATH_HOME}/${package,,} ]; then
+          git clone ${PACKAGE_LINK}
         fi
-      # nighres requires special installation
-      elif [[ ${package,,} == "nighres" ]]; then
-        python -c "import ${package,,}" 2>/dev/null
-        if [[ $? -ne 0 ]]; then
-          echo
-          echo "INSTALLING: Nighres.."
-          if [ ! -d ${PATH_HOME}/${package,,} ]; then
-            git clone ${PACKAGE_LINK}
-          fi
-          cd ${PATH_HOME}/${package,,}
-          ./build.sh
-          if [[ $? -ne 0 ]]; then
-            echo "ERROR Nighres built INCOMPLETE: I'm guessing you need to set the JCC_JDK variable and/or install JCC"
-            continue
-          fi
-          pip install -e .
-        else
-          echo "Found nighres installation"
-        fi
+        cd ${PATH_HOME}/${package,,}
+        pip install -e .
       else
-        # regular python package install
-        python -c "import ${package,,}" 2>/dev/null
-        if [[ $? -ne 0 ]]; then
-          echo "INSTALLING: ${package}.."        
-          if [ ! -d ${PATH_HOME}/${package,,} ]; then
-            git clone ${PACKAGE_LINK}
-          fi
-          cd ${PATH_HOME}/${package,,}
-          pip install -e .
-        else
-          echo "Found ${package} installation"
-        fi
+        echo "Found ${package} installation"
       fi
     else
       # pycortex check
       python -c "import cortex" 2>/dev/null
       if [[ $? -ne 0 ]]; then
         echo "INSTALLING: ${package}.."        
-          if [ ! -d ${PATH_HOME}/${package,,} ]; then
-            git clone ${PACKAGE_LINK}
-          fi
-          cd ${PATH_HOME}/${package,,}
-        pip install -e .
+        if [ ! -d ${PATH_HOME}/${package,,} ]; then
+          git clone ${PACKAGE_LINK}
+        fi
+        cd ${PATH_HOME}/${package,,}
+        python setup.py develop
       else
         echo "Found Pycortex installation"
       fi
     fi
-
   done
 
   python -c "import linescanning"
@@ -180,26 +144,16 @@ export PLACE=SGE
 export SGE_QUEUE_LONG="long.q@jupiter"
 export SGE_QUEUE_SHORT="short.q@jupiter"
 
-# set SGE paths
-# if [[ $1 == "setup" ]]; then
-#   for file in ${REPO_DIR}/bin/* ${REPO_DIR}/shell/*; do
-#     if [[ ! -f ${REPO_DIR}/shell/spinoza_setup ]]; then
-#       sed -i "s|LONG_QUEUE|${LONG_QUEUE}|g" ${file}
-#       sed -i "s|SHORT_QUEUE|${SHORT_QUEUE}|g" ${file}
-#     fi
-#   done
-# fi
-
 # MATLAB
 export MRRECON=/packages/matlab/toolbox/MRecon/3.0.541  
 export MATLAB_DIR=/packages/matlab/R2020b               
-export SPM_PATH=${PATH_HOME}/programs/packages/spm12    
+export SPM_PATH=${PATH_HOME}/spm12    
 export SKIP_LINES=30                                    
 
 # fMRIPREP
-export MRIQC_SIMG=${PATH_HOME}/programs/packages/mriqc/containers_bids-mriqc--0.15.1.simg
-export FPREP_SIMG=${PATH_HOME}/programs/packages/fmriprep/containers_bids-fmriprep--20.2.5.simg
-export FPREP_OUT_SPACES="fsnative fsaverage MNI152NLin6Asym:res-1"
+export MRIQC_SIMG=${PATH_HOME}/mriqc/containers_bids-mriqc--0.15.1.simg
+export FPREP_SIMG=${PATH_HOME}/fmriprep/containers_bids-fmriprep--20.2.7.simg
+export FPREP_OUT_SPACES="fsnative fsaverage MNI152NLin6Asym:res-1 T1w func"
 export FPREP_BINDING="/data1/projects" # binding directory for singularity image
 export CIFTI=170k # leave empty if you don't want cifti output
 export DO_SYN=1 # set to zero if you do not want additional syn-distortion correction
@@ -207,11 +161,11 @@ export DO_SYN=1 # set to zero if you do not want additional syn-distortion corre
 # PYBEST
 export PYBEST_SPACE="fsnative"
 export PYBEST_NORM="zscore"
-export PYBEST_ENV="fmriprep_denoising"
+export PYBEST_ENV="mpl"
 
 # PROJECT
 export DIR_PROJECTS=$(dirname $(dirname ${PATH_HOME}))/projects 
-export PROJECT=hemifield # ANAT_SEG-Raw #URIS-MDD #hemifield
+export PROJECT="hemifield" # ANAT_SEG-Raw #URIS-MDD #hemifield
 export TASK_SES1="2R"
 export TASK_SES2="LR"
 export PREFIX="sub-"
