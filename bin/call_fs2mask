@@ -36,7 +36,7 @@ Args:
     <output img>        : str
                         path to the output image
     
-    [OPTIOINAL]
+    [OPTIONAL]
     <resample img>      image to resample freesurfer segmentation to if you don't want the output 
                         in FS-space, but in native space - for instance
 
@@ -104,6 +104,7 @@ Example:
 
     print(f"Extracting {roi_values}")
     empty_img = np.zeros_like(freesurfer_seg.get_fdata())
+    
     # extract from freesurfer_seg
     if len(roi_values) == 1:
         empty_img[freesurfer_seg.get_fdata() == roi_values] = 1
