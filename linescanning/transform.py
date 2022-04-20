@@ -2,6 +2,7 @@ from linescanning import utils, optimal, pycortex
 import os
 import pathlib
 import nibabel as nb
+import nipype.interfaces.freesurfer as fs
 import numpy as np
 import subprocess
 import sys
@@ -906,3 +907,49 @@ def native_to_scanner(anat, coord, inv=False, addone=True):
         coord = np.append(coord, [1], axis=0)
 
     return coord
+
+def mri_surf2surf(src_file=None, src_subj=None, trg_subj=None, out_file=None, hemi=None, return_file=False):
+    """mri_surf2surf
+    
+    From https://nipype.readthedocs.io/en/latest/api/generated/nipype.interfaces.freesurfer.utils.html#surfacetransform: 
+    Wrapped executable: mri_surf2surf. Transform a surface file from one subject to another via a spherical registration. Both the source and target subject must reside in your Subjects Directory, and they must have been processed with recon-all, unless you are transforming to one of the icosahedron meshes.
+
+    Parameters
+    ----------
+    src_file: str, optional
+        Surface file with source values. Maps to a command-line argument: `--sval %s`, by default None
+    src_subj: str, optional
+        Subject id for source surface. Maps to a command-line argument: `--srcsubject %s`, by default None
+    trg_subj: str, optional
+        Subject id of target surface. Maps to a command-line argument: `--trgsubject %s`, by default None
+    out_file: str, optional
+         Surface file to write. Maps to a command-line argument: `--tval %s`, by default None
+    hemi: str, optional
+        Hemisphere to transform. Maps to a command-line argument: `--hemi %s`, by default None
+
+    Example
+    ----------
+    >>> from linescanning.transform import mri_surf2surf
+    >>> surf_file = mri_surf2surf(src_file="lh.V1_fsaverage", src_subj="fsaverage", trg_subj="sub-001", out_file="lh.V1_fsnative", hemi="lh")
+    """
+
+    lh_acceptable = ["lh", "left", "l"]
+    rh_acceptable = ["rh", "right", "r"]
+
+    if hemi.lower in lh_acceptable:
+        hemi = "lh"
+    elif hemi.lower in rh_acceptable:
+        hemi = "rh"
+    else:
+        raise ValueError(f"Specified hemisphere = '{hemi}', must be one of {lh_acceptable} or {rh_acceptable}")
+
+    sxfm = fs.SurfaceTransform()
+    sxfm.inputs.source_file     = src_file
+    sxfm.inputs.source_subject  = src_subj
+    sxfm.inputs.target_subject  = trg_subj
+    sxfm.inputs.out_file        = out_file
+    sxfm.inputs.hemi            = hemi
+    sxfm.run()
+
+    if return_file:
+        return out_file
