@@ -7,3 +7,4 @@ sklearn
 nbsphinx
 kneed
 statsmodels
+nipype
