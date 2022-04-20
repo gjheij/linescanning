@@ -147,7 +147,7 @@ if [[ $# -lt 2 ]] ; then
 fi
 
 if [[ -z ${SUBJECTS_DIR} ]]; then
-  echo "  SUBJECTS_DIR is not set"
+  echo "SUBJECTS_DIR is not set"
   exit 1
 fi
 
@@ -216,7 +216,7 @@ CMD(){
     if [[ ! -z ${VERSION} ]]; then
       version=${VERSION}
     else
-      version="6.0.0"
+      version="7.2.0"
     fi
 
     echo "Using FreeSurfer version: ${version}"
@@ -329,12 +329,12 @@ if [[ ! -z ${option} ]]; then
   fi
 
   if [ ! -d ${SUBJECTS_DIR}/${subj_ID}_backup ]; then
-    echo "  Backing up FS-directory"
+    echo "Backing up FS-directory"
     cp -r ${SUBJECTS_DIR}/${subj_ID} ${SUBJECTS_DIR}/${subj_ID}_backup
   fi
 
   if [[ -z ${edit} ]]; then
-    echo "  Running gcut .."
+    echo "Running gcut .."
     recon-all -skullstrip -clean-bm -gcut -s ${subj_ID}
   else
     echo "You specifed \"-e\" for the gcut option.. This is not necessary"
@@ -347,7 +347,7 @@ if [[ ! -z ${option} ]]; then
     call_checkfunction call_freeview
 
     if [[ $? == 0 ]]; then
-      echo "  Opening Freeview .."
+      echo "Opening Freeview .."
       call_freeview ${subj_ID}
     else
       echo "you do not have the call_freeview script where it's supposed to be"
@@ -355,14 +355,14 @@ if [[ ! -z ${option} ]]; then
       exit 1
     fi
 
-    echo "  Run recon-all again or not [n] = no, [y] = yes"
+    echo "Run recon-all again or not [n] = no, [y] = yes"
     while : ; do
       read -n 1 k <&1
       if [[ ${k} = n ]]; then
-        echo "  Quitting from the program"
+        echo "Quitting from the program"
         break
       elif [[ ${k} = y ]]; then
-        echo "  Running recon stage 2+3 with gcut option"
+        echo "Running recon stage 2+3 with gcut option"
         CMD "${subj_ID}" "23" "-autorecon2 -autorecon3"
 
       else
@@ -387,7 +387,7 @@ else
     CHECK_INPUTS ${stage}
 
     if [[ ! -z ${edit} ]]; then
-      echo "  You want to run all stages of recon-all but specified the \"edit\" flag. This is not necessary"
+      echo "You want to run all stages of recon-all but specified the \"edit\" flag. This is not necessary"
     fi
 
     if [[ -d ${SUBJECTS_DIR}/${subj_ID} ]]; then
@@ -409,7 +409,7 @@ else
     ISRUNNING
 
     if [[ ! -z ${edit} ]]; then
-      echo "  You want to run all stages of recon-all but specified the \"edit\" flag. This is not necessary"
+      echo "You want to run all stages of recon-all but specified the \"edit\" flag. This is not necessary"
     fi
 
     CMD "${subj_ID}" "${stage}" "-autorecon1 -autorecon2" "${T1_flag}" "${T2_flag}"
