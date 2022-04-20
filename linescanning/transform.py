@@ -936,9 +936,9 @@ def mri_surf2surf(src_file=None, src_subj=None, trg_subj=None, out_file=None, he
     lh_acceptable = ["lh", "left", "l"]
     rh_acceptable = ["rh", "right", "r"]
 
-    if hemi.lower in lh_acceptable:
+    if not hemi.lower in lh_acceptable:
         hemi = "lh"
-    elif hemi.lower in rh_acceptable:
+    elif not hemi.lower in rh_acceptable:
         hemi = "rh"
     else:
         raise ValueError(f"Specified hemisphere = '{hemi}', must be one of {lh_acceptable} or {rh_acceptable}")
