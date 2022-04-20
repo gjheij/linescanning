@@ -1292,7 +1292,7 @@ class pRFmodelFitting():
                         ". voxels/vertices above "+str(self.rsq)+": "+str(np.sum(self.gauss_grid[:, -1]>self.rsq))+" out of "+
                         str(self.gaussian_fitter.data.shape[0]))
                 print(f"Gridfit took {str(timedelta(seconds=elapsed))}")
-                print("Mean rsq>"+str(self.rsq)+": "+str(np.nanmean(self.gauss_grid[self.gauss_grid[:, -1]>self.rsq, -1])))
+                print("Mean rsq>"+str(self.rsq)+": "+str(round(np.nanmean(self.gauss_grid[self.gauss_grid[:, -1]>self.rsq, -1]),2)))
             
             if self.write_files:
                 self.save_params(model="gauss", stage="grid", predictions=False)
@@ -1316,7 +1316,7 @@ class pRFmodelFitting():
                 elapsed = (time.time() - start)              
                 self.gauss_iter = utils.filter_for_nans(self.gaussian_fitter.iterative_search_params)
                 if self.verbose:
-                    print("Gaussian iterfit completed at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+". Mean rsq>"+str(self.rsq)+": "+str(np.nanmean(self.gauss_iter[self.gaussian_fitter.rsq_mask, -1])))
+                    print("Gaussian iterfit completed at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+". Mean rsq>"+str(self.rsq)+": "+str(round(np.nanmean(self.gauss_iter[self.gaussian_fitter.rsq_mask, -1]),2)))
                     print(f"Iterfit took {str(timedelta(seconds=elapsed))}")
 
                 # save intermediate files
@@ -1383,7 +1383,7 @@ class pRFmodelFitting():
             ### save grid parameters
             self.norm_grid = utils.filter_for_nans(self.norm_fitter.gridsearch_params)
             if self.verbose:
-                print("Norm gridfit completed at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+". Mean rsq>"+str(self.rsq)+": "+str(np.nanmean(self.norm_grid[self.norm_fitter.gridsearch_rsq_mask, -1])))
+                print("Norm gridfit completed at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+". Mean rsq>"+str(self.rsq)+": "+str(round(np.nanmean(self.norm_grid[self.norm_fitter.gridsearch_rsq_mask, -1]),2)))
                 print(f"Gridfit took {str(timedelta(seconds=elapsed))}")
 
             if self.write_files:
@@ -1404,7 +1404,7 @@ class pRFmodelFitting():
 
                 ### save iterative parameters
                 self.norm_iter = utils.filter_for_nans(self.norm_fitter.iterative_search_params)
-                print("Norm iterfit completed at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+". Mean rsq>"+str(settings['rsq_threshold'])+": "+str(np.mean(self.norm_iter[self.norm_fitter.rsq_mask, -1])))
+                print("Norm iterfit completed at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+". Mean rsq>"+str(self.rsq)+": "+str(round(np.mean(self.norm_iter[self.norm_fitter.rsq_mask, -1]),2)))
                 print(f"Iterfit took {str(timedelta(seconds=elapsed))}")
                 if self.write_files:
                     self.save_params(model="norm", stage="iter", predictions=True)
