@@ -1,0 +1,47 @@
+#!/usr/bin/env python
+
+import sys
+from linescanning.transform import mri_surf2surf
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_surf2surf
+
+Wrapper for 'mri_surf2surf' as implemented in nipype. Wrapped executable: mri_surf2surf.Transform a 
+surface file from one subject to another via a spherical registration. Both the source and target 
+subject must reside in your Subjects Directory, and they must have been processed with recon-all, 
+unless you are transforming to one of the icosahedron meshes.
+
+Args:
+    <src subj>      source subject; space to transform surface FROM
+    <trg subj>      target subject; space to transform surface TO
+    <src file>      file to transform
+    <out file>      output file for new surface
+    <hemisphere>    hemisphere ('lh' or 'rh')
+
+Outputs
+    output file     <src file> projected onto the surface of <trg subject>
+
+Example:
+    call_surf2surf fsaverage sub-001 lh.fsaverage.thresh lh.fsnative.thresh.gii lh (fsaverage > fsnative)
+    call_surf2surf sub-001 fsaverage lh.fsnative.thresh.gii lh.fsaverage.thresh lh (fsnative > fsaverage)
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    if len(argv) < 5:
+        print(main.__doc__)
+        sys.exit()
+
+    src_subj = argv[0]
+    trg_subj = argv[1]
+    src_file = argv[2]
+    out_file = argv[3]
+    hemi     = argv[4]
+
+    mri_surf2surf(src_subj=src_subj, trg_subj=trg_subj, src_file=src_file, out_file=out_file, hemi=hemi)
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
