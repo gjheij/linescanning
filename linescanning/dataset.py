@@ -1202,9 +1202,6 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
         # BASIC DATA LOADING
 
         # Load in datasets with tag "wcsmtSNR"
-        if func_file.endswith("nii") or func_file.endswith("gz"):
-            raise NotImplementedError("This datatype is not supported because of different nr of voxels compared to line data.. This make concatenation of dataframes not possible")
-        
         if func_file.endswith("mat"):
 
             # load matlab file
