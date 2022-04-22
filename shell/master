@@ -258,15 +258,14 @@ if [[ $# -lt 2 ]] ; then
 fi
 
 #---------------------------------------------------------------------------------------------------
-# Check for which-module switch
-if [[ ! -z ${WHICH_MOD} ]]; then
+# Check for which-module switch 
+if [[ ! -z ${WHICH_MOD} ]] && [[ "${@}" != *"-m"* ]]; then
   mod_nr=`get_module_nr ${WHICH_MOD}`
   if [[ ! -z ${mod_nr} ]]; then
     echo "module ${mod_nr} contains \"${WHICH_MOD}\""
   else
     echo "could not find a module associated with \"${WHICH_MOD}\""
   fi
-
 fi
 
 #---------------------------------------------------------------------------------------------------------

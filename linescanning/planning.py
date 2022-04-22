@@ -120,8 +120,6 @@ def correct_angle(x, verbose=False, only_angles=True):
             # center-topleft vector, a small RL angle means we have a center-topright vector.
             flip = True
 
-
-
         # if the above resulted in a sagittal slice, we need to convert the angles relative to the AP-axis. We have the
         # angle with the RL-axis, scanner_angles[0], and the angle with the AP-axis then is 90-angle_RL. Because of the
         # way the scanner interprets this, a center-topleft vector is created with the -(90-angle_RL).
@@ -151,7 +149,6 @@ def correct_angle(x, verbose=False, only_angles=True):
                             print(f" X angle was small ({round(x[0],2)}), using {round(scanner_angles[1],2)} as is")
                         else:
                             pass
-
             else:
                 if verbose:
                     print(f" Z angle = angle around AP-axis")
@@ -359,13 +356,13 @@ def get_console_settings(angles, hemi, idx, z_axis_meaning="Y"):
         # check if we should do something with the foldover in a coronal slice. This happens when the angle with the
         # z-axis is lower than -45 or larger than 45. We should then flip the angle and change the foldover.
         if angle_fh <= -45:
-            print(f" Angle around Y-axis = {angle_fh}; adding 90 deg & setting foldover to LR")
+            print(f" Angle around Y-axis = {angle_fh}; adding 90 deg & setting orientation to sagittal")
             angle_fh += 90
-            foldover = "LR"
+            orientation = "sagittal"
         elif angle_fh >= 45:
-            print(f" Angle around Y-axis = {angle_fh}; substracting 90 deg & setting foldover to LR")
+            print(f" Angle around Y-axis = {angle_fh}; substracting 90 deg & setting orientation to sagittal")
             angle_fh -= 90
-            foldover = "LR"
+            orientation = "sagittal"
 
         # if the angle with the z-axis was large, we need to invert the angle (means right-pointing vector)
         if angle_z >= 90:
@@ -379,11 +376,11 @@ def get_console_settings(angles, hemi, idx, z_axis_meaning="Y"):
         # check if we should do something with the foldover in a sagittal slice. This happens when the angle with the
         # z-axis is lower than -45 or larger than 45. We should then flip the angle and change the foldover.
         if angle_fh <= -45:
-            print(f" Angle around X-axis = {angle_fh}; adding 90 deg & setting foldover to AP")
+            print(f" Angle around X-axis = {round(angle_fh,2)}; adding 90 deg & setting foldover to AP")
             angle_fh += 90
             foldover = "AP"
         elif angle_fh >= 45:
-            print(f" Angle around X-axis = {angle_fh}; adding 90 deg & setting foldover to AP")
+            print(f" Angle around X-axis = {round(angle_fh,2)}; adding 90 deg & setting foldover to AP")
             # angle_fh -= 90
             foldover = "AP"
 

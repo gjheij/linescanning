@@ -4,7 +4,7 @@ import os
 import numpy as np
 import sys, getopt
 import ast
-from linescanning import optimal
+from linescanning import optimal, pycortex
 import warnings
 warnings.filterwarnings('ignore')
 opj = os.path.join
@@ -149,6 +149,8 @@ Notes:
     if not prf_dir:
         raise ValueError("pRF-directory not specified. Use '--prf <path to pycortex directory>'")
 
+    # update the filestore
+    pycortex.set_ctx_path(p=cx_dir)
     optimal.target_vertex(subject,
                           fs_dir=fs_dir,
                           cx_dir=cx_dir,
