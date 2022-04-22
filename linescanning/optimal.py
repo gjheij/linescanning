@@ -440,26 +440,34 @@ class SurfaceCalc(object):
         # try:
         setattr(self, 'roi_label', fs_label.replace('.', '_'))
         if not fs_label.endswith('.gii'):
+            make_mask = True
             tmp = self.read_fs_label(subject=self.subject, fs_dir=self.fs_dir, fs_label=fs_label, hemi="both")
         else:
+            make_mask = False
             tmp = {}
             for ii in ['lh', 'rh']:
                 gifti = dataset.ParseGiftiFile(opj(fs_dir, subject, 'label', f"{ii}.{fs_label}"), set_tr=1)
-                tmp[ii] = gifti.data.copy()
+
+                if gifti.data.ndim > 1:
+                    tmp[ii] = np.squeeze(gifti.data, axis=0)
+                else:
+                    tmp[ii] = gifti.data.copy()
 
         setattr(self, f'lh_{self.roi_label}', tmp['lh'])
         setattr(self, f'rh_{self.roi_label}', tmp['rh'])
 
         # this way we can also use read_fs_label for more custom purposes
-        pp = self.label_to_mask(subject=self.subject, lh_arr=getattr(self, f'lh_{self.roi_label}'), rh_arr=getattr(self, f'rh_{self.roi_label}'), hemi="both")
-        self.lh_roi_mask = pp['lh_mask']
-        self.rh_roi_mask = pp['rh_mask']
-        self.whole_roi = pp['whole_roi']
-        self.whole_roi_v = pp['whole_roi_v']
-
-            # self.lh_surf_sm,self.rh_surf_sm = smooth_surfs
-        # except:
-        #     print(" WARNING: Pycortex and FS dimensions do not match")
+        if make_mask:
+            pp = self.label_to_mask(subject=self.subject, lh_arr=getattr(self, f'lh_{self.roi_label}'), rh_arr=getattr(self, f'rh_{self.roi_label}'), hemi="both")
+            self.lh_roi_mask = pp['lh_mask']
+            self.rh_roi_mask = pp['rh_mask']
+            self.whole_roi   = pp['whole_roi']
+            self.whole_roi_v = pp['whole_roi_v']
+        else:
+            self.lh_roi_mask = getattr(self, f'lh_{self.roi_label}')
+            self.rh_roi_mask = getattr(self, f'rh_{self.roi_label}')
+            self.whole_roi   = np.concatenate((self.lh_roi_mask, self.rh_roi_mask))
+            self.whole_roi_v = cortex.Vertex(self.whole_roi, subject=subject, vmin=-0.5, vmax=1)
 
     def smooth_surfs(self, kernel=10, nr_iter=1):
         """smooth_surfs
@@ -555,16 +563,12 @@ class SurfaceCalc(object):
         """
 
         if hemi == "both":
-
+            
             lh_mask = np.zeros(self.lh_surf_data[0].shape[0], dtype=bool)
-            # lh_mask[getattr(self, f'lh_{self.roi_label}')] = True
             lh_mask[lh_arr] = True
-            # self.lh_roi_mask = lh_mask
 
             rh_mask = np.zeros(self.rh_surf_data[0].shape[0], dtype=bool)
-            # rh_mask[getattr(self, f'rh_{self.roi_label}')] = True
             rh_mask[rh_arr] = True
-            # self.rh_roi_mask = rh_mask
 
         elif hemi == "lh":
             lh_mask = np.zeros(getattr(self, f"lh_surf_data")[0].shape[0], dtype=bool)
@@ -812,7 +816,7 @@ class CalcBestVertex(object):
             # only pRF-data
             self.joint_mask = (self.prf_mask * self.surface.whole_roi)
         elif hasattr(self, 'struct_mask') and not hasattr(self, 'prf_mask'):
-            # only pRF-data
+            # only structural
             self.joint_mask = (self.struct_mask * self.surface.whole_roi)
         else:
             # just minimal curvature
@@ -826,10 +830,13 @@ class CalcBestVertex(object):
         #                    (self.surface.whole_roi))
 
         # save prf information
-        self.lh_prf = self.joint_mask[:self.surface.lh_surf_data[0].shape[0]].astype(bool) # values are stacked, left first then right (https://gallantlab.github.io/database.html)
-        self.rh_prf = self.joint_mask[self.surface.lh_surf_data[0].shape[0]:].astype(bool)
-
-        self.joint_mask_v = cortex.Vertex(np.nan_to_num(self.joint_mask.astype(int)), subject=self.subject, cmap='magma', vmin=0.5)
+        self.lh_prf = self.joint_mask[:self.surface.lh_surf_data[0].shape[0]]
+        self.rh_prf = self.joint_mask[self.surface.lh_surf_data[0].shape[0]:]
+        
+        self.joint_mask[self.joint_mask < 1] = np.nan
+        self.joint_mask_v = cortex.Vertex(self.joint_mask, subject=self.subject, cmap='Accent', vmin=-0.5, vmax=1)
+        
+        # cortex.webshow({"lh": cortex.Vertex(self.lh_prf.astype(int), subject=self.subject, cmap='magma', vmin=-0.5, vmax=1), "rh": cortex.Vertex(self.rh_prf.astype(int), subject=self.subject, cmap='magma', vmin=-0.5, vmax=1)})
 
     def best_vertex(self):
 
@@ -845,7 +852,7 @@ class CalcBestVertex(object):
 
                 # get all vertices where mask = True
                 vv = np.where(mask == True)[0]
-                curv_dict = {}                                                                                                       
+                curv_dict = {}
                 for pp in vv:                      
                     curv_dict[pp] = curv[pp]
                 #     print(f"vert {pp} = {curv[pp]}")
