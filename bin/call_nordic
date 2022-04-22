@@ -34,10 +34,20 @@ USAGE
     exit 1
 }
 
-if [[ $# -lt 3 ]] ; then
-  Usage >&2
-  exit 1
-fi
+#-----------------------------------------------------------------------------
+# Deal with arguments
+mag_only=0
+while getopts hmv: arg; do
+    case ${arg} in
+        m)  mag_only=1
+            ;;         
+    esac
+done
+
+# if [[ $# -lt 3 ]] ; then
+#   Usage >&2
+#   exit 1
+# fi
 
 IMG_MAGN=${@:$OPTIND:1}
 IMG_PHASE=${@:$OPTIND+1:1}
@@ -68,14 +78,6 @@ else
 fi
 
 #-----------------------------------------------------------------------------
-# Set the NORDIC mode
-if [[ "${@}" == *"-m"* ]]; then 
-  mag_only=1
-else
-  mag_only=0
-fi 
-
-#-----------------------------------------------------------------------------
 # Create new script
 new_script=$(dirname ${fn_mag})/nordic.m
 if [[ -f ${new_script} ]]; then
@@ -87,7 +89,7 @@ fi
 if [[ -f ${fn_mag} && -f ${fn_phase} ]]; then
 
   make_nordic_script ${fn_mag} ${fn_phase} ${fn_nordic} ${mag_only} ${new_script}
-
+  
   # call_matlab = in call_bashhelper
   call_matlab ${new_script}
 
