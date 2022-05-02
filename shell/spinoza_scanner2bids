@@ -231,21 +231,29 @@ for dir in ${search}; do
         fi
 
         ## Multi-slice files
-        n_motion=`echo ${outputdir}/*motion*.nii.gz | wc -w`
-        echo " Relocating multi-slice file (${n_motion})"
-        for i in `seq 1 ${n_motion}`; do
-          motion_img=`find "${outputdir}" -type f \( -name "*motion${i}*" -and -name "*.nii.gz" \) 2>/dev/null`
-          fname=${bidsdir}/anat/$(basename ${dir})_ses-${ses_id}_acq-MP2RAGE_rec-motion${i}.nii.gz
+        motion_img=`find "${outputdir}" -type f \( -name "*motion*" -and -name "*.nii.gz" \) 2>/dev/null`
+        IFS=$'\n' motion_img=($(sort <<<"${motion_img[*]}"))
+        unset IFS    
+
+        echo " Relocating multi-slice file (${#motion_img[@]})"
+        for i in ${motion_img[@]}; do
+          
+          run=`get_id ${i} motion`
+          if [[ -z ${run} ]]; then
+            run=i
+          fi
+
+          fname=${bidsdir}/anat/$(basename ${dir})_ses-${ses_id}_acq-MP2RAGE_rec-motion${run}.nii.gz
           if [[ ! -f ${fname} ]]; then
             if [[ -f ${motion_img} ]]; then
               echo "  renaming to $(basename ${fname})"
               cp ${motion_img} ${fname}
               cp $(dirname ${motion_img})/$(basename ${motion_img} .nii.gz).json $(dirname ${fname})/$(basename ${fname} .nii.gz).json
             else
-              echo " WARNING: apparently found ${n_motion} motion file(s), but cannot find file with \"motion${i}\" and \"*.nii.gz\""
+              echo " WARNING: apparently found ${n_motion} motion file(s), but cannot find file with \"motion${run}\" and \"*.nii.gz\""
             fi
           else
-            echo "  $(basename ${dir})_ses-${ses_id}_acq-9slice_run-${i}_T1w.nii.gz exists"
+            echo "  $(basename ${dir})_ses-${ses_id}_acq-9slice_run-${run}_T1w.nii.gz exists"
           fi
         done
 
@@ -293,7 +301,7 @@ for dir in ${search}; do
         bold_files=`find "${inputdir}" -type f \( -name "*bold_*" -and -name "*.lab" \) 2>/dev/null`
 
         # sort array (https://stackoverflow.com/questions/7442417/how-to-sort-an-array-in-bash)
-        IFS=$'\n' slice_img=($(sort <<<"${slice_img[*]}"))
+        IFS=$'\n' bold_files=($(sort <<<"${bold_files[*]}"))
         unset IFS    
 
         count=0
@@ -364,7 +372,7 @@ for dir in ${search}; do
         if [[ ${nr_epis} -gt 0 ]]; then
           echo " Found ${nr_epis} EPI file(s)"
 
-          for i in `seq 1 ${nr_epis}`; do
+          for i in `seq 0 $((${nr_epis}-1))`; do
 
             func=`find "${outputdir}" -type f \( -name "*acq-3DEPI*" -and -name "*run-${i}*" -and -name "*bold.nii.gz" \) 2>/dev/null`
             fmap=`find "${outputdir}" -type f \( -name "*acq-3DEPI*" -and -name "*run-${i}*" -and -name "*epi.nii.gz" \) 2>/dev/null`
@@ -385,13 +393,13 @@ for dir in ${search}; do
                 cp ${func} ${bids_func}
                 cp $(dirname ${func})/$(basename ${func} .nii.gz).json $(dirname ${bids_func})/$(basename ${bids_func} .nii.gz).json
               else
-                echo "WARNING: found ${nr_epis} EPI-files, but could not find file with \"acq-3DEPI\", \"run-${i}\", and \"bold.nii.gz\""
+                echo " WARNING: found ${nr_epis} EPI-files, but could not find file with \"acq-3DEPI\", \"run-${i}\", and \"bold.nii.gz\""
               fi
             else
               echo "  $(basename ${bids_func}) exists"
             fi
 
-            bids_func=${fname}_epi.nii.gz
+            bids_epi=${fname}_epi.nii.gz
             if [[ ! -f ${bids_epi} ]]; then
               if [[ -f ${fmap} ]]; then
                 echo "  renaming epi-file to `basename ${bids_epi}`"
@@ -400,12 +408,12 @@ for dir in ${search}; do
               fi
             fi
 
-            bids_func=${fname}_bold_ph.nii.gz
-            if [[ ! -f ${bids_epi} ]]; then
+            bids_phase=${fname}_bold_ph.nii.gz
+            if [[ ! -f ${bids_phase} ]]; then
               if [[ -f ${fmap} ]]; then
-                echo "  renaming phase-file to `basename ${bids_epi}`"
-                cp ${fmap} ${bids_epi}
-                cp $(dirname ${fmap})/$(basename ${fmap} .nii.gz).json $(dirname ${bids_epi})/$(basename ${bids_epi} .nii.gz).json
+                echo "  renaming phase-file to `basename ${bids_phase}`"
+                cp ${fmap} ${bids_phase}
+                cp $(dirname ${fmap})/$(basename ${fmap} .nii.gz).json $(dirname ${bids_phase})/$(basename ${bids_phase} .nii.gz).json
               fi
             fi            
 
