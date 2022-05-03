@@ -125,16 +125,16 @@ class Segmentations:
 
             # fetch segmentations, assuming default directory layout
             nighres_layout          = BIDSLayout(self.nighres_source, validate=False).get(extension=['nii.gz'], return_type='file')
-            self.wb_cruise          = utils.get_bids_file(nighres_layout, ["cortex"])
-            self.wb_layers          = utils.get_bids_file(nighres_layout, ["layers"])
-            self.wb_depth           = utils.get_bids_file(nighres_layout, ["depth"])
+            self.wb_cruise          = utils.get_file_from_substring("cruise_cortex", nighres_layout)
+            self.wb_layers          = utils.get_file_from_substring("layering_layers", nighres_layout)
+            self.wb_depth           = utils.get_file_from_substring("layering_depth", nighres_layout)
 
             # fetch mask and tissue probabilities
             mask_layout             = BIDSLayout(self.mask_dir, validate=False).get(extension=['nii.gz'], return_type='file')
-            self.wb_wm              = utils.get_bids_file(mask_layout, ["label-WM"])
-            self.wb_gm              = utils.get_bids_file(mask_layout, ["label-GM"])
-            self.wb_csf             = utils.get_bids_file(mask_layout, ["label-CSF"])
-            self.wb_brainmask       = utils.get_bids_file(mask_layout, ["brainmask"])
+            self.wb_wm              = utils.get_file_from_substring("label-WM", mask_layout)
+            self.wb_gm              = utils.get_file_from_substring("label-GM", mask_layout)
+            self.wb_csf             = utils.get_file_from_substring("label-CSF", mask_layout)
+            self.wb_brainmask       = utils.get_file_from_substring("brainmask", mask_layout)
 
             # check if reference slice and transformation file actually exist
             if not os.path.exists(self.reference_slice):
