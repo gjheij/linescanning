@@ -146,28 +146,40 @@ class aCompCor(Segmentations):
             self.tissue_voxels  = getattr(self, f"{tissue}_voxels")
             self.tissue_tc      = utils.select_from_df(self.data, expression="ribbon", indices=self.tissue_voxels)
 
-            self.pca        = decomposition.PCA(n_components=self.n_pca)
-            self.components = self.pca.fit_transform(self.tissue_tc)
+            try:
+                self.pca        = decomposition.PCA(n_components=self.n_pca)
+                self.components = self.pca.fit_transform(self.tissue_tc)
 
-            self.pcas.append(self.pca)
-            # find elbow with KneeLocator
-            self.xx     = np.arange(0, self.n_pca)
-            self.kn     = KneeLocator(self.xx, self.pca.explained_variance_, curve='convex', direction='decreasing')
-            self.elbow_ = self.kn.knee
+                self.pcas.append(self.pca)
+                # find elbow with KneeLocator
+                self.xx     = np.arange(0, self.n_pca)
+                self.kn     = KneeLocator(self.xx, self.pca.explained_variance_, curve='convex', direction='decreasing')
+                self.elbow_ = self.kn.knee
+                
+                if self.verbose:
+                    print(f" Found {self.elbow_} component(s) in '{tissue}'-voxels with total explained variance of {round(sum(self.pca.explained_variance_ratio_[:self.elbow_]), 2)}%")
+            except:
+                if self.verbose:
+                    print(f" PCA with {self.n_pca} was unsuccessful. Using WM/CSF timecourses")
+
+                self.elbow_ = None
+
             self.elbows.append(self.elbow_)
 
-            if self.verbose:
-                print(f" Found {self.elbow_} component(s) in '{tissue}'-voxels with total explained variance of {round(sum(self.pca.explained_variance_ratio_[:self.elbow_]), 2)}%")
-
             # extract components before elbow of plot
-            if self.elbow_ != 0:
+            if self.elbow_ != None:
+                self.do_pca = True
+                self.info = "components"
                 self.include_components = self.components[:, :self.elbow_]
                 if self.include_components.ndim == 1:
                     self.include_components = self.include_components[..., np.newaxis]
 
                 self.acompcor_components.append(self.include_components)
             else:
-                raise ValueError("Found 0 components surviving the elbow-plot. Turn on verbose and inspect the plot")
+                self.do_pca = False
+                self.info = "timecourses"
+                # raise ValueError("Found 0 components surviving the elbow-plot. Turn on verbose and inspect the plot")
+                self.acompcor_components.append(self.tissue_tc)
 
         # concatenate components into an array
         self.acompcor_components = np.concatenate(self.acompcor_components, axis=1)
@@ -206,8 +218,13 @@ class aCompCor(Segmentations):
 
     def summary(self, **kwargs):
         
-        fig = plt.figure(figsize=(30, 7))
-        gs = fig.add_gridspec(1, 4)
+
+        if self.do_pca:
+            fig = plt.figure(figsize=(30, 7))
+            gs = fig.add_gridspec(1, 4)
+        else:
+            fig = plt.figure(figsize=(24, 7))
+            gs = fig.add_gridspec(1, 3)
 
         ax = fig.add_subplot(gs[0])
         self.plot_regressor_voxels(ax=ax)
@@ -220,41 +237,52 @@ class aCompCor(Segmentations):
         else:
             use_colors = None
 
-        ax1 = fig.add_subplot(gs[1])
-        for ix, ii in enumerate(self.elbows):
-            if use_colors != None:
-                color = use_colors[ix]
-            else:
-                color = "#cccccc"
+        label = ["csf", "wm"]
+        if self.do_pca:
+            ax1 = fig.add_subplot(gs[1])
+            for ix, ii in enumerate(self.elbows):
+                if use_colors != None:
+                    color = use_colors[ix]
+                else:
+                    color = "#cccccc"
 
-            ax1.axvline(ii, color=color, ls='dashed', lw=0.5, alpha=0.5)
+                if ii != None:
+                    ax1.axvline(ii, color=color, ls='dashed', lw=0.5, alpha=0.5)
+                    if any(v is None for v in self.elbows):
+                        use_colors = use_colors[ii]
+                        label = [label[ii]]
 
-        plotting.LazyPlot([self.pcas[ii].explained_variance_ratio_ for ii in range(len(self.pcas))],
-                          xx=self.xx,
-                          color=use_colors,
-                          axs=ax1,
-                          title=f"Scree-plot run-{self.run}",
-                          x_label="nr of components",
-                          y_label="variance explained (%)",
-                          labels=["csf", "wm"],
-                          font_size=16,
-                          line_width=line_width,
-                          sns_trim=True,
-                          **kwargs)
+            plotting.LazyPlot([self.pcas[ii].explained_variance_ratio_ for ii in range(len(self.pcas))],
+                            xx=self.xx,
+                            color=use_colors,
+                            axs=ax1,
+                            title=f"Scree-plot run-{self.run}",
+                            x_label="nr of components",
+                            y_label="variance explained (%)",
+                            labels=label,
+                            font_size=16,
+                            line_width=line_width,
+                            sns_trim=True,
+                            **kwargs)
 
         # create dashed line on cut-off frequency if specified
         if self.filter_pca != None:
-            add_vline = {'pos': self.filter_pca, 'color': 'k',
-                    'ls': 'dashed', 'lw': 0.5}
+            add_vline = {'pos': self.filter_pca, 
+                         'color': 'k',
+                         'ls': 'dashed', 
+                         'lw': 0.5}
         else:
             add_vline = None
-
-        ax2 = fig.add_subplot(gs[2])
+        
+        if self.do_pca:
+            ax2 = fig.add_subplot(gs[2])
+        else:
+            ax2 = fig.add_subplot(gs[1])
         plotting.LazyPlot(self.nuisance_spectra,
                             xx=self.nuisance_freqs[0],
                             axs=ax2,
                             labels=[f"component {ii+1}" for ii in range(self.acompcor_components.shape[-1])],
-                            title="Power spectra of components",
+                            title=f"Power spectra of {self.info}",
                             x_label="frequency (Hz)",
                             y_label="power (a.u.)",
                             x_lim=[0, 1.5],
@@ -271,7 +299,10 @@ class aCompCor(Segmentations):
         if not hasattr(self, "clip_power"):
             clip_power = 100
 
-        ax3 = fig.add_subplot(gs[3])
+        if self.do_pca:
+            ax3 = fig.add_subplot(gs[3])
+        else:
+            ax3 = fig.add_subplot(gs[2])
         tc1_freq = get_freq(tc1, TR=self.TR, spectrum_type='fft', clip_power=clip_power)
         tc2_freq = get_freq(tc2, TR=self.TR, spectrum_type='fft', clip_power=clip_power)
 
