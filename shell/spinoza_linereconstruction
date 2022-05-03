@@ -133,12 +133,22 @@ for dir in ${search}; do
     # fetch and sort the lab-files
     bold_files=`find "${lab_func}" -type f \( -name "*bold_*" -and -name "*.lab" \) 2>/dev/null`
     IFS=$'\n' bold_files=($(sort <<<"${bold_files[*]}"))
-    unset IFS
+    unset IFS 
 
     if [[ -z ${bold_files} ]]; then
       echo "`basename ${dir}`: Could not find BOLD-data"
       continue
     fi
+    
+    # fetch and sort the lab-files
+    lsd_files=`find "${lab_func}" -type f \( -name "*desc-recon*" -and -name "*.lab" \) 2>/dev/null`
+    IFS=$'\n' lsd_files=($(sort <<<"${lsd_files[*]}"))
+    unset IFS
+
+    if [[ -z ${lsd_files} ]]; then
+      echo "`basename ${dir}`: Could not find LSD-image(s)"
+      continue
+    fi    
 
     if [[ ${PLACE} == "SGE" ]]; then
 
@@ -156,49 +166,42 @@ for dir in ${search}; do
           run=${count}
         fi
 
-        lab_file=`find ${lab_func} -type f \( -name "*run-${run}*" -and -name "*bold*" -and -name "*.lab" \) 2>/dev/null`
-        if [[ ! -z ${lab_file} ]]; then
+        # fetch task
+        task=`task_id ${bold}`
+        if [[ ${task} == "prf" ]]; then
+          task="pRF"
+        else
+          task=${task^^}
+        fi
 
-          # fetch task
-          task=`task_id ${bold}`
-          if [[ ${task} == "prf" ]]; then
-            task="pRF"
+        outputbase=${bidsfunc}/$(basename ${dir})_ses-${nr}_task-${task}_run-${run}_bold
+        if [[ ${OW} -eq 1 ]]; then
+          rm -r ${outputbase}.mat 2>/dev/null
+        fi
+
+        if [[ ! -f ${outputbase}.mat ]]; then
+          
+          IDnr=`basename ${dir} | cut -d'-' -f2`
+          # find corresponding LSD-image
+          if [[ ${#lsd_files} -gt 1 ]]; then
+            lsd=${lsd_files[$((${count}-1))]}
           else
-            task=${task^^}
+            lsd=${lsd_files[0]}
           fi
 
-          outputbase=${bidsfunc}/$(basename ${dir})_ses-${nr}_task-${task}_run-${run}_bold
-
-          if [[ ${OW} -eq 1 ]]; then
-            rm -r ${outputbase}.mat 2>/dev/null
-          fi
-
-          if [[ ! -f ${outputbase}.mat ]]; then
-            
-            IDnr=`basename ${dir} | cut -d'-' -f2`
-
-            if [[ ${SGE} -eq 1 ]]; then
-              echo "submitting run-${run}"
-              job="qsub -N recon_${IDnr}_${run} -wd ${OUTPUT}/$(basename ${dir})/ses-${nr} -q ${SGE_QUEUE_SHORT}"
-            else
-              echo "Running recon for run-${run}"
-              job="bash"
-              echo "Using `basename ${lab_file}` for reconstruction"
-            fi
-                        
-            cmd="${job} ${DIR_SCRIPTS}/bin/call_linerecon ${echo_flag} ${IDnr} ${run} ${lab_func} ${outputbase}"
-            exec ${cmd}
-
+          if [[ ${SGE} -eq 1 ]]; then
+            job="qsub -N recon_${IDnr}_${run} -wd ${OUTPUT}/$(basename ${dir})/ses-${nr}"
           else
-
-            echo "${outputbase}.mat exists"
-
+            echo "Running recon for run-${run}"
+            job="bash"
           fi
+
+          ${job} ${DIR_SCRIPTS}/bin/call_linerecon -r ${run} ${echo_flag} ${bold} ${lsd} ${outputbase}
 
         else
 
-          echo "`basename ${dir}`: could not find lab-file for run-${run}"
-          
+          echo "${outputbase}.mat exists"
+
         fi
 
       done
