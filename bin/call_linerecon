@@ -19,24 +19,26 @@ need to submit it to the minerva server by specifying -q all.q@minerva, because 
 place MRecon seems to work.
 
 Usage:
-  call_linerecon <subject number> <run number> <raw data> <output basename>
+  call_linerecon [options] <raw data> <lsd image> <output file>
 
 Arguments:
   -n                if -n is specified, we'll skip NORDIC during reconstruction
   -m <nr_echoes>    number of echoes in a multi-echo acquisition. Leave empty if acquisition was 
                     single-echo
-  <sub number>      number of subject's directory from which you can omit "sub-" (e.g.,
-                    for "sub-001", enter "001")
-  <run number>      integer for the nth bold run number
+  -r <run>          When running multiple reconstructions in parallel, it can help to add a run ID 
+                    so that the script-naming doesn't get mixed up.
   <raw data>        path to raw files on which to run reconstruction. Needs to contain .lab files of
                     the "recon"-slice (slice with rest-slabs on) and the .lab file of the functional
                     run ("bold"-file)
+  <lsd data>        path to file with slice + saturation slabs (LSD-image). Generally is called some-
+                    thing with "desc-recon", and should be run-specific to avoid any minor changes 
+                    between runs
   <basename>        basename for output. Will automatically store the output in a .mat file, so spe-
                     cify up until .mat
 
 Example:
-  call_linerecon 001 1 sourcedata/sub-001/ses-2 sub-001_ses-2_task-2R_run-1_bold
-  call_linerecon -n -m 5 003 4 sourcedata/sub-003/ses-4 <project>/sub-003/ses-4/func/sub-003_ses-4_task-pRF_run-4_bold
+  call_linerecon bold.lab lsd.lab func.mat
+  call_linerecon -n -m 5 bold.lab lsd.lab func.mat
 
 ---------------------------------------------------------------------------------------------------
 
@@ -45,11 +47,13 @@ USAGE
 }
 
 # Deal with arguments
-while getopts hnm: argument
+while getopts hnm:r: argument
 do
   case ${argument} in
     m)  n_echos=${OPTARG}
           ;;       
+    r)  run_id=${OPTARG}
+          ;;             
   esac
 done
 
@@ -63,10 +67,9 @@ if [[ $# -lt 4 ]] ; then
   exit 1
 fi
 
-SUB=${@:$OPTIND:1}
-RUN=${@:$OPTIND+1:1}
-RAW=${@:$OPTIND+2:1}
-OUT=${@:$OPTIND+3:1}
+RAW=${@:$OPTIND:1}
+LSD=${@:$OPTIND+1:1}
+OUT=${@:$OPTIND+2:1}
 
 if [[ "${@}" == *"-n"* ]]; then
   echo "NORDIC is turned off"
@@ -87,126 +90,100 @@ source call_bashhelper
 
 #-----------------------------------------------------------------------------
 # Start loop
-
-if [[ ! -d ${RAW} ]]; then
-  echo
-  echo "---------------------------------------------------------------------------------------------------"
-  echo "ERROR in `basename ${0}`: could not find directory \"${RAW}\""
-  exit 1
+newrecon=$(dirname ${RAW})/tmp${run_id}.m
+if [[ -f ${newrecon} ]]; then
+  rm -r ${newrecon}
 fi
 
-if [[ ${PLACE} == "SGE" ]]; then
+# make single-/multi-echo script
+if [[ -f ${RAW} && -f ${LSD} ]]; then
 
-  newrecon=${RAW}/sub${SUB}_run${RUN}_recon.m
-  if [[ -f ${newrecon} ]]; then
-    rm -r ${newrecon}
+  echo "Inputs:"
+  echo " bold = ${RAW}"
+  echo " LSD  = ${LSD}"
+  echo " Out  = ${OUT}.mat"
+
+  if [[ ${multiecho} -eq 0 ]]; then
+    echo "Acquisition: single-echo"
+    (
+    echo "%% paths"
+    echo "addpath(getenv('MRRECON')) %working without patch or with seline patch"
+    echo "addpath(getenv('MATLAB_DIR'))"
+    echo "addpath('/data1/projects/MicroFunc/common');"
+    echo "addpath(genpath(fullfile(getenv('PATH_HOME'), 'programs', 'luisa')))"
+    echo "disp(\"Starting recon\")"
+    echo "filelocation = '$(dirname ${RAW})/';"
+    echo ""
+    echo "% py_PAR   = 'RECON_PAR'; % sub-xxx_desc-recon.PAR"
+    echo "py_lab   = '$(basename ${RAW})';  % sub-xxx_desc-recon.LAB"
+    echo "nopy_lab = '$(basename ${LSD})'; % sub-xxx_task-2R_bold.LAB"
+    echo "nordic   = '${do_nordic}';"
+    echo ""
+    echo "Nc = 32; % nr of channels"
+    echo "TR = 105; %TR in ms"
+    echo "sp_res = 0.25; %line resolution [mm]"
+    echo "gausskernel = 24;"
+    echo ""
+    echo "Data_pc       = basic_recon(py_lab,filelocation, Nc);"
+    echo "nord_tresh    = 9; %not used now, since you are selecting the NORDIC threshold based on the scree plot"
+    echo "varargin_par  = {Data_pc, nord_tresh};"
+    echo "Data_wcsmtSNR = LS_recon_1way(nopy_lab, filelocation, Nc, 'all', TR, gausskernel, 'no', 'wcsmtSNR', nordic, varargin_par);"
+    echo ""
+    echo "save('${OUT}','Data_wcsmtSNR');"
+    echo "disp(\"Done\")"
+    ) >> ${newrecon}
+  
+  elif [[ ${multiecho} -eq 1 ]]; then
+    echo "Acquisition: Multi-echo (${n_echos} echoes)"
+    ## INSERT MULTIECHO PIPELINE
+    (
+    echo "%% paths"
+    echo "addpath(getenv('MRRECON')) %working without patch or with seline patch"
+    echo "addpath(getenv('MATLAB_DIR'))"
+    echo "addpath('/data1/projects/MicroFunc/common');"
+    echo "addpath(genpath(fullfile(getenv('PATH_HOME'), 'programs', 'luisa')))"
+    echo "disp(\"Starting recon\")"
+    echo "filelocation = '$(dirname ${RAW})/';"
+    echo ""
+    echo "% py_PAR   = 'RECON_PAR'; % sub-xxx_desc-recon.PAR"
+    echo "py_lab   = '$(basename ${LSD})';  % sub-xxx_desc-recon.LAB"
+    echo "nopy_lab = '$(basename ${RAW})'; % sub-xxx_task-2R_bold.LAB"
+    echo "nordic   = '${do_nordic}';"
+    echo ""
+    echo "Nc = 32; % nr of channels"
+    echo "TR = 105; %TR in ms"
+    echo "sp_res = 0.25; %line resolution [mm]"
+    echo "gausskernel = 24;"
+    echo "Nechos = ${n_echos};"
+    echo ""
+    echo "Data_pc        = basic_recon(py_lab,filelocation, Nc);"
+    echo "csm4ls_sm_cplx = coil_sens_MELS(abs(Data_pc), gausskernel);"
+    echo "nord_tresh     = 9; %not used now, since you are selecting the NORDIC threshold based on the scree plot"
+    echo "varargin_par   = {'before', nord_tresh};"
+    echo "[Data, removed_comp] = GELINEME_NORDIC_FastRecon(csm4ls_sm_cplx, nopy_lab, filelocation, Nc, Nechos, TR, sp_res, 'off', nordic, varargin_par);"
+    echo ""
+    echo "TE1 = 6.*10^(-3);"
+    echo "deltaTE= 8.*10^(-3);"
+    echo "echotimes = TE1(1):deltaTE(1):(TE1(1)+deltaTE(1)*(Nechos(1)-1));"
+    echo "Data_comb = CombineEchoes_nofor_LS(Data, echotimes, 'SoS');"
+    echo "save('${OUT}','Data_comb');"
+    echo "disp(\"Done\")"
+    ) >> ${newrecon}
   fi
 
-  # MRecon requires the filelocation (i.e., RAW) to end on backslash
-  if [[ ${RAW: -1} != "/" ]]; then
-    RAW="${RAW}/"
+  call_matlab ${newrecon}
+
+else
+
+  if [[ ! -f ${LSD} ]]; then
+    txt="LSD-"
+  elif [[ ! -f ${RAW} ]]; then
+    txt="BOLD-"
   fi
 
-  # if [[ -f ${DIR_SCRIPTS}/bin/utils/recon_template.m ]]; then
-  #   cp ${DIR_SCRIPTS}/bin/utils/recon_template.m ${newrecon}
-  # fi
-
-  # rtry to look for run-specific LSD-image
-  reconlab=`find "${RAW}" -type f \( -name "*run-${RUN}*" -name "*recon*" -and -name "*.lab" \) 2>/dev/null`
-  tasklab=`find "${RAW}" -type f \( -name "*run-${RUN}*" -name "*bold*" -and -name "*.lab" \) 2>/dev/null`
-
-  # If run-specific LSD-image does not exist, default to run-1. This might introduce tiiiiny effects, but can become big if subject moves a lot
-  if [[ -z ${reconlab} ]]; then
-    echo "WARNING: could not find LSD-image for run-${RUN}, defaulting to run-1"
-    reconlab=`find "${RAW}" -type f \( -name "*run-1*" -name "*recon*" -and -name "*.lab" \) 2>/dev/null`
-  fi
-
-  # make single-/multi-echo script
-  if [[ -f ${reconlab} && -f ${tasklab} ]]; then
-
-    if [[ ${multiecho} -eq 0 ]]; then
-      echo "Acquisition: single-echo"
-      (
-      echo "%% paths"
-      echo "addpath(getenv('MRRECON')) %working without patch or with seline patch"
-      echo "addpath(getenv('MATLAB_DIR'))"
-      echo "addpath('/data1/projects/MicroFunc/common');"
-      echo "addpath(genpath(fullfile(getenv('PATH_HOME'), 'programs', 'luisa')))"
-      echo "disp(\"Starting recon\")"
-      echo "filelocation = '${RAW}';"
-      echo ""
-      echo "% py_PAR   = 'RECON_PAR'; % sub-xxx_desc-recon.PAR"
-      echo "py_lab   = '$(basename ${reconlab})';  % sub-xxx_desc-recon.LAB"
-      echo "nopy_lab = '$(basename ${tasklab})'; % sub-xxx_task-2R_bold.LAB"
-      echo "nordic   = '${do_nordic}';"
-      echo ""
-      echo "Nc = 32; % nr of channels"
-      echo "TR = 105; %TR in ms"
-      echo "sp_res = 0.25; %line resolution [mm]"
-      echo "gausskernel = 24;"
-      echo ""
-      echo "Data_pc       = basic_recon(py_lab,filelocation, Nc);"
-      echo "nord_tresh    = 9; %not used now, since you are selecting the NORDIC threshold based on the scree plot"
-      echo "varargin_par  = {Data_pc, nord_tresh};"
-      echo "Data_wcsmtSNR = LS_recon_1way(nopy_lab, filelocation, Nc, 'all', TR, gausskernel, 'no', 'wcsmtSNR', nordic, varargin_par);"
-      echo ""
-      echo "save('${OUT}','Data_wcsmtSNR');"
-      echo "disp(\"Done\")"
-      ) >> ${newrecon}
-    
-    elif [[ ${multiecho} -eq 1 ]]; then
-      echo "Acquisition: Multi-echo (${n_echos} echoes)"
-      ## INSERT MULTIECHO PIPELINE
-      (
-      echo "%% paths"
-      echo "addpath(getenv('MRRECON')) %working without patch or with seline patch"
-      echo "addpath(getenv('MATLAB_DIR'))"
-      echo "addpath('/data1/projects/MicroFunc/common');"
-      echo "addpath(genpath(fullfile(getenv('PATH_HOME'), 'programs', 'luisa')))"
-      echo "disp(\"Starting recon\")"
-      echo "filelocation = '${RAW}';"
-      echo ""
-      echo "% py_PAR   = 'RECON_PAR'; % sub-xxx_desc-recon.PAR"
-      echo "py_lab   = '$(basename ${reconlab})';  % sub-xxx_desc-recon.LAB"
-      echo "nopy_lab = '$(basename ${tasklab})'; % sub-xxx_task-2R_bold.LAB"
-      echo "nordic   = '${do_nordic}';"
-      echo ""
-      echo "Nc = 32; % nr of channels"
-      echo "TR = 105; %TR in ms"
-      echo "sp_res = 0.25; %line resolution [mm]"
-      echo "gausskernel = 24;"
-      echo "Nechos = ${n_echos};"
-      echo ""
-      echo "Data_pc        = basic_recon(py_lab,filelocation, Nc);"
-      echo "csm4ls_sm_cplx = coil_sens_MELS(abs(Data_pc), gausskernel);"
-      echo "nord_tresh     = 9; %not used now, since you are selecting the NORDIC threshold based on the scree plot"
-      echo "varargin_par   = {'before', nord_tresh};"
-      echo "[Data, removed_comp] = GELINEME_NORDIC_FastRecon(csm4ls_sm_cplx, nopy_lab, filelocation, Nc, Nechos, TR, sp_res, 'off', 'on',varargin_par);"
-      echo ""
-      echo "TE1 = 6.*10^(-3);"
-      echo "deltaTE= 8.*10^(-3);"
-      echo "echotimes = TE1(1):deltaTE(1):(TE1(1)+deltaTE(1)*(Nechos(1)-1));"
-      echo "Data_comb = CombineEchoes_nofor_LS(Data, echotimes, 'SoS');"
-      echo "save('${OUT}','Data_comb');"
-      echo "disp(\"Done\")"
-      ) >> ${newrecon}
-    fi
-
-    call_matlab ${newrecon}
-
-  else
-
-    if [[ ! -f ${reconlab} ]]; then
-      txt="No recon LAB-file with \"*run-${RUN}*\", \"*recon*\", and \"*.lab\""
-    elif [[ ! -f ${tasklab} ]]; then
-      txt="No task LAB-file with \"*run-${RUN}*\", \"*bold*\", and \"*.lab\""
-    fi
-
-    echo
-    echo "---------------------------------------------------------------------------------------------------"
-    echo "ERROR in `basename ${0}`: ${txt}"
-    exit 1
-
-  fi
+  echo
+  echo "---------------------------------------------------------------------------------------------------"
+  echo "ERROR in `basename ${0}`: could not find ${txt}file"
+  exit 1
 
 fi
