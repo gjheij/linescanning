@@ -44,7 +44,7 @@ if [[ $# -lt 1 ]] ; then
 fi
 
 # Check for subject & session flags
-while getopts ns:f:t:r:d: argument
+while getopts ns:f:t:v:d: argument
 do
   case ${argument} in
     s)  SPM=${OPTARG}
@@ -55,7 +55,7 @@ do
             ;;            
     t)  TR=${OPTARG}
             ;;
-    r)  VOLS=${OPTARG}
+    v)  VOLS=${OPTARG}
             ;;                        
   esac
 done
@@ -157,15 +157,15 @@ OUTPUT=`fetch_filepath ${OUTPUT}`
 #-----------------------------------------------------------------------------
 # Do some preprocessing with 'scanphyslog2bids' from Lukas Snoek:
 scanphyslog2bids \
-    --file ${INPUT} \
-    --tr ${TR} \
-    --ndyns ${VOLS} \
-    --sf 500 \ 
-    --triggermethod interpolate \ # gradient_log doesn't work
-    --outdir $(dirname ${INPUT}) \  # default
-    --plottraces \
-    --plotalignment \
-    --derivdir $(dirname ${INPUT})  # for plots
+  --file ${INPUT} \
+  --tr ${TR} \
+  --ndyns ${VOLS} \
+  --sf 500 \
+  --triggermethod interpolate \
+  --outdir $(dirname ${INPUT}) \
+  --plottraces \
+  --plotalignment \
+  --derivdir $(dirname ${INPUT})  # for plots
 
 # fetch the output from scanphyslog2bids
 PHYSIO_INPUT=$(dirname ${INPUT})/$(basename ${INPUT} .log).tsv.gz
