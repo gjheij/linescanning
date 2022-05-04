@@ -1537,6 +1537,7 @@ class pRFmodelFitting():
                  freq_type='fft',
                  clip_power=None,
                  save_as=None,
+                 axis_type="volumes",
                  **kwargs):
 
         """plot real and predicted timecourses for a voxel. Also returns parameters, the numpy array representing the pRF in visual space, and timecourse of data"""
@@ -1577,11 +1578,19 @@ class pRFmodelFitting():
             else:
                 set_title = None
 
+            if axis_type == "time":
+                x_label = "time (s)"
+                x_axis = np.array(list(np.arange(0,tc.shape[0])*self.TR))
+            else:
+                x_axis = None
+                x_label = "volumes"
+
             plotting.LazyPlot([tc, self.prediction],
+                              xx=x_axis,
                               color=['#cccccc', 'r'], 
                               labels=['real', 'pred'], 
                               add_hline='default',
-                              x_label="Volumes",
+                              x_label=x_label,
                               y_label="amplitude",
                               axs=ax2,
                               title=set_title,
