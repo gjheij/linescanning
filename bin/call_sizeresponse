@@ -34,6 +34,7 @@ Args:
     -n (--ses)      Session to use pRF-parameters from
     -l (--stage)    Stage to fit DN-model with. Can be 'grid', 'grid+iter', or 'iter' (which is 
                     equivalent to 'grid+iter'). Default = 'iter'
+    -h (--hemi)     Process a single hemisphere instead of both. Must be one of 'rh' or 'lh'
     --ctx           Path to pycortex directory up to subject specific directories (defaults to <de-
                     rivatives>/pycortex/<subject>
     --prf           Path to pRF directory up to subject specific directories (defaults to <deriva-
@@ -46,20 +47,21 @@ Outputs:
 Examples:
     call_sizeresponse -s sub-001 --ctx /path/pycortex --prf /path/prf
     call_sizeresponse -s sub-001
-    qsub -N SR_001 -wd $DIR_LOGS $DIR_SCRIPTS/bin/call_sizeresponse -s sub-001
+    qsub -N SR_001 -q $SGE_QUEUE_SHORT -wd $DIR_LOGS $DIR_SCRIPTS/bin/call_sizeresponse -s sub-001
 
 ---------------------------------------------------------------------------------------------------
     """
 
     subject     = None
     session     = None
+    hemi_list   = ['lh', 'rh']
     cx_dir      = None
     prf_dir     = None
     stage       = "iter"
     verbose     = False
 
     try:
-        opts = getopt.getopt(argv,"vqs:n:h:m:l:",["help", "sub=", "ses=", "cx=", "prf=", "stage="])[0]
+        opts = getopt.getopt(argv,"vqs:n:h:m:l:",["help", "sub=", "hemi=", "ses=", "cx=", "prf=", "stage="])[0]
     except getopt.GetoptError:
         print("ERROR IN ARGUMENT HANDLING!")
         print(main.__doc__)
@@ -77,6 +79,8 @@ Examples:
             session = arg
         elif opt in ("-l", "--stage"):
             stage = arg
+        elif opt in ("-h", "--hemi"):
+            hemi_list = [arg]
         elif opt in ("--cx"):
             cx_dir = arg
         elif opt in ("--prf"):
@@ -105,8 +109,8 @@ Examples:
     elif stage == "iter":
         stage = "grid+iter"
 
-    for hemi in ['lh', 'rh']:
-
+    for hemi in hemi_list:
+        
         if hemi == "lh":
             hemi_tag = "hemi-L"
         elif hemi == "rh":
