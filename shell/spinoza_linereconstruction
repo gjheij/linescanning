@@ -168,12 +168,8 @@ for dir in ${search}; do
 
         # fetch task
         task=`task_id ${bold}`
-        if [[ ${task} == "prf" ]]; then
-          task="pRF"
-        else
-          task=${task^^}
-        fi
 
+        # set output name
         outputbase=${bidsfunc}/$(basename ${dir})_ses-${nr}_task-${task}_run-${run}_bold
         if [[ ${OW} -eq 1 ]]; then
           rm -r ${outputbase}.mat 2>/dev/null
