@@ -1564,7 +1564,7 @@ class NideconvFitter():
             self.timecourses_condition()
 
         cols = list(self.tc_condition.columns)
-        if len(cols) > 30:
+        if len(cols) > 10:
             raise Exception(f"{len(cols)} were requested. Maximum number of plots is set to 30")
 
         if n_cols != None:
