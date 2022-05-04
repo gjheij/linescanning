@@ -330,8 +330,8 @@ for dir in ${search}; do
             task=`task_id ${bold}`
             if [[ ${task} == "prf" ]]; then
               task="pRF"
-            else
-              task=${task^^}
+            elif [[ ${task} == "sr" ]]; then
+              task="SR"
             fi
 
             # fetch run
