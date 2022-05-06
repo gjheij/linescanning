@@ -389,7 +389,7 @@ class LazyPlot():
         if self.add_hline:
             # correct for axis shortening induced by trimming with sns.despine
             if self.sns_trim:
-                set_xlim = x.shape[0]/old_xlim
+                set_xlim = x[-1]/old_xlim
             else:
                 set_xlim = 1
 
