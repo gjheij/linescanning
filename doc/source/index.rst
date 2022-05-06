@@ -30,6 +30,7 @@ Contents
    examples/lazyplot
    examples/genericglm
    examples/nideconv
+   examples/acompcor
    
 .. toctree::
    :maxdepth: 2
