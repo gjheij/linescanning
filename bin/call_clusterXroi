@@ -220,7 +220,7 @@ for mask in ${maskdir}/bin.thr*.nii.gz; do
 
     if [[ ! -f ${out} ]]; then
       # printf " `basename ${mask}`\tx  `basename ${i}`\n"
-      echo "creating `basename ${out}`"
+      echo " Creating `basename ${out}`"
       fslmaths ${i} -mul ${mask} ${out}
     else
       printf " $(basename ${mask}): multiplied mask already present\n"
