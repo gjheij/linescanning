@@ -23,8 +23,8 @@ Args:
   -s <subj ID>        subject ID as per output of FreeSurfer (e.g., 'sub-001')
 
   -f <fsdir>          path to freesurfer directory; if left empty > reads SUBJECTS_DIR
-
-  -o <featdir>        path to FEAT-directory (can also be group-directory, but in that case it should
+  -o <output dir>     by default in 'freesurfer/fsaverage/volumes'
+  -i <featdir>        path to FEAT-directory (can also be group-directory, but in that case it should
                       be specified up to the dir.gfeat/cope?.feat-directory). Whatever you named the
                       stats-map; make sure you have something with "zstat?" in it.. If you have com-
                       pletely changed the name (while keeping zstat? [!!!]), use the '-a' flag
@@ -48,8 +48,8 @@ Args:
   -q <some suffix>    string to add to the .mgh files to differentiate?
 
 Example:
-  call_stats2surf -s sub-001 -f /path/to/freesurfer -o <featdir> -w /path/to/warp.h5 -t 3.1
-  call_stats2surf -s sub-001 -f /path/to/freesurfer -o <gfeat/cope1.feat> -w /path/to/warp.h5
+  call_stats2surf -s sub-001 -f /path/to/freesurfer -i <featdir> -w /path/to/warp.h5 -t 3.1
+  call_stats2surf -s sub-001 -f /path/to/freesurfer -i <gfeat/cope1.feat> -w /path/to/warp.h5
 
 You can view the results with:
   freeview -f $SUBJECTS_DIR/sub-xxx/surf/?h.inflated:overlay=/path/to/?h.stats.mgh-file
@@ -67,15 +67,17 @@ USAGE
 
 #-----------------------------------------------------------------------------
 # Deal with arguments
-while getopts s:f:o:w:a:t:q: arg
+while getopts s:f:o:i:w:a:t:q: arg
 do
     case ${arg} in
       s)  subj_ID=${OPTARG}
             ;;
       f)  fsdir=${OPTARG}
             ;;
-      o)  featdir=${OPTARG}
+      o)  outdir=${OPTARG}
             ;;
+      i)  featdir=${OPTARG}
+            ;;            
       w)  warp=${OPTARG}
             ;;
       a)  search=${OPTARG}
@@ -139,6 +141,16 @@ if [[ ! -f ${T1} ]]; then
   exit 1
 fi
 
+if [[ ! -z ${outdir} ]]; then
+  if [[ ! -d ${outdir} ]]; then
+    mkdir -p ${outdir}
+  fi
+
+  out_flag="-o ${outdir}"
+else
+  out_flag=""
+fi
+
 for i in ${zstat[@]}; do
 
   # extract number from filename
@@ -164,6 +176,6 @@ for i in ${zstat[@]}; do
   fi
 
   # project to fsaverage through fsnative of subj_ID
-  call_vol2fsaverage -p "group" ${subj_ID} ${new_warp} "${search}${nr}${q}"
+  call_vol2fsaverage ${out_flag} -p "group" ${subj_ID} ${new_warp} "${search}${nr}${q}"
 
 done
