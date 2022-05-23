@@ -989,7 +989,7 @@ def distance_centers(prf1,prf2):
     return math.sqrt(math.pow(x2 - x1, 2) + math.pow(y2 - y1, 2) * 1.0)
  
 
-def generate_model_params(model='gauss', dm=None, TR=1.5, outputdir=None, settings=None):
+def generate_model_params(model='gauss', dm=None, TR=1.5, outputdir=None, settings=None, fit_hrf=False):
 
     """generate_model_params
 
@@ -1007,6 +1007,8 @@ def generate_model_params(model='gauss', dm=None, TR=1.5, outputdir=None, settin
         path-like object pointing to the prf-directory so each analysis comes with its own analysis-settings file  
     settings: str
         load the settings from a settings file generate earlier
+    fit_hrf: bool
+        Whether or not to fit two extra parameters for hrf derivative and dispersion. The default is False.
 
     Returns
     ----------
@@ -1078,6 +1080,10 @@ def generate_model_params(model='gauss', dm=None, TR=1.5, outputdir=None, settin
                                  'neur_bsl': list(norm_bounds[7]),
                                  'surr_bsl': list(norm_bounds[8])}}
 
+        if fit_hrf:
+            bounds['bounds']["hrf_deriv"] = [0,10]
+            bounds['bounds']["hrf_disp"] = [0,0]
+
         # update settings file if we've generated a new one
         if settings == None:
             data.update(bounds)
@@ -1134,6 +1140,8 @@ class pRFmodelFitting():
         >>> time_points = np.linspace(0,36,np.rint(float(36)/dt).astype(int))
         >>> hrf_custom = linescanning.glm.double_gamma(time_points, lag=6)
         >>> hrf_custom = hrf_custom[np.newaxis,...]
+    fit_hrf: bool
+        fit the HRF with the pRF-parameters as implemented in `prfpy`
     nr_jobs: int, optional
         Set the number of jobs. By default 1.
     verbose: bool
@@ -1177,6 +1185,7 @@ class pRFmodelFitting():
                  old_params=None,
                  verbose=True,
                  hrf=None,
+                 fit_hrf=False,
                  settings=None,
                  nr_jobs=1000,
                  rsq_threshold=None,
@@ -1201,6 +1210,7 @@ class pRFmodelFitting():
         self.prf_stim       = prf_stim
         self.model_obj      = model_obj
         self.rsq_threshold  = rsq_threshold
+        self.fit_hrf        = fit_hrf
         self.__dict__.update(kwargs)
     
         if self.output_dir == None:
@@ -1212,7 +1222,8 @@ class pRFmodelFitting():
                                                                                   dm=self.design_matrix, 
                                                                                   outputdir=self.output_dir, 
                                                                                   TR=self.TR,
-                                                                                  settings=self.settings_fn)
+                                                                                  settings=self.settings_fn,
+                                                                                  fit_hrf=self.fit_hrf)
 
         # overwrite rsq-threshold from settings file
         if self.rsq_threshold != None:
@@ -1267,12 +1278,14 @@ class pRFmodelFitting():
 
         ## Initiate fitter
         # check whether we got old parameters so we can skip Gaussian fit:
-        if not isinstance(self.old_params, tuple):
+        # if not isinstance(self.old_params, tuple):
+        if not hasattr(self, "previous_gaussian_fitter"):
 
             ### add check whether we need to transpose data
             self.gaussian_fitter = Iso2DGaussianFitter(data=self.data, 
                                                        model=self.gaussian_model, 
-                                                       fit_css=False)
+                                                       fit_css=False,
+                                                       fit_hrf=self.fit_hrf)
             
             if self.verbose:
                 print("Starting gauss grid fit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S'))
@@ -1327,18 +1340,20 @@ class pRFmodelFitting():
         #----------------------------------------------------------------------------------------------------------------------------------------------------------
         # Check if we should do DN-model
         if self.model.lower() == "norm":            
-
+                
+            # allow option to insert parameter array; but by default let prfpy deal with it
             if isinstance(self.old_params, tuple):
                 if self.old_params[-1] == "gauss+iter":
                     self.old_params_arr = self.old_params[0]
                     
                     if self.verbose:
                         print(f"Using old parameters: {self.old_params_arr}")
-            else:
-                self.old_params_arr = self.gaussian_fitter.iterative_search_params
             
+                # make n_units x 4 array, with X,Y,size,r2
+                self.old_params_filt = np.hstack((self.old_params_arr[:,:3], self.old_params_arr[:,-1][...,np.newaxis]))
+
             ## Define settings/grids/fitter/bounds etcs
-            settings, settings_file, self.prf_stim = generate_model_params(model='norm', dm=self.design_matrix, outputdir=self.output_dir)
+            settings, settings_file, self.prf_stim = generate_model_params(model='norm', dm=self.design_matrix, outputdir=self.output_dir, fit_hrf=self.fit_hrf)
             
             if self.verbose:
                 print(f"Using settings file: {settings_file}")
@@ -1349,11 +1364,18 @@ class pRFmodelFitting():
             else:
                 self.rsq = self.settings['rsq_threshold']                
 
-            # make n_units x 4 array, with X,Y,size,r2
-            self.old_params_filt = np.hstack((self.old_params_arr[:,:3], self.old_params_arr[:,-1][...,np.newaxis]))
             
-            # define fitter
-            self.norm_fitter = Norm_Iso2DGaussianFitter(self.norm_model, self.data)
+            # define fitter; previous_gaussian_fitter can be specified in kwargs
+            if not hasattr(self, "previous_gaussian_fitter"):
+                # check if we have gaussian fit
+                if hasattr(self, "gaussian_fitter"):
+                    self.norm_fitter = Norm_Iso2DGaussianFitter(self.norm_model, self.data, fit_hrf=self.fit_hrf, previous_gaussian_fitter=self.gaussian_fitter)
+                else:
+                    # we might have manually injected parameters
+                    self.norm_fitter = Norm_Iso2DGaussianFitter(self.norm_model, self.data)
+            else:
+                # inject existing-model object > advised when fitting the HRF
+                self.norm_fitter = Norm_Iso2DGaussianFitter(self.norm_model, self.data, fit_hrf=self.fit_hrf, previous_gaussian_fitter=self.previous_gaussian_fitter)
 
             # read grid from settings file
             self.surround_amplitude_grid = np.array(self.settings['norm']['surround_amplitude_grid'], dtype='float32')
@@ -1361,7 +1383,7 @@ class pRFmodelFitting():
             self.neural_baseline_grid    = np.array(self.settings['norm']['neural_baseline_grid'], dtype='float32')
             self.surround_baseline_grid  = np.array(self.settings['norm']['surround_baseline_grid'], dtype='float32')
 
-            # fetch bounds from settings
+            # fetch bounds from settings > HRF bounds are automatically appended if fit_hrf=True
             self.norm_bounds = self.fetch_bounds(model='norm')
 
             #----------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -1369,6 +1391,10 @@ class pRFmodelFitting():
             start = time.time()
             if self.verbose:
                 print("Starting norm grid fit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S'))
+
+            # let the fitter find the parameters; easier when fitting the HRF as indexing gets complicated
+            if not hasattr(self, "old_params_filt"):
+                self.old_params_filt = None
 
             self.norm_fitter.grid_fit(self.surround_amplitude_grid, 
                                       self.surround_size_grid, 
@@ -1379,7 +1405,6 @@ class pRFmodelFitting():
 
             elapsed = (time.time() - start)
 
-            
             ### save grid parameters
             self.norm_grid = utils.filter_for_nans(self.norm_fitter.gridsearch_params)
             if self.verbose:
@@ -1390,15 +1415,13 @@ class pRFmodelFitting():
                 self.save_params(model="norm", stage="grid")
 
             #----------------------------------------------------------------------------------------------------------------------------------------------------------
-            ## Check if we should do iterative fitting with DN model
+            # Check if we should do iterative fitting with DN model
             if self.stage == "grid+iter":
                 start = time.time()
                 if self.verbose:
                     print("Starting norm iterfit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S'))
 
-                self.norm_fitter.iterative_fit(rsq_threshold=settings['rsq_threshold'],
-                                               bounds=self.norm_bounds,
-                                               starting_params=self.norm_fitter.gridsearch_params)
+                self.norm_fitter.iterative_fit(rsq_threshold=settings['rsq_threshold'], bounds=self.norm_bounds)
                 
                 elapsed = (time.time() - start)  
 
@@ -1411,25 +1434,29 @@ class pRFmodelFitting():
 
     def fetch_bounds(self, model=None):
         if model == "norm":
-            bounds = [tuple(self.settings['bounds']['x']),               # x
-                      tuple(self.settings['bounds']['y']),               # y
-                      tuple(self.settings['bounds']['size']),            # prf size
-                      tuple(self.settings['bounds']['prf_ampl']),        # prf amplitude
-                      tuple(self.settings['bounds']['bold_bsl']),        # bold baseline
-                      tuple(self.settings['bounds']['surr_ampl']),       # surround amplitude
-                      tuple(self.settings['bounds']['surr_size']),       # surround size
-                      tuple(self.settings['bounds']['neur_bsl']),        # neural baseline
-                      tuple(self.settings['bounds']['surr_bsl'])]        # surround baseline
+            bounds = [tuple(self.settings['bounds']['x']),                  # x
+                      tuple(self.settings['bounds']['y']),                  # y
+                      tuple(self.settings['bounds']['size']),               # prf size
+                      tuple(self.settings['bounds']['prf_ampl']),           # prf amplitude
+                      tuple(self.settings['bounds']['bold_bsl']),           # bold baseline
+                      tuple(self.settings['bounds']['surr_ampl']),          # surround amplitude
+                      tuple(self.settings['bounds']['surr_size']),          # surround size
+                      tuple(self.settings['bounds']['neur_bsl']),           # neural baseline
+                      tuple(self.settings['bounds']['surr_bsl'])]           # surround baseline
 
         elif model == "gauss":
-            bounds = [tuple(self.settings['bounds']['x']),               # x
-                      tuple(self.settings['bounds']['y']),               # y
-                      tuple(self.settings['bounds']['size']),            # prf size
-                      tuple(self.settings['bounds']['prf_ampl']),        # prf amplitude
-                      tuple(self.settings['bounds']['bold_bsl'])]        # bold baseline   
+            bounds = [tuple(self.settings['bounds']['x']),                  # x
+                      tuple(self.settings['bounds']['y']),                  # y
+                      tuple(self.settings['bounds']['size']),               # prf size
+                      tuple(self.settings['bounds']['prf_ampl']),           # prf amplitude
+                      tuple(self.settings['bounds']['bold_bsl'])]           # bold baseline   
 
         else:
-            raise ValueError(f"Unrecognized model '{model}'")
+            raise ValueError(f"Unrecognized model '{model}'")               
+
+        if self.fit_hrf:
+            bounds.append(tuple(self.settings["bounds"]['hrf_deriv']))      # HRF time derivative
+            bounds.append(tuple(self.settings["bounds"]['hrf_disp']))       # HRF dispersion derivative
 
         return bounds
 
@@ -1618,6 +1645,7 @@ class pRFmodelFitting():
                                   **kwargs)
             
             if save_as:
+                print(f"Writing {save_as}")
                 fig.savefig(save_as)
 
             return params, prf_array, tc
