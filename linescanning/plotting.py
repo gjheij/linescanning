@@ -69,7 +69,13 @@ class LazyPRF():
             self.plot()
 
         if self.save_as:
-            plt.savefig(self.save_as, transparant=True)
+            if isinstance(self.save_as, list):
+                for ii in self.save_as:
+                    plt.savefig(ii, transparant=True)
+            elif isinstance(self.save_as, str):
+                plt.savefig(self.save_as, transparant=True)
+            else:
+                raise ValueError(f"Unknown input '{self.save_as}' for 'save_as'")
 
     def plot(self):
 
@@ -264,8 +270,14 @@ class LazyPlot():
             self.fontname = "Arial"
             self.plot()
         
-        if save_as:
-            plt.savefig(self.save_as, transparent=True)
+        if self.save_as:
+            if isinstance(self.save_as, list):
+                for ii in self.save_as:
+                    plt.savefig(ii, transparant=True)
+            elif isinstance(self.save_as, str):
+                plt.savefig(self.save_as, transparant=True)
+            else:
+                raise ValueError(f"Unknown input '{self.save_as}' for 'save_as'")
 
     def plot(self):
 
@@ -494,6 +506,7 @@ class LazyCorr():
         self.color          = color
         self.figsize        = figsize
         self.title          = title
+        self.save_as        = save_as
 
         if self.xkcd:
             with plt.xkcd():
@@ -503,8 +516,15 @@ class LazyCorr():
             self.fontname = "Arial"
             self.plot()
 
-        if save_as:
-            plt.savefig(self.save_as, transparent=True)
+        if self.save_as:
+            if isinstance(self.save_as, list):
+                for ii in self.save_as:
+                    plt.savefig(ii, transparant=True)
+            elif isinstance(self.save_as, str):
+                plt.savefig(self.save_as, transparant=True)
+            else:
+                raise ValueError(
+                    f"Unknown input '{self.save_as}' for 'save_as'")
 
     def plot(self):
 
