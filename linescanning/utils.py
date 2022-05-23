@@ -1,7 +1,5 @@
 import csv
 import json
-
-from attr import has
 from . import prf, glm, plotting
 import lmfit
 import matplotlib.colors as mcolors
@@ -1391,7 +1389,7 @@ class NideconvFitter():
     See also https://linescanning.readthedocs.io/en/latest/examples/nideconv.html for more details.
     """
 
-    def __init__(self, func, onsets, TR=0.105, confounds=None, basis_sets="fourier", fit_type="ols", n_regressors=9, add_intercept=False, verbose=False, lump_events=False, interval=[0,12]):
+    def __init__(self, func, onsets, TR=0.105, confounds=None, basis_sets="fourier", fit_type="ols", n_regressors=9, add_intercept=False, verbose=False, lump_events=False, interval=[0,12], **kwargs):
 
         self.func           = func
         self.onsets         = onsets
@@ -1414,6 +1412,9 @@ class NideconvFitter():
         else:
             self.used_onsets = self.onsets.copy()        
         
+        # update kwargs
+        self.__dict__.update(kwargs)
+
         # get the model
         self.define_model()
 
@@ -1430,7 +1431,16 @@ class NideconvFitter():
             self.tc_condition = self.model.get_conditionwise_timecourses()
             
             # get the standard error of mean
-            self.tc_error = self.model.get_subjectwise_timecourses().groupby(level=['event type', 'covariate', 'time']).sem()
+            self.tc_sem = self.model.get_subjectwise_timecourses().groupby(level=['event type', 'covariate', 'time']).sem()
+
+            self.tc_std = self.model.get_subjectwise_timecourses().groupby(level=['event type', 'covariate', 'time']).std()
+
+            # rename 'event type' to 'event_type'
+            tmp = self.tc_std.reset_index().rename(columns={"event type": "event_type"})
+            self.tc_std = tmp.set_index(['event_type', 'covariate', 'time'])
+
+            tmp = self.tc_sem.reset_index().rename(columns={"event type": "event_type"})
+            self.tc_sem = tmp.set_index(['event_type', 'covariate', 'time'])
 
             # get r2
             self.rsq_ = self.model.get_rsq()
@@ -1463,7 +1473,8 @@ class NideconvFitter():
                                             input_sample_rate=self.fs,
                                             concatenate_runs=False,
                                             confounds=self.confounds, 
-                                            add_intercept=False)
+                                            add_intercept=False,
+                                            oversample_design_matrix=20)
     
     def define_events(self):
         
@@ -1524,21 +1535,35 @@ class NideconvFitter():
         else:
             raise ValueError(f"Unrecognized minimizer '{self.fit_type}'; must be 'ols' or 'ridge'")
         
-
         if self.verbose:
             print("Done")
 
-    def plot_average_per_event(self, add_offset=True, axs=None, title="Average HRF", save_as=None, **kwargs):
+    def plot_average_per_event(self, add_offset=True, axs=None, title="Average HRF across voxels", save_as=None, error_type="sem", ttp=False, ttp_lines=False, ttp_legend=True, events=None, ttp_ori='h', ttp_rot=30, **kwargs):
+
+        self.__dict__.update(kwargs)
+
+        if axs == None:
+            if not hasattr(self, "figsize"):
+                self.figsize = (8,8)
+            fig, axs = plt.subplots(figsize=self.figsize)
 
         if not hasattr(self, "tc_condition"):
             self.timecourses_condition()
 
+        if not isinstance(events, list) and not isinstance(events, np.ndarray):
+            events = self.cond
+        else:
+            if self.verbose:
+                print(f"Flipping events to {events}")
+
         self.event_avg = []
         self.event_sem = []
-        for ev in self.cond:
+        self.event_std = []
+        for ev in events:
             # average over voxels (we have this iloc thing because that allows 'axis=1'). Groupby doesn't allow this
-            avg     = self.tc_condition.loc[ev].iloc[:].mean(axis=1).values
-            sem     = self.tc_condition.loc[ev].iloc[:].sem(axis=1).values
+            avg = self.tc_condition.loc[ev].iloc[:].mean(axis=1).values
+            sem = self.tc_condition.loc[ev].iloc[:].sem(axis=1).values
+            std = self.tc_condition.loc[ev].iloc[:].std(axis=1).values
 
             if add_offset:
                 if avg[0] > 0:
@@ -1548,15 +1573,65 @@ class NideconvFitter():
 
             self.event_avg.append(avg)
             self.event_sem.append(sem)
+            self.event_std.append(std)
+
+        if error_type == "sem":
+            self.use_error = self.event_sem.copy()
+        elif error_type == "std":
+            self.use_error = self.event_std.copy()
+        else:
+            raise ValueError(f"Error type must be 'sem' or 'std', not {error_type}")
 
         plotting.LazyPlot(self.event_avg,
                           xx=self.time,
                           axs=axs,
-                          error=self.event_sem,
+                          error=self.use_error,
                           title=title,
-                          font_size=16,
+                          font_size=20,
                           save_as=save_as,
                           **kwargs)
+        
+        if ttp:
+
+            if not hasattr(self, "color"):
+                if not hasattr(self, "cmap"):
+                    cmap = "viridis"
+                else:
+                    cmap = self.cmap
+                colors = sns.color_palette(cmap, len(self.cond))
+            else:
+                colors = self.color
+
+            # add insets with time-to-peak
+            left, bottom, width, height = [0.75, 0.65, 0.3, 0.3]
+            ax2 = axs.inset_axes([left, bottom, width, height])
+
+            # get peaks
+            tcs = np.array(self.event_avg)
+            peak_positions = (np.argmax(tcs, axis=1)/self.time.shape[-1])*self.interval[-1]
+            peaks = tcs.max(1)
+
+            if ttp_lines:
+                # heights need to be adjusted for by axis length 
+                ylim = axs.get_ylim()
+                tot = sum(list(np.abs(ylim)))
+                start = (0-ylim[0])/tot
+                for ix,ii in enumerate(peak_positions):
+                    axs.axvline(ii, ymin=start, ymax=peaks[ix]/tot+start, color=colors[ix], linewidth=0.5)
+
+            # make bar plot, use same color-coding
+            if not isinstance(events, list) and not isinstance(events, np.ndarray):
+                pass
+            else:
+                self.ttp_labels = events
+            
+            x = [i for i in range(len(peaks))]
+            plotting.LazyBar(x=self.ttp_labels,
+                             y=peak_positions,
+                             palette=colors,
+                             sns_ori=ttp_ori,
+                             axs=ax2,
+                             **kwargs)         
 
     def plot_average_per_voxel(self, add_offset=True, axs=None, n_cols=4, wspace=0, figsize=(30,15), make_figure=True, labels=None, save_as=None, **kwargs):
             
@@ -1608,6 +1683,7 @@ class NideconvFitter():
                                       title=col,
                                       labels=set_labels,
                                       font_size=16,
+                                      add_hline='default',
                                       **kwargs)
 
         if make_figure:
@@ -1623,12 +1699,14 @@ class NideconvFitter():
                                       axs=axs,
                                       labels=labels,
                                       font_size=16,
+                                      add_hline='default',
                                       **kwargs)
                 else:
                     plotting.LazyPlot(self.all_voxels_in_event,
                                       xx=self.time,
                                       font_size=16,
                                       labels=labels,
+                                      add_hline='default',
                                       **kwargs)
 
         if save_as:
@@ -1660,3 +1738,66 @@ class NideconvFitter():
 
         if save_as:
             fig.savefig(save_as)
+
+    def plot_areas_per_event(self, colors=None, save_as=None, add_offset=True, error_type="sem", axs=None, **kwargs):
+
+        if not hasattr(self, "tc_condition"):
+            self.timecourses_condition()
+
+        n_cols = len(list(self.cond))
+        figsize=(n_cols*8,8)
+
+        if not axs:
+            fig = plt.figure(figsize=figsize)
+            gs = fig.add_gridspec(1, n_cols)
+
+        if error_type == "std":
+            err = self.tc_std.copy()
+        elif error_type == "sem":
+            err = self.tc_sem.copy()
+        else:
+            raise ValueError(f"Error type must be 'std' or 'sem', not '{error_type}'")
+        
+        for ix,event in enumerate(self.cond):
+            
+            # add axis
+            if not axs:
+                ax = fig.add_subplot(gs[ix])
+            else:
+                ax = axs
+
+            event_df = select_from_df(self.tc_condition, expression=f"event_type = {event}")
+            error_df = select_from_df(err, expression=f"event_type = {event}")            
+
+            self.data_for_plot = []
+            self.error_for_plot = []
+            for ii, dd in enumerate(list(self.tc_condition.columns)):
+
+                # get the timecourse
+                col_data = np.squeeze(select_from_df(event_df, expression='ribbon', indices=[ii]).values)
+                col_error = np.squeeze(select_from_df(error_df, expression='ribbon', indices=[ii]).values)
+
+                # shift to zero
+                if add_offset:
+                    if col_data[0] > 0:
+                        col_data -= col_data[0]
+                    else:
+                        col_data += abs(col_data[0])
+                
+                self.data_for_plot.append(col_data)
+                self.error_for_plot.append(col_error)
+
+            plotting.LazyPlot(self.data_for_plot,
+                              xx=self.time,
+                              error=self.error_for_plot,
+                              axs=ax,
+                              font_size=16,
+                              **kwargs)
+            if not axs:
+                if save_as:
+                    fig.savefig(save_as)
+
+
+            
+
+        
