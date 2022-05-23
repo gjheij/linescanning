@@ -208,6 +208,10 @@ class LazyPlot():
                  save_as=None,
                  labels=None,
                  font_size=12,
+                 label_size=10,
+                 tick_width=0.5,
+                 tick_length=7,
+                 axis_width=0.5,
                  add_hline=None,
                  add_vline=None,
                  line_width=1,
@@ -215,7 +219,7 @@ class LazyPlot():
                  y_lim=None,
                  x_lim=None,
                  sns_offset=10,
-                 sns_trim=False,
+                 sns_trim=True,
                  sns_rm_bottom=False,
                  set_xlim_zero=True,
                  markers=None,
@@ -235,9 +239,13 @@ class LazyPlot():
         self.save_as            = save_as
         self.labels             = labels
         self.font_size          = font_size
+        self.label_size         = label_size
+        self.tick_width         = tick_width
+        self.tick_length        = tick_length
         self.add_hline          = add_hline
         self.add_vline          = add_vline
         self.axs                = axs
+        self.axis_width         = axis_width
         self.line_width         = line_width
         self.y_lim              = y_lim
         self.x_lim              = x_lim
@@ -255,7 +263,7 @@ class LazyPlot():
         else:
             self.fontname = "Arial"
             self.plot()
-
+        
         if save_as:
             plt.savefig(self.save_as, transparent=True)
 
@@ -352,6 +360,12 @@ class LazyPlot():
 
         if self.title:
             axs.set_title(self.title, fontname=self.fontname, fontsize=self.font_size)
+
+        axs.tick_params(width=self.tick_width, length=self.tick_length,
+                        labelsize=self.label_size)
+
+        for axis in ['top', 'bottom', 'left', 'right']:
+            axs.spines[axis].set_linewidth(self.axis_width)
 
         # add vertical lines
         if self.add_vline:
@@ -517,3 +531,136 @@ class LazyCorr():
             axs.set_title(self.title, fontname=self.fontname, fontsize=self.font_size)
 
         sns.despine(offset=self.sns_despine, trim=self.sns_trim)
+
+class LazyBar():
+
+    def __init__(self, 
+                 x=None, 
+                 y=None, 
+                 axs=None,
+                 sns_ori='h', 
+                 sns_trim=2, 
+                 labels=None,
+                 font_size=12,
+                 label_size=10,
+                 tick_width=0.5,
+                 tick_length=7,
+                 axis_width=0.5,
+                 sns_rot=None,
+                 palette=None,
+                 cmap='viridis',
+                 save_as=None,
+                 xkcd=False,
+                 title=None,
+                 add_labels=False,
+                 add_axis=True,
+                 lim=None,
+                 ticks=None,
+                 **kwargs):
+
+        self.x                  = x
+        self.y                  = y
+        self.sns_ori            = sns_ori
+        self.labels             = labels
+        self.font_size          = font_size
+        self.label_size         = label_size
+        self.tick_width         = tick_width
+        self.tick_length        = tick_length
+        self.axs                = axs
+        self.axis_width         = axis_width
+        self.sns_rot            = sns_rot
+        self.palette            = palette
+        self.cmap               = cmap
+        self.xkcd               = xkcd
+        self.title              = title
+        self.sns_trim           = sns_trim
+        self.add_labels         = add_labels
+        self.add_axis           = add_axis
+        self.lim                = lim
+        self.ticks              = ticks
+        self.__dict__.update(kwargs)
+
+        if self.xkcd:
+            with plt.xkcd():
+                self.fontname = "Humor Sans"
+                self.plot()
+        else:
+            self.fontname = "Arial"
+            self.plot()
+        
+        if save_as:
+            plt.savefig(self.save_as, transparent=True)
+
+    def plot(self):
+
+        if self.axs == None:
+            fig, axs = plt.subplots(figsize=self.figsize)
+        else:
+            axs = self.axs
+
+        if not self.palette:
+            self.palette = sns.color_palette(self.cmap, len(self.x))       
+
+        if self.sns_ori == "h":
+            xx = self.y
+            yy = self.x
+            trim_bottom = False
+            trim_left   = True
+        elif self.sns_ori == "v":
+            xx = self.x 
+            yy = self.y
+            trim_bottom = True
+            trim_left   = False            
+        else:
+            raise ValueError(f"sns_ori must be 'v' or 'h', not '{self.sns_ori}'")
+
+        sns.barplot(x=xx, 
+                    y=yy, 
+                    ax=axs, 
+                    palette=self.palette, 
+                    orient=self.sns_ori)
+
+        # axis labels and titles
+        if self.title:
+            axs.set_title(self.title, fontname=self.fontname, fontsize=self.font_size)                    
+        
+        axs.tick_params(width=self.tick_width, length=self.tick_length,
+                labelsize=self.label_size)
+
+        for axis in ['top', 'bottom', 'left', 'right']:
+            axs.spines[axis].set_linewidth(self.axis_width)
+
+        if not self.add_labels:
+            if self.sns_ori == 'h':
+                axs.set_yticks([])
+            elif self.sns_ori == "v":                
+                axs.set_xticks([])
+            else:
+                raise ValueError(f"sns_ori must be 'v' or 'h', not '{self.sns_ori}'")
+            
+        if not self.add_axis:
+            if self.sns_ori == 'h':
+                self.axs.set_xticklabels(self.axs.get_xticklabels(), rotation=self.sns_rot)
+            elif self.sns_ori == "v":
+                self.axs.set_yticklabels(self.axs.get_xticklabels(), rotation=self.sns_rot)
+            else:
+                raise ValueError(f"sns_ori must be 'v' or 'h', not '{self.sns_ori}'")
+
+        if isinstance(self.lim, list):
+            if self.sns_ori == 'h':
+                self.axs.set_xlim(self.lim)
+            elif self.sns_ori == "v":
+                self.axs.set_ylim(self.lim)
+            else:
+                raise ValueError(f"sns_ori must be 'v' or 'h', not '{self.sns_ori}'")     
+        
+        if isinstance(self.ticks, list):
+            if self.sns_ori == 'h':
+                self.axs.set_xticks(self.ticks)
+            elif self.sns_ori == "v":
+                self.axs.set_yticks(self.ticks)
+            else:
+                raise ValueError(f"sns_ori must be 'v' or 'h', not '{self.sns_ori}'")                            
+
+        sns.despine(offset=self.sns_trim, trim=True,
+                    left=trim_left, bottom=trim_bottom, ax=self.axs)
