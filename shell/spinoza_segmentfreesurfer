@@ -100,11 +100,6 @@ for dir in ${search}; do
   #----------------------------------------------------------------------------------------------------------------------------------------------------------
   # Running FreeSurfer with call_freesurfer
 
-  # if [[ ! -d $MASKED_AVG ]]; then
-  #   echo "  Could not find masked_averages directory. Make sure you run module 09 and 11 first"
-  #   continue
-  # fi
-
   # LOOK FOR T1-WEIGHTED IMAGE; SHOULD BE FMRIPREP'S INPUT IDEALLY
   if [[ -z ${ses} ]]; then
     base_dir=$(basename ${dir})
@@ -117,13 +112,18 @@ for dir in ${search}; do
 
   if [[ ! -z ${T2} ]]; then
     T2_DIR=${T2}/${base_dir}/anat
-    # LOOK FOR T2-WEIGHTED IMAGE
+    # LOOK FOR T2-/FLAIR WEIGHTED IMAGE
     if [[ -d ${T2_DIR} ]]; then
-      input_t2w=`find "${T2_DIR}" -type f \( -name "*T2w*" -and -name "*.nii.gz" \) 2>/dev/null`
+      input_t2w=`find "${T2_DIR}" -type f \( -name "*FLAIR*" -and -name "*.nii.gz" -or -name "*T2w*" -and -name "*.nii.gz" \) 2>/dev/null`
     fi
   fi
 
-  T1_DIR=${T1}/${base_dir}/anat
+  if [[ $(basename ${T1}) == *"masked_"* ]] || [[ ${T1} == ${DIR_DATA_HOME} ]]; then
+    T1_DIR=${T1}/${base_dir}/anat
+  else
+    T1_DIR=${T1}/${base_dir}
+  fi
+  
   input_t1w=`find "${T1_DIR}" -type f \( -name "*T1w*" -and -name "*${DATA^^}*" -and -name "*.nii.gz" \) 2>/dev/null`
   if [[ ! -z ${input_t1w} ]]; then
 
