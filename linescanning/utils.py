@@ -1466,15 +1466,14 @@ class NideconvFitter():
         # set time axis
         self.time = self.tc_condition.groupby(['time']).mean().reset_index()['time'].values
 
-    def define_model(self):
+    def define_model(self, **kwargs):
 
         self.model = nd.GroupResponseFitter(self.func,
                                             self.used_onsets,
                                             input_sample_rate=self.fs,
-                                            concatenate_runs=False,
                                             confounds=self.confounds, 
-                                            add_intercept=False,
-                                            oversample_design_matrix=20)
+                                            add_intercept=self.add_intercept,
+                                            **kwargs)
     
     def define_events(self):
         
@@ -1538,7 +1537,7 @@ class NideconvFitter():
         if self.verbose:
             print("Done")
 
-    def plot_average_per_event(self, add_offset=True, axs=None, title="Average HRF across voxels", save_as=None, error_type="sem", ttp=False, ttp_lines=False, ttp_legend=True, events=None, ttp_ori='h', ttp_rot=30, **kwargs):
+    def plot_average_per_event(self, add_offset=True, axs=None, title="Average HRF across voxels", save_as=None, error_type="sem", ttp=False, ttp_lines=False, ttp_legend=True, ttp_labels=None, events=None, ttp_ori='h', ttp_rot=30, **kwargs):
 
         self.__dict__.update(kwargs)
 
@@ -1620,11 +1619,12 @@ class NideconvFitter():
                     axs.axvline(ii, ymin=start, ymax=peaks[ix]/tot+start, color=colors[ix], linewidth=0.5)
 
             # make bar plot, use same color-coding
-            if not isinstance(events, list) and not isinstance(events, np.ndarray):
-                pass
+            if isinstance(ttp_labels, list) or isinstance(ttp_labels, np.ndarray):
+                self.ttp_labels = ttp_labels
             else:
                 self.ttp_labels = events
             
+            print(ttp_labels)
             x = [i for i in range(len(peaks))]
             plotting.LazyBar(x=self.ttp_labels,
                              y=peak_positions,
