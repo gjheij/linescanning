@@ -280,7 +280,15 @@ CHECK_INPUTS(){
       T2=${PWD}/${T2}
     fi
 
-    T2_flag="-T2 ${T2} -T2pial"
+    # check if input if FLAIR or T2
+    if [[ ${T2} == *"T2w.nii.gz"* ]]; then
+      T2_flag="-T2 ${T2} -T2pial"
+    elif [[ ${T2} == *"FLAIR.nii.gz"* ]]; then
+      T2_flag="-FLAIR ${T2} -FLAIRpial"
+    else
+      echo "ERROR in `basename ${0}`: file must end with T2w.nii.gz or FLAIR.nii.gz"
+      exit 1
+    fi
   else
     T2_flag=""
   fi
