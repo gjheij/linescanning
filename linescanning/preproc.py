@@ -293,8 +293,8 @@ class aCompCor(Segmentations):
                             **kwargs)
 
         # plot power spectra from non-aCompCor'ed vs aCompCor'ed data
-        tc1 = self.data['vox 359'].values
-        tc2 = self.acomp_data[359,:]
+        tc1 = utils.select_from_df(self.data, expression='ribbon', indices=self.gm_voxels).mean(axis=1).values
+        tc2 = self.acomp_data[self.gm_voxels,:].mean(axis=0)
 
         if not hasattr(self, "clip_power"):
             clip_power = 100
@@ -311,7 +311,7 @@ class aCompCor(Segmentations):
                             color=["#1B9E77", "#D95F02"],
                             x_label="frequency (Hz)",
                             y_label="power (a.u.)",
-                            title="Effect aCompCor on timecourses",
+                            title="Power spectra of average GM-voxels",
                             labels=['no aCompCor', 'aCompCor'],
                             axs=ax3,
                             font_size=16,
