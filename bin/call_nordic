@@ -44,10 +44,10 @@ while getopts hmv: arg; do
     esac
 done
 
-# if [[ $# -lt 3 ]] ; then
-#   Usage >&2
-#   exit 1
-# fi
+if [[ $# -lt 3 ]] ; then
+  Usage >&2
+  exit 1
+fi
 
 IMG_MAGN=${@:$OPTIND:1}
 IMG_PHASE=${@:$OPTIND+1:1}
