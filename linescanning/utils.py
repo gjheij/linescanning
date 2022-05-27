@@ -1798,6 +1798,23 @@ class NideconvFitter():
                     fig.savefig(save_as)
 
 
-            
+class FWHM():
 
+    def __init__(self, x, hrf):
         
+        self.x      = x
+        self.hrf    = hrf
+        self.hmx    = self.half_max_x(self.x,self.hrf)
+        self.fwhm   = self.hmx[1] - self.hmx[0]
+
+    def lin_interp(self, x, y, i, half):
+        return x[i] + (x[i+1] - x[i]) * ((half - y[i]) / (y[i+1] - y[i]))
+
+    @staticmethod
+    def half_max_x(self, x, y):
+        half = max(y)/2.0
+        signs = np.sign(np.add(y, -half))
+        zero_crossings = (signs[0:-2] != signs[1:-1])
+        zero_crossings_i = np.where(zero_crossings)[0]
+        return [self.lin_interp(x, y, zero_crossings_i[0], half),
+                self.lin_interp(x, y, zero_crossings_i[1], half)]        
