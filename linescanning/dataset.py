@@ -1037,10 +1037,6 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
         else:
             self.filter_strategy = "hp"
 
-        # check standardization approach
-        if self.acompcor:
-            self.standardization = "zscore"
-
         if self.phys_file != None: 
             
             # super(ParsePhysioFile, self).__init__(**kwargs)                                              
@@ -1099,6 +1095,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
 
                 if self.verbose:
                     print(f" Filtering strategy: '{self.filter_strategy}'")
+                    print(f" Standardization strategy: '{self.standardization}'")
 
                 self.preprocess_func_file(func, 
                                           run=self.run, 
@@ -1122,7 +1119,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                     self.df_r2.append(self.r2_physio_df)
 
                 if self.acompcor:
-                    acomp_data = self.get_acompcor(index=False, filter_strategy=self.filter_strategy)
+                    acomp_data = self.get_acompcor(index=False, filter_strategy=self.filter_strategy, dtype=self.standardization)
                     self.df_acomp.append(acomp_data)
                     
                     # append the linescanning.preproc.aCompCor object in case we have multiple runs
@@ -1163,14 +1160,13 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                     except:
                         self.df_func_acomp = pd.concat(self.df_acomp)
 
-                self.df_func_zscore = self.df_func_acomp.copy()
-
                 # decide on GM-voxels across runs by averaging tissue probabilities
                 if len(self.acomp_objs) > 1:
                     self.select_voxels_across_runs()
-                    self.gm_df = utils.select_from_df(self.df_func_zscore, expression='ribbon', indices=self.voxel_classification['gm'])
+                    self.gm_df = utils.select_from_df(self.df_func_acomp, expression='ribbon', indices=self.voxel_classification['gm'])
                     self.ribbon_voxels = [ii for ii in range(*self.gm_range) if ii in self.voxel_classification['gm']]
-                    self.ribbon_df = utils.select_from_df(self.df_func_zscore, expression='ribbon', indices=self.ribbon_voxels)                    
+                    self.ribbon_df = utils.select_from_df(
+                        self.df_func_acomp, expression='ribbon', indices=self.ribbon_voxels)
                 else:
                     self.gm_df = self.df_gm_only[0].copy()
 
@@ -1300,6 +1296,10 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                                             TR=self.TR,
                                             set_index=True)
 
+        # save SD and Mean so we can go from zscore back to original
+        self.zscore_SD = self.hp_raw.std(axis=-1, keepdims=True)
+        self.zscore_M = self.hp_raw.mean(axis=-1, keepdims=True)
+
         #----------------------------------------------------------------------------------------------------------------------------------------------------
         # ACOMPCOR AFTER HIGH-PASS FILTERING
         if acompcor:
@@ -1353,15 +1353,33 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                                                run=run, 
                                                TR=self.TR,
                                                set_index=True)
+            
+            # multiply by SD and add mean
+            self.hp_acomp_raw = (self.acomp.acomp_data * self.zscore_SD) + self.zscore_M
+            self.hp_acomp_raw_df = self.index_func(self.hp_acomp_raw,
+                                                   columns=self.vox_cols, 
+                                                   subject=self.sub, 
+                                                   run=run, 
+                                                   TR=self.TR,
+                                                   set_index=True)
 
+            # make percent signal
+            self.hp_acomp_psc = utils.percent_change(self.hp_acomp_raw, -1)
+            self.hp_acomp_psc_df = self.index_func(self.hp_acomp_psc,
+                                                   columns=self.vox_cols, 
+                                                   subject=self.sub, 
+                                                   run=run, 
+                                                   TR=self.TR,
+                                                   set_index=True)            
+            
         #----------------------------------------------------------------------------------------------------------------------------------------------------
         # LOW PASS FILTER
         if self.low_pass:
 
             if acompcor:
                 info = " Using aCompCor-data for low-pass filtering"
-                data_for_filtering = self.get_acompcor(index=True, filter_strategy="hp").T.values
-                out_attr = "lp_acomp"
+                data_for_filtering = self.get_acompcor(index=True, filter_strategy="hp", dtype=self.standardization).T.values
+                out_attr = f"lp_acomp_{self.standardization}"
             elif hasattr(self, f"hp_{self.standardization}"):
                 info = " Using high-pass filtered data for low-pass filtering"
                 data_for_filtering = getattr(self, f"hp_{self.standardization}")
@@ -1506,13 +1524,19 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
             else:
                 return self.z_score_retroicor_df
 
-    def get_acompcor(self, index=False, filter_strategy=None):
+    def get_acompcor(self, index=False, filter_strategy=None, dtype=None):
+
+        if dtype == None or dtype == "zscore":
+            tag = "_"
+        else:
+            tag = f"_{dtype}_"
+
         if filter_strategy == None:
-            attr = "acomp_df"
+            attr = f"acomp{tag}df"
         elif filter_strategy == "lp":
-            attr = "lp_acomp_df"
+            attr = f"lp_acomp{tag}df"
         elif filter_strategy == "hp":
-            attr = "hp_acomp_df"            
+            attr = f"hp_acomp{tag}df"
         else:
             raise ValueError(f"Invalid filter strategy '{filter_strategy}'. Must be None, 'hp', or 'lp'")
 
@@ -1737,7 +1761,9 @@ class Dataset(ParseFuncFile):
     def fetch_fmri(self, strip_index=False, dtype=None):
 
         if dtype == None:
-            if hasattr(self, "standardization"):
+            if self.acompcor:
+                dtype = "acompcor"
+            else:
                 dtype = self.standardization
         
         if dtype == "psc":
