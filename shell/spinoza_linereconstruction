@@ -139,16 +139,6 @@ for dir in ${search}; do
       echo "`basename ${dir}`: Could not find BOLD-data"
       continue
     fi
-    
-    # fetch and sort the lab-files
-    lsd_files=`find "${lab_func}" -type f \( -name "*desc-recon*" -and -name "*.lab" \) 2>/dev/null`
-    IFS=$'\n' lsd_files=($(sort <<<"${lsd_files[*]}"))
-    unset IFS
-
-    if [[ -z ${lsd_files} ]]; then
-      echo "`basename ${dir}`: Could not find LSD-image(s)"
-      continue
-    fi    
 
     if [[ ${PLACE} == "SGE" ]]; then
 
@@ -178,17 +168,13 @@ for dir in ${search}; do
         if [[ ! -f ${outputbase}.mat ]]; then
           
           IDnr=`basename ${dir} | cut -d'-' -f2`
-          # find corresponding LSD-image
-          if [[ ${#lsd_files} -gt 1 ]]; then
-            lsd=${lsd_files[$((${count}-1))]}
-          else
-            lsd=${lsd_files[0]}
-          fi
 
+          # find corresponding LSD-image
+          lsd=`find "${lab_func}" -type f \( -name "*run-${run_id}*" -and -name "*desc-recon*" -and -name "*.lab" \) 2>/dev/null`
           if [[ ${SGE} -eq 1 ]]; then
             job="qsub -N recon_${IDnr}_${run} -wd ${OUTPUT}/$(basename ${dir})/ses-${nr}"
           else
-            echo "Running recon for run-${run}"
+            echo "Running recon for run-${run} (task-${task})"
             job="bash"
           fi
 
