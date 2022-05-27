@@ -1016,7 +1016,17 @@ if [[ $? -eq 0 ]]; then
     SUBJECT="-s ${SUB}"
   fi
 
-  spinoza_segmentfreesurfer ${SUBJECT} ${SESSION} ${DIR_DATA_DERIV}/masked_${space,,} all ${DIR_DATA_HOME}
+  if [[ -d ${DIR_DATA_DERIV}/masked_${space,,} ]]; then
+    INPUT_DIR=${DIR_DATA_DERIV}/masked_${space,,}
+  elif [[ -d ${DIR_DATA_DERIV}/denoised ]]; then
+      INPUT_DIR=${DIR_DATA_DERIV}/denoised
+  elif [[ -d ${DIR_DATA_DERIV}/pymp2rage ]]; then
+      INPUT_DIR=${DIR_DATA_DERIV}/pymp2rage
+  else
+    INPUT_DIR=${DIR_DATA_HOME}
+  fi
+
+  spinoza_segmentfreesurfer ${SUBJECT} ${SESSION} ${INPUT_DIR} all ${DIR_DATA_HOME}
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_segmentfreesurfer exited with non-zero status"
