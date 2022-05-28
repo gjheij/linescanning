@@ -1537,7 +1537,26 @@ class NideconvFitter():
         if self.verbose:
             print("Done")
 
-    def plot_average_per_event(self, add_offset=True, axs=None, title="Average HRF across voxels", save_as=None, error_type="sem", ttp=False, ttp_lines=False, ttp_legend=True, ttp_labels=None, events=None, ttp_ori='h', ttp_rot=30, **kwargs):
+    def plot_average_per_event(self, 
+                               add_offset=True, 
+                               axs=None, 
+                               title="Average HRF across voxels", 
+                               save_as=None, 
+                               error_type="sem", 
+                               ttp=False, 
+                               ttp_lines=False, 
+                               ttp_legend=True, 
+                               ttp_labels=None, 
+                               events=None, 
+                               ttp_ori='h', 
+                               ttp_rot=30, 
+                               fwhm=False, 
+                               fwhm_lines=False, 
+                               fwhm_legend=True, 
+                               fwhm_labels=None, 
+                               fwhm_ori='v', 
+                               fwhm_rot=30,                                
+                               **kwargs):
 
         self.__dict__.update(kwargs)
 
@@ -1631,7 +1650,50 @@ class NideconvFitter():
                              palette=colors,
                              sns_ori=ttp_ori,
                              axs=ax2,
-                             **kwargs)         
+                             **kwargs)
+
+        if fwhm:
+
+            if not hasattr(self, "color"):
+                if not hasattr(self, "cmap"):
+                    cmap = "viridis"
+                else:
+                    cmap = self.cmap
+                colors = sns.color_palette(cmap, len(self.cond))
+            else:
+                colors = self.color
+
+            # add insets with time-to-peak
+            left, bottom, width, height = [0.75, 0.65, 0.3, 0.3]
+            ax2 = axs.inset_axes([left, bottom, width, height])
+
+            # get fwhm
+            fwhm_objs = []
+            for hrf in self.event_avg:
+                fwhm_objs.append(FWHM(self.time, hrf))
+
+            if fwhm_lines:
+                # heights need to be adjusted for by axis length 
+                xlim = axs.get_xlim()
+                tot = sum(list(np.abs(xlim)))
+                for ix, ii in enumerate(fwhm_objs):
+                    start = (ii.hmx[0]-xlim[0])/tot
+                    axs.axhline(ii.half_max, xmin=start, xmax=start+ii.fwhm/tot, color=colors[ix], linewidth=0.5)
+            
+
+            # make bar plot, use same color-coding
+            if isinstance(fwhm_labels, list) or isinstance(fwhm_labels, np.ndarray):
+                self.fwhm_labels = fwhm_labels
+            else:
+                self.fwhm_labels = events
+            
+            y_fwhm = [i.fwhm for i in fwhm_objs]
+            plotting.LazyBar(x=self.fwhm_labels,
+                             y=y_fwhm,
+                             palette=colors,
+                             sns_ori=fwhm_ori,
+                             axs=ax2,
+                             **kwargs)            
 
     def plot_average_per_voxel(self, add_offset=True, axs=None, n_cols=4, wspace=0, figsize=(30,15), make_figure=True, labels=None, save_as=None, **kwargs):
             
@@ -1802,19 +1864,19 @@ class FWHM():
 
     def __init__(self, x, hrf):
         
-        self.x      = x
-        self.hrf    = hrf
-        self.hmx    = self.half_max_x(self.x,self.hrf)
-        self.fwhm   = self.hmx[1] - self.hmx[0]
-
+        self.x          = x
+        self.hrf        = hrf
+        self.hmx        = self.half_max_x(self.x,self.hrf)
+        self.fwhm       = self.hmx[1] - self.hmx[0]
+        self.half_max   = max(hrf)/2
+    
     def lin_interp(self, x, y, i, half):
         return x[i] + (x[i+1] - x[i]) * ((half - y[i]) / (y[i+1] - y[i]))
 
-    @staticmethod
     def half_max_x(self, x, y):
         half = max(y)/2.0
         signs = np.sign(np.add(y, -half))
         zero_crossings = (signs[0:-2] != signs[1:-1])
         zero_crossings_i = np.where(zero_crossings)[0]
         return [self.lin_interp(x, y, zero_crossings_i[0], half),
-                self.lin_interp(x, y, zero_crossings_i[1], half)]        
+                self.lin_interp(x, y, zero_crossings_i[1], half)]
