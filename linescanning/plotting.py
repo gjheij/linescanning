@@ -561,7 +561,7 @@ class LazyBar():
                  sns_ori='h', 
                  sns_trim=2, 
                  labels=None,
-                 font_size=12,
+                 font_size=14,
                  label_size=10,
                  tick_width=0.5,
                  tick_length=7,
@@ -576,6 +576,8 @@ class LazyBar():
                  add_axis=True,
                  lim=None,
                  ticks=None,
+                 x_label2=None,
+                 y_label2=None,
                  **kwargs):
 
         self.x                  = x
@@ -598,6 +600,8 @@ class LazyBar():
         self.add_axis           = add_axis
         self.lim                = lim
         self.ticks              = ticks
+        self.x_label2           = x_label2
+        self.y_label2           = y_label2
         self.__dict__.update(kwargs)
 
         if self.xkcd:
@@ -680,7 +684,16 @@ class LazyBar():
             elif self.sns_ori == "v":
                 self.axs.set_yticks(self.ticks)
             else:
-                raise ValueError(f"sns_ori must be 'v' or 'h', not '{self.sns_ori}'")                            
+                raise ValueError(f"sns_ori must be 'v' or 'h', not '{self.sns_ori}'")
 
-        sns.despine(offset=self.sns_trim, trim=True,
-                    left=trim_left, bottom=trim_bottom, ax=self.axs)
+        if self.x_label2:
+            axs.set_xlabel(self.x_label2, fontname=self.fontname, fontsize=self.font_size)
+
+        if self.y_label2:
+            axs.set_ylabel(self.y_label2, fontname=self.fontname, fontsize=self.font_size)
+
+        sns.despine(offset=self.sns_trim, 
+                    trim=True,
+                    left=trim_left, 
+                    bottom=trim_bottom, 
+                    ax=self.axs)
