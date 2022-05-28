@@ -1107,10 +1107,10 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                                           **kwargs)
                 
                 if self.standardization == "psc":
-                    self.df_psc.append(self.get_data(index=False, filter_strategy=self.filter_strategy, dtype='psc'))
+                    self.df_psc.append(self.get_data(index=False, filter_strategy=self.filter_strategy, dtype='psc', acompcor=self.acompcor))
                 elif self.standardization == "zscore":
                     if not self.acompcor:
-                        self.df_zscore.append(self.get_data(index=False, filter_strategy=self.  filter_strategy, dtype='zscore'))
+                        self.df_zscore.append(self.get_data(index=False, filter_strategy=self.filter_strategy, dtype='zscore', acompcor=self.acompcor))
 
                 self.df_raw.append(self.get_data(index=False, filter_strategy=None, dtype='raw'))
 
@@ -1550,7 +1550,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
             else:
                 return data
 
-    def get_data(self, filter_strategy=None, index=False, dtype="psc"):
+    def get_data(self, filter_strategy=None, index=False, dtype="psc", acompcor=False):
 
         if dtype != "psc" and dtype != "zscore" and dtype != "raw":
             raise ValueError(f"Requested data type '{dtype}' is not supported. Use 'psc', 'zscore', or 'raw'")
@@ -1558,12 +1558,17 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
         return_data = None
         allowed = [None, "raw", "hp", "lp"]
 
+        if acompcor:
+            tag = f"acomp_{dtype}"
+        else:
+            tag = dtype
+
         if filter_strategy == None or filter_strategy == "raw":
-            attr = f"data_{dtype}_df"
+            attr = f"data_{tag}_df"
         elif filter_strategy == "lp":
-            attr = f"lp_{dtype}_df"
+            attr = f"lp_{tag}_df"
         elif filter_strategy == "hp":
-            attr = f"hp_{dtype}_df"
+            attr = f"hp_{tag}_df"
         else:
             raise ValueError(f"Unknown attribute '{filter_strategy}'. Must be one of: {allowed}")
 
