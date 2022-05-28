@@ -12,6 +12,7 @@ import os
 import pandas as pd
 from scipy import io
 from scipy import signal
+import seaborn as sns
 from sklearn import decomposition
 import warnings
 
@@ -319,6 +320,19 @@ class aCompCor(Segmentations):
                             line_width=2,
                             sns_trim=True,
                             **kwargs)
+
+        # add insets with time-to-peak
+        left, bottom, width, height = [0.2, 0.5, 0.8, 0.4]
+        inset = ax3.inset_axes([left, bottom, width, height])
+        plotting.LazyPlot([tc1, tc2],
+                           xx=np.array(list(np.arange(0,tc1.shape[0])*self.TR)),
+                           color=["#1B9E77", "#D95F02"],
+                           y_label="magnitude",
+                           axs=inset,
+                           font_size=12,
+                           **kwargs)
+        inset.set_xticks([])
+        sns.despine(offset=5, bottom=True, trim=True, ax=inset)
 
         if self.save_as != None:
             fname = self.save_as+f"_run-{self.run}_desc-acompcor.{self.save_ext}"
