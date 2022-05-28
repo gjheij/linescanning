@@ -231,7 +231,6 @@ CMD(){
     echo "#$ -j Y"
     echo "#$ -q ${SGE_QUEUE_LONG}"
     echo "#$ -V"
-    echo "#$ -pe smp 5"
     echo ""
     echo "module load freesurfer/${version}"
     echo "export FREESURFER=/packages/freesurfer/${version}"
