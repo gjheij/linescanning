@@ -1557,7 +1557,9 @@ class NideconvFitter():
                                fwhm_legend=True, 
                                fwhm_labels=None, 
                                fwhm_ori='v', 
-                               fwhm_rot=30,                                
+                               fwhm_rot=30,
+                               inset_ttp=[0.75, 0.65, 0.3, 0.3],
+                               inset_fwhm=[0.75, 0.65, 0.3, 0.3],
                                **kwargs):
 
         self.__dict__.update(kwargs)
@@ -1613,89 +1615,150 @@ class NideconvFitter():
         
         if ttp:
 
-            if not hasattr(self, "color"):
-                if not hasattr(self, "cmap"):
-                    cmap = "viridis"
-                else:
-                    cmap = self.cmap
-                colors = sns.color_palette(cmap, len(self.cond))
-            else:
-                colors = self.color
-
             # add insets with time-to-peak
-            left, bottom, width, height = [0.75, 0.65, 0.3, 0.3]
+            if len(inset_ttp) != 4:
+                raise ValueError(f"'inset_ttp' must be of length 4, not '{len(inset_ttp)}'")
+
+            left, bottom, width, height = inset_ttp
             ax2 = axs.inset_axes([left, bottom, width, height])
-
-            # get peaks
-            tcs = np.array(self.event_avg)
-            peak_positions = (np.argmax(tcs, axis=1)/self.time.shape[-1])*self.interval[-1]
-            peaks = tcs.max(1)
-
-            if ttp_lines:
-                # heights need to be adjusted for by axis length 
-                ylim = axs.get_ylim()
-                tot = sum(list(np.abs(ylim)))
-                start = (0-ylim[0])/tot
-                for ix,ii in enumerate(peak_positions):
-                    axs.axvline(ii, ymin=start, ymax=peaks[ix]/tot+start, color=colors[ix], linewidth=0.5)
 
             # make bar plot, use same color-coding
             if isinstance(ttp_labels, list) or isinstance(ttp_labels, np.ndarray):
-                self.ttp_labels = ttp_labels
+                ttp_labels = ttp_labels
             else:
-                self.ttp_labels = events
-            
-            print(ttp_labels)
-            x = [i for i in range(len(peaks))]
-            plotting.LazyBar(x=self.ttp_labels,
-                             y=peak_positions,
-                             palette=colors,
-                             sns_ori=ttp_ori,
-                             axs=ax2,
-                             **kwargs)
+                ttp_labels = events
+
+            self.plot_ttp(self.event_avg, 
+                          axs=ax2, 
+                          hrf_axs=axs, 
+                          ttp_labels=ttp_labels, 
+                          ttp_lines=ttp_lines,
+                          **kwargs)
 
         if fwhm:
 
-            if not hasattr(self, "color"):
-                if not hasattr(self, "cmap"):
-                    cmap = "viridis"
-                else:
-                    cmap = self.cmap
-                colors = sns.color_palette(cmap, len(self.cond))
-            else:
-                colors = self.color
-
             # add insets with time-to-peak
-            left, bottom, width, height = [0.75, 0.65, 0.3, 0.3]
-            ax2 = axs.inset_axes([left, bottom, width, height])
+            if len(inset_fwhm) != 4:
+                raise ValueError(
+                    f"'inset_fwhm' must be of length 4, not '{len(inset_fwhm)}'")
 
-            # get fwhm
-            fwhm_objs = []
-            for hrf in self.event_avg:
-                fwhm_objs.append(FWHM(self.time, hrf))
-
-            if fwhm_lines:
-                # heights need to be adjusted for by axis length 
-                xlim = axs.get_xlim()
-                tot = sum(list(np.abs(xlim)))
-                for ix, ii in enumerate(fwhm_objs):
-                    start = (ii.hmx[0]-xlim[0])/tot
-                    axs.axhline(ii.half_max, xmin=start, xmax=start+ii.fwhm/tot, color=colors[ix], linewidth=0.5)
-            
+            left, bottom, width, height = inset_fwhm
+            ax2 = axs.inset_axes([left, bottom, width, height])          
 
             # make bar plot, use same color-coding
             if isinstance(fwhm_labels, list) or isinstance(fwhm_labels, np.ndarray):
-                self.fwhm_labels = fwhm_labels
+                fwhm_labels = fwhm_labels
             else:
-                self.fwhm_labels = events
-            
-            y_fwhm = [i.fwhm for i in fwhm_objs]
-            plotting.LazyBar(x=self.fwhm_labels,
-                             y=y_fwhm,
-                             palette=colors,
-                             sns_ori=fwhm_ori,
-                             axs=ax2,
-                             **kwargs)            
+                fwhm_labels = events
+
+            self.plot_fwhm(self.event_avg, 
+                           axs=ax2, 
+                           hrf_axs=axs, 
+                           fwhm_labels=fwhm_labels, 
+                           fwhm_lines=fwhm_lines,
+                           **kwargs)
+
+    def plot_ttp(self, 
+                 tcs, 
+                 axs=None, 
+                 hrf_axs=None, 
+                 ttp_lines=False, 
+                 ttp_labels=None, 
+                 figsize=(8,8), 
+                 ttp_ori='h', 
+                 *args, 
+                 **kwargs):
+
+        if not hasattr(self, "color"):
+            if not hasattr(self, "cmap"):
+                cmap = "viridis"
+            else:
+                cmap = self.cmap
+            colors = sns.color_palette(cmap, len(self.cond))
+        else:
+            colors = self.color
+
+        if axs == None:
+            fig, axs = plt.subplots(figsize=figsize)
+
+        # check if input is numpy array
+        if isinstance(tcs, list):
+            tcs = np.array(tcs)
+
+        if not isinstance(tcs, np.ndarray):
+            raise ValueError(f"Input must be a numpy array, not '{type(tcs)}'")
+
+        # get time-to-peak
+        peak_positions = (np.argmax(tcs, axis=1)/self.time.shape[-1])*self.interval[-1]
+        peaks = tcs.max(1)
+
+        if ttp_lines:
+            # heights need to be adjusted for by axis length 
+            ylim = hrf_axs.get_ylim()
+            tot = sum(list(np.abs(ylim)))
+            start = (0-ylim[0])/tot
+            for ix,ii in enumerate(peak_positions):
+                hrf_axs.axvline(ii, 
+                                ymin=start, 
+                                ymax=peaks[ix]/tot+start, 
+                                color=colors[ix], 
+                                linewidth=0.5)
+        
+        x = [i for i in range(len(peaks))]
+        plotting.LazyBar(x=ttp_labels,
+                         y=peak_positions,
+                         palette=colors,
+                         sns_ori=ttp_ori,
+                         axs=axs,
+                         **kwargs)           
+
+    def plot_fwhm(self, 
+                  hrfs, 
+                  axs=None, 
+                  hrf_axs=None, 
+                  fwhm_lines=False, 
+                  fwhm_labels=None, 
+                  figsize=(8,8), 
+                  fwhm_ori='v', 
+                  *args, 
+                  **kwargs):
+
+        if not hasattr(self, "color"):
+            if not hasattr(self, "cmap"):
+                cmap = "viridis"
+            else:
+                cmap = self.cmap
+            colors = sns.color_palette(cmap, len(self.cond))
+        else:
+            colors = self.color
+
+        if axs == None:
+            fig, axs = plt.subplots(figsize=figsize)
+
+        # get fwhm
+        fwhm_objs = []
+        for hrf in hrfs:
+            fwhm_objs.append(FWHM(self.time, hrf))
+
+        if fwhm_lines:
+            # heights need to be adjusted for by axis length 
+            xlim = hrf_axs.get_xlim()
+            tot = sum(list(np.abs(xlim)))
+            for ix, ii in enumerate(fwhm_objs):
+                start = (ii.hmx[0]-xlim[0])/tot
+                hrf_axs.axhline(ii.half_max, 
+                                xmin=start, 
+                                xmax=start+ii.fwhm/tot, 
+                                color=colors[ix], 
+                                linewidth=0.5)
+        
+        y_fwhm = [i.fwhm for i in fwhm_objs]
+        plotting.LazyBar(x=fwhm_labels,
+                         y=y_fwhm,
+                         palette=colors,
+                         sns_ori=fwhm_ori,
+                         axs=axs,
+                         **kwargs)           
 
     def plot_average_per_voxel(self, add_offset=True, axs=None, n_cols=4, wspace=0, figsize=(30,15), make_figure=True, labels=None, save_as=None, **kwargs):
             
@@ -1703,11 +1766,12 @@ class NideconvFitter():
             self.timecourses_condition()
 
         cols = list(self.tc_condition.columns)
-        if len(cols) > 10:
-            raise Exception(f"{len(cols)} were requested. Maximum number of plots is set to 30")
-
         if n_cols != None:
+
             # initiate figure
+            if len(cols) > 10:
+                raise Exception(f"{len(cols)} were requested. Maximum number of plots is set to 30")
+
             fig = plt.figure(figsize=figsize)
             n_rows = int(np.ceil(len(cols) / n_cols))
             gs = fig.add_gridspec(n_rows, n_cols, wspace=wspace)
