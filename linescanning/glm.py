@@ -629,7 +629,7 @@ def first_level_matrix(stims_dict, regressors=None, add_intercept=True, names=No
         return X_matrix
 
 
-def fit_first_level(stim_vector, data, make_figure=False, copes=None, xkcd=False, plot_vox=None, plot_event=1, **kwargs):
+def fit_first_level(stim_vector, data, make_figure=False, copes=None, xkcd=False, plot_vox=None, plot_event=1, verbose=False, **kwargs):
     """fit_first_level
 
     First level models are, in essence, linear regression models run at the level of a single session or single subject. The model is applied on a voxel-wise basis, either on the whole brain or within a region of interest. The  timecourse of each voxel is regressed against a predicted BOLD response created by convolving the haemodynamic response function (HRF) with a set of predictors defined within the design matrix (source: https://nilearn.github.io/glm/first_level_model.html)
@@ -720,9 +720,10 @@ def fit_first_level(stim_vector, data, make_figure=False, copes=None, xkcd=False
 
     if betas_conv.ndim == 1:
         betas_conv = betas_conv[...,np.newaxis]
-        
-    print(f"max tstat (vox {best_vox}) = {round(tstat[-1,best_vox],2)}")
-    print(f"max beta (vox {best_vox}) = {round(betas_conv[-1,best_vox],2)}")
+    
+    if verbose:
+        print(f"max tstat (vox {best_vox}) = {round(tstat[-1,best_vox],2)}")
+        print(f"max beta (vox {best_vox}) = {round(betas_conv[-1,best_vox],2)}")
 
     if make_figure:
 
