@@ -712,6 +712,9 @@ def fit_first_level(stim_vector, data, make_figure=False, copes=None, xkcd=False
     else:
         best_vox = plot_vox
 
+    if betas_conv.ndim == 1:
+        betas_conv = betas_conv[...,np.newaxis]
+        
     print(f"max tstat (vox {best_vox}) = {round(tstat[-1,best_vox],2)}")
     print(f"max beta (vox {best_vox}) = {round(betas_conv[-1,best_vox],2)}")
 
