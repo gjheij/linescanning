@@ -1835,6 +1835,7 @@ class NideconvFitter():
                                       font_size=16,
                                       labels=labels,
                                       add_hline='default',
+                                      figsize=figsize,
                                       **kwargs)
 
         if save_as:
