@@ -497,9 +497,9 @@ def convolve_hrf(hrf, stim_v, make_figure=False, xkcd=False):
     # convolve stimulus vectors
     if isinstance(stim_v, np.ndarray):
 
-        if len(hrf) >= 1:
+        if len(hrfs) >= 1:
             convolved_stim_vector = np.zeros((stim_v.shape[0], len(hrf)))
-            for ix,rf in enumerate(hrf):
+            for ix,rf in enumerate(hrfs):
                 convolved_stim_vector[:, ix] = np.convolve(
                     stim_v, rf, 'full')[:stim_v.shape[0]]
 
@@ -509,11 +509,11 @@ def convolve_hrf(hrf, stim_v, make_figure=False, xkcd=False):
 
     elif isinstance(stim_v, dict):
 
-        if len(hrf) >= 1:
+        if len(hrfs) >= 1:
             convolved_stim_vector = {}
             for event in list(stim_v.keys()):
                 hrf_conv = np.zeros((stim_v[event].shape[0], len(hrf)))
-                for ix,rf in enumerate(hrf):
+                for ix, rf in enumerate(hrfs):
                     hrf_conv[...,ix] = np.convolve(stim_v[event], rf, 'full')[:stim_v[event].shape[0]]
                 
                 convolved_stim_vector[event] = hrf_conv
@@ -521,9 +521,9 @@ def convolve_hrf(hrf, stim_v, make_figure=False, xkcd=False):
                 if make_figure:
                     if xkcd:
                         with plt.xkcd():
-                            plot(stim_v[event], hrf[0], convolved_stim_vector[event])
+                            plot(stim_v[event], hrfs[0], convolved_stim_vector[event])
                     else:
-                        plot(stim_v[event], hrf[0], convolved_stim_vector[event])
+                        plot(stim_v[event], hrfs[0], convolved_stim_vector[event])
                     plt.show()
     else:
         raise ValueError("Data must be 'np.ndarray' or 'dict'")
