@@ -500,7 +500,8 @@ def convolve_hrf(hrf, stim_v, make_figure=False, xkcd=False):
         if len(hrf) >= 1:
             convolved_stim_vector = np.zeros((stim_v.shape[0], len(hrf)))
             for ix,rf in enumerate(hrf):
-                convolved_stim_vectors[:,ix] = np.convolve(stim_v, rf, 'full')[:stim_v.shape[0]]
+                convolved_stim_vector[:, ix] = np.convolve(
+                    stim_v, rf, 'full')[:stim_v.shape[0]]
 
         if make_figure:
             plot(stim_v, hrf[0], convolved_stim_vector, xkcd=xkcd)
