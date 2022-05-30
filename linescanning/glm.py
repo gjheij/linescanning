@@ -504,7 +504,7 @@ def convolve_hrf(hrf, stim_v, make_figure=False, xkcd=False):
                     stim_v, rf, 'full')[:stim_v.shape[0]]
 
         if make_figure:
-            plot(stim_v, hrf[0], convolved_stim_vector, xkcd=xkcd)
+            plot(stim_v, hrfs[0], convolved_stim_vector, xkcd=xkcd)
             plt.show()
 
     elif isinstance(stim_v, dict):
