@@ -498,7 +498,7 @@ def convolve_hrf(hrf, stim_v, make_figure=False, xkcd=False):
     if isinstance(stim_v, np.ndarray):
 
         if len(hrfs) >= 1:
-            convolved_stim_vector = np.zeros((stim_v.shape[0], len(hrf)))
+            convolved_stim_vector = np.zeros((stim_v.shape[0], len(hrfs)))
             for ix,rf in enumerate(hrfs):
                 convolved_stim_vector[:, ix] = np.convolve(
                     stim_v, rf, 'full')[:stim_v.shape[0]]
