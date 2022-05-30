@@ -1389,20 +1389,21 @@ class NideconvFitter():
     See also https://linescanning.readthedocs.io/en/latest/examples/nideconv.html for more details.
     """
 
-    def __init__(self, func, onsets, TR=0.105, confounds=None, basis_sets="fourier", fit_type="ols", n_regressors=9, add_intercept=False, verbose=False, lump_events=False, interval=[0,12], **kwargs):
+    def __init__(self, func, onsets, TR=0.105, confounds=None, basis_sets="fourier", fit_type="ols", n_regressors=9, add_intercept=False, concatenate_runs=False, verbose=False, lump_events=False, interval=[0,12], **kwargs):
 
-        self.func           = func
-        self.onsets         = onsets
-        self.confounds      = confounds
-        self.basis_sets     = basis_sets 
-        self.fit_type       = fit_type
-        self.n_regressors   = n_regressors
-        self.add_intercept  = add_intercept
-        self.verbose        = verbose
-        self.lump_events    = lump_events
-        self.TR             = TR
-        self.fs             = 1/self.TR
-        self.interval       = interval
+        self.func               = func
+        self.onsets             = onsets
+        self.confounds          = confounds
+        self.basis_sets         = basis_sets 
+        self.fit_type           = fit_type
+        self.n_regressors       = n_regressors
+        self.add_intercept      = add_intercept
+        self.verbose            = verbose
+        self.lump_events        = lump_events
+        self.TR                 = TR
+        self.fs                 = 1/self.TR
+        self.interval           = interval
+        self.concatenate_runs   = concatenate_runs
 
         if self.lump_events:
             self.lumped_onsets = self.onsets.copy().reset_index()
@@ -1473,6 +1474,7 @@ class NideconvFitter():
                                             input_sample_rate=self.fs,
                                             confounds=self.confounds, 
                                             add_intercept=self.add_intercept,
+                                            concatenate_runs=self.concatenate_runs,
                                             **kwargs)
     
     def define_events(self):
