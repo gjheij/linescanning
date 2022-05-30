@@ -629,7 +629,7 @@ def first_level_matrix(stims_dict, regressors=None, add_intercept=True, names=No
         return X_matrix
 
 
-def fit_first_level(stim_vector, data, make_figure=False, copes=None, xkcd=False, plot_vox=None, plot_event=1):
+def fit_first_level(stim_vector, data, make_figure=False, copes=None, xkcd=False, plot_vox=None, plot_event=1, **kwargs):
     """fit_first_level
 
     First level models are, in essence, linear regression models run at the level of a single session or single subject. The model is applied on a voxel-wise basis, either on the whole brain or within a region of interest. The  timecourse of each voxel is regressed against a predicted BOLD response created by convolving the haemodynamic response function (HRF) with a set of predictors defined within the design matrix (source: https://nilearn.github.io/glm/first_level_model.html)
@@ -685,6 +685,12 @@ def fit_first_level(stim_vector, data, make_figure=False, copes=None, xkcd=False
         # everything should be ready to go if 'first_level_matrix' was used
         X_matrix = stim_vector.copy()
         intercept = np.ones((data.shape[0], 1))
+
+        if data.ndim == 1:
+            data = data[:, np.newaxis]
+
+        if stim_vector.shape[0] != data.shape[0]:
+            stim_vector = stim_vector[:data.shape[0], :]
 
     X_conv = X_matrix.values.copy()
 
@@ -753,7 +759,8 @@ def fit_first_level(stim_vector, data, make_figure=False, copes=None, xkcd=False
                  labels=labels,
                  figsize=(20,5),
                  font_size=20,
-                 xkcd=xkcd)
+                 xkcd=xkcd,
+                 **kwargs)
 
     return {'betas': betas_conv,
             'x_conv': X_conv,
