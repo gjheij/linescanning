@@ -134,7 +134,7 @@ fi
 #-----------------------------------------------------------------------------
 # Set default working directory if none specified
 if [[ -z ${WORK} ]]; then
-  work=${PATH_HOME}/programs/packages/fmriprep/${PROJECT}
+  work=${PATH_HOME}/fmriprep/${PROJECT}
 else
   work=${WORK}
 fi
@@ -197,106 +197,146 @@ fi
 
 #-----------------------------------------------------------------------------
 #Run fmriprep
-if [ ${system} == "SGE" ]; then
+# if [ ${system} == "SGE" ]; then
 
-  nthreads=15
-  #-----------------------------------------------------------------------------
-  # Set default binding point if none specified
-  if [[ -z ${BIND} ]]; then
-    binding=${PATH_HOME}
-  else
-    binding=${BIND}
-  fi
+#   nthreads=15
+#   #-----------------------------------------------------------------------------
+#   # Set default binding point if none specified
+#   if [[ -z ${BIND} ]]; then
+#     binding=${PATH_HOME}
+#   else
+#     binding=${BIND}
+#   fi
 
-  #-----------------------------------------------------------------------------
-  # Set default container if none specified
-  if [[ -z ${IMG} ]]; then
-    fprep_container=${FPREP_SIMG}
-  else
-    fprep_container=${IMG}
-  fi
+#   #-----------------------------------------------------------------------------
+#   # Set default container if none specified
+#   if [[ -z ${IMG} ]]; then
+#     fprep_container=${FPREP_SIMG}
+#   else
+#     fprep_container=${IMG}
+#   fi
 
-  if [[ ! -f ${fprep_container} ]]; then
-    echo "Could not find singularity image \"${fprep_container}\" for fmriprep.."
-    exit 1
-  fi
+#   if [[ ! -f ${fprep_container} ]]; then
+#     echo "Could not find singularity image \"${fprep_container}\" for fmriprep.."
+#     exit 1
+#   fi
 
-  if [[ ${mode} == "anat" ]]; then
+#   if [[ ${mode} == "anat" ]]; then
 
-    unset PYTHONPATH; singularity run --cleanenv -B ${binding}:${binding} ${fprep_container} \
-      ${project} ${derivatives} \
-      participant \
-      --participant-label ${subj_ID} \
-      --skip-bids-validation \
-      --md-only-boilerplate \
-      --fs-license-file ${license} \
-      --output-spaces ${FPREP_OUT_SPACES} \
-      ${cifti_flag} \
-      --anat-only \
-      --nthreads ${nthreads} \
-      --bids-filter-file ${CONFIG} \
-      --stop-on-first-crash \
-      -w ${work}
+#     unset PYTHONPATH; singularity run --cleanenv -B ${binding}:${binding} ${fprep_container} \
+#       ${project} ${derivatives} \
+#       participant \
+#       --participant-label ${subj_ID} \
+#       --skip-bids-validation \
+#       --md-only-boilerplate \
+#       --fs-license-file ${license} \
+#       --output-spaces ${FPREP_OUT_SPACES} \
+#       ${cifti_flag} \
+#       --anat-only \
+#       --nthreads ${nthreads} \
+#       --bids-filter-file ${CONFIG} \
+#       --stop-on-first-crash \
+#       -w ${work}
 
-  else
+#   else
 
-    unset PYTHONPATH; singularity run --cleanenv -B ${binding}:${binding} ${fprep_container} \
-      ${project} ${derivatives} \
-      participant \
-      --participant-label ${subj_ID} \
-      --skip-bids-validation \
-      --md-only-boilerplate \
-      --fs-license-file ${license} \
-      --output-spaces ${FPREP_OUT_SPACES} \
-      ${cifti_flag} \
-      ${syn_flag} \
-      ${config_flag} \
-      ${task_flag} \
-      --nthreads ${nthreads} \
-      --stop-on-first-crash \
-      -w ${work}
+#     unset PYTHONPATH; singularity run --cleanenv -B ${binding}:${binding} ${fprep_container} \
+#       ${project} ${derivatives} \
+#       participant \
+#       --participant-label ${subj_ID} \
+#       --skip-bids-validation \
+#       --md-only-boilerplate \
+#       --fs-license-file ${license} \
+#       --output-spaces ${FPREP_OUT_SPACES} \
+#       ${cifti_flag} \
+#       ${syn_flag} \
+#       ${config_flag} \
+#       ${task_flag} \
+#       --nthreads ${nthreads} \
+#       --stop-on-first-crash \
+#       -w ${work}
 
-  fi
+#   fi
 
-elif [[ ${system} == "local" ]]; then
+# elif [[ ${system} == "local" ]]; then
 
-  if [[ ${mode} == "anat" ]]; then
+#   if [[ ${mode} == "anat" ]]; then
 
-    echo "Running fMRIprep with --anat-only option locally"
-    export PYTHONPATH=${FREESURFER_HOME}/python
-    fmriprep ${project} ${derivatives}/derivatives \
-      participant \
-      --participant-label ${subj_ID} \
-      --skip-bids-validation \
-      --md-only-boilerplate \
-      --fs-license-file ${license} \
-      --output-spaces ${FPREP_OUT_SPACES} \
-      ${cifti_flag} \
-      ${syn_flag} \
-      --stop-on-first-crash \
-      --anat-only \
-      -w ${work}
+#     echo "Running fMRIprep with --anat-only option locally"
+#     export PYTHONPATH=${FREESURFER_HOME}/python
+#     fmriprep ${project} ${derivatives} \
+#       participant \
+#       --participant-label ${subj_ID} \
+#       --skip-bids-validation \
+#       --md-only-boilerplate \
+#       --fs-license-file ${license} \
+#       --output-spaces ${FPREP_OUT_SPACES} \
+#       ${cifti_flag} \
+#       ${syn_flag} \
+#       --stop-on-first-crash \
+#       --anat-only \
+#       -w ${work}
 
-  else
+#   else
 
-    echo "Running full fMRIprep pipeline locally"
-    export PYTHONPATH=${FREESURFER_HOME}/python
-    fmriprep ${project} ${derivatives}/derivatives \
-      participant \
-      --participant-label ${subj_ID} \
-      --skip-bids-validation \
-      --md-only-boilerplate \
-      --fs-license-file ${license} \
-      --output-spaces ${FPREP_OUT_SPACES} \
-      ${cifti_flag} \
-      ${syn_flag} \      
-      --stop-on-first-crash \
-      -w ${work}
+#     echo "Running full fMRIprep pipeline locally"
+#     export PYTHONPATH=${FREESURFER_HOME}/python
+#     fmriprep ${project} ${derivatives}/derivatives \
+#       participant \
+#       --participant-label ${subj_ID} \
+#       --skip-bids-validation \
+#       --md-only-boilerplate \
+#       --fs-license-file ${license} \
+#       --output-spaces ${FPREP_OUT_SPACES} \
+#       ${cifti_flag} \
+#       ${syn_flag} \      
+#       --stop-on-first-crash \
+#       -w ${work}
 
-  fi
+#   fi
 
+# else
+
+#   echo "ERROR in `basename ${0}`: Unknown option ${system}. Please specify \"anat\" or leave empty for anat+func"
+
+# fi
+
+# fMRIPrep's boldref seems to be messy lately (snow-like noise pattern instead of an image)
+bold_files=`find ${derivatives}/fmriprep/*${subj_ID}/ -type f -name "*preproc_bold.nii.gz" 2>/dev/null`
+IFS=$'\n' bold_files=($(sort <<<"${bold_files[*]}"))
+unset IFS
+
+if [ ! -z ${bold_files} ]; then
+  echo "Overwriting fMRIPrep's \"boldref\"-files"
+  for bold in ${bold_files[@]}; do
+    boldref=$(dirname ${bold})/$(basename ${bold} _desc-preproc_bold.nii.gz)_boldref.nii.gz
+    fslmaths ${bold} -Tmean ${boldref}
+  done
+fi
+
+# copy the bold-to-T1w warps from the fmriprep_wf
+if [ -z ${PREFIX} ]; then
+  pref="sub-"
 else
+  pref=${PREFIX}
+fi
 
-  echo "ERROR in `basename ${0}`: Unknown option ${system}. Please specify \"anat\" or leave empty for anat+func"
+xfms=`find ${work}/fmriprep_wf/single_subject_${subj_ID}_wf/func_preproc*/bold_reg_wf/bbreg_wf/concat_xfm -type f -name "out_fwd.tfm" 2>/dev/null`
+if [[ ! -z ${xfms} ]]; then
+  echo "Copying from-bold_to-T1w tfm-files"
+  for xfm in ${xfms[@]}; do
+    wf_name=`python -c "from linescanning.utils import disassemble_fmriprep_wf; print(disassemble_fmriprep_wf('${xfm}', '${subj_ID}', prefix='${pref}'))"`
+    
+    # check ses-flag
+    if [[ ${wf_name} == *"ses-"* ]]; then
+      ses_id=`echo ${wf_name} | cut -d'_' -f2`
+    else
+      ses_id=""
+    fi
+
+    out_xfm=${derivatives}/fmriprep/${pref}${subj_ID}/${ses_id}/func/${wf_name}_from-bold_to-T1w_mode-image_xfm.txt
+    cp ${xfm} ${out_xfm}
+
+  done
 
 fi

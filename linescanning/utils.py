@@ -1947,3 +1947,19 @@ class FWHM():
         zero_crossings_i = np.where(zero_crossings)[0]
         return [self.lin_interp(x, y, zero_crossings_i[0], half),
                 self.lin_interp(x, y, zero_crossings_i[1], half)]
+
+
+def disassemble_fmriprep_wf(wf_path, subj_ID, prefix="sub-"):
+
+    wf_name = [ii for ii in wf_path.split(os.sep) if "func_preproc" in ii][0]
+    wf_elem = wf_name.split("_")
+    fname = [f"{prefix}{subj_ID}"]
+
+    for tag in ['ses', 'task', 'acq', 'run']:
+
+        if tag in wf_elem:
+            idx = wf_elem.index(tag)+1
+            fname.append(f"{tag}-{wf_elem[idx]}")
+
+    fname = "_".join(fname)
+    return fname
