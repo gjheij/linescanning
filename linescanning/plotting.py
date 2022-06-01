@@ -578,6 +578,7 @@ class LazyBar():
                  ticks=None,
                  x_label2=None,
                  y_label2=None,
+                 title2=None,
                  **kwargs):
 
         self.x                  = x
@@ -602,6 +603,7 @@ class LazyBar():
         self.ticks              = ticks
         self.x_label2           = x_label2
         self.y_label2           = y_label2
+        self.title2             = title2
         self.__dict__.update(kwargs)
 
         if self.xkcd:
@@ -697,3 +699,6 @@ class LazyBar():
                     left=trim_left, 
                     bottom=trim_bottom, 
                     ax=self.axs)
+
+        if self.title2:
+            axs.set_title(self.title2, fontname=self.fontname, fontsize=self.font_size)                    
