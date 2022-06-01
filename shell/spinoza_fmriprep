@@ -258,7 +258,7 @@ for dir in ${search}; do
     if [[ $? != 0 ]]; then
       echo
       echo "---------------------------------------------------------------------------------------------------"
-      echo "ERROR in `basename ${0}`: job submission was unsuccessful"
+      echo "ERROR in `basename ${0}`: job submission/execution was unsuccessful"
       exit 1
     fi
 
