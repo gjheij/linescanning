@@ -141,8 +141,9 @@ Examples:
 
         #---------------------------------------------------------------------------------------------------    
         # insert old parameters
-        insert_params =(np.array(subject_info.target_params)[np.newaxis,...],"gauss+iter")
-
+        # insert_params =(np.array(subject_info.target_params)[np.newaxis,...],"gauss+iter")
+        insert_params =np.array(subject_info.target_params)[np.newaxis,...]
+        
         # initiate class
         fitting = prf.pRFmodelFitting(data[...,np.newaxis].T,
                                     design_matrix=subject_info.design_matrix, 
@@ -164,8 +165,8 @@ Examples:
 
         new_prediction = fitting.norm_model.return_prediction(*new_params[:-1]).T
 
-        print(f"Params in: \t{np.array(subject_info.target_params)}")
-        print(f"Params out: \t{new_params}")
+        print(f"Params in: \t{[round(ii, 2) for ii in np.array(subject_info.target_params)]}")
+        print(f"Params out: \t{[round(ii, 2) for ii in new_params]}")
         #---------------------------------------------------------------------------------------------------
         # plot pRF output
         ax2 = fig.add_subplot(gs00[1])
@@ -177,7 +178,6 @@ Examples:
                           axs=ax2,
                           y_label="amplitude",
                           x_label="time (s)",
-                          sns_trim=True,
                           line_width=[0.5, 3],
                           markers=['.', None],                        
                           font_size=16)
@@ -199,8 +199,7 @@ Examples:
                         axs=ax3,
                         y_label="Response",
                         x_label="Stimulus size (°)",
-                        sns_trim=True,
-                        font_size=14)
+                        font_size=16)
 
         #---------------------------------------------------------------------------------------------------
         # find stim sizes
