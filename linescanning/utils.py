@@ -13,7 +13,7 @@ import pandas as pd
 from PIL import ImageColor
 from prfpy import stimulus
 import random
-from scipy import io, stats
+from scipy import io
 import seaborn as sns
 from shapely import geometry
 import subprocess
