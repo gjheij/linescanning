@@ -90,6 +90,9 @@ if [[ -f ${fn_mag} && -f ${fn_phase} ]]; then
 
   make_nordic_script ${fn_mag} ${fn_phase} ${fn_nordic} ${mag_only} ${new_script}
   
+  # calculate tSNR before nordic:
+  call_tsnr ${fn_mag}
+
   # call_matlab = in call_bashhelper
   call_matlab ${new_script}
 
@@ -105,5 +108,10 @@ fi
 #-----------------------------------------------------------------------------
 # Reset extension 
 if [[ ${ext_nordic} == "gz" ]]; then
-    gzip ${fn_nordic}.nii
+  gzip ${fn_nordic}.nii
+
+  # calculate tSNR after NORDIC
+  call_tsnr ${fn_nordic}.nii.gz
+else
+  call_tsnr ${fn_nordic}.nii  
 fi
