@@ -43,6 +43,7 @@ Arguments:
   -x <config>       specify config file to guide fMRIprep
   -t <task ID>      limit the preprocessing to a certain task; instead of this flag you can also 
                     use a configuration file to make the criteria more explicit                
+  -u                skip fMRIPrep, but re-do the 'boldref'-images and copy the bold-to-T1w warps
 
 Example:
   call_fmriprep -s 001 (simplest form, runs the entire pipeline)
@@ -56,7 +57,8 @@ USAGE
 
 #-----------------------------------------------------------------------------
 # Deal with arguments
-while getopts s:m:r:d:c:i:b:w:l:x:t: arg
+WARP_ONLY=0
+while getopts us:m:r:d:c:i:b:w:l:x:t: arg
 do
     case ${arg} in
       s)  subj_ID=${OPTARG}
@@ -80,7 +82,9 @@ do
       x)  CONFIG=${OPTARG}
             ;;
       t)  TASK_ID=${OPTARG}
-            ;;     
+            ;;
+      u)  WARP_ONLY=1
+            ;;            
     esac
 done
 
@@ -195,110 +199,114 @@ else
   fi
 fi
 
-#-----------------------------------------------------------------------------
-#Run fmriprep
-if [ ${system} == "SGE" ]; then
-
-  nthreads=15
+if [[ ${WARP_ONLY} -eq 0 ]]; then
   #-----------------------------------------------------------------------------
-  # Set default binding point if none specified
-  if [[ -z ${BIND} ]]; then
-    binding=${PATH_HOME}
+  #Run fmriprep
+  if [ ${system} == "SGE" ]; then
+
+    nthreads=15
+    #-----------------------------------------------------------------------------
+    # Set default binding point if none specified
+    if [[ -z ${BIND} ]]; then
+      binding=${PATH_HOME}
+    else
+      binding=${BIND}
+    fi
+
+    #-----------------------------------------------------------------------------
+    # Set default container if none specified
+    if [[ -z ${IMG} ]]; then
+      fprep_container=${FPREP_SIMG}
+    else
+      fprep_container=${IMG}
+    fi
+
+    if [[ ! -f ${fprep_container} ]]; then
+      echo "Could not find singularity image \"${fprep_container}\" for fmriprep.."
+      exit 1
+    fi
+
+    if [[ ${mode} == "anat" ]]; then
+
+      unset PYTHONPATH; singularity run --cleanenv -B ${binding}:${binding} ${fprep_container} \
+        ${project} ${derivatives} \
+        participant \
+        --participant-label ${subj_ID} \
+        --skip-bids-validation \
+        --md-only-boilerplate \
+        --fs-license-file ${license} \
+        --output-spaces ${FPREP_OUT_SPACES} \
+        ${cifti_flag} \
+        --anat-only \
+        --nthreads ${nthreads} \
+        --bids-filter-file ${CONFIG} \
+        --stop-on-first-crash \
+        -w ${work}
+
+    else
+
+      unset PYTHONPATH; singularity run --cleanenv -B ${binding}:${binding} ${fprep_container} \
+        ${project} ${derivatives} \
+        participant \
+        --participant-label ${subj_ID} \
+        --skip-bids-validation \
+        --md-only-boilerplate \
+        --fs-license-file ${license} \
+        --output-spaces ${FPREP_OUT_SPACES} \
+        ${cifti_flag} \
+        ${syn_flag} \
+        ${config_flag} \
+        ${task_flag} \
+        --nthreads ${nthreads} \
+        --stop-on-first-crash \
+        -w ${work}
+
+    fi
+
+  elif [[ ${system} == "local" ]]; then
+
+    if [[ ${mode} == "anat" ]]; then
+
+      echo "Running fMRIprep with --anat-only option locally"
+      export PYTHONPATH=${FREESURFER_HOME}/python
+      fmriprep ${project} ${derivatives} \
+        participant \
+        --participant-label ${subj_ID} \
+        --skip-bids-validation \
+        --md-only-boilerplate \
+        --fs-license-file ${license} \
+        --output-spaces ${FPREP_OUT_SPACES} \
+        ${cifti_flag} \
+        ${syn_flag} \
+        --stop-on-first-crash \
+        --anat-only \
+        -w ${work}
+
+    else
+
+      echo "Running full fMRIprep pipeline locally"
+      export PYTHONPATH=${FREESURFER_HOME}/python
+      fmriprep ${project} ${derivatives}/derivatives \
+        participant \
+        --participant-label ${subj_ID} \
+        --skip-bids-validation \
+        --md-only-boilerplate \
+        --fs-license-file ${license} \
+        --output-spaces ${FPREP_OUT_SPACES} \
+        ${cifti_flag} \
+        ${syn_flag} \      
+        --stop-on-first-crash \
+        -w ${work}
+
+    fi
+
   else
-    binding=${BIND}
-  fi
 
-  #-----------------------------------------------------------------------------
-  # Set default container if none specified
-  if [[ -z ${IMG} ]]; then
-    fprep_container=${FPREP_SIMG}
-  else
-    fprep_container=${IMG}
-  fi
-
-  if [[ ! -f ${fprep_container} ]]; then
-    echo "Could not find singularity image \"${fprep_container}\" for fmriprep.."
-    exit 1
-  fi
-
-  if [[ ${mode} == "anat" ]]; then
-
-    unset PYTHONPATH; singularity run --cleanenv -B ${binding}:${binding} ${fprep_container} \
-      ${project} ${derivatives} \
-      participant \
-      --participant-label ${subj_ID} \
-      --skip-bids-validation \
-      --md-only-boilerplate \
-      --fs-license-file ${license} \
-      --output-spaces ${FPREP_OUT_SPACES} \
-      ${cifti_flag} \
-      --anat-only \
-      --nthreads ${nthreads} \
-      --bids-filter-file ${CONFIG} \
-      --stop-on-first-crash \
-      -w ${work}
-
-  else
-
-    unset PYTHONPATH; singularity run --cleanenv -B ${binding}:${binding} ${fprep_container} \
-      ${project} ${derivatives} \
-      participant \
-      --participant-label ${subj_ID} \
-      --skip-bids-validation \
-      --md-only-boilerplate \
-      --fs-license-file ${license} \
-      --output-spaces ${FPREP_OUT_SPACES} \
-      ${cifti_flag} \
-      ${syn_flag} \
-      ${config_flag} \
-      ${task_flag} \
-      --nthreads ${nthreads} \
-      --stop-on-first-crash \
-      -w ${work}
+    echo "ERROR in `basename ${0}`: Unknown option ${system}. Please specify \"anat\" or leave empty for anat+func"
 
   fi
-
-elif [[ ${system} == "local" ]]; then
-
-  if [[ ${mode} == "anat" ]]; then
-
-    echo "Running fMRIprep with --anat-only option locally"
-    export PYTHONPATH=${FREESURFER_HOME}/python
-    fmriprep ${project} ${derivatives} \
-      participant \
-      --participant-label ${subj_ID} \
-      --skip-bids-validation \
-      --md-only-boilerplate \
-      --fs-license-file ${license} \
-      --output-spaces ${FPREP_OUT_SPACES} \
-      ${cifti_flag} \
-      ${syn_flag} \
-      --stop-on-first-crash \
-      --anat-only \
-      -w ${work}
-
-  else
-
-    echo "Running full fMRIprep pipeline locally"
-    export PYTHONPATH=${FREESURFER_HOME}/python
-    fmriprep ${project} ${derivatives}/derivatives \
-      participant \
-      --participant-label ${subj_ID} \
-      --skip-bids-validation \
-      --md-only-boilerplate \
-      --fs-license-file ${license} \
-      --output-spaces ${FPREP_OUT_SPACES} \
-      ${cifti_flag} \
-      ${syn_flag} \      
-      --stop-on-first-crash \
-      -w ${work}
-
-  fi
-
 else
-
-  echo "ERROR in `basename ${0}`: Unknown option ${system}. Please specify \"anat\" or leave empty for anat+func"
-
+  echo "Skipping fMRIPrep, continuing to \"boldref\" and \"bold-to-T1w\" files"
 fi
 
 # fMRIPrep's boldref seems to be messy lately (snow-like noise pattern instead of an image)
