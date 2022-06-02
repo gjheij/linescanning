@@ -175,7 +175,7 @@ Examples:
                           labels=['real', 'pred'], 
                           add_hline='default', 
                           axs=ax2,
-                          y_label="amplitude (z-score)",
+                          y_label="amplitude",
                           x_label="time (s)",
                           sns_trim=True,
                           line_width=[0.5, 3],
