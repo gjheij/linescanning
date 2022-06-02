@@ -6,6 +6,34 @@ function conda2jupyter {
   conda deactivate
 }
 
+function search_character_substring {
+  input=${1}
+  searchstring=${2}
+  rest=${input#*$searchstring}
+  starts_at=`echo $(( ${#input} - ${#rest} - ${#searchstring} ))`
+  echo $starts_at
+}
+
+function flywheel2bids {
+  input_dir=${1}
+  fname=${2}
+  for ii in ${input_dir}/*.json; do
+  
+    if [[ ${ii} == *"_ph.json"* ]]; then
+      suff="_ph"
+    else
+      suff=""
+    fi
+
+    # get SeriesDescription
+    SD=`cat ${ii} | grep "SeriesDescription" | cut -d ":" -f2 | cut -d" " -f2 | cut -d"," -f1 | tr -d '"'`
+    outbase=${fname}_${SD}${suff}
+    mv ${ii} $(dirname $ii)/${outbase}.json
+    mv $(dirname $ii)/$(basename ${ii} .json).nii.gz $(dirname $ii)/${outbase}.nii.gz
+
+  done
+} 
+
 function permission_codes {
 	stat -c "%a %n" *
 }
