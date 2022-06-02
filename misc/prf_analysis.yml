@@ -14,7 +14,7 @@ param_bounds: True
 filter_predictions: False
 # screen settings
 screen_size_cm: 70
-screen_distance_cm: 196
+screen_distance_cm: 225
 
 #set bold baseline to 100 for all models, norm to value below
 fix_bold_baseline: True
