@@ -1278,7 +1278,26 @@ class pRFmodelFitting():
 
         ## Initiate fitter
         # check whether we got old parameters so we can skip Gaussian fit:
-        # if not isinstance(self.old_params, tuple):
+        if isinstance(self.old_params, np.ndarray) or isinstance(self.old_params, str):
+            if isinstance(self.old_params, np.ndarray):
+                pass
+            elif isinstance(self.old_params, str):
+                self.old_params = np.load(self.old_params)
+            else:
+                raise ValueError(f"old_params must be a string pointing to a npy-file or a np.ndarray, not '{type(self.old_params)}'")
+
+            self.gaussian_fitter = Iso2DGaussianFitter(data=self.data, 
+                                                       model=self.gaussian_model, 
+                                                       fit_css=False,
+                                                       fit_hrf=self.fit_hrf)
+
+            # set inserted params as gridsearch_params and iterative_search_params 
+            self.gaussian_fitter.gridsearch_params = self.old_params.copy()         # needed for the rsq-mask
+            self.gaussian_fitter.iterative_search_params = self.old_params.copy()   # actual parameters
+            
+            # set gaussian_fitter as previous_gaussian_fitter
+            self.previous_gaussian_fitter = self.gaussian_fitter
+
         if not hasattr(self, "previous_gaussian_fitter"):
 
             ### add check whether we need to transpose data
@@ -1340,18 +1359,7 @@ class pRFmodelFitting():
         #----------------------------------------------------------------------------------------------------------------------------------------------------------
         # Check if we should do DN-model
         if self.model.lower() == "norm":            
-                
-            # allow option to insert parameter array; but by default let prfpy deal with it
-            if isinstance(self.old_params, tuple):
-                if self.old_params[-1] == "gauss+iter":
-                    self.old_params_arr = self.old_params[0]
-                    
-                    if self.verbose:
-                        print(f"Using old parameters: {self.old_params_arr}")
             
-                # make n_units x 4 array, with X,Y,size,r2
-                self.old_params_filt = np.hstack((self.old_params_arr[:,:3], self.old_params_arr[:,-1][...,np.newaxis]))
-
             ## Define settings/grids/fitter/bounds etcs
             settings, settings_file, self.prf_stim = generate_model_params(model='norm', dm=self.design_matrix, outputdir=self.output_dir, fit_hrf=self.fit_hrf)
             
@@ -1401,7 +1409,8 @@ class pRFmodelFitting():
                                       self.neural_baseline_grid,
                                       self.surround_baseline_grid, 
                                       gaussian_params=self.old_params_filt,
-                                      n_batches=self.nr_jobs)
+                                      n_batches=self.nr_jobs,
+                                      rsq_threshold=self.rsq)
 
             elapsed = (time.time() - start)
 
