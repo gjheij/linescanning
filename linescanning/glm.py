@@ -160,7 +160,7 @@ class GenericGLM():
         # make the stimulus vectors
         if verbose:
             print("Creating stimulus vector(s)")
-        self.stims = make_stimulus_vector(self.onsets, scan_length=self.data.shape[0], osf=self.osf, type=self.exp_type)
+        self.stims = make_stimulus_vector(self.onsets, scan_length=self.data.shape[0], osf=self.osf, type=self.exp_type, TR=self.TR)
 
         # %%
         # define HRF
@@ -274,7 +274,7 @@ class GenericGLM():
 def glover_hrf(osf=1, TR=0.105, dispersion=False, derivative=False, time_length=25):
 
     # osf factor is different in `hemodynamic_models`
-    osf /= 10
+    # osf /= 10
 
     # set kernel
     hrf_kernel = []
@@ -382,7 +382,6 @@ def make_stimulus_vector(onset_df, scan_length=None, TR=0.105, osf=None, type='e
             ampl = 1
 
         Y = np.zeros(int((scan_length*TR)*osf))
-
         if type == "event":
             for rr, ii in enumerate(onset_df['onset']):
                 if onset_df['event_type'][rr] == condition:
