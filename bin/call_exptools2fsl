@@ -9,25 +9,31 @@ def main(argv):
 ---------------------------------------------------------------------------------------------------
 call_exptools2fsl
 
-Convert a file obtained with Exptools2 to FSL-compatible 3-column files. Uses internally 'linescanning.
-dataset.ParseExpToolsFile'.
+Convert a file obtained with Exptools2 to FSL-compatible 3-column files. Uses internally 'linescan-
+ning.dataset.ParseExpToolsFile'.
 
 Args:
-    -t <tsv>        string-like path as obtained with Exptools2
-    -o <basename>   string representing the basename of output files (if not specified, the files will 
-                    be created based on the event-names as specified in the file)
-    -d <duration>   duration of events (will default to 1s if empty)
-    --no-bids       disable BIDS-read in of the file. Will default to subject=1 and run=1. Might be 
-                    necessary if your file is not in BIDS format (e.g., 'sub-0' will fail!)
+    -t | --tsv_file     <tsv>       string-like path as obtained with Exptools2
+    -o | --output_base  <basename>  string representing the basename of output files (if not spec-
+                                    ified, the files will be created based on the event-names as 
+                                    specified in the file). Should include the directory to the files
+                                    if the current working directory is not sufficient (e.g., /mnt
+                                    /<some path>/sub-003/ses-3/func/event will create event?_run-?.txt)
+    -d | --duration     <duration>  duration of events (will default to 1s if empty)
+    -n                              disable BIDS-read in of the file. Will default to subject=1 and 
+                                    run=1. Might be necessary if your file is not in BIDS format 
+                                    (e.g., 'sub-0' will fail!)
+    -v                              Turn on verbose messages
 
 Outputs
     Per event a text file in 3-column format
 
 Example:
-    call_exptools2fsl -t <tsv file> -o <task ID> -d 2 --no-bids # file is not bids, event = 2s
+    call_exptools2fsl [options (--no_bids|-v|--verbose)] -t <tsv file> -o <task ID> -d <duration>
+    call_exptools2fsl --no_bids -t <tsv file> -o <task ID> -d 2 # file is not bids, event = 2s
     call_exptools2fsl -t <tsv file> -o <task ID> # file is bids, event = 1s, custom output
     call_exptools2fsl -t <tsv file> # file is bids, event = 1s, read events from file
-
+    call_exptools2fsl -t sub-003_ses-3_task-SR_run-3_events.tsv -o event -n -v
 ---------------------------------------------------------------------------------------------------
     """
 
@@ -38,8 +44,10 @@ Example:
     verbose     = False
 
     try:
-        opts = getopt.getopt(argv, "hvt:o:d:", ["tsv_file=", "output_base=", "duration=", "no-bids=", "verbose="])[0]
+        opts = getopt.getopt(
+            argv, "nhvt:o:d:", ["tsv_file=", "output_base=", "duration=", "verbose="])[0]
     except getopt.GetoptError:
+        print("AN ERROR OCCURRED WHILE READING THE ARGUMENTS")
         print(main.__doc__)
         sys.exit(2)
 
@@ -55,7 +63,7 @@ Example:
             duration = arg
         elif opt in ("-v", "--verbose"):
             verbose = True
-        elif opt in ("--no-bids"):
+        elif opt in ("-n"):
             use_bids = False
 
     if len(argv) < 1:
@@ -65,7 +73,7 @@ Example:
 
     if os.path.exists(tsv_file):
         exp = dataset.ParseExpToolsFile(tsv_file, use_bids=use_bids, verbose=verbose)
-        exp.onsets_to_fsl(duration=duration, output_base=output_base)
+        exp.onsets_to_fsl(duration=float(duration), output_base=output_base)
 
 if __name__ == "__main__":
     main(sys.argv[1:])
