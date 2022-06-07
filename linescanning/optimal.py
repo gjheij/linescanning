@@ -810,7 +810,7 @@ class CalcBestVertex(object):
 
         # apply to label mask
         if hasattr(self, 'prf_mask') and hasattr(self, 'struct_mask'):
-            # we have both prf and surf masks
+            # we have both prf and surf masks'
             self.joint_mask = (self.prf_mask * self.struct_mask * self.surface.whole_roi)
         elif hasattr(self, 'prf_mask') and not hasattr(self, 'struct_mask'):
             # only pRF-data
@@ -833,8 +833,10 @@ class CalcBestVertex(object):
         self.lh_prf = self.joint_mask[:self.surface.lh_surf_data[0].shape[0]]
         self.rh_prf = self.joint_mask[self.surface.lh_surf_data[0].shape[0]:]
         
-        self.joint_mask[self.joint_mask < 1] = np.nan
-        self.joint_mask_v = cortex.Vertex(self.joint_mask, subject=self.subject, cmap='Accent', vmin=-0.5, vmax=1)
+        if self.fs_label != "V1_exvivo.thresh":
+            self.joint_mask[self.joint_mask < 1] = np.nan
+            
+        self.joint_mask_v = cortex.Vertex(self.joint_mask, subject=self.subject, vmin=-0.5, vmax=1)
         
         # cortex.webshow({"lh": cortex.Vertex(self.lh_prf.astype(int), subject=self.subject, cmap='magma', vmin=-0.5, vmax=1), "rh": cortex.Vertex(self.rh_prf.astype(int), subject=self.subject, cmap='magma', vmin=-0.5, vmax=1)})
 
