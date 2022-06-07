@@ -1,0 +1,71 @@
+#!/usr/bin/env python
+
+import os, sys, getopt
+from linescanning import dataset
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_exptools2fsl
+
+Convert a file obtained with Exptools2 to FSL-compatible 3-column files. Uses internally 'linescanning.
+dataset.ParseExpToolsFile'.
+
+Args:
+    -t <tsv>        string-like path as obtained with Exptools2
+    -o <basename>   string representing the basename of output files (if not specified, the files will 
+                    be created based on the event-names as specified in the file)
+    -d <duration>   duration of events (will default to 1s if empty)
+    --no-bids       disable BIDS-read in of the file. Will default to subject=1 and run=1. Might be 
+                    necessary if your file is not in BIDS format (e.g., 'sub-0' will fail!)
+
+Outputs
+    Per event a text file in 3-column format
+
+Example:
+    call_exptools2fsl -t <tsv file> -o <task ID> -d 2 --no-bids # file is not bids, event = 2s
+    call_exptools2fsl -t <tsv file> -o <task ID> # file is bids, event = 1s, custom output
+    call_exptools2fsl -t <tsv file> # file is bids, event = 1s, read events from file
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    tsv_file    = None
+    output_base = None
+    duration    = 1
+    use_bids    = True
+    verbose     = False
+
+    try:
+        opts = getopt.getopt(argv, "hvt:o:d:", ["tsv_file=", "output_base=", "duration=", "no-bids=", "verbose="])[0]
+    except getopt.GetoptError:
+        print(main.__doc__)
+        sys.exit(2)
+
+    for opt, arg in opts:
+        if opt == '-h':
+            print(main.__doc__)
+            sys.exit()            
+        elif opt in ("-t", "--tsv_file"):
+            tsv_file = arg
+        elif opt in ("-o", "--output_base"):
+            output_base = arg
+        elif opt in ("-d", "--duration"):
+            duration = arg
+        elif opt in ("-v", "--verbose"):
+            verbose = True
+        elif opt in ("--no-bids"):
+            use_bids = False
+
+    if len(argv) < 1:
+        print("NEED AT LEAST AN INPUT TSV-FILE")
+        print(main.__doc__)
+        sys.exit()
+
+    if os.path.exists(tsv_file):
+        exp = dataset.ParseExpToolsFile(tsv_file, use_bids=use_bids, verbose=verbose)
+        exp.onsets_to_fsl(duration=duration, output_base=output_base)
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
