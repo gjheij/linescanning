@@ -690,7 +690,14 @@ class ParseExpToolsFile(ParseEyetrackerFile):
                     onsets_per_event = utils.select_from_df(onsets_per_run, expression=f"event_type = {events_per_run[ix]}").values.flatten()[..., np.newaxis]
 
                     if output_base == None:
-                        fname = f"{ev}_run-{run}.txt"
+                        if isinstance(self.tsv_file, list):
+                            outdir = os.path.dirname(self.tsv_file[0])
+                        elif isinstance(self.tsv_file, str):
+                            outdir = os.path.dirname(self.tsv_file)
+                        else:
+                            outdir = os.getcwd()
+
+                        fname = opj(outdir, f"{ev}_run-{run}.txt")
                     else:
                         fname = f"{output_base}{ix+1}_run-{run}.txt"
 
