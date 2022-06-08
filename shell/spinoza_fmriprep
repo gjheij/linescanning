@@ -190,7 +190,7 @@ for dir in ${search}; do
     fi
 
     if [[ -z ${func} ]]; then
-      echo " `basename ${dir}`; missing functional data"
+      echo "`basename ${dir}`; missing functional data"
       continue
     fi
   fi
