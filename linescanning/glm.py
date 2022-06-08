@@ -1,13 +1,11 @@
 from linescanning.plotting import LazyPlot
-import os
+from nilearn.glm.first_level import first_level
+from nilearn.glm.first_level import hemodynamic_models 
+from nilearn import plotting
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 from scipy.interpolate import interp1d
-import seaborn as sns
-from nilearn.glm.first_level import first_level
-from nilearn.glm.first_level import hemodynamic_models 
-from nilearn import plotting
 import warnings
 
 class GenericGLM():
@@ -130,7 +128,7 @@ class GenericGLM():
     
     def __init__(self, onsets, data, hrf_pars=None, TR=None, osf=1, contrast_matrix=None, exp_type='event', block_length=None, amplitude=None, regressors=None, make_figure=False, xkcd=False, plot_event=[1, 2], plot_vox=None, verbose=False, nilearn=False, derivative=False, dispersion=False):
         
-        # %%
+        
         # instantiate 
         self.onsets             = onsets
         self.hrf_pars           = hrf_pars
@@ -156,20 +154,26 @@ class GenericGLM():
             self.data = data.values
         else:
             raise ValueError("Data must be 'np.ndarray' or 'pandas.DataFrame'")
-        # %%
+        
         # make the stimulus vectors
         if verbose:
             print("Creating stimulus vector(s)")
         self.stims = make_stimulus_vector(self.onsets, scan_length=self.data.shape[0], osf=self.osf, type=self.exp_type, TR=self.TR)
 
-        # %%
         # define HRF
         self.hrf_kernel = []
         if verbose:
             print("Defining HRF")
 
-        self.hrf = glover_hrf(osf=osf, TR=self.TR, dispersion=self.dispersion, derivative=self.derivative)
-        # %%
+        # self.hrf = glover_hrf(osf=osf, TR=self.TR, dispersion=self.dispersion, derivative=self.derivative)
+        dt = 1/self.osf
+        self.time_points = np.linspace(0, 25, np.rint(float(25)/dt).astype(int))
+
+        if self.hrf_pars:
+            self.hrf = double_gamma(self.time_points, lag=self.hrf_pars['lag'], a2=self.hrf_pars['a2'], b1=self.hrf_pars['b1'], b2=self.hrf_pars['b2'], c=self.hrf_pars['c'], scale=self.hrf_pars['scale'])
+        else:
+            self.hrf = double_gamma(self.time_points, lag=6)
+        
         # convolve stimulus vectors
         if verbose:
             print("Convolve stimulus vectors with HRF")
@@ -184,8 +188,7 @@ class GenericGLM():
             self.stims_convolved_resampled = self.stims_convolved.copy()
 
         self.condition_names = list(self.stims_convolved_resampled.keys())
-
-        # %%
+        
         # finalize design matrix (with regressors)
         if verbose:
             print("Creating design matrix")
@@ -194,7 +197,7 @@ class GenericGLM():
 
         if self.make_figure:
             self.plot_design_matrix()
-        # %%
+        
         # Fit all
         if verbose:
             print("Running fit")
@@ -459,7 +462,8 @@ def convolve_hrf(hrf, stim_v, make_figure=False, xkcd=False):
                  x_label='Time (*osf)',
                  y_label='Activity (A.U.)', 
                  xkcd=xkcd,
-                 font_size=16)
+                 font_size=16,
+                 x_lim=[0,1])
         
         # check if we got derivatives; if so, select first element (= standard HRF)
         if isinstance(convolved, list):
@@ -766,3 +770,48 @@ def fit_first_level(stim_vector, data, make_figure=False, copes=None, xkcd=False
             'x_conv': X_conv,
             'resids': resids,
             'tstats': tstat}
+
+def double_gamma(x, lag=6, a2=12, b1=0.9, b2=0.9, c=0.35, scale=True):
+    """double_gamma
+
+    Create a double gamma hemodynamic response function (HRF).
+
+    Parameters
+    ----------
+    x: numpy.ndarray
+        timepoints along the HRF
+    lag: int, optional
+        duration until peak of HRF is reached, by default 6
+    a2: int, optional
+        second determinant of the HRF drop, by default 12
+    b1: float, optional
+        first determinant of HRF rise, by default 0.9
+    b2: float, optional
+        second determinant of HRF rise, by default 0.9
+    c: float, optional
+        constant for HRF drop, by default 0.35
+    scale: bool, optional
+        normalize course of HRF, by default True
+
+    Returns
+    ----------
+    numpy.ndarray
+        HRF across given timepoints with shape (,`x.shape[0]`)
+
+    Example
+    ----------
+    >>> dt = 1
+    >>> time_points = np.linspace(0,36,np.rint(float(36)/dt).astype(int))
+    >>> hrf_custom = linescanning.glm.double_gamma(time_points, lag=6)
+    >>> hrf_custom = hrf_custom[np.newaxis,...]
+    """
+    a1 = lag
+    d1 = a1 * b1
+    d2 = a2 * b2
+    hrf = np.array([(t/(d1))**a1 * np.exp(-(t-d1)/b1) - c *
+                   (t/(d2))**a2 * np.exp(-(t-d2)/b2) for t in x])
+
+    if scale:
+        hrf = (1 - hrf.min()) * (hrf - hrf.min()) / \
+            (hrf.max() - hrf.min()) + hrf.min()
+    return hrf

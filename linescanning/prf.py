@@ -14,7 +14,7 @@ from prfpy.fit import Iso2DGaussianFitter, Norm_Iso2DGaussianFitter
 from prfpy.model import Iso2DGaussianModel, Norm_Iso2DGaussianModel
 import random
 from scipy.ndimage import rotate
-from scipy import signal
+from scipy import signal, io
 import subprocess
 import time
 import yaml
@@ -1994,3 +1994,149 @@ class SizeResponse():
             
         self.params_df.to_csv(opj(self.subject_info.cx_dir, f'{self.subject_info.subject}_hemi-{hemi}_desc-normalization_parameters.csv'))
         np.save(opj(self.subject_info.cx_dir, f'{self.subject_info.subject}_hemi-{hemi}_desc-normalization_parameters.npy'), self.params)
+
+class CollectSubject:
+    """CollectSubject
+
+    Simple class to fetch pRF-related settings given a subject. Collects the design matrix, settings, and target vertex information. The `ses`-flag decides from which session the pRF-parameters to be used. You can either specify an *analysis_yaml* file containing information about a pRF-analysis, or specify *settings='recent'* to fetch the most recent analysis file in the pRF-directory of the subject. The latter is generally fine if you want information about the stimulus.
+
+    Parameters
+    ----------
+    subject: str
+        subject ID as used throughout the pipeline
+    derivatives: str, optional
+        Derivatives directory, by default None. 
+    cx_dir: str, optional
+        path to subject-specific pycortex directory
+    prf_dir: str, optional
+        subject-specific pRF directory, by default None. `derivatives` will be ignore if this flag is used
+    ses: int, optional
+        Source session of pRF-parameters to use, by default 1
+    analysis_yaml: str, optional
+        String pointing to an existing file, by default None. 
+    hemi: str, optional
+        Hemisphere to extract target vertex from, by default "lh"
+    settings: str, optional
+        Fetch most recent settings file rather than `analysis_yaml`, by default None. 
+    model: str, optional
+        This flag can be set to read in a specific 'best_vertex' file as the location parameters sometimes differ between a Gaussian and DN-fit.
+
+    Example
+    ----------
+    >>> from linescanning import utils
+    >>> subject_info = utils.CollectSubject(subject, derivatives=<path_to_derivatives>, settings='recent', hemi="lh")
+    """
+
+    def __init__(self, subject, derivatives=None, cx_dir=None, prf_dir=None, ses=1, analysis_yaml=None, hemi="lh", settings=None, model="gauss", correct_screen=True, verbose=True):
+
+        self.subject        = subject
+        self.derivatives    = derivatives
+        self.cx_dir         = cx_dir
+        self.prf_dir        = prf_dir
+        self.prf_ses        = ses
+        self.hemi           = hemi
+        self.model          = model
+        self.analysis_yaml  = analysis_yaml
+        self.correct_screen = correct_screen
+        self.verbose        = verbose
+
+        if self.hemi == "lh" or self.hemi.lower() == "l" or self.hemi.lower() == "left":
+            self.hemi_tag = "L"
+        elif self.hemi == "rh" or self.hemi.lower() == "r" or self.hemi.lower() == "right":
+            self.hemi_tag = "R"
+        else:
+            self.hemi_tag = "both"        
+
+        # set pRF directory
+        if self.prf_dir == None:
+            if derivatives != None:
+                self.prf_dir = opj(self.derivatives, 'prf', self.subject, f'ses-{self.prf_ses}')
+
+        # get design matrix, vertex info, and analysis file
+        if self.prf_dir != None:
+            self.design_fn      = utils.get_file_from_substring("vis_design.mat", self.prf_dir)
+            self.design_matrix  = io.loadmat(self.design_fn)['stim']
+            self.func_data_lr   = np.load(utils.get_file_from_substring("avg_bold_hemi-LR.npy", self.prf_dir))
+            self.func_data_l    = np.load(utils.get_file_from_substring("avg_bold_hemi-L.npy", self.prf_dir))
+            self.func_data_r    = np.load(utils.get_file_from_substring("avg_bold_hemi-R.npy", self.prf_dir))
+        # load specific analysis file
+        if self.analysis_yaml != None:
+            self.settings = yaml.safe_load(self.analysis_yaml)
+
+            with open(self.analysis_yaml) as file:
+                self.settings = yaml.safe_load(file)      
+
+        try:
+            self.gauss_iter_pars = np.load(utils.get_file_from_substring(["model-gauss", "stage-iter", "params"], self.prf_dir))
+        except:
+            pass
+        
+        # load the most recent analysis file. This is fine for screens/stimulus information
+        if settings == "recent":
+            self.analysis_yaml = opj(self.prf_dir, sorted([ii for ii in os.listdir(self.prf_dir) if "desc-settings" in ii])[-1])
+        
+            with open(self.analysis_yaml) as file:
+                self.settings = yaml.safe_load(file)
+
+        if self.cx_dir != None:
+            self.vert_fn        = utils.get_file_from_substring([self.model, "best_vertices.csv"], self.cx_dir)
+            self.vert_info      = utils.VertexInfo(self.vert_fn, subject=self.subject, hemi=self.hemi)
+        
+        # fetch target vertex parameters
+        if hasattr(self, "vert_info"):
+            self.target_params = self.return_prf_params(hemi=self.hemi)
+            self.target_vertex = self.return_target_vertex(hemi=self.hemi)
+
+        # create pRF if settings were specified
+        if hasattr(self, "settings"):
+            self.prf_stim = stimulus.PRFStimulus2D(screen_size_cm=self.settings['screen_size_cm'], screen_distance_cm=self.settings['screen_distance_cm'], design_matrix=self.design_matrix,TR=self.settings['TR'])
+            self.prf_array = make_prf(self.prf_stim, size=self.target_params[2], mu_x=self.target_params[0], mu_y=self.target_params[1])
+
+        try:
+            self.normalization_params_df    = pd.read_csv(utils.get_file_from_substring([f"hemi-{self.hemi_tag}", "normalization", "csv"], self.cx_dir), index_col=0)
+            self.normalization_params       = np.load(utils.get_file_from_substring([f"hemi-{self.hemi_tag}", "normalization", "npy"], self.cx_dir))
+
+            if self.correct_screen:
+                self.normalization_params = self.normalization_params*1.08
+                
+        except:
+            self.normalization_params_df    = None
+            self.normalization_params       = None
+
+        if self.prf_dir != None:
+            self.modelling      = pRFmodelFitting(self.func_data_lr,
+                                                  design_matrix=self.design_matrix,
+                                                  settings=self.analysis_yaml,
+                                                  verbose=self.verbose)
+
+            if self.model == "gauss":
+                if hasattr(self, "gauss_iter_pars"):
+                    self.pars = self.gauss_iter_pars.copy()
+                else:
+                    raise AttributeError("Could not find 'gauss_iter_pars' attribute")
+            else:
+                self.pars = self.normalization_params.copy()
+
+            self.modelling.load_params(self.pars, model=self.model, stage="iter")
+
+    def return_prf_params(self, hemi="lh"):
+        """return pRF parameters from :class:`linescanning.utils.VertexInfo`"""
+        return self.vert_info.get('prf', hemi=hemi)
+
+    def return_target_vertex(self, hemi="lh"):
+        """return the vertex ID of target vertex"""
+        return self.vert_info.get('index', hemi=hemi)
+
+    def target_prediction_prf(self, xkcd=False, line_width=1, freq_spectrum=None, save_as=None, **kwargs):
+        _, self.prediction, _ = self.modelling.plot_vox(vox_nr=self.target_vertex, 
+                                                        model=self.model, 
+                                                        stage='iter', 
+                                                        make_figure=True, 
+                                                        xkcd=xkcd,
+                                                        title='pars',
+                                                        transpose=True, 
+                                                        line_width=line_width,
+                                                        freq_spectrum=freq_spectrum, 
+                                                        freq_type="fft",
+                                                        save_as=save_as,
+                                                        **kwargs)        
