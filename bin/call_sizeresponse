@@ -3,7 +3,6 @@
 #$ -cwd
 #$ -V
 
-from prfpy import model
 from linescanning import utils, prf, plotting
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
@@ -126,7 +125,7 @@ Examples:
 
         #---------------------------------------------------------------------------------------------------
         # load in subject
-        subject_info = utils.CollectSubject(subject, prf_dir=prf_dir, cx_dir=cx_dir, settings='recent', hemi=hemi)
+        subject_info = prf.CollectSubject(subject, prf_dir=prf_dir, cx_dir=cx_dir, settings='recent', hemi=hemi)
 
         # make pRF plot
         ax1 = fig.add_subplot(gs00[0])
@@ -146,14 +145,14 @@ Examples:
         
         # initiate class
         fitting = prf.pRFmodelFitting(data[...,np.newaxis].T,
-                                    design_matrix=subject_info.design_matrix, 
-                                    TR=subject_info.settings['TR'], 
-                                    model="norm", 
-                                    stage=stage, 
-                                    old_params=insert_params, 
-                                    verbose=verbose, 
-                                    output_dir=subject_info.prf_dir, 
-                                    nr_jobs=1)
+                                      design_matrix=subject_info.design_matrix, 
+                                      TR=subject_info.settings['TR'], 
+                                      model="norm", 
+                                      stage=stage, 
+                                      old_params=insert_params, 
+                                      verbose=verbose, 
+                                      output_dir=subject_info.prf_dir, 
+                                      nr_jobs=1)
         
         # fit
         fitting.fit()
