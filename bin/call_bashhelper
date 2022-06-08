@@ -49,7 +49,7 @@ function add_prefix {
 function task_id {
   func=${1}
   if [[ ${func} != *"task-"* ]]; then
-    task=${TASK_SES2}
+    task=${TASK_SES1}
   else
     # need some operations to find the task ID
     part_after_task=${func#*task-}
