@@ -181,7 +181,7 @@ for dir in ${search}; do
 
     else
 
-      if [[ ! -d ${bidsdir}/anat && ! -d ${bidsdir}/func ]]; then
+      if [[ -d ${bidsdir}/anat && -d ${bidsdir}/func ]]; then
 
         echo
         echo "**************************************** Processing `basename ${dir}` ***************************************"
@@ -368,15 +368,27 @@ for dir in ${search}; do
         fi
 
         # check if we also did partial 3DEPI stuff
-        nr_epis=`echo ${outputdir}/*bold.nii.gz | wc -w`
-        if [[ ${nr_epis} -gt 0 ]]; then
-          echo " Found ${nr_epis} EPI file(s)"
+        bold_files=`find "${inputdir}" -type f \( -name "*acq-3DEPI*" -and -name "*bold.nii.gz" \) 2>/dev/null`
 
-          for i in `seq 0 $((${nr_epis}-1))`; do
+        # sort array (https://stackoverflow.com/questions/7442417/how-to-sort-an-array-in-bash)
+        IFS=$'\n' bold_files=($(sort <<<"${bold_files[*]}"))
+        unset IFS
 
-            func=`find "${outputdir}" -type f \( -name "*acq-3DEPI*" -and -name "*run-${i}*" -and -name "*bold.nii.gz" \) 2>/dev/null`
-            fmap=`find "${outputdir}" -type f \( -name "*acq-3DEPI*" -and -name "*run-${i}*" -and -name "*epi.nii.gz" \) 2>/dev/null`
-            phase=`find "${outputdir}" -type f \( -name "*acq-3DEPI*" -and -name "*run-${i}*" -and -name "*bold_ph.nii.gz" \) 2>/dev/null`
+        count=0
+        if [[ ! -z ${bold_files[@]} ]]; then
+          echo " Found 3DEPI file(s)"
+
+          for bold in ${bold_files[@]}; do
+
+            # fetch run
+            run=`run_id ${bold}`
+            if [[ ${run} -eq 0 ]]; then
+              run=${count}
+            fi 
+
+            func=`find "${outputdir}" -type f \( -name "*acq-3DEPI*" -and -name "*run-${run}*" -and -name "*bold.nii.gz" \) 2>/dev/null`
+            fmap=`find "${outputdir}" -type f \( -name "*acq-3DEPI*" -and -name "*run-${run}*" -and -name "*epi.nii.gz" \) 2>/dev/null`
+            phase=`find "${outputdir}" -type f \( -name "*acq-3DEPI*" -and -name "*run-${run}*" -and -name "*bold_ph.nii.gz" \) 2>/dev/null`
             task=`task_id ${func}`
 
             # -acq needs to be after task to be compatible with fMRIprep
@@ -385,40 +397,33 @@ for dir in ${search}; do
               mkdir -p ${tmp_dir}
             fi
 
-            fname=${tmp_dir}/$(basename ${dir})_ses-${ses_id}_task-${task}_run-${i}_acq-3DEPI
-            bids_func=${fname}_bold.nii.gz
-            if [[ ! -f ${bids_func} ]]; then
-              if [[ -f ${func} ]]; then
-                echo "  renaming func-file to `basename ${bids_func}`"
-                cp ${func} ${bids_func}
-                cp $(dirname ${func})/$(basename ${func} .nii.gz).json $(dirname ${bids_func})/$(basename ${bids_func} .nii.gz).json
+            # rename 'bold', 'epi', and 'phase'
+            fname=${tmp_dir}/$(basename ${dir})_ses-${ses_id}_task-${task}_run-${run}_acq-3DEPI
+            for ext in "_bold.nii.gz" "_epi.nii.gz" "_bold_ph.nii.gz"; do
+              ff=${fname}${ext}
+
+              if [[ ${ext} == "_bold.nii.gz" ]]; then
+                orig=${func}
+                image="func"
+              elif [[ ${ext} == "_epi.nii.gz" ]]; then
+                orig=${fmap}
+                image="fmap"
+              elif [[ ${ext} == "_bold_ph.nii.gz" ]]; then
+                orig=${phase}
+                image="phase"
+              fi
+
+              if [[ ! -f ${ff} ]]; then
+                if [[ -f ${orig} ]]; then
+                  echo "  renaming ${image}-file to `basename ${ff}`"
+                  cp ${orig} ${ff}
+                  cp $(dirname ${orig})/$(basename ${orig} .nii.gz).json $(dirname ${ff})/$(basename ${ff} .nii.gz).json
+                fi
               else
-                echo " WARNING: found ${nr_epis} EPI-files, but could not find file with \"acq-3DEPI\", \"run-${i}\", and \"bold.nii.gz\""
+                echo "  $(basename ${ff}) exists"
               fi
-            else
-              echo "  $(basename ${bids_func}) exists"
-            fi
 
-            bids_epi=${fname}_epi.nii.gz
-            if [[ ! -f ${bids_epi} ]]; then
-              if [[ -f ${fmap} ]]; then
-                echo "  renaming epi-file to `basename ${bids_epi}`"
-                cp ${fmap} ${bids_epi}
-                cp $(dirname ${fmap})/$(basename ${fmap} .nii.gz).json $(dirname ${bids_epi})/$(basename ${bids_epi} .nii.gz).json
-              fi
-            fi
-
-            bids_phase=${fname}_bold_ph.nii.gz
-            if [[ ! -f ${bids_phase} ]]; then
-              if [[ -f ${fmap} ]]; then
-                echo "  renaming phase-file to `basename ${bids_phase}`"
-                cp ${fmap} ${bids_phase}
-                cp $(dirname ${fmap})/$(basename ${fmap} .nii.gz).json $(dirname ${bids_phase})/$(basename ${bids_phase} .nii.gz).json
-              fi
-            fi            
-
-            echo " These files should be treated with \"partial_preprocess.py\" in the pRFline-package"
-            echo " See also: https://github.com/spinoza-centre/pRFline/tree/main/scripts"    
+            done
 
           done
 
