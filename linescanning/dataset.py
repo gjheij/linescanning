@@ -518,6 +518,8 @@ class ParseExpToolsFile(ParseEyetrackerFile):
                     bids_comps = utils.split_bids_components(onset_file)
                     for el in ['sub', 'run']:
                         setattr(self, el, bids_comps[el])
+                else:
+                    self.run = run+1
 
                 # include eyeblinks?
                 if self.include_blinks:
@@ -553,6 +555,8 @@ class ParseExpToolsFile(ParseEyetrackerFile):
 
     def preprocess_exptools_file(self, tsv_file, run=1, delete_vols=0, phase_onset=1):
         
+        if self.verbose:
+            print(f"Preprocessing {tsv_file}")
         data_onsets = []
         with open(tsv_file) as f:
             timings = pd.read_csv(f, delimiter='\t')
@@ -1063,7 +1067,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
         if self.verbose:
             print("\nFUNCTIONAL")
 
-        if isinstance(self.func_file, str):
+        if isinstance(self.func_file, str) or isinstance(self.func_file, np.ndarray):
             self.func_file = [self.func_file]
                 
         if isinstance(self.func_file, list):
@@ -1081,7 +1085,16 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
             for run, func in enumerate(self.func_file):
                 
                 if self.verbose:
-                    print(f"Preprocessing {func}")
+                    if isinstance(func, str):
+                        print(f"Preprocessing {func}")
+                    elif isinstance(func, np.ndarray):
+                        print(f"Preprocessing array {run+1} in list")
+                        
+                        # override use_bids. Can't be use with numpy arrays
+                        self.use_bids = False
+                    else:
+                        raise ValueError(f"Unknown input type '{type(func)}'. Must be string or numpy-array")
+
                 if self.use_bids:
                     bids_comps = utils.split_bids_components(func)
                     for el in ['sub', 'run']:
@@ -1205,28 +1218,34 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
         # BASIC DATA LOADING
 
         # Load in datasets with tag "wcsmtSNR"
-        if func_file.endswith("mat"):
+        if isinstance(func_file, str):
+            if func_file.endswith("mat"):
 
-            # load matlab file
-            self.ts_wcsmtSNR    = io.loadmat(func_file)
+                # load matlab file
+                self.ts_wcsmtSNR    = io.loadmat(func_file)
 
-            # decide which key to read from the .mat file
-            if self.func_tag == None:
-                self.tag = list(self.ts_wcsmtSNR.keys())[-1]
-            else:
-                self.tag = self.func_tag
+                # decide which key to read from the .mat file
+                if self.func_tag == None:
+                    self.tag = list(self.ts_wcsmtSNR.keys())[-1]
+                else:
+                    self.tag = self.func_tag
 
-            # select data
-            self.ts_wcsmtSNR    = self.ts_wcsmtSNR[self.tag]
-            self.ts_complex     = self.ts_wcsmtSNR
-            self.ts_magnitude   = np.abs(self.ts_wcsmtSNR)
+                # select data
+                self.ts_wcsmtSNR    = self.ts_wcsmtSNR[self.tag]
+                self.ts_complex     = self.ts_wcsmtSNR
+                self.ts_magnitude   = np.abs(self.ts_wcsmtSNR)
 
-        elif func_file.endswith("npy") or isinstance(func_file, np.ndarray):
-            self.ts_magnitude   = np.load(func_file)
-        elif func_file.endswith("nii") or func_file.endswith("gz"):
-            fdata = nb.load(func_file).get_fdata()
-            xdim,ydim,zdim,time_points = fdata.shape
-            self.ts_magnitude = fdata.reshape(xdim*ydim*zdim, time_points)
+            elif func_file.endswith("npy"):
+                self.ts_magnitude   = np.load(func_file)
+
+            elif func_file.endswith("nii") or func_file.endswith("gz"):
+                fdata = nb.load(func_file).get_fdata()
+                xdim,ydim,zdim,time_points = fdata.shape
+                self.ts_magnitude = fdata.reshape(xdim*ydim*zdim, time_points)
+
+        elif isinstance(func_file, np.ndarray):
+            self.ts_magnitude = func_file.copy()
+            
         else:
             raise NotImplementedError()
 
