@@ -235,7 +235,7 @@ class NideconvFitter():
         self.define_events()
 
         # # fit
-        # self.fit()
+        self.fit()
 
     def timecourses_condition(self):
 
@@ -274,7 +274,6 @@ class NideconvFitter():
         # rename 'event type' to 'event_type' so it's compatible with utils.select_from_df
         tmp = self.tc_condition.reset_index().rename(columns={"event type": "event_type"})
         self.tc_condition = tmp.set_index(['event_type', 'covariate', 'time'])
-
 
         # set time axis
         self.time = self.tc_condition.groupby(['time']).mean().reset_index()['time'].values
