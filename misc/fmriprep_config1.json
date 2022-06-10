@@ -1,0 +1,20 @@
+{
+    "t1w": {
+        "datatype": "anat",
+        "session": "1",
+        "suffix": "T1w",
+        "acquisition": "MP2RAGE"
+    },
+    "bold": {
+        "datatype": "func",
+        "session": "2",
+        "suffix": "bold",
+        "acquisition": "3DEPI"
+    },
+    "fmap": {
+        "datatype": "fmap",
+        "session": "2",
+        "suffix": "epi",
+        "acquisition": "3DEPI"
+    }    
+}
