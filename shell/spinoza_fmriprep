@@ -257,9 +257,7 @@ for dir in ${search}; do
     ${task_id}
 
   if [[ $? != 0 ]]; then
-    echo
-    echo "---------------------------------------------------------------------------------------------------"
-    echo "ERROR in `basename ${0}`: job submission/execution was unsuccessful"
+    echo "ERROR in `basename ${0}`: call_fmriprep did not execute cleanly"
     exit 1
   fi
 
