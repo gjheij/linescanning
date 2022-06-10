@@ -199,6 +199,18 @@ else
   fi
 fi
 
+#-----------------------------------------------------------------------------
+# Check how to initialize bold-to-T1w registration
+if [[ -z ${BOLD_T1W_INIT} ]]; then
+  init_flag=""
+else
+  if [[ ${BOLD_T1W_INIT} == "register" ]] || [[ ${BOLD_T1W_INIT} == "header" ]]; then
+    init_flag="--bold2t1w-init ${BOLD_T1W_INIT}"
+  else
+    init_flag=""
+  fi
+fi
+
 if [[ ${WARP_ONLY} -eq 0 ]]; then
   #-----------------------------------------------------------------------------
   #Run fmriprep
@@ -257,6 +269,7 @@ if [[ ${WARP_ONLY} -eq 0 ]]; then
         ${syn_flag} \
         ${config_flag} \
         ${task_flag} \
+        ${init_flag} \
         --nthreads ${nthreads} \
         --stop-on-first-crash \
         -w ${work}
