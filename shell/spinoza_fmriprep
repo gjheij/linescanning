@@ -198,81 +198,69 @@ for dir in ${search}; do
   echo
   echo "**************************************** Processing `basename ${dir}` ***************************************"
   echo ${func_txt}
-  
-  # if [[ ! -z ${t2w} ]]; then
-  #   if [[ -f ${input_dir}/anat/$(basename ${t2w}) ]]; then
-  #     echo "Including T2w: `basename ${t2w}` in FreeSurfer reconstruction"
-  #   fi
-  # fi
+  workdir=${PATH_HOME}/fmriprep/${PROJECT}
 
-  if [[ ${PLACE} == "SGE" ]]; then
+  # check existence working directory and other general settings
+  if [[ ! -d ${workdir} ]]; then
+    mkdir -p ${workdir}
+  fi
 
-    # qsub wants full paths, also for exectuble scripts
-    workdir=${PATH_HOME}/fmriprep/${PROJECT}
-    if [[ ! -d ${workdir} ]]; then
-      mkdir -p ${workdir}
+  if [[ ${REMOVE_WF} -eq 1 ]]; then
+    wf_dir=${workdir}/fmriprep_wf/single_subject_$(basename ${dir} | cut -d'-' -f2)_wf/anat_preproc_wf/surface_recon_wf
+    if [ -d ${wf_dir} ]; then
+      echo "Removing surface_recon_wf folder"
+      rm -r ${wf_dir}
     fi
+  fi
 
-    if [[ ${REMOVE_WF} -eq 1 ]]; then
-      wf_dir=${workdir}/fmriprep_wf/single_subject_$(basename ${dir} | cut -d'-' -f2)_wf/anat_preproc_wf/surface_recon_wf
-      if [ -d ${wf_dir} ]; then
-        echo "Removing surface_recon_wf folder"
-        rm -r ${wf_dir}
-      fi
-    fi
+  if [[ -z ${conf} ]]; then
+    confFile=""
+  else
+    echo "Using config file: ${conf}"
+    confFile="-x ${conf}"
+  fi
 
-    if [[ -z ${conf} ]]; then
-      confFile=""
-    else
-      echo "Using config file: ${conf}"
-      confFile="-x ${conf}"
-    fi
-
-    if [[ ! -z ${MODE} ]]; then
-      if [[ ${MODE} != "anat" ]] && [[ ${MODE} != "func" ]]; then
-        task_id="-t ${MODE}"
-      else
-        task_id=""
-      fi
+  if [[ ! -z ${MODE} ]]; then
+    if [[ ${MODE} != "anat" ]] && [[ ${MODE} != "func" ]]; then
+      task_id="-t ${MODE}"
     else
       task_id=""
     fi
-    
+  else
+    task_id=""
+  fi
+
+  # decide the job type (depending on SGE, can be either qsub or call_fmriprep; for anything else it's call_fmriprep)
+  if [[ ${PLACE} == "SGE" ]]; then
     if [[ "${@}" == *"-l"* ]]; then
       job="call_fmriprep"
+      exec_flag="-c local"
     else
       job="qsub -q ${SGE_QUEUE_LONG} -N fprep_$(basename ${dir} | cut -d'-' -f2) -o ${workdir} ${DIR_SCRIPTS}/bin/call_fmriprep"
+      exec_flag="-c SGE"
     fi 
-    
-    ${job} \
-      -s $(basename ${dir} | cut -d'-' -f2) \
-      -m ${MODE} \
-      -c "SGE" \
-      -b ${FPREP_BINDING} \
-      -r ${INPUT} \
-      -d ${OUTPUT} \
-      -w ${workdir} \
-      ${confFile} \
-      ${task_id}
-
-    if [[ $? != 0 ]]; then
-      echo
-      echo "---------------------------------------------------------------------------------------------------"
-      echo "ERROR in `basename ${0}`: job submission/execution was unsuccessful"
-      exit 1
-    fi
-
-    # call_fmriprep -s $(basename ${dir} | cut -d'-' -f2) -m ${MODE} -c "SGE" -r ${INPUT}
-
-  elif [[ ${PLACE} == "LOCAL" ]]; then
-
-    call_fmriprep -s $(basename ${dir} | cut -d'-' -f2) -m ${MODE} -c "local" -r ${INPUT}
-
   else
+    job="call_fmriprep"
+    exec_flag="-c local"
+  fi
 
-    echo "ERROR in `basename ${0}`: Unrecognized location \"${PLACE}\" specified. Change PLACE-variable to \"LOCAL\" or \"SGE\" in spinoza_setup"
+  # execute the command
+  ${job} \
+    -s $(basename ${dir} | cut -d'-' -f2) \
+    -m ${MODE} \
+    -b ${FPREP_BINDING} \
+    -r ${INPUT} \
+    -d ${OUTPUT} \
+    -w ${workdir} \
+    ${exec_flag} \
+    ${confFile} \
+    ${task_id}
+
+  if [[ $? != 0 ]]; then
+    echo
+    echo "---------------------------------------------------------------------------------------------------"
+    echo "ERROR in `basename ${0}`: job submission/execution was unsuccessful"
     exit 1
-
   fi
 
 done

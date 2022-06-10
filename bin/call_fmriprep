@@ -212,11 +212,15 @@ else
 fi
 
 if [[ ${WARP_ONLY} -eq 0 ]]; then
-  #-----------------------------------------------------------------------------
-  #Run fmriprep
+
+  nthread_flag=""
+  # Define command line
   if [ ${system} == "SGE" ]; then
 
+    # set threads
     nthreads=15
+    nthread_flag="--nthreads ${nthreads}"
+
     #-----------------------------------------------------------------------------
     # Set default binding point if none specified
     if [[ -z ${BIND} ]]; then
@@ -238,90 +242,45 @@ if [[ ${WARP_ONLY} -eq 0 ]]; then
       exit 1
     fi
 
-    if [[ ${mode} == "anat" ]]; then
-
-      unset PYTHONPATH; singularity run --cleanenv -B ${binding}:${binding} ${fprep_container} \
-        ${project} ${derivatives} \
-        participant \
-        --participant-label ${subj_ID} \
-        --skip-bids-validation \
-        --md-only-boilerplate \
-        --fs-license-file ${license} \
-        --output-spaces ${FPREP_OUT_SPACES} \
-        ${cifti_flag} \
-        --anat-only \
-        --nthreads ${nthreads} \
-        --bids-filter-file ${CONFIG} \
-        --stop-on-first-crash \
-        -w ${work}
-
-    else
-
-      unset PYTHONPATH; singularity run --cleanenv -B ${binding}:${binding} ${fprep_container} \
-        ${project} ${derivatives} \
-        participant \
-        --participant-label ${subj_ID} \
-        --skip-bids-validation \
-        --md-only-boilerplate \
-        --fs-license-file ${license} \
-        --output-spaces ${FPREP_OUT_SPACES} \
-        ${cifti_flag} \
-        ${syn_flag} \
-        ${config_flag} \
-        ${task_flag} \
-        ${init_flag} \
-        --nthreads ${nthreads} \
-        --stop-on-first-crash \
-        -w ${work}
-
-    fi
+    # define SGE command
+    run_cmd="unset PYTHONPATH; singularity run --cleanenv -B ${binding}:${binding} ${fprep_container}"
 
   elif [[ ${system} == "local" ]]; then
-
-    if [[ ${mode} == "anat" ]]; then
-
-      echo "Running fMRIprep with --anat-only option locally"
-      export PYTHONPATH=${FREESURFER_HOME}/python
-      fmriprep ${project} ${derivatives} \
-        participant \
-        --participant-label ${subj_ID} \
-        --skip-bids-validation \
-        --md-only-boilerplate \
-        --fs-license-file ${license} \
-        --output-spaces ${FPREP_OUT_SPACES} \
-        ${cifti_flag} \
-        ${syn_flag} \
-        --stop-on-first-crash \
-        --anat-only \
-        -w ${work}
-
-    else
-
-      echo "Running full fMRIprep pipeline locally"
-      export PYTHONPATH=${FREESURFER_HOME}/python
-      fmriprep ${project} ${derivatives}/derivatives \
-        participant \
-        --participant-label ${subj_ID} \
-        --skip-bids-validation \
-        --md-only-boilerplate \
-        --fs-license-file ${license} \
-        --output-spaces ${FPREP_OUT_SPACES} \
-        ${cifti_flag} \
-        ${syn_flag} \      
-        --stop-on-first-crash \
-        -w ${work}
-
-    fi
-
+    run_cmd="fmriprep"
   else
-
     echo "ERROR in `basename ${0}`: Unknown option ${system}. Please specify \"anat\" or leave empty for anat+func"
-
   fi
+
+  if [[ ${mode} == "anat" ]]; then
+    anat_only_flag="--anat-only"
+  else
+    anat_only_flag="" 
+  fi
+
+  # execute the fMRIPrep command
+  ${run_cmd} \
+    ${project} ${derivatives} \
+    participant \
+    --participant-label ${subj_ID} \
+    --skip-bids-validation \
+    --md-only-boilerplate \
+    --fs-license-file ${license} \
+    --output-spaces ${FPREP_OUT_SPACES} \
+    ${cifti_flag} \
+    ${syn_flag} \
+    ${config_flag} \
+    ${task_flag} \
+    ${init_flag} \
+    ${anat_only_flag} \
+    ${nthread_flag} \
+    --stop-on-first-crash \
+    -w ${work}
+
 else
   echo "Skipping fMRIPrep, continuing to \"boldref\" and \"bold-to-T1w\" files"
 fi
 
+#-----------------------------------------------------------------------------
 # fMRIPrep's boldref seems to be messy lately (snow-like noise pattern instead of an image)
 bold_files=`find ${derivatives}/fmriprep/*${subj_ID}/ -type f -name "*preproc_bold.nii.gz" 2>/dev/null`
 IFS=$'\n' bold_files=($(sort <<<"${bold_files[*]}"))
@@ -335,6 +294,7 @@ if [ ! -z ${bold_files} ]; then
   done
 fi
 
+#-----------------------------------------------------------------------------
 # copy the bold-to-T1w warps from the fmriprep_wf
 if [ -z ${PREFIX} ]; then
   pref="sub-"
