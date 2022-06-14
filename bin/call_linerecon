@@ -47,13 +47,16 @@ USAGE
 }
 
 # Deal with arguments
+do_nordic="on"
 while getopts hnm:r: argument
 do
   case ${argument} in
     m)  n_echos=${OPTARG}
           ;;       
     r)  run_id=${OPTARG}
-          ;;             
+          ;;
+    n)  do_nordic="off"
+          ;;
   esac
 done
 
@@ -70,13 +73,6 @@ fi
 RAW=${@:$OPTIND:1}
 LSD=${@:$OPTIND+1:1}
 OUT=${@:$OPTIND+2:1}
-
-if [[ "${@}" == *"-n"* ]]; then
-  echo "NORDIC is turned off"
-  do_nordic="off"
-else
-  do_nordic="on"
-fi
 
 if [[ -z ${n_echos} ]]; then
   multiecho=0
