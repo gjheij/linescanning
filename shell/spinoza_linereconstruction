@@ -54,16 +54,22 @@ if [[ $# -lt 2 ]] ; then
 fi
 
 # Check for subject & session flags
+OW=0
+SGE=0
 while getopts ojs:n:m: argument
 do
-    case ${argument} in
-      s)  sub=${OPTARG}
-            ;;
-      n)  ses=${OPTARG}
-            ;;
-      m)  n_echoes=${OPTARG}
-            ;;                
-    esac
+  case ${argument} in
+    s)  sub=${OPTARG}
+          ;;
+    n)  ses=${OPTARG}
+          ;;
+    m)  n_echoes=${OPTARG}
+          ;;
+    o)  OW=1
+          ;;
+    j)  SGE=1
+          ;;             
+  esac
 done
 
 OUTPUT=${@:$OPTIND:1}
@@ -84,18 +90,6 @@ fi
 
 if [[ ! -z ${ses} ]]; then
   nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
-fi
-
-if [[ "${@}" == *"-o"* ]]; then
-  OW=1
-else
-  OW=0
-fi
-
-if [[ "${@}" == *"-j"* ]]; then
-  SGE=1
-else
-  SGE=0
 fi
 
 if [[ ! -z ${n_echoes} ]]; then
@@ -131,14 +125,15 @@ for dir in ${search}; do
     fi
 
     # fetch and sort the lab-files
-    bold_files=`find "${lab_func}" -type f \( -name "*bold_*" -and -name "*.lab" \) 2>/dev/null`
-    IFS=$'\n' bold_files=($(sort <<<"${bold_files[*]}"))
-    unset IFS 
+    bold_files_unsorted=`find "${lab_func}" -type f \( -name "*bold_*" -and -name "*.lab" \) 2>/dev/null`
+    IFS=$'\n' bold_files=($(sort <<<"${bold_files_unsorted[*]}"))
+    unset IFS
 
     if [[ -z ${bold_files} ]]; then
       echo "`basename ${dir}`: Could not find BOLD-data"
       continue
     fi
+
 
     if [[ ${PLACE} == "SGE" ]]; then
 
@@ -146,6 +141,7 @@ for dir in ${search}; do
       echo "**************************************** Processing `basename ${dir}` ***************************************"
 
       count=0
+      old_lsd=""
       for bold in ${bold_files[@]}; do
 
         ((count++))
@@ -170,7 +166,18 @@ for dir in ${search}; do
           IDnr=`basename ${dir} | cut -d'-' -f2`
 
           # find corresponding LSD-image
-          lsd=`find "${lab_func}" -type f \( -name "*run-${run_id}*" -and -name "*desc-recon*" -and -name "*.lab" \) 2>/dev/null`
+          lsd=`find "${lab_func}" -type f \( -name "*run-${run}*" -and -name "*desc-recon*" -and -name "*.lab" \) 2>/dev/null`
+          if [[ -z ${lsd} ]]; then
+            if [[ ${old_lsd} != "" ]]; then
+              lsd=${old_lsd}
+            else
+              echo
+              echo "---------------------------------------------------------------------------------------------------"
+              echo "ERROR in `basename ${0}`: could not find LSD-file"
+              exit 1
+            fi
+          fi
+          
           if [[ ${SGE} -eq 1 ]]; then
             job="qsub -N recon_${IDnr}_${run} -wd ${OUTPUT}/$(basename ${dir})/ses-${nr}"
           else
@@ -179,6 +186,9 @@ for dir in ${search}; do
           fi
 
           ${job} ${DIR_SCRIPTS}/bin/call_linerecon -r ${run} ${echo_flag} ${bold} ${lsd} ${outputbase}
+
+          # set variable with which we can retrieve old LSD-image in case we don't have run-specific LSD-images
+          old_lsd=${lsd}
 
         else
 
