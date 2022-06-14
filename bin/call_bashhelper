@@ -62,6 +62,10 @@ function task_id {
     fi
   fi
 
+  if [[ ${task,,} == "prf" ]]; then
+    task="pRF"
+  fi
+
   echo ${task}
 }
 
