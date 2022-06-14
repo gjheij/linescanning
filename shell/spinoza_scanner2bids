@@ -181,7 +181,7 @@ for dir in ${search}; do
 
     else
 
-      if [[ -d ${bidsdir}/anat && -d ${bidsdir}/func ]]; then
+      if [[ ! -d ${bidsdir}/anat && ! -d ${bidsdir}/func ]]; then
 
         echo
         echo "**************************************** Processing `basename ${dir}` ***************************************"
