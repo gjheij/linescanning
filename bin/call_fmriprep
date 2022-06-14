@@ -213,13 +213,9 @@ fi
 
 if [[ ${WARP_ONLY} -eq 0 ]]; then
 
-  nthread_flag=""
   # Define command line
   if [ ${system} == "SGE" ]; then
 
-    # set threads
-    nthreads=15
-    nthread_flag="--nthreads ${nthreads}"
 
     #-----------------------------------------------------------------------------
     # Set default binding point if none specified
@@ -244,7 +240,7 @@ if [[ ${WARP_ONLY} -eq 0 ]]; then
 
     # define SGE command
     run_cmd="singularity run --cleanenv -B ${binding}:${binding} ${fprep_container}"
-
+    
   elif [[ ${system} == "local" ]]; then
     run_cmd="fmriprep"
   else
@@ -257,15 +253,22 @@ if [[ ${WARP_ONLY} -eq 0 ]]; then
     anat_only_flag="" 
   fi
 
+  # set nthreads
+  nthreads=15
+  nthread_flag="--nthreads ${nthreads}"
+
   # execute the fMRIPrep command
   ${run_cmd} \
-    ${project} ${derivatives} \
+    ${project} \
+    ${derivatives}/fmriprep \
     participant \
     --participant-label ${subj_ID} \
     --skip-bids-validation \
     --md-only-boilerplate \
     --fs-license-file ${license} \
     --output-spaces ${FPREP_OUT_SPACES} \
+    --fs-subjects-dir ${FS} \
+    --stop-on-first-crash \
     ${cifti_flag} \
     ${syn_flag} \
     ${config_flag} \
@@ -273,9 +276,8 @@ if [[ ${WARP_ONLY} -eq 0 ]]; then
     ${init_flag} \
     ${anat_only_flag} \
     ${nthread_flag} \
-    --stop-on-first-crash \
     -w ${work}
-
+  
   if [[ $? != 0 ]]; then
     echo
     echo "---------------------------------------------------------------------------------------------------"
