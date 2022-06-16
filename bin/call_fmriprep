@@ -257,10 +257,18 @@ if [[ ${WARP_ONLY} -eq 0 ]]; then
   nthreads=15
   nthread_flag="--nthreads ${nthreads}"
 
+  # output directory structure has changed after v22
+  VERSION=`${run_cmd} --version | cut -d" " -f2 | cut -d"." -f1`
+  if [[ `echo "${VERSION//[!0-9]/}"` -lt "22" ]]; then
+    output_dir=${derivatives}
+  else
+    output_dir=${derivatives}/fmriprep
+  fi
+
   # execute the fMRIPrep command
   ${run_cmd} \
     ${project} \
-    ${derivatives}/fmriprep \
+    ${output_dir} \
     participant \
     --participant-label ${subj_ID} \
     --skip-bids-validation \
