@@ -234,7 +234,7 @@ for dir in ${search}; do
   if [[ ${PLACE} == "SGE" ]]; then
     if [[ "${@}" == *"-l"* ]]; then
       job="call_fmriprep"
-      exec_flag="-c local"
+      exec_flag="-c SGE"
     else
       job="qsub -q ${SGE_QUEUE_LONG} -N fprep_$(basename ${dir} | cut -d'-' -f2) -o ${workdir} ${DIR_SCRIPTS}/bin/call_fmriprep"
       exec_flag="-c SGE"
