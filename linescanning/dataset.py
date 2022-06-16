@@ -478,6 +478,7 @@ class ParseExpToolsFile(ParseEyetrackerFile):
                  use_bids=True,
                  verbose=False,
                  phase_onset=1,
+                 stim_duration=None,
                  **kwargs):
 
         self.tsv_file                       = tsv_file
@@ -492,6 +493,7 @@ class ParseExpToolsFile(ParseEyetrackerFile):
         self.use_bids                       = use_bids
         self.verbose                        = verbose
         self.phase_onset                    = phase_onset
+        self.stim_duration                  = stim_duration
         self.__dict__.update(kwargs)
 
         if self.edfs != None:
@@ -570,8 +572,15 @@ class ParseExpToolsFile(ParseEyetrackerFile):
 
         self.trimmed = timings.loc[(timings['event_type'] == "stim") & (timings['phase'] == phase_onset)].iloc[1:,:]
         self.onset_times = self.trimmed['onset'].values[...,np.newaxis]
-        # self.condition      = pd.DataFrame(self.data_cut_start[(self.data_cut_start['event_type'] == 'stim') & (self.data_cut_start['condition'].notnull()) | (self.data_cut_start['response'] == 'b')]['condition'])
 
+        skip_duration = False
+        if isinstance(self.stim_duration, float) or isinstance(self.stim_duration, int):
+            self.durations = np.full_like(self.onset_times, float(self.stim_duration))
+        elif self.stim_duration == None:
+            skip_duration = True
+        else:
+            self.durations = self.trimmed['duration'].values[...,np.newaxis]
+        
         self.condition = self.trimmed['condition'].values[..., np.newaxis]
         if self.verbose:
             print(f" 1st 't' @{round(self.start_time,2)}s")
@@ -582,7 +591,10 @@ class ParseExpToolsFile(ParseEyetrackerFile):
             self.condition.loc[self.response.index] = 'response'
 
         # self.onset = np.concatenate((self.onset_times, self.condition), axis=1)
-        self.onset = np.hstack((self.onset_times, self.condition))
+        if not skip_duration:
+            self.onset = np.hstack((self.onset_times, self.condition, self.durations))
+        else:
+            self.onset = np.hstack((self.onset_times, self.condition))
 
         # add eyeblinks
         if isinstance(self.blinks, np.ndarray) or isinstance(self.blinks, str):
@@ -626,8 +638,16 @@ class ParseExpToolsFile(ParseEyetrackerFile):
         if self.verbose:
             print(f" Cutting {round(self.start_time + delete_time,2)}s from onsets")
 
+            if not skip_duration:
+                print(f" Avg duration = {round(self.durations.mean(),2)}s")
+
         # make dataframe
-        self.onset_df = self.index_onset(self.onset, columns=['onset', 'event_type'], subject=self.sub, run=run)
+        if skip_duration:
+            columns = ['onset', 'event_type']
+        else:
+            columns = ['onset', 'event_type', 'duration']
+            
+        self.onset_df = self.index_onset(self.onset, columns=columns, subject=self.sub, run=run)
 
     @staticmethod
     def index_onset(array, columns=None, subject=1, run=1, TR=0.105, set_index=False):
@@ -637,9 +657,16 @@ class ParseExpToolsFile(ParseEyetrackerFile):
         else:
             df = pd.DataFrame(array, columns=columns)
             
-        df['subject'], df['run']    = subject, run
-        df['event_type']            = df['event_type'].astype(str)
-        df['onset']                 = df['onset'].astype(float)
+        df['subject']       = subject
+        df['run']           = run
+        df['event_type']    = df['event_type'].astype(str)
+        df['onset']         = df['onset'].astype(float)
+
+        # check if we got duration
+        try:
+            df['duration'] = df['duration'].astype(float)  
+        except:
+            pass
 
         if set_index:
             return df.set_index(['subject', 'event_type'])
@@ -654,7 +681,7 @@ class ParseExpToolsFile(ParseEyetrackerFile):
         else:
             return self.onset_df
 
-    def onsets_to_fsl(self, fmt='3-column', duration=1, amplitude=1, output_base=None):
+    def onsets_to_fsl(self, fmt='3-column', amplitude=1, output_base=None):
         """onsets_to_fsl
 
         This function creates a text file with a single column containing the onset times of a given condition. Such a file can be used for SPM or FSL modeling, but it should be noted that the onset times have been corrected for the deleted volumes at the beginning. So make sure your inputting the correct functional data in these cases.
@@ -691,8 +718,8 @@ class ParseExpToolsFile(ParseEyetrackerFile):
                 events_per_run = self.get_events(onsets_per_run)
 
                 for ix, ev in enumerate(events_per_run):
-                    onsets_per_event = utils.select_from_df(onsets_per_run, expression=f"event_type = {events_per_run[ix]}").values.flatten()[..., np.newaxis]
 
+                    onsets_per_event = utils.select_from_df(onsets_per_run, expression=f"event_type = {events_per_run[ix]}")
                     if output_base == None:
                         if isinstance(self.tsv_file, list):
                             outdir = os.path.dirname(self.tsv_file[0])
@@ -705,17 +732,23 @@ class ParseExpToolsFile(ParseEyetrackerFile):
                     else:
                         fname = f"{output_base}{ix+1}_run-{run}.txt"
 
+                    # fetch the onsets
+                    event_onsets = onsets_per_event['onset'].values[..., np.newaxis]
                     if fmt == "3-column":
-                        duration_arr    = np.full_like(onsets_per_event, duration)
-                        amplitude_arr   = np.full_like(onsets_per_event, amplitude)
-                        three_col       = np.hstack((onsets_per_event, duration_arr, amplitude_arr))
+
+                        # check if we got duration
+                        if 'duration' in list(onsets_per_event.columns):
+                            duration_arr = onsets_per_event['duration'].values[..., np.newaxis]
+                        else:
+                            duration_arr = np.ones_like(onsets_per_event)
+
+                        amplitude_arr = np.full_like(event_onsets, amplitude)
+                        three_col = np.hstack((event_onsets, duration_arr, amplitude_arr))
 
                         print(f"Writing {fname}; {three_col.shape}")
-                        np.savetxt(fname, three_col,
-                                   delimiter='\t', fmt='%1.3f')
+                        np.savetxt(fname, three_col, delimiter='\t', fmt='%1.3f')
                     else:
-                        np.savetxt(fname, onsets_per_event,
-                                   delimiter='\t', fmt='%1.3f')
+                        np.savetxt(fname, event_onsets, delimiter='\t', fmt='%1.3f')
 
     @staticmethod
     def get_subjects(df):
@@ -970,10 +1003,9 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                  func_file, 
                  subject=1, 
                  run=1,
-                 low_pass=False,
-                 lb=0.05, 
-                 hb=4,
+                 filter_strategy="hp",
                  TR=0.105, 
+                 lb=0.01,
                  deleted_first_timepoints=0, 
                  deleted_last_timepoints=0, 
                  window_size=11,
@@ -1006,8 +1038,6 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
         self.run                        = run
         self.TR                         = TR
         self.lb                         = lb
-        self.hb                         = hb
-        self.low_pass                   = low_pass
         self.deleted_first_timepoints   = deleted_first_timepoints
         self.deleted_last_timepoints    = deleted_last_timepoints
         self.window_size                = window_size
@@ -1036,17 +1066,12 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
         self.gm_range                   = gm_range
         self.tissue_thresholds          = tissue_thresholds
         self.save_ext                   = save_ext
+        self.filter_strategy            = filter_strategy
         self.__dict__.update(kwargs)
 
         # sampling rate and nyquist freq
         self.fs = 1/self.TR
         self.fn = self.fs/2
-
-        # check filtering approach
-        if self.low_pass:
-            self.filter_strategy = "lp"
-        else:
-            self.filter_strategy = "hp"
 
         if self.phys_file != None: 
             
@@ -1293,143 +1318,145 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
         #----------------------------------------------------------------------------------------------------------------------------------------------------
         # HIGH PASS FILTER
 
-        if self.verbose:
-            print(f" DCT-high pass filter [removes low frequencies <{self.lb} Hz]")
+        if self.filter_strategy != "raw":
 
-        self.hp_raw, self._cosine_drift = preproc.highpass_dct(self.data_raw, self.lb, TR=self.TR)
-        self.hp_raw_df = self.index_func(self.hp_raw,
-                                         columns=self.vox_cols, 
-                                         subject=self.sub, 
-                                         run=run, 
-                                         TR=self.TR,
-                                         set_index=True)
+            if self.verbose:
+                print(f" DCT-high pass filter [removes low frequencies <{self.lb} Hz]")
 
-        # dataframe of high-passed PSC-data
-        self.hp_psc = utils.percent_change(self.hp_raw, -1)
-        self.hp_psc_df = self.index_func(self.hp_psc,
-                                         columns=self.vox_cols, 
-                                         subject=self.sub,
-                                         run=run, 
-                                         TR=self.TR, 
-                                         set_index=True)
-
-        # dataframe of high-passed z-scored data
-        self.hp_zscore = clean(self.hp_raw.T, standardize=True).T
-        self.hp_zscore_df = self.index_func(self.hp_zscore,
+            self.hp_raw, self._cosine_drift = preproc.highpass_dct(self.data_raw, self.lb, TR=self.TR)
+            self.hp_raw_df = self.index_func(self.hp_raw,
                                             columns=self.vox_cols, 
                                             subject=self.sub, 
                                             run=run, 
                                             TR=self.TR,
                                             set_index=True)
 
-        # save SD and Mean so we can go from zscore back to original
-        self.zscore_SD = self.hp_raw.std(axis=-1, keepdims=True)
-        self.zscore_M = self.hp_raw.mean(axis=-1, keepdims=True)
+            # dataframe of high-passed PSC-data
+            self.hp_psc = utils.percent_change(self.hp_raw, -1)
+            self.hp_psc_df = self.index_func(self.hp_psc,
+                                            columns=self.vox_cols, 
+                                            subject=self.sub,
+                                            run=run, 
+                                            TR=self.TR, 
+                                            set_index=True)
 
-        #----------------------------------------------------------------------------------------------------------------------------------------------------
-        # ACOMPCOR AFTER HIGH-PASS FILTERING
-        if acompcor:
+            # dataframe of high-passed z-scored data
+            self.hp_zscore = clean(self.hp_raw.T, standardize=True).T
+            self.hp_zscore_df = self.index_func(self.hp_zscore,
+                                                columns=self.vox_cols, 
+                                                subject=self.sub, 
+                                                run=run, 
+                                                TR=self.TR,
+                                                set_index=True)
 
-            # do some checks beforehand
-            if reference_slice != None:
-                if self.use_bids:
-                    bids_comps = utils.split_bids_components(reference_slice)
-                    setattr(self, "target_session", bids_comps['ses'])
-                    setattr(self, "subject", f"sub-{bids_comps['sub']}")
-                else:
-                    assert hasattr(self, "target_session"), f"Please specify a target_session with 'target_session=<int>'"
-                    assert hasattr(self, "subject"), f"Please specify a subject with 'target_session=<int>'"
+            # save SD and Mean so we can go from zscore back to original
+            self.zscore_SD = self.hp_raw.std(axis=-1, keepdims=True)
+            self.zscore_M = self.hp_raw.mean(axis=-1, keepdims=True)
 
-            # check the transformations inputs
-            assert hasattr(self, "ses1_2_ls"), f"Please specify a transformation matrix mapping FreeSurfer to ses-{self.target_session}"
-
-            if hasattr(self, "run_2_run"):
-                if isinstance(self.run_2_run, list):
-                    run_trafo =  utils.get_file_from_substring(f"to-run{self.run}", self.run_2_run)
-                    self.trafos = [self.ses1_2_ls, run_trafo]
-                else:
-                    if self.run_2_run != None:
-                        self.trafos = [self.ses1_2_ls, self.run_2_run]
-                    else:
-                        self.trafos = [self.ses1_2_ls]
-            else:
-                self.trafos = self.ses1_2_ls            
-
-            # aCompCor implemented in `preproc` module
-            self.acomp = preproc.aCompCor(self.hp_zscore_df,
-                                          subject=self.subject,
-                                          run=self.run,
-                                          trg_session=self.target_session,
-                                          reference_slice=reference_slice,
-                                          trafo_list=self.trafos,
-                                          n_pca=self.n_pca,
-                                          filter_pca=self.filter_pca,
-                                          save_as=self.save_as,
-                                          select_component=self.select_component, 
-                                          summary_plot=self.verbose,
-                                          TR=self.TR,
-                                          foldover=self.foldover,
-                                          verbose=self.verbose,
-                                          save_ext=self.save_ext,
-                                          **kwargs)
-            
-            self.hp_acomp_df = self.index_func(self.acomp.acomp_data,
-                                               columns=self.vox_cols, 
-                                               subject=self.sub, 
-                                               run=run, 
-                                               TR=self.TR,
-                                               set_index=True)
-            
-            # multiply by SD and add mean
-            self.hp_acomp_raw = (self.acomp.acomp_data * self.zscore_SD) + self.zscore_M
-            self.hp_acomp_raw_df = self.index_func(self.hp_acomp_raw,
-                                                   columns=self.vox_cols, 
-                                                   subject=self.sub, 
-                                                   run=run, 
-                                                   TR=self.TR,
-                                                   set_index=True)
-
-            # make percent signal
-            self.hp_acomp_psc = utils.percent_change(self.hp_acomp_raw, -1)
-            self.hp_acomp_psc_df = self.index_func(self.hp_acomp_psc,
-                                                   columns=self.vox_cols, 
-                                                   subject=self.sub, 
-                                                   run=run, 
-                                                   TR=self.TR,
-                                                   set_index=True)            
-            
-        #----------------------------------------------------------------------------------------------------------------------------------------------------
-        # LOW PASS FILTER
-        if self.low_pass:
-
+            #----------------------------------------------------------------------------------------------------------------------------------------------------
+            # ACOMPCOR AFTER HIGH-PASS FILTERING
             if acompcor:
-                info = " Using aCompCor-data for low-pass filtering"
-                data_for_filtering = self.get_acompcor(index=True, filter_strategy="hp", dtype=self.standardization).T.values
-                out_attr = f"lp_acomp_{self.standardization}"
-            elif hasattr(self, f"hp_{self.standardization}"):
-                info = " Using high-pass filtered data for low-pass filtering"
-                data_for_filtering = getattr(self, f"hp_{self.standardization}")
-                out_attr = f"lp_{self.standardization}"
-            else:
-                info = " Using unfiltered/un-aCompCor'ed data for low-pass filtering"
-                data_for_filtering = getattr(self, f"data_{self.standardization}")
-                out_attr = f"lp_data_{self.standardization}"
 
-            if self.verbose:
-                print(info)
-                print(f" Savitsky-Golay low-pass filter [removes high frequences] (window={self.window_size}, order={self.poly_order})")
+                # do some checks beforehand
+                if reference_slice != None:
+                    if self.use_bids:
+                        bids_comps = utils.split_bids_components(reference_slice)
+                        setattr(self, "target_session", bids_comps['ses'])
+                        setattr(self, "subject", f"sub-{bids_comps['sub']}")
+                    else:
+                        assert hasattr(self, "target_session"), f"Please specify a target_session with 'target_session=<int>'"
+                        assert hasattr(self, "subject"), f"Please specify a subject with 'target_session=<int>'"
 
-            tmp_filtered = preproc.lowpass_savgol(data_for_filtering, window_length=self.window_size, polyorder=self.poly_order)
+                # check the transformations inputs
+                assert hasattr(self, "ses1_2_ls"), f"Please specify a transformation matrix mapping FreeSurfer to ses-{self.target_session}"
 
-            tmp_filtered_df = self.index_func(tmp_filtered,
-                                              columns=self.vox_cols,
-                                              subject=self.sub,
-                                              run=run,
-                                              TR=self.TR,
-                                              set_index=True)
+                if hasattr(self, "run_2_run"):
+                    if isinstance(self.run_2_run, list):
+                        run_trafo =  utils.get_file_from_substring(f"to-run{self.run}", self.run_2_run)
+                        self.trafos = [self.ses1_2_ls, run_trafo]
+                    else:
+                        if self.run_2_run != None:
+                            self.trafos = [self.ses1_2_ls, self.run_2_run]
+                        else:
+                            self.trafos = [self.ses1_2_ls]
+                else:
+                    self.trafos = self.ses1_2_ls            
 
-            setattr(self, out_attr, tmp_filtered.copy())
-            setattr(self, f'{out_attr}_df', tmp_filtered_df.copy())
+                # aCompCor implemented in `preproc` module
+                self.acomp = preproc.aCompCor(self.hp_zscore_df,
+                                            subject=self.subject,
+                                            run=self.run,
+                                            trg_session=self.target_session,
+                                            reference_slice=reference_slice,
+                                            trafo_list=self.trafos,
+                                            n_pca=self.n_pca,
+                                            filter_pca=self.filter_pca,
+                                            save_as=self.save_as,
+                                            select_component=self.select_component, 
+                                            summary_plot=self.verbose,
+                                            TR=self.TR,
+                                            foldover=self.foldover,
+                                            verbose=self.verbose,
+                                            save_ext=self.save_ext,
+                                            **kwargs)
+                
+                self.hp_acomp_df = self.index_func(self.acomp.acomp_data,
+                                                columns=self.vox_cols, 
+                                                subject=self.sub, 
+                                                run=run, 
+                                                TR=self.TR,
+                                                set_index=True)
+                
+                # multiply by SD and add mean
+                self.hp_acomp_raw = (self.acomp.acomp_data * self.zscore_SD) + self.zscore_M
+                self.hp_acomp_raw_df = self.index_func(self.hp_acomp_raw,
+                                                    columns=self.vox_cols, 
+                                                    subject=self.sub, 
+                                                    run=run, 
+                                                    TR=self.TR,
+                                                    set_index=True)
+
+                # make percent signal
+                self.hp_acomp_psc = utils.percent_change(self.hp_acomp_raw, -1)
+                self.hp_acomp_psc_df = self.index_func(self.hp_acomp_psc,
+                                                    columns=self.vox_cols, 
+                                                    subject=self.sub, 
+                                                    run=run, 
+                                                    TR=self.TR,
+                                                    set_index=True)            
+                
+            #----------------------------------------------------------------------------------------------------------------------------------------------------
+            # LOW PASS FILTER
+            if "lp" in self.filter_strategy:
+
+                if acompcor:
+                    info = " Using aCompCor-data for low-pass filtering"
+                    data_for_filtering = self.get_acompcor(index=True, filter_strategy="hp", dtype=self.standardization).T.values
+                    out_attr = f"lp_acomp_{self.standardization}"
+                elif hasattr(self, f"hp_{self.standardization}"):
+                    info = " Using high-pass filtered data for low-pass filtering"
+                    data_for_filtering = getattr(self, f"hp_{self.standardization}")
+                    out_attr = f"lp_{self.standardization}"
+                else:
+                    info = " Using unfiltered/un-aCompCor'ed data for low-pass filtering"
+                    data_for_filtering = getattr(self, f"data_{self.standardization}")
+                    out_attr = f"lp_data_{self.standardization}"
+
+                if self.verbose:
+                    print(info)
+                    print(f" Savitsky-Golay low-pass filter [removes high frequences] (window={self.window_size}, order={self.poly_order})")
+
+                tmp_filtered = preproc.lowpass_savgol(data_for_filtering, window_length=self.window_size, polyorder=self.poly_order)
+
+                tmp_filtered_df = self.index_func(tmp_filtered,
+                                                columns=self.vox_cols,
+                                                subject=self.sub,
+                                                run=run,
+                                                TR=self.TR,
+                                                set_index=True)
+
+                setattr(self, out_attr, tmp_filtered.copy())
+                setattr(self, f'{out_attr}_df', tmp_filtered_df.copy())
 
 
     def select_voxels_across_runs(self):
@@ -1714,14 +1741,13 @@ class Dataset(ParseFuncFile):
                  subject=1,
                  run=1,
                  TR=0.105, 
+                 lb=0.01, 
                  tsv_file=None,
                  edf_file=None,
                  phys_file=None,
                  phys_mat=None,
                  low_pass=False,
                  button=False,
-                 lb=0.01, 
-                 hb=4,
                  deleted_first_timepoints=0, 
                  deleted_last_timepoints=0, 
                  window_size=11,
@@ -1741,6 +1767,7 @@ class Dataset(ParseFuncFile):
                  gm_range=[355,375],
                  tissue_thresholds=[0.7,0.7,0.7],
                  save_ext="pdf",
+                 filter_strategy="hp",
                  **kwargs):
 
         if verbose:
@@ -1761,9 +1788,7 @@ class Dataset(ParseFuncFile):
                              TR=TR,
                              subject=subject,
                              run=run,
-                             lb=lb,
-                             hb=hb,
-                             low_pass=low_pass,
+                             lb=lb, 
                              deleted_first_timepoints=deleted_first_timepoints,
                              deleted_last_timepoints=deleted_last_timepoints,
                              window_size=window_size,
@@ -1784,6 +1809,7 @@ class Dataset(ParseFuncFile):
                              gm_range=gm_range,
                              tissue_thresholds=tissue_thresholds,
                              save_ext=save_ext,
+                             filter_strategy=filter_strategy,
                             **kwargs)
 
         if verbose:
