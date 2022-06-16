@@ -312,7 +312,7 @@ else
 fi
 
 # see https://github.com/nipreps/fmriprep/issues/2189#issuecomment-646620788
-xfms=`find ${work}/fmriprep_wf/single_subject_${subj_ID}_wf/func_preproc*/bold_reg_wf/bbreg_wf/concat_xfm -type f -name "out_fwd.tfm" 2>/dev/null`
+xfms=`find ${work}/fmriprep*wf/single_subject_${subj_ID}_wf/func_preproc*/bold_reg_wf/bbreg_wf/concat_xfm -type f -name "out_fwd.tfm" 2>/dev/null`
 if [[ ! -z ${xfms} ]]; then
   echo "Copying from-bold_to-T1w tfm-files"
   for xfm in ${xfms[@]}; do
