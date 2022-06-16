@@ -1,6 +1,7 @@
 from . import glm, plotting
 from linescanning.utils import select_from_df
 import lmfit
+import matplotlib.pyplot as plt
 import nideconv as nd
 import numpy as np
 import pandas as pd
@@ -201,7 +202,21 @@ class NideconvFitter():
     See also https://linescanning.readthedocs.io/en/latest/examples/nideconv.html for more details.
     """
 
-    def __init__(self, func, onsets, TR=0.105, confounds=None, basis_sets="fourier", fit_type="ols", n_regressors=9, add_intercept=False, concatenate_runs=False, verbose=False, lump_events=False, interval=[0,12], **kwargs):
+    def __init__(self, 
+                 func, 
+                 onsets, 
+                 TR=0.105, 
+                 confounds=None, 
+                 basis_sets="fourier", 
+                 fit_type="ols", 
+                 n_regressors=9, 
+                 add_intercept=False, 
+                 concatenate_runs=False, 
+                 verbose=False, 
+                 lump_events=False, 
+                 interval=[0,12], 
+                 osf=20,
+                 **kwargs):
 
         self.func               = func
         self.onsets             = onsets
@@ -216,6 +231,7 @@ class NideconvFitter():
         self.fs                 = 1/self.TR
         self.interval           = interval
         self.concatenate_runs   = concatenate_runs
+        self.osf                = osf
 
         if self.lump_events:
             self.lumped_onsets = self.onsets.copy().reset_index()
@@ -286,6 +302,7 @@ class NideconvFitter():
                                             confounds=self.confounds, 
                                             add_intercept=self.add_intercept,
                                             concatenate_runs=self.concatenate_runs,
+                                            oversample_design_matrix=self.osf,
                                             **kwargs)
     
     def define_events(self):
@@ -301,7 +318,7 @@ class NideconvFitter():
         for event in self.cond:
             if self.verbose:
                 print(f"Adding event '{event}' to model")
-
+            
             self.model.add_event(str(event), 
                                  basis_set=self.basis_sets,
                                  n_regressors=self.n_regressors, 
@@ -371,13 +388,13 @@ class NideconvFitter():
                                fwhm_rot=30,
                                inset_ttp=[0.75, 0.65, 0.3, 0.3],
                                inset_fwhm=[0.75, 0.65, 0.3, 0.3],
+                               reduction_factor=1.3,
                                **kwargs):
 
         self.__dict__.update(kwargs)
 
         if axs == None:
             if not hasattr(self, "figsize"):
-                import matplotlib.pyplot as plt
                 self.figsize = (8,8)
             fig, axs = plt.subplots(figsize=self.figsize)
 
@@ -421,7 +438,6 @@ class NideconvFitter():
                           axs=axs,
                           error=self.use_error,
                           title=title,
-                          font_size=20,
                           save_as=save_as,
                           **kwargs)
         
@@ -440,19 +456,26 @@ class NideconvFitter():
             else:
                 ttp_labels = events
 
+            # check for fontsize
+            if hasattr(self, "font_size"):
+                fontsize = self.font_size/reduction_factor
+                kwargs.pop('font_size', None) # remove font_size from kwargs to avoid double keywording
+            else:
+                fontsize = 16/reduction_factor # = 16-2 (as per default of `plotting.LazyPlot`)   
+
             self.plot_ttp(self.event_avg, 
                           axs=ax2, 
                           hrf_axs=axs, 
                           ttp_labels=ttp_labels, 
                           ttp_lines=ttp_lines,
+                          font_size=fontsize, 
                           **kwargs)
 
         if fwhm:
 
             # add insets with time-to-peak
             if len(inset_fwhm) != 4:
-                raise ValueError(
-                    f"'inset_fwhm' must be of length 4, not '{len(inset_fwhm)}'")
+                raise ValueError(f"'inset_fwhm' must be of length 4, not '{len(inset_fwhm)}'")
 
             left, bottom, width, height = inset_fwhm
             ax2 = axs.inset_axes([left, bottom, width, height])          
@@ -463,11 +486,19 @@ class NideconvFitter():
             else:
                 fwhm_labels = events
 
+            # check for fontsize
+            if hasattr(self, "font_size"):
+                fontsize = self.font_size - reduction_factor
+                kwargs.pop('font_size', None) # remove font_size from kwargs to avoid double keywording
+            else:
+                fontsize = 16/reduction_factor # = 16-2 (as per default of `plotting.LazyPlot`)                
+
             self.plot_fwhm(self.event_avg, 
                            axs=ax2, 
                            hrf_axs=axs, 
                            fwhm_labels=fwhm_labels, 
                            fwhm_lines=fwhm_lines,
+                           font_size=fontsize, 
                            **kwargs)
 
     def plot_ttp(self, 
@@ -491,7 +522,6 @@ class NideconvFitter():
             colors = self.color
 
         if axs == None:
-            import matplotlib.pyplot as plt
             fig, axs = plt.subplots(figsize=figsize)
 
         # check if input is numpy array
@@ -502,7 +532,7 @@ class NideconvFitter():
             raise ValueError(f"Input must be a numpy array, not '{type(tcs)}'")
 
         # get time-to-peak
-        peak_positions = (np.argmax(tcs, axis=1)/self.time.shape[-1])*self.interval[-1]
+        peak_positions = (np.argmax(tcs, axis=1)/self.time.shape[-1])*self.time[-1]
         peaks = tcs.max(1)
 
         if ttp_lines:
@@ -546,7 +576,6 @@ class NideconvFitter():
             colors = self.color
 
         if axs == None:
-            import matplotlib.pyplot as plt
             fig, axs = plt.subplots(figsize=figsize)
 
         # get fwhm
@@ -585,7 +614,6 @@ class NideconvFitter():
             # initiate figure
             if len(cols) > 10:
                 raise Exception(f"{len(cols)} were requested. Maximum number of plots is set to 30")
-            import matplotlib.pyplot as plt
             fig = plt.figure(figsize=figsize)
             n_rows = int(np.ceil(len(cols) / n_cols))
             gs = fig.add_gridspec(n_rows, n_cols, wspace=wspace)
@@ -665,7 +693,7 @@ class NideconvFitter():
         cf = CurveFitter(self.max_vals, order=order, verbose=False)
         
         if not axs:
-            import matplotlib.pyplot as plt
+            
             fig,axs = plt.subplots(figsize=figsize)
 
         color_list = sns.color_palette(markers_cmap, len(self.max_vals))
@@ -692,7 +720,7 @@ class NideconvFitter():
         figsize=(n_cols*8,8)
 
         if not axs:
-            import matplotlib.pyplot as plt
+            
             fig = plt.figure(figsize=figsize)
             gs = fig.add_gridspec(1, n_cols)
 
