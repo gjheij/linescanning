@@ -58,34 +58,48 @@ USAGE
 #-----------------------------------------------------------------------------
 # Deal with arguments
 WARP_ONLY=0
-while getopts us:m:r:d:c:i:b:w:l:x:t: arg
+bbr_flag=""
+while getopts :-:us:m:r:d:c:i:b:w:l:x:t: arg
 do
-    case ${arg} in
-      s)  subj_ID=${OPTARG}
-            ;;
-      m)  MODE=${OPTARG}
-            ;;
-      r)  ROOT=${OPTARG}
-            ;;
-      d)  DERIV=${OPTARG}
-            ;;
-      c)  SGE=${OPTARG}
-            ;;
-      i)  IMG=${OPTARG}
-            ;;
-      b)  BIND=${OPTARG}
-            ;;
-      w)  WORK=${OPTARG}
-            ;;
-      l)  LIC=${OPTARG}
-            ;;
-      x)  CONFIG=${OPTARG}
-            ;;
-      t)  TASK_ID=${OPTARG}
-            ;;
-      u)  WARP_ONLY=1
-            ;;            
-    esac
+  case ${arg} in
+    -)
+      case "${OPTARG}" in
+        no_bbr)
+          bbr_flag="--force-no-bbr"
+          # cannot use no-bbr and header registration so make init variable empty
+          BOLD_T1W_INIT=""
+          ;;
+        *)
+          if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
+            echo "Unknown option --${OPTARG}" >&2
+          fi
+          ;;
+      esac;;    
+    s)  subj_ID=${OPTARG}
+          ;;
+    m)  MODE=${OPTARG}
+          ;;
+    r)  ROOT=${OPTARG}
+          ;;
+    d)  DERIV=${OPTARG}
+          ;;
+    c)  SGE=${OPTARG}
+          ;;
+    i)  IMG=${OPTARG}
+          ;;
+    b)  BIND=${OPTARG}
+          ;;
+    w)  WORK=${OPTARG}
+          ;;
+    l)  LIC=${OPTARG}
+          ;;
+    x)  CONFIG=${OPTARG}
+          ;;
+    t)  TASK_ID=${OPTARG}
+          ;;
+    u)  WARP_ONLY=1
+          ;;            
+  esac
 done
 
 if [[ $# -lt 1 ]] ; then
@@ -244,7 +258,7 @@ if [[ ${WARP_ONLY} -eq 0 ]]; then
   elif [[ ${system} == "local" ]]; then
     run_cmd="fmriprep"
   else
-    echo "ERROR in `basename ${0}`: Unknown option ${system}. Please specify \"anat\" or leave empty for anat+func"
+    echo "ERROR in `basename ${0}`: Unknown option ${system}. Please specify \"local\", or \"SGE\""
   fi
 
   if [[ ${mode} == "anat" ]]; then
@@ -257,9 +271,9 @@ if [[ ${WARP_ONLY} -eq 0 ]]; then
   nthreads=15
   nthread_flag="--nthreads ${nthreads}"
 
-  # output directory structure has changed after v22
+  # output directory structure has changed after v21: https://github.com/nipreps/fmriprep/releases/tag/21.0.0
   VERSION=`${run_cmd} --version | cut -d" " -f2 | cut -d"." -f1`
-  if [[ `echo "${VERSION//[!0-9]/}"` -lt "22" ]]; then
+  if [[ `echo "${VERSION//[!0-9]/}"` -lt "21" ]]; then
     output_dir=${derivatives}
   else
     output_dir=${derivatives}/fmriprep
@@ -277,6 +291,7 @@ if [[ ${WARP_ONLY} -eq 0 ]]; then
     --output-spaces ${FPREP_OUT_SPACES} \
     --fs-subjects-dir ${FS} \
     --stop-on-first-crash \
+    ${bbr_flag} \
     ${cifti_flag} \
     ${syn_flag} \
     ${config_flag} \
@@ -299,7 +314,7 @@ fi
 
 #-----------------------------------------------------------------------------
 # fMRIPrep's boldref seems to be messy lately (snow-like noise pattern instead of an image)
-bold_files=`find ${derivatives}/fmriprep/*${subj_ID}/ -type f -name "*preproc_bold.nii.gz" 2>/dev/null`
+bold_files=`find ${output_dir}/*${subj_ID}/ -type f -name "*preproc_bold.nii.gz" 2>/dev/null`
 IFS=$'\n' bold_files=($(sort <<<"${bold_files[*]}"))
 unset IFS
 
@@ -333,7 +348,7 @@ if [[ ! -z ${xfms} ]]; then
       ses_id=""
     fi
 
-    out_xfm=${derivatives}/fmriprep/${pref}${subj_ID}/${ses_id}/func/${wf_name}_from-bold_to-T1w_mode-image_xfm.txt
+    out_xfm=${output_dir}/${pref}${subj_ID}/${ses_id}/func/${wf_name}_from-bold_to-T1w_mode-image_xfm.txt
     cp ${xfm} ${out_xfm}
 
   done
