@@ -105,7 +105,7 @@ for ii in "lh" "rh"; do
   fi
 
   # project volume to subject-specific space
-  fsnative=${fsnative_dir}/${PREF}_${hemi}_space-fsnative_${SUFFIX}.gii
+  fsnative=${fsnative_dir}/${PREF}_space-fsnative_${hemi}_${SUFFIX}.gii
   mri_vol2surf --src ${INPUT} --out ${fsnative} ${REG} --hemi ${ii} --projfrac 0.5
 
   if [[ $? -ne 0 ]]; then
@@ -114,7 +114,7 @@ for ii in "lh" "rh"; do
   fi
 
   # project the output to fsaverage
-  fsaverage=${fsaverage_dir}/${PREF}_${hemi}_space-fsaverage_${SUFFIX}.gii
+  fsaverage=${fsaverage_dir}/${PREF}_space-fsaverage_${hemi}_${SUFFIX}.gii
   if [[ ! -d ${fsaverage_dir} ]]; then
     mkdir -p ${fsaverage_dir}
   fi
@@ -143,9 +143,9 @@ for space in 'fsnative' 'fsaverage'; do
     output_path=${fsnative_dir}
   fi
 
-  lh=${output_path}/${PREF}_hemi-L_space-${space}_${SUFFIX}.gii
-  rh=${output_path}/${PREF}_hemi-R_space-${space}_${SUFFIX}.gii
-  both_hemis=${output_path}/${PREF}_hemi-LR_space-${space}_${SUFFIX}.npy
+  lh=${output_path}/${PREF}_space-${space}_hemi-L_${SUFFIX}.gii
+  rh=${output_path}/${PREF}_space-${space}_hemi-R_${SUFFIX}.gii
+  both_hemis=${output_path}/${PREF}_space-${space}_hemi-LR_${SUFFIX}.npy
   call_stackgifti ${lh} ${rh} ${both_hemis}
 
   if [[ $? -ne 0 ]]; then
