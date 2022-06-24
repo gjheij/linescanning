@@ -1325,20 +1325,20 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
 
             self.hp_raw, self._cosine_drift = preproc.highpass_dct(self.data_raw, self.lb, TR=self.TR)
             self.hp_raw_df = self.index_func(self.hp_raw,
-                                            columns=self.vox_cols, 
-                                            subject=self.sub, 
-                                            run=run, 
-                                            TR=self.TR,
-                                            set_index=True)
+                                             columns=self.vox_cols, 
+                                             subject=self.sub, 
+                                             run=run, 
+                                             TR=self.TR,
+                                             set_index=True)
 
-            # dataframe of high-passed PSC-data
-            self.hp_psc = utils.percent_change(self.hp_raw, -1)
+            # dataframe of high-passed PSC-data (set NaN to 0)
+            self.hp_psc = np.nan_to_num(utils.percent_change(self.hp_raw, -1))
             self.hp_psc_df = self.index_func(self.hp_psc,
-                                            columns=self.vox_cols, 
-                                            subject=self.sub,
-                                            run=run, 
-                                            TR=self.TR, 
-                                            set_index=True)
+                                             columns=self.vox_cols, 
+                                             subject=self.sub,
+                                             run=run, 
+                                             TR=self.TR, 
+                                             set_index=True)
 
             # dataframe of high-passed z-scored data
             self.hp_zscore = clean(self.hp_raw.T, standardize=True).T
@@ -1384,21 +1384,21 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
 
                 # aCompCor implemented in `preproc` module
                 self.acomp = preproc.aCompCor(self.hp_zscore_df,
-                                            subject=self.subject,
-                                            run=self.run,
-                                            trg_session=self.target_session,
-                                            reference_slice=reference_slice,
-                                            trafo_list=self.trafos,
-                                            n_pca=self.n_pca,
-                                            filter_pca=self.filter_pca,
-                                            save_as=self.save_as,
-                                            select_component=self.select_component, 
-                                            summary_plot=self.verbose,
-                                            TR=self.TR,
-                                            foldover=self.foldover,
-                                            verbose=self.verbose,
-                                            save_ext=self.save_ext,
-                                            **kwargs)
+                                              subject=self.subject,
+                                              run=self.run,
+                                              trg_session=self.target_session,
+                                              reference_slice=reference_slice,
+                                              trafo_list=self.trafos,
+                                              n_pca=self.n_pca,
+                                              filter_pca=self.filter_pca,
+                                              save_as=self.save_as,
+                                              select_component=self.select_component, 
+                                              summary_plot=self.verbose,
+                                              TR=self.TR,
+                                              foldover=self.foldover,
+                                              verbose=self.verbose,
+                                              save_ext=self.save_ext,
+                                              **kwargs)
                 
                 self.hp_acomp_df = self.index_func(self.acomp.acomp_data,
                                                 columns=self.vox_cols, 
@@ -1417,7 +1417,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                                                     set_index=True)
 
                 # make percent signal
-                self.hp_acomp_psc = utils.percent_change(self.hp_acomp_raw, -1)
+                self.hp_acomp_psc = np.nan_to_num(utils.percent_change(self.hp_acomp_raw, -1))
                 self.hp_acomp_psc_df = self.index_func(self.hp_acomp_psc,
                                                     columns=self.vox_cols, 
                                                     subject=self.sub, 
@@ -1516,59 +1516,59 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
 
             fig.savefig(fname)        
                                    
-    def apply_retroicor(self, run=1, **kwargs):
+    # def apply_retroicor(self, run=1, **kwargs):
 
-        # we should have df_physio dataframe from ParsePhysioFile
-        if hasattr(self, "df_physio"):
-            try:
-                # select subset of df_physio. Run IDs must correspond!
-                self.confs = utils.select_from_df(self.df_physio, expression=f"run = {self.run}")
-            except:
-                raise ValueError(f"Could not extract dataframe from 'df_physio' with expression: 'run = {self.run}'")
+    #     # we should have df_physio dataframe from ParsePhysioFile
+    #     if hasattr(self, "df_physio"):
+    #         try:
+    #             # select subset of df_physio. Run IDs must correspond!
+    #             self.confs = utils.select_from_df(self.df_physio, expression=f"run = {self.run}")
+    #         except:
+    #             raise ValueError(f"Could not extract dataframe from 'df_physio' with expression: 'run = {self.run}'")
 
-            if hasattr(self, f"data_zscore"):
+    #         if hasattr(self, f"data_zscore"):
 
-                self.z_score = getattr(self, f"{data_type}_zscore").copy()
+    #             self.z_score = getattr(self, f"{data_type}_zscore").copy()
 
-                for trace in ['hr', 'rvt']:
-                    if trace in list(self.confs.columns):
-                        self.confs = self.confs.drop(columns=[trace])
+    #             for trace in ['hr', 'rvt']:
+    #                 if trace in list(self.confs.columns):
+    #                     self.confs = self.confs.drop(columns=[trace])
 
-                # regress out the confounds with clean
-                if self.verbose:
-                    print(f" RETROICOR on '{data_type}_zscore'")
+    #             # regress out the confounds with clean
+    #             if self.verbose:
+    #                 print(f" RETROICOR on '{data_type}_zscore'")
 
-                cardiac     = utils.select_from_df(self.confs, expression='ribbon', indices=(0,self.orders[0]))
-                respiration = utils.select_from_df(self.confs, expression='ribbon', indices=(self.orders[0],self.orders[0]+self.orders[1]))
-                interaction = utils.select_from_df(self.confs, expression='ribbon', indices=(self.orders[0]+self.orders[1],len(list(self.confs.columns))))
+    #             cardiac     = utils.select_from_df(self.confs, expression='ribbon', indices=(0,self.orders[0]))
+    #             respiration = utils.select_from_df(self.confs, expression='ribbon', indices=(self.orders[0],self.orders[0]+self.orders[1]))
+    #             interaction = utils.select_from_df(self.confs, expression='ribbon', indices=(self.orders[0]+self.orders[1],len(list(self.confs.columns))))
 
-                self.clean_all          = clean(self.z_score.T, standardize=False, confounds=self.confs.values).T
-                self.clean_resp         = clean(self.z_score.T, standardize=False, confounds=respiration.values).T
-                self.clean_cardiac      = clean(self.z_score.T, standardize=False, confounds=cardiac.values).T
-                self.clean_interaction  = clean(self.z_score.T, standardize=False, confounds=interaction.values).T
+    #             self.clean_all          = clean(self.z_score.T, standardize=False, confounds=self.confs.values).T
+    #             self.clean_resp         = clean(self.z_score.T, standardize=False, confounds=respiration.values).T
+    #             self.clean_cardiac      = clean(self.z_score.T, standardize=False, confounds=cardiac.values).T
+    #             self.clean_interaction  = clean(self.z_score.T, standardize=False, confounds=interaction.values).T
 
-                # create the dataframes
-                self.z_score_df    = self.index_func(self.z_score, columns=self.vox_cols, subject=self.sub, run=run, TR=self.TR)
+    #             # create the dataframes
+    #             self.z_score_df    = self.index_func(self.z_score, columns=self.vox_cols, subject=self.sub, run=run, TR=self.TR)
 
-                self.z_score_retroicor_df    = self.index_func(self.clean_all, columns=self.vox_cols, subject=self.sub, run=run, TR=self.TR)
+    #             self.z_score_retroicor_df    = self.index_func(self.clean_all, columns=self.vox_cols, subject=self.sub, run=run, TR=self.TR)
 
-                print(self.z_score.shape)
-                self.r2_all          = 1-(np.var(self.clean_all, -1) / np.var(self.z_score, -1))
-                self.r2_resp         = 1-(np.var(self.clean_resp, -1) / np.var(self.z_score, -1))
-                self.r2_cardiac      = 1-(np.var(self.clean_cardiac, -1) / np.var(self.z_score, -1))
-                self.r2_interaction  = 1-(np.var(self.clean_interaction, -1) / np.var(self.z_score, -1))
+    #             print(self.z_score.shape)
+    #             self.r2_all          = 1-(np.var(self.clean_all, -1) / np.var(self.z_score, -1))
+    #             self.r2_resp         = 1-(np.var(self.clean_resp, -1) / np.var(self.z_score, -1))
+    #             self.r2_cardiac      = 1-(np.var(self.clean_cardiac, -1) / np.var(self.z_score, -1))
+    #             self.r2_interaction  = 1-(np.var(self.clean_interaction, -1) / np.var(self.z_score, -1))
                 
-                # save in a subject X run X voxel manner
-                self.r2_physio = {'all': self.r2_all,   
-                                  'respiration': self.r2_resp, 
-                                  'cardiac': self.r2_cardiac, 
-                                  'interaction': self.r2_interaction}
+    #             # save in a subject X run X voxel manner
+    #             self.r2_physio = {'all': self.r2_all,   
+    #                               'respiration': self.r2_resp, 
+    #                               'cardiac': self.r2_cardiac, 
+    #                               'interaction': self.r2_interaction}
 
-                self.r2_physio_df = pd.DataFrame(self.r2_physio)
-                self.r2_physio_df['subject'], self.r2_physio_df['run'], self.r2_physio_df['vox'] = self.sub, run, np.arange(0,self.r2_all.shape[0])
+    #             self.r2_physio_df = pd.DataFrame(self.r2_physio)
+    #             self.r2_physio_df['subject'], self.r2_physio_df['run'], self.r2_physio_df['vox'] = self.sub, run, np.arange(0,self.r2_all.shape[0])
 
-                setattr(self, f"data_zscore_retroicor", self.z_score_retroicor_df)
-                setattr(self, f"data_zscore_retroicor_r2", self.r2_physio_df)
+    #             setattr(self, f"data_zscore_retroicor", self.z_score_retroicor_df)
+    #             setattr(self, f"data_zscore_retroicor_r2", self.r2_physio_df)
 
     def get_retroicor(self, index=False):
         if hasattr(self, 'z_score_retroicor_df'):
@@ -1913,8 +1913,120 @@ class Dataset(ParseFuncFile):
 
             setattr(self, key, hdf_store.get(key))
 
-class DatasetCollector():
+    def to4D(self, fname=None, desc=None, dtype=None, mask=None):
 
+        # get dataset
+        df = self.fetch_fmri(dtype=dtype)
+
+        subj_list = self.get_subjects(df)
+        file_counter = 0
+        for sub in subj_list:
+            
+            # get subject-specific data
+            data_per_subj = utils.select_from_df(df, expression=f"subject = {sub}")
+
+            # get run IDs
+            n_runs = self.get_runs(df)
+            for run in n_runs:
+
+                # get run-specific data
+                data_per_run = utils.select_from_df(data_per_subj, expression=f"run = {run}")
+
+                # get corresponding reference image from self.func_file either based on index (if use_bids=False), or based on BIDS-elements (use_bids=True)
+                if self.use_bids:
+                    ref_img = utils.get_file_from_substring([f'sub-{sub}', f'run-{run}'], self.func_file)
+                else:
+                    ref_img = self.func_file[file_counter]
+                
+                if self.verbose:
+                    print(f"Ref img = {ref_img}")
+
+                if isinstance(ref_img, nb.Nifti1Image):
+                    ref_img = ref_img
+                elif isinstance(ref_img, str):
+                    if ref_img.endswith("gz") or ref_img.endswith("nii"):
+                        ref_img = nb.load(ref_img)
+                    else:
+                        raise TypeError(f"Unknown reference type '{ref_img}'. Must be a string pointing to 'nii' or 'nii.gz' file")
+                else:
+                    raise ValueError("'ref_img' must either be string pointing to nifti image or a nb.Nifti1Image object")
+                
+                # get information of reference image
+                dims = ref_img.get_fdata().shape
+                aff = ref_img.affine
+                hdr = ref_img.header
+
+                if self.verbose:
+                    print(f"Ref shape = {dims}")
+                
+                data_per_run = data_per_run.values
+                # time is initially first axis, so transpose
+                if data_per_run.shape[-1] != dims[-1]:
+                    if self.verbose:
+                        print(f"Data shape = {data_per_run.shape}; transposing..")
+                    data_per_run = data_per_run.T
+                else:
+                    if self.verbose:
+                        print(f"Data shape = {data_per_run.shape}; all good..")
+
+                if self.verbose:
+                    print(f"Final shape = {data_per_run.shape}")
+
+                # check if we have mask
+                if isinstance(mask, nb.Nifti1Image) or isinstance(mask, str) or isinstance(mask, list):
+                    
+                    if self.verbose:
+                        print("Masking with given mask-object")
+
+                    if isinstance(mask, nb.Nifti1Image):
+                        mask = mask
+                    elif isinstance(mask, str):
+                        if mask.endswith("gz") or mask.endswith("nii"):
+                            mask = nb.load(mask)
+                        else:
+                            raise TypeError(f"Unknown reference type '{mask}'. Must be a string pointing to 'nii' or 'nii.gz' file")
+                    elif isinstance(mask, list):
+                        # select mask based on BIDS-components or index
+                        if self.use_bids:
+                            mask = utils.get_file_from_substring([f'sub-{sub}', f'run-{run}'], mask)
+                        else:
+                            mask = mask[file_counter]
+                    else:
+                        raise TypeError(f"Unknown input '{type(mask)}', must be nibabel.Nifti1Image-object or string pointing to nifti-image")
+
+                    # mask array
+                    mask_data = mask.get_fdata()
+                    mask_data = mask_data.reshape(np.prod(mask_data.shape))
+                    brain_idc = np.where(mask_data > 0)[0]
+                    data_masked = np.zeros_like(data_per_run)
+
+                    # fill zeroed array with brandata
+                    data_masked[brain_idc,:] = data_per_run[brain_idc,:]
+
+                    # overwrite
+                    data_per_run = data_masked.copy()
+
+                # reshape
+                data_per_run = data_per_run.reshape(*dims)
+
+                # save
+                if not isinstance(fname, str):
+                    if isinstance(desc, str):
+                        fname = f"sub-{sub}_run-{run}_desc-{desc}.nii.gz"
+                    else:
+                        fname = f"sub-{sub}_run-{run}.nii.gz"
+                else:
+                    if isinstance(desc, str):
+                        fname = f"{fname}_run-{run}_desc-{desc}.nii.gz"
+                    else:
+                        fname = f"{fname}_run-{run}.nii.gz"
+
+                print(f"Writing {fname}")
+                nb.Nifti1Image(data_per_run, affine=aff, header=hdr).to_filename(fname)
+
+                file_counter += 1
+
+class DatasetCollector():
     def __init__(self, dataset_objects):
 
         self.datasets = dataset_objects
