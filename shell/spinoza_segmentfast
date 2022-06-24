@@ -39,14 +39,17 @@ USAGE
 }
 
 # Check for subject & session flags
+OW=0
 while getopts os:n: argument
 do
-    case ${argument} in
-      s)  sub=${OPTARG}
-            ;;
-      n)  ses=${OPTARG}
-            ;;
-    esac
+  case ${argument} in
+    s)  sub=${OPTARG}
+          ;;
+    n)  ses=${OPTARG}
+          ;;
+    o)  OW=1
+          ;;          
+  esac
 done
 
 if [[ $# -lt 2 ]] ; then
@@ -54,11 +57,6 @@ if [[ $# -lt 2 ]] ; then
   exit 1
 fi
 
-if [[ "${@}" == *"-o"* ]]; then
-  OW=1
-else
-  OW=0
-fi
 
 SKULL=${@:$OPTIND:1}
 FSL=${@:$OPTIND+1:1}

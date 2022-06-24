@@ -64,33 +64,27 @@ if [[ $# -lt 4 ]] ; then
 fi
 
 # Check for subject & session flags
+OW=0
+COMB_ONLY=0
 while getopts cos:n:f: argument
 do
-    case ${argument} in
-      s)  sub=${OPTARG}
-            ;;
-      n)  ses=${OPTARG}
-            ;;
-      f)  fprep=${OPTARG}
-            ;;         
-    esac
+  case ${argument} in
+    s)  sub=${OPTARG}
+          ;;
+    n)  ses=${OPTARG}
+          ;;
+    f)  fprep=${OPTARG}
+          ;;        
+    o)  OW=1
+          ;;         
+    c)  COMB_ONLY=1
+          ;;                      
+  esac
 done
 
 if [[ $# -lt 4 ]] ; then
   Usage >&2
   exit 1
-fi
-
-if [[ "${@}" == *"-o"* ]]; then
-  OW=1
-else
-  OW=0
-fi
-
-if [[ "${@}" == *"-c"* ]]; then
-  COMB_ONLY=1
-else
-  COMB_ONLY=0
 fi
 
 INPUT=${@:$OPTIND:1}

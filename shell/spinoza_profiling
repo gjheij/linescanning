@@ -43,14 +43,17 @@ if [[ $# -lt 2 ]] ; then
 fi
 
 # Check for subject & session flags
+OW=0
 while getopts s:n: argument
 do
-    case ${argument} in
-      s)  sub=${OPTARG}
-            ;;
-      n)  ses=${OPTARG}
-            ;;
-    esac
+  case ${argument} in
+    s)  sub=${OPTARG}
+          ;;
+    n)  ses=${OPTARG}
+          ;;
+    o)  OW=1
+          ;;          
+  esac
 done
 
 if [[ $# -lt 3 ]] ; then

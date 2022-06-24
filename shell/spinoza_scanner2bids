@@ -18,6 +18,9 @@ nicely with the anatomical and functional stuff or call_dcm2niix.sh, which is mo
 line scanning stuff.
 
 Input options:
+  -s <subject ID>   ID following PREFIX (e.g., if 'sub-008', specify '-s 008')
+  -n <prf ses>      In case session == pRF, but we have multiple pRF sessions
+  -o                Overwrite old output
   <project root>    directory to output BIDSified data to
   <sourcedata>      directory containing to be converted data
   <session number>  session number to be converted (ses-1 and ses-${SES_NR} require different types of con-
@@ -56,14 +59,17 @@ EOF
 # Deal with arguments
 
 # Check for subject & session flags
+OW=0
 while getopts os:n: argument
 do
-    case ${argument} in
-      s)  sub=${OPTARG}
-            ;;
-      n)  prf_ses=${OPTARG}
-            ;;                  
-    esac
+  case ${argument} in
+    s)  sub=${OPTARG}
+          ;;
+    n)  prf_ses=${OPTARG}
+          ;;     
+    o)  OW=1
+          ;;                            
+  esac
 done
 
 if [[ $# -lt 2 ]] ; then
@@ -96,12 +102,6 @@ else
   ses_id=${SES_NR}
 fi
 
-if [[ "${@}" == *"-o"* ]]; then
-  OW=1
-else
-  OW=0
-fi
-
 # 'import' some bash functions
 source call_bashhelper
 
@@ -116,7 +116,6 @@ start_date=`date`
 
 printf "Started at ${start_date}\n"
 echo "==================================================================================================="
-
 
 #-----------------------------------------------------------------------------
 # Run it

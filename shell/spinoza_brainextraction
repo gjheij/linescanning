@@ -34,27 +34,24 @@ USAGE
 }
 
 # Check for subject & session flags
+OW=0
 while getopts os:n:m: argument
 do
-    case ${argument} in
-      s)  sub=${OPTARG}
-            ;;
-      n)  ses=${OPTARG}
-            ;;
-      m)  mode=${OPTARG}
-            ;;            
-    esac
+  case ${argument} in
+    s)  sub=${OPTARG}
+          ;;
+    n)  ses=${OPTARG}
+          ;;
+    m)  mode=${OPTARG}
+          ;;   
+    o)  OW=1
+          ;;                      
+  esac
 done
 
 if [[ $# -lt 4 ]] ; then
   Usage >&2
   exit 1
-fi
-
-if [[ "${@}" == *"-o"* ]]; then
-  OW=1
-else
-  OW=0
 fi
 
 INPUT=${@:$OPTIND:1}

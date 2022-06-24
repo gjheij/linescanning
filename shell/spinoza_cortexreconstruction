@@ -45,6 +45,7 @@ if [[ $# -lt 2 ]] ; then
 fi
 
 # Check for subject & session flags
+OW=0
 while getopts os:n: argument
 do
   case ${argument} in
@@ -52,18 +53,14 @@ do
           ;;
     n)  ses=${OPTARG}
           ;;
+    o)  OW=1
+          ;;          
   esac
 done
 
 if [[ $# -lt 3 ]] ; then
   Usage >&2
   exit 1
-fi
-
-if [[ "${@}" == *"-o"* ]]; then
-  OW=1
-else
-  OW=0
 fi
 
 INPUT=${@:$OPTIND:1}

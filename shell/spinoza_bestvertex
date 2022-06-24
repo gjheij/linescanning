@@ -65,15 +65,32 @@ USAGE
 
 #-----------------------------------------------------------------------------
 # Deal with arguments
-while getopts fos:v:n: argument
+OW=0
+FREEVIEW=1
+while getopts :-:fos:v:n: argument
 do
   case ${argument} in
+    -)
+      case "${OPTARG}" in
+        no_freeview)
+          FREEVIEW=0
+          echo "Disabling Freeview (debug)"
+          ;;                                
+        *)
+          if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
+            echo "Unknown option --${OPTARG}, did you mean \"--no_freeview\"?"
+            exit 1
+          fi
+          ;;
+      esac;;    
     s)  sub=${OPTARG}
           ;;
     n)  ses=${OPTARG}
           ;;          
     v)  vert=${OPTARG}
-            ;;            
+          ;;         
+    o)  OW=1
+          ;;                  
   esac
 done
 
@@ -95,21 +112,6 @@ else
   # do for 1 subject
   sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
   search="${BASE}/${PREFIX}${sub_nr}"
-fi
-
-# force overwrite (default = yes); no saves time while debugging. Just leave it empty..
-if [[ "${@}" == *"-o"* ]]; then
-  echo "Overwrite mode enabled (non-default!)"
-  OW=1
-else
-  OW=0
-fi
-
-# disable FreeView
-if [[ "${@}" == *"-f"* ]]; then
-  FREEVIEW=0
-else
-  FREEVIEW=1
 fi
 
 #-----------------------------------------------------------------------------

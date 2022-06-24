@@ -23,15 +23,15 @@ Usage:
   spinoza_fitprfs <-s sub> <-n ses> <prf dir> <pybest dir> <png dir>
 
 Arguments:
-  <-s sub>       digit subject number following '${PREFIX}'
-  <-n ses>       integer session number following 'ses-'
-  <-m model>     'gauss' or 'norm' for the type of model to use for the fitting
-  <-g grid>      only run grid fit, skip iterative fit
-  <-l local>     run locally even though we have SGE available.
-  <prf dir>      base output directory for prf data (derivatives/prf)
-  <pybest dir>   base input directory with pybest data (derivatives/pybest)
-  <png dir>      base path to where the pRF-experiment's Log-directories with png's is
-  <overwrite>    delete existing file and re-run analysis (y=yes|n=no)
+  -g            only run grid fit, skip iterative fit
+  -l            run locally even though we have SGE available.
+  <-s sub>      digit subject number following '${PREFIX}'
+  <-n ses>      integer session number following 'ses-'
+  <-m model>    'gauss' or 'norm' for the type of model to use for the fitting
+  <prf dir>     base output directory for prf data (derivatives/prf)
+  <pybest dir>  base input directory with pybest data (derivatives/pybest)
+  <png dir>     base path to where the pRF-experiment's Log-directories with png's is
+  <overwrite>   delete existing file and re-run analysis (y=yes|n=no)
 
 
 Eample:
@@ -50,6 +50,9 @@ USAGE
 }
 
 # Check for subject & session flags
+OW=0
+run_locally=0
+grid_only=0
 while getopts gos:n:m: argument
 do
   case ${argument} in
@@ -59,18 +62,18 @@ do
           ;;
     m)  model=${OPTARG}
           ;;
+    o)  OW=1
+          ;;   
+    l)  run_locally=1
+          ;;      
+    g)  grid_only=1
+          ;;                  
   esac
 done
 
 if [[ $# -lt 3 ]] ; then
   Usage >&2
   exit 1
-fi
-
-if [[ "${@}" == *"-o"* ]]; then
-  OW=1
-else
-  OW=0
 fi
 
 PRF=${@:$OPTIND:1}
@@ -85,18 +88,10 @@ else
   search="${DENOISE}/${PREFIX}${sub}"
 fi
 
-if [[ "${@}" == *"-g"* ]]; then
+if [[ ${grid_flag} -eq 1 ]]; then
   grid_flag="-g"
-  grid_only=1
 else
   grid_flag=""
-  grid_only=0
-fi
-
-if [[ "${@}" == *"-l"* ]]; then
-  run_locally=1
-else
-  run_locally=0
 fi
 
 #-----------------------------------------------------------------------------

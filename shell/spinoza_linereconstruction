@@ -23,7 +23,7 @@ Arguments:
   -s <subject>        subject ID (e.g., 01, 001, or 1)
   -n <session>        session ID (e.g., 1, 2, or n)
   -m <n_echoes>       number of echoes in the acquisition (e.g., 5)
-  -j                  submit job to cluster (SGE)
+  -c                  submit job to cluster (SGE)
   -o                  overwrite existing files
   <project root>      base directory containing the derivatives and the subject's folders.
   <sourcedata>        base directory containing the raw data for reconstruction
@@ -56,7 +56,7 @@ fi
 # Check for subject & session flags
 OW=0
 SGE=0
-while getopts ojs:n:m: argument
+while getopts ocs:n:m: argument
 do
   case ${argument} in
     s)  sub=${OPTARG}
@@ -67,7 +67,7 @@ do
           ;;
     o)  OW=1
           ;;
-    j)  SGE=1
+    c)  SGE=1
           ;;             
   esac
 done

@@ -28,17 +28,13 @@ Arguments:
   <-c config>     configuration file as specified in /misc/fmriprep_config?.json
   <-f func dir>   directory containing functional data; used after running FreeSurfer outside of
                   fMRIprep <optional>
-  <-r>            remove surface_recon_wf to project functional data to new surface; used after
-                  repeatedly enhancing the anatomical segmentation before injecting the functio-
-                  nal data <optional>
-
+  <-r level>      remove surface_recon_wf '-r surf' to project functional data to new surface; used 
+                  after repeatedly enhancing the anatomical segmentation before injecting the functio-
+                  nal data. Use '-r all' if the entire workflow folder needs to be removed <optional>
   <anat dir>      directory containing the anatomical data. Can also be the regular project root
                   folder if you want fMRIprep do the surface reconstruction
-
   <derivatives>   output folder for fMRIprep; generally this will be <project>/derivatives
-
   <mode>          run anatomical workflow only with 'anat', or everything with 'func'
-
   <T2 dir>        if you have a T2w-file, but that is not in <anat dir> (because you preprocessed
                   the T1w-file, but not the T2w-file), you can specify the directory where it lives
                   here. Generally this will be the same as <func dir>
@@ -68,20 +64,34 @@ if [[ $# -lt 2 ]] ; then
 fi
 
 # Check for subject & session flags
-while getopts lrs:n:f:m:c: argument
+bbr_flag=""
+while getopts :-:ls:r:n:f:m:c: argument
 do
-    case ${argument} in
-      s)  sub=${OPTARG}
-            ;;
-      n)  ses=${OPTARG}
-            ;;
-      f)  func_dir=${OPTARG}
-            ;;
-      m)  mode=${OPTARG}
-            ;;
-      c)  conf=${OPTARG}
-            ;;
-    esac
+case ${argument} in
+    -)
+      case "${OPTARG}" in
+        no_bbr)
+          bbr_flag="--no_bbr"
+          ;;          
+        *)
+          if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
+            echo "Unknown option --${OPTARG}" >&2
+          fi
+          ;;
+      esac;;  
+    s)  sub=${OPTARG}
+          ;;
+    n)  ses=${OPTARG}
+          ;;
+    f)  func_dir=${OPTARG}
+          ;;
+    m)  mode=${OPTARG}
+          ;;
+    c)  conf=${OPTARG}
+          ;;
+    r)  remove_wf=${OPTARG}
+          ;;          
+  esac
 done
 
 if [[ $# -lt 3 ]] ; then
@@ -106,12 +116,6 @@ if [[ -z ${mode} ]]; then
   MODE="anat"
 else
   MODE=${mode}
-fi
-
-if [[ "${@}" == *"-r"* ]]; then
-  REMOVE_WF=1
-else
-  REMOVE_WF=0
 fi
 
 #-----------------------------------------------------------------------------
@@ -205,14 +209,26 @@ for dir in ${search}; do
     mkdir -p ${workdir}
   fi
 
-  if [[ ${REMOVE_WF} -eq 1 ]]; then
-    wf_dir=${workdir}/fmriprep_wf/single_subject_$(basename ${dir} | cut -d'-' -f2)_wf/anat_preproc_wf/surface_recon_wf
-    if [ -d ${wf_dir} ]; then
-      echo "Removing surface_recon_wf folder"
-      rm -r ${wf_dir}
+  # check if we need to delete stuff
+  if [[ ! -z ${remove_wf} ]]; then
+    if [[ ${remove_wf} == "all" ]]; then
+      txt="Removing single_subject_$(basename ${dir} | cut -d'-' -f2)_wf"
+      rm_dir=${workdir}/fmriprep_wf/single_subject_$(basename ${dir} | cut -d'-' -f2)_wf
+    elif [[ ${remove_wf} == "surf" ]]; then
+      txt="Removing surface_recon_wf"
+      rm_dir=${workdir}/fmriprep_wf/single_subject_$(basename ${dir} | cut -d'-' -f2)_wf/anat_preproc_wf/surface_recon_wf
+    else
+      echo "ERROR in `basename ${0}`: invalid option \"${remove_wf}\". Must be \"surf\" or \"all\""
+      exit 1
+    fi
+
+    if [ -d ${rm_dir} ]; then
+      echo ${txt}
+      rm -r ${rm_dir}
     fi
   fi
 
+  # check configuration file
   if [[ -z ${conf} ]]; then
     confFile=""
   else
@@ -254,7 +270,8 @@ for dir in ${search}; do
     -w ${workdir} \
     ${exec_flag} \
     ${confFile} \
-    ${task_id}
+    ${task_id} \
+    ${bbr_flag}
 
   if [[ $? != 0 ]]; then
     echo "ERROR in `basename ${0}`: call_fmriprep did not execute cleanly"

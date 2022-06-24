@@ -34,14 +34,17 @@ USAGE
 }
 
 # Check for subject flag
+UPs=""
 while getopts us:n: argument
 do
-    case ${argument} in
-      s)  sub=${OPTARG}
-            ;;
-      n)  ses=${OPTARG}
-            ;;     
-    esac
+  case ${argument} in
+    s)  sub=${OPTARG}
+          ;;
+    n)  ses=${OPTARG}
+          ;;   
+    u)  UPs="-u"
+          ;;               
+  esac
 done
 
 if [[ $# -lt 2 ]] ; then
@@ -59,12 +62,6 @@ else
   # do for 1 subject
   sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
   search="${INPUT}/${PREFIX}${sub_nr}"
-fi
-
-if [[ "${@}" == *"-u"* ]]; then
-  UPs="-u"
-else
-  UPs=""
 fi
 
 #-----------------------------------------------------------------------------

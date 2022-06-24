@@ -58,27 +58,24 @@ if [[ $# -lt 2 ]] ; then
 fi
 
 # Check for subject & session flags
+OW=0
 while getopts os:n:t: argument
 do
-    case ${argument} in
-      s)  sub=${OPTARG}
-            ;;
-      n)  ses=${OPTARG}
-            ;;
-      t)  type=${OPTARG}
-            ;;
-    esac
+  case ${argument} in
+    s)  sub=${OPTARG}
+          ;;
+    n)  ses=${OPTARG}
+          ;;
+    t)  type=${OPTARG}
+          ;;
+    o)  OW=1
+          ;;          
+  esac
 done
 
 if [[ $# -lt 4 ]] ; then
   Usage >&2
   exit 1
-fi
-
-if [[ "${@}" == *"-o"* ]]; then
-  OW=1
-else
-  OW=0
 fi
 
 INPUT=${@:$OPTIND:1}
