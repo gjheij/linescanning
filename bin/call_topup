@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_topup
+
+This script runs only the initializing nodes from fMRIPrep. E.g., is will do all the header stuff, 
+validation, but most most importantly, motion correction and topup. Under the hood, it utilizes the
+functions in 'linescanning.fmriprep', which are literally the workflows from fMRIPrep, but with all
+other irrelevant stuff commented out (it's still there just in case). 
+
+Input needs to be the full project root directory so the correct fieldmaps can be found. Using the 
+fmriprep_config?.json files you can select particular subsets of the entire dataset. E.g., I only 
+use this script for my limited FOV data, as the brainmasking fails on that data causing aCompCor to
+fail. Therefore, I just need motion-corrected, topup data for a very select part of the dataset. 
+
+Parameters
+----------
+    -s  subject ID
+    -i  subject-directory containing the files that need to be run through Topup.
+    -o  output directory containing the topup'ed data. Easiest is to give the fMRIPrep folder, it
+        will be formatted accordingly automatically
+    -w  working directory where fMRIPrep's intermediate files are stored; default is some folder 
+        in /tmp
+    -b  bids filter file (maps to --bids-filter-file from fMRIPrep); allows you to select parti-
+        cular files
+                        
+Example
+----------
+>>> call_topup -s 001 -i DIR_DATA_HOME -o DIR_DATA_DERIV/fmriprep -w DIR_DATA_SOURCE/sub-001/ses-2
+>>> call_topup -s 001 -i DIR_DATA_HOME -o DIR_DATA_DERIV/fmriprep -b misc/fmriprep_config1.json
+
+---------------------------------------------------------------------------------------------------
+USAGE
+    exit 1
+}
+
+while getopts :-:hs:i:o:w:b: argument
+do
+case ${argument} in
+    s)  subject=${OPTARG}
+          ;;
+    i)  inputdir=${OPTARG}
+          ;;
+    o)  outputdir=${OPTARG}
+          ;;
+    w)  workdir=${OPTARG}
+          ;;
+    b)  bids_filters=${OPTARG}
+          ;; 
+  esac
+done
+
+if [[ $# -lt 4 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+# fix output directory 
+if [ -z ${outputdir} ]; then
+  outputdir=${inputdir}/derivatives/fmriprep
+  if [ ! -d $(dirname ${outputdir}) ]; then
+    mkdir -p $(dirname ${outputdir})
+  fi
+fi
+
+# for some reason, fMRIPrep workflow crashes when ran from cmd-line, but not from python. 
+# so here we just send a block of code to python
+PYTHON_CODE=$(cat <<END
+from linescanning import fmriprep
+wf = fmriprep.init_single_subject_wf("${subject}", 
+                                     bids_dir="${inputdir}", 
+                                     fmriprep_dir="${outputdir}", 
+                                     bids_filters="${bids_filters}", 
+                                     workdir="${workdir}")
+wf.run()                                     
+END
+)
+
+# run the code
+res="$(python -c "$PYTHON_CODE")"

@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_topup
+
+This script runs only the initializing nodes from fMRIPrep. E.g., is will do all the header stuff, 
+validation, but most most importantly, motion correction and topup. Under the hood, it utilizes the
+functions in 'linescanning.fmriprep', which are literally the workflows from fMRIPrep, but with all
+other irrelevant stuff commented out (it's still there just in case). 
+
+Input needs to be the full project root directory so the correct fieldmaps can be found. Using the 
+fmriprep_config?.json files you can select particular subsets of the entire dataset. E.g., I only 
+use this script for my limited FOV data, as the brainmasking fails on that data causing aCompCor to
+fail. Therefore, I just need motion-corrected, topup data for a very select part of the dataset. 
+
+Parameters
+----------
+    -s  subject ID
+    -b  reference bold file
+    -o  directory+basename of the output files
+    -w  working directory where fMRIPrep's intermediate files are stored; default is some folder 
+        in /tmp
+                        
+Example
+----------
+>>> call_topup -s 001 -b boldref.nii.gz -o DIR_DATA_DERIV/fmriprep/sub-001/ses-2/func
+>>> -w DIR_DATA_SOURCE/sub-001/ses-2/single_subject_008_wf
+
+---------------------------------------------------------------------------------------------------
+USAGE
+    exit 1
+}
+
+while getopts :-:hs:i:o:w:b: argument
+do
+case ${argument} in
+    s)  subject=${OPTARG}
+          ;;
+    b)  boldref=${OPTARG}
+          ;;
+    o)  outputdir=${OPTARG}
+          ;;
+    w)  workdir=${OPTARG}
+          ;;
+  esac
+done
+
+if [[ $# -lt 4 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+if [ ! -f ${boldref} ]; then
+    echo "ERROR in `basename ${0}`: specified boldref-image does not exist"
+fi
+
+# for some reason, fMRIPrep workflow crashes when ran from cmd-line, but not from python. 
+# so here we just send a block of code to python
+PYTHON_CODE=$(cat <<END
+from linescanning import fmriprep
+wf = fmriprep.bold_reg_wf("${subject}", 
+                          "${boldref}", 
+                          workdir="${workdir}",
+                          omp_nthreads=6,
+                          use_bbr=True,
+                          bold2t1w_init="header",
+                          bold2t1w_dof=6)
+wf.run()                                     
+END
+)
+
+# run the code
+res="$(python -c "$PYTHON_CODE")"
+if [[ $? -ne 0 ]]; then
+    echo "ERROR in `basename ${0}`: workflow did not execute cleanly"
+    exit 1
+fi
+
+# find the matrix files
+fwd=`find $workdir -type f -name "out_fwd.tfm" 2>/dev/null`
+inv=`find $workdir -type f -name "out_inv.tfm" 2>/dev/null`
+
+if [ ! -z ${fwd} ] && [ ! -z ${inv} ]; then
+    cp ${fwd} ${outputdir}_from-bold_to-T1w_mode-image_xfm.txt 2>/dev/null
+    cp ${fwd} ${outputdir}_from-T1w_to-bold_mode-image_xfm.txt 2>/dev/null
+else
+    echo "ERROR in `basename ${0}`: missing files. Check if workflow was executed correctly"
+    exit 1
+fi
