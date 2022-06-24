@@ -12,6 +12,20 @@ This package is still in development and its API might change. Documentation for
 ## Installation
 To install, clone the repository and run `bash linescanning/shell/spinoza_setup setup`. This will make the executables in the `bin` and `shell` folders available, install additionally required packages (such as `pRFpy`, `Pycortex`, `Nighres`, `Pybest`, `ITK-Snap`, and `Nideconv`). You can either choose to activate the accompanying `environment.yml`-file (`ACTIVATE_CONDA=1` in `spinoza_setup`; = Default!) or install it in your own environment/python installation (set `ACTIVATE_CONDA=0` in `spinoza_setup`). Installations of `FSL`, `SPM` (+`CAT12`-toolbox), `fMRIprep` and `FreeSurfer` are expected to exist on your system.
 
+## Updating
+Sometimes I need to add new stuff to the [setup file](https://github.com/gjheij/linescanning/blob/main/shell/spinoza_setup). The fact that each user can/should adapt this script locally can interfere with updates, as you'll get the `git error` that it can't overwrite due to existing changes. Please do the following before running `git pull`
+```bash
+# copy the spinoza_setup file to a different directory
+cd $DIR_SCRIPTS
+cp shell/spinoza_setup ..
+
+# pull the latest change
+git pull
+
+# open an editor and copy your personalized stuff in again
+# remove copy of setup-file
+```
+
 ## Policy & To Do
 
 - [x] install using `python setup.py develop`
