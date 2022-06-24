@@ -140,24 +140,25 @@ fi
 #===================================================================================================
 
 # If you have access to SGE, leave to SGE; otherwise change to e.g., LOCAL
-export PLACE=SGE
+export PLACE="SGE"
 export SGE_QUEUE_LONG="long.q@jupiter"
 export SGE_QUEUE_SHORT="short.q@jupiter"
 
 # MATLAB
 export MRRECON=/packages/matlab/toolbox/MRecon/3.0.541  
-export MATLAB_DIR=/packages/matlab/R2020b               
+export MATLAB_CMD="matlab -nosplash -nodisplay -batch" # find with 'which matlab'
 export SPM_PATH=${PATH_HOME}/spm12    
 export SKIP_LINES=30                                    
 
 # fMRIPREP
 export MRIQC_SIMG=${PATH_HOME}/mriqc/containers_bids-mriqc--0.15.1.simg
-export FPREP_SIMG=${PATH_HOME}/fmriprep/containers_bids-fmriprep--20.2.7.simg
-export FPREP_OUT_SPACES="fsnative fsaverage MNI152NLin6Asym:res-1 T1w func"
+export FPREP_SIMG=${PATH_HOME}/fmriprep/containers_bids-fmriprep--21.0.2.simg
+# export FPREP_OUT_SPACES="fsnative fsaverage MNI152NLin6Asym:res-1 T1w func"
+export FPREP_OUT_SPACES="fsnative fsaverage T1w func"
 export FPREP_BINDING="/data1/projects" # binding directory for singularity image
 export CIFTI=170k # leave empty if you don't want cifti output
 export DO_SYN=1 # set to zero if you do not want additional syn-distortion correction
-export BOLD_T1W_INIT="register" # default = register; for partial FOV, set to 'header'
+export BOLD_T1W_INIT="header" # default = register; for partial FOV, set to 'header'
 
 # PYBEST
 export PYBEST_SPACE="fsnative"

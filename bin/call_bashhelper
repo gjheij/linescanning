@@ -255,15 +255,15 @@ function call_matlab {
     echo "  call_matlab /path/to/my/matlab_script.m"
     echo "---------------------------------------------------------------------------------------------------"
     echo
-    exit 1
   else
-    if [[ ${PLACE} == "SGE" ]]; then
+    if [[ ! -z ${SKIP_LINES} ]]; then
       skip_lines=${SKIP_LINES}
     else
       skip_lines=0
     fi
 
-    matlab -nosplash -nodisplay -batch "addpath('$(dirname ${1})'); $(basename ${1} .m)" | tail -n +${skip_lines} # suppress intro text
+    MATLAB_SCRIPT=`fetch_filepath ${1}`
+    ${MATLAB_CMD} "addpath('$(dirname ${MATLAB_SCRIPT})'); $(basename ${MATLAB_SCRIPT} .m)" | tail -n +${skip_lines} # suppress intro text
   fi  
 }
 
