@@ -1,4 +1,4 @@
-from . import glm, utils, plotting
+from . import utils, plotting
 from .segmentations import Segmentations
 from kneed import KneeLocator
 import matplotlib.pyplot as plt
@@ -10,6 +10,7 @@ from nitime.analysis import SpectralAnalyzer
 import numpy as np
 import os
 import pandas as pd
+from bids import BIDSLayout
 from scipy import io
 from scipy import signal
 import seaborn as sns
@@ -107,6 +108,7 @@ class aCompCor(Segmentations):
                  trafo_list=None, 
                  foldover="FH", 
                  **kwargs):
+
         self.data               = data
         self.subject            = subject
         self.run                = run
@@ -210,7 +212,7 @@ class aCompCor(Segmentations):
             else:
                 self.confs, _ = highpass_dct(self.confs, self.filter_pca, TR=self.TR)
 
-        # outputs (timepoints, voxels) array
+        # outputs (timepoints, voxels) array (RegressOut is also usable, but this is easier in linescanning.dataset.Dataset)
         self.acomp_data = clean(self.data.values, standardize=False, confounds=self.confs).T
 
         # make summary plot of aCompCor effect
@@ -341,6 +343,36 @@ class aCompCor(Segmentations):
                 print(f" Saving {fname}")
 
             fig.savefig(fname)
+
+class RegressOut():
+
+    def __init__(self, data, regressors):
+
+        self.data = data
+        self.regressors = regressors
+        
+        # add index back if input is dataframe
+        self.add_index = False
+
+        if self.data.shape[0] != self.regressors.shape[0]:
+            raise ValueError(f"Shape of data ({self.data.shape}) does not match shape of confound array ({self.regressors.shape})")
+
+        if isinstance(self.data, pd.DataFrame):
+            self.add_index = True
+            self.data_array = self.data.values
+        else:
+            self.data_array = self.data.copy()
+        
+        if isinstance(self.regressors, pd.DataFrame):
+            self.regressors_array = self.regressors.values
+        else:
+            self.regressors_array = self.regressors.copy()
+        
+        self.clean_array = clean(self.data_array, standardize=False, confounds=self.regressors_array)
+
+        if self.add_index:
+            self.clean_df = pd.DataFrame(self.clean_array, index=self.data.index, columns=self.data.columns)
+
 
 def highpass_dct(func, lb, TR=0.105):
     """highpass_dct
