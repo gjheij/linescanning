@@ -1,5 +1,5 @@
-#!/bin/bash
-#$ -S /bin/bash
+#!/usr/bin/env bash
+#$ -S /usr/bin/env bash
 #$ -cwd
 #$ -j Y
 #$ -V
