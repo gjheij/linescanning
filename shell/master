@@ -5,11 +5,78 @@
 #$ -V
 #$ -pe smp 5
 #
+# https://askubuntu.com/questions/39309/how-do-i-find-the-version-of-bash-i-am-running
+if [ -z `echo ${BASH}` ]; then
+  echo "Make sure \"bash\" >v4.0 is installed"
+  exit 1
+else
+  if ((BASH_VERSINFO[0] < 4)); then 
+    echo "Sorry, you need at least bash-4.0 to run this script." >&2
+    exit 1
+  fi
+fi
+job="bash"
+
 # Allocate input arguments to variables
 #
-while getopts wcjqom:s:h:n:t:l:v:p:x:u: arg
+use_bbr=""    # spinoza_fmriprep
+run_local=""  # spinoza_fmriprep
+UPs=""        # spinoza_qmrimaps
+NO_BIAS=""    # spinoza_qmrimaps
+REMOVE_WF=""  # spinoza_fmriprep
+SGE=""        # spinoza_denoising
+OW=""         # multiple (overwrite mode)
+FREEVIEW=""   # spinoza_bestvertex
+COMB_ONLY=""  # spinoza_extractregions
+GRID=""       # spinoza_fitprfs
+
+# use long options in bash:
+# https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options
+declare -a opts=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid")
+while getopts :-:wcjqom:s:h:n:t:l:v:p:x:u:r:e: arg
 do
   case ${arg} in
+    -)
+      case "${OPTARG}" in
+        no_bbr)
+          use_bbr="--no_bbr"
+          ;;
+        local)
+          run_local="-l"
+          ;;
+        ups)
+          UPs="-u"
+          ;;
+        no_biascorr)
+          NO_BIAS="-b"
+          ;;
+        remove_wf)
+          REMOVE_WF="-r all"
+          ;;
+        remove_surf_wf)
+          REMOVE_WF="-r surf"
+          ;;    
+        sge)
+          SGE="-c"
+          ;;       
+        no_freeview)
+          FREEVIEW="--no_freeview"
+          ;;      
+        comb_only)
+          COMB_ONLY="-c"
+          ;;            
+        grid)
+          GRID="-g"
+          ;;                                  
+        *)
+          if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
+            echo "Unknown option --${OPTARG}, possible options are:"
+            for ii in ${opts[@]}; do echo " ${ii}"; done
+            echo "Enter \"`basename ${0}`\" what these flags do"
+            exit 1
+          fi
+          ;;
+      esac;;  
     m)  MOD=${OPTARG}
           ;;
     s)  SUB=${OPTARG}
@@ -18,7 +85,7 @@ do
           ;;
     n)  SES=${OPTARG}
           ;;
-    o)  OVERWRITE=${OPTARG}
+    o)  OW="-o"
           ;;
     t)  TYPE=${OPTARG}
           ;;
@@ -34,6 +101,10 @@ do
           ;;
     u)  CONF=${OPTARG}
           ;;
+    r)  ROI=${OPTARG}
+          ;;       
+    e)  n_echoes=${OPTARG}
+          ;;               
   esac
 done
 
@@ -84,13 +155,12 @@ it's default settings are and what you'd need to do to get it running for you.
 Have fun!
 
 Args:
-  -m <module>       always required, specifies which module to run. Multiple modules should be com-
-                    ma separated
+  -c                Do full processing with CAT12, assuming module 8 was skipped. This does itera-
+                    tive SANLM-filtering, bias correction, and intensity normalization. Can some-
+                    times be overkill, so generally we use CAT12 for the additional segmentations
+                    and brain extraction
+  -e <n_echoes>     Specify the amount of echoes of the acquisition
   -h <hemisphere>   used for lineplanning, denotes which hemisphere to process
-  -o <overwrite>    used for multiple modules to overwrite (i.e., delete) files
-  -n <session>      session nr, used to create file structure according to BIDS
-  -t <type>         used for fMRIprep, to run either the 'anat' workflow only, or also include func
-                    data ('func') or a direct task-identifier such as '${TASK_SES1}'
   -l <which mod>    look for a module number given a string to search for (e.g., master -l layer); can
                     also be used with:
                     - spinoza_bestvertex to use a particular label-file (default = V1_exvivo.thresh).
@@ -101,42 +171,48 @@ Args:
                         - Can be either a FreeSurfer-defined label file or gitfi-files (e.g., 'handknob
                           _fsnative.gii' means there's a 'lh.handknob_fsnative.gii' and 'rh.handknob_
                           fsnative.gii' file)
-                    - spinoza_fmriprep; run locally instead of submitting the job to SGE. Use it with
-                      '-l local' or something; as long as you provide some argument it'll be fine.
+  -m <module>       always required, specifies which module to run. Multiple modules should be com-
+                    ma separated
+  -n <session>      session nr, used to create file structure according to BIDS
+  -o                turn on overwrite mode; removes subject-specific directories or crucial files so 
+                    that the process is re-ran.
+  -p <prf_model>    switch to specify what type of model to use for the pRF-modeling. For now, the
   -q <info mod>     query the usage-information of a given module number: e.g., master -m 00 -q
                     brings up the help-text from module 00 (spinoza_lineplanning)
-  -v <vertices>     manually insert vertices to use as "best_vertex" (module 18). Should be format-
-                    ted as -v "lh,rh" (please use two vertices; one for left hemi and one for right
-                    hemi > makes life easier)
-  -p <prf_model>    switch to specify what type of model to use for the pRF-modeling. For now, the
-                    accepted options are 'gauss' for Gaussian model, and 'norm' for Normalization
-                    model. Should/can be use for module 17, pRF-fitting
-  -c <cat_run>      Do full processing with CAT12, assuming module 8 was skipped. This does itera-
-                    tive SANLM-filtering, bias correction, and intensity normalization. Can some-
-                    times be overkill, so generally we use CAT12 for the additional segmentations
-                    and brain extraction
-  -w <wagstyl>      Use Wagstyl's equivolumetric layering for layerification. Use Nighres otherwise
-  -x <**kwargs>     Can be used for a variety of options by setting it to ANYTHING other than empty. 
-                    Usages include:
-                      - spinoza_linereconstruction; specify the amount of echoes of the acquisition
-                      - spinoza_scanner2bids; denote the session number when you have a regular 
-                        pRF-session, as the "-n" flag is used to specify this. 
-                      - spinoza_qmrimaps; turn on Universal Pulses
-                      - spinoza_biassanlm; don't perform bias correction after denoising
-                      - spinoza_fmriprep; remove surface_recon_wf folder. Handy for re-running with
-                        new reconstruction
-                      - spinoza_denoising; submit job to SGE, use master -m 16 -x sge
-                      - spinoza_fitprfs; run grid stage only '-x grid' OR run locally '-x local'; 
-                        not both!
-                      - spinoza_bestvertex; disable FreeView during vertex selection
-                      - spinoza_extractregions: skip nighres, only do combination of segmentations.
-                        Works with '-o' flag.                
-                      - spinoza_profiling; specify the type of file to use
+  -r <roi>          Set label file for 'spinoza_bestvertex' or ROI for 'spinoza_extractregions'
+  -s <subject ID>   ID without prefix (e.g., 'sub-001' > '-s 001')
+  -t <type>         used for fMRIprep, to run either the 'anat' workflow only, or also include func
+                    data ('func') or a direct task-identifier such as '${TASK_SES1}'
   -u <config>       specify configuration file for fMRIprep (see linescanning/misc for examp-
                     les). If not specified, no configuration will be used. If ses-1 is specified,
                     linescanning/misc/fmriprep_config.json is used; above that, fmriprep_con-
                     fig2.json is used. Enter '-u none' if you have multiple sessions and you want
                     to process everything without filtering
+  -v <vertices>     manually insert vertices to use as "best_vertex" (module 18). Should be format-
+                    ted as -v "lh,rh" (please use two vertices; one for left hemi and one for right
+                    hemi > makes life easier)
+  -w <wagstyl>      Use Wagstyl's equivolumetric layering for layerification. Use Nighres otherwise
+                    accepted options are 'gauss' for Gaussian model, and 'norm' for Normalization
+                    model. Should/can be use for module 17, pRF-fitting
+  -x <**kwargs>     Can be used for a variety of options by setting it to ANYTHING other than empty. 
+                    Usages include:
+                      - spinoza_scanner2bids; denote the session number when you have a regular 
+                        pRF-session, as the "-n" flag is used to specify this.   
+                      - spinoza_profiling; specify the type of file to use
+  --no_bbr          maps to '--force-no-bbr' in call_fmriprep
+  --local           maps to '-l' in spinoza_fmriprep & spinoza_fitprfs; runs the process locally.
+  --ups             maps to '-u' in spinoza_qmrimaps; turn on Universal Pulses
+  --no_biascorr     maps to '-b' in spinoza_biassanlm; don't perform bias correction after denoising
+  --remove_wf       maps to '-r all' in spinoza_fmriprep; removes full fmriprep_wf folder. Be careful
+                    with this one! Mainly used for debugging of a single subject. Use \"--remove_surf_wf\"
+                    to specifically remove the surface reconstruction folder when you have new FreeSurfer
+                    output that fMRIPrep needs to use
+  --remove_surf_wf  Remove surface reconstruction workflow folder; refreshes the surfaces used for regi-
+                    stration and transformation
+  --sge             maps to '-c' in spinoza_linereconstruction & spinoza_denoising; submits jobs to cluster
+  --grid            maps to '-g' in spinoza_fitprfs; runs gridfit only
+  --no_freeview     disable FreeView during vertex selection (spinoza_bestvertex)
+  --comb_only       skip nighres, only do combination of segmentations. Works with '-o' flag.   
 
 Usage:
   master -m <MODULES TO RUN>
@@ -188,11 +264,14 @@ Notes:
   - There are two modes we can run this pipeline in, to be specified in the setup:
     a session where we have both MP2RAGE and MP2RAGEME data, and a solo MP2RAGE mode. This can be
     specified by setting the "DATA" variable in the setup script.
-    You can see if it was the MP2RAGEME-mode with the "space-average" flag, while the MP2RAGE-mode
-    is annotated by "space-mp2rage".
+    You can see if it was the MP2RAGEME-mode with the "space-AVERAGE" flag, while the MP2RAGE-mode
+    is annotated by "space-MP3RAGE".
   - To know which mode we're running, type from your programs directory "call_whichmode"
 
-Edits:
+Edits
+  - 24/06/2022: specify subject/session flags once, add more long flagged arguments; add check for
+                bash version
+  - 21/06/2022: assigned some of the KWARGS-argument to long flagged arguments
   - 19/04/2022: remove default use of config file for fMRIprep; now specify it explicitly with the
                 '-u' flag.
   - 20/12/2021: added '-u' flag for custom configurations file for fMRIprep
@@ -269,17 +348,23 @@ if [[ ! -z ${WHICH_MOD} ]] && [[ "${@}" != *"-m"* ]]; then
 fi
 
 #---------------------------------------------------------------------------------------------------------
-# check if there's is a setup file containing the major paths and source it if it exists
-# DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
-#
-# if [[ $(basename ${DIR}) != "shell" ]]; then
-#   echo "ERROR: please run master from linescanning/shell"
-#   exit 1
-# else
-#   source $(dirname ${DIR})/bin/call_loadsetup && loadsetup
-# fi
-
+# source setup
 call_loadsetup
+
+#---------------------------------------------------------------------------------------------------
+# Define default session/subject stuff
+if [[ -z ${SES} ]]; then
+  # Going to assume ses-1 here
+  SESSION="-n 1"
+else
+  SESSION="-n ${SES}"
+fi
+
+if [[ -z ${SUB} ]]; then
+  SUBJECT=""
+else
+  SUBJECT="-s ${SUB}"
+fi
 
 #---------------------------------------------------------------------------------------------------
 # STEP 00: Optimal line planning procedure with registration of anat ses-1 to ms ses-2
@@ -290,15 +375,12 @@ echo ${FLAG_executeModule} | grep -q ${module}
 if [[ $? -eq 0 ]]; then
 
   if [[ "${@}" == *"-q"* ]]; then
-    spinoza_lineplanning
+    ${job} spinoza_lineplanning
     exit 1
   fi
 
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Optimal line planning procedure with registration of anat ses-1 to ms ses-X"
-
-  #--------------------------------------------------------------------------------------------------------------------------------------------------
-  # LOG OF COMMANDS:
 
   if [[ -z ${SUB} ]]; then
     echo "ERROR: Need a subject number for this module. Specify the subject number with the -s flag in the master script"
@@ -332,22 +414,14 @@ if [[ $? -eq 0 ]]; then
   else
     ses_nr=${SES}
   fi
-
-  # force overwrite (default = yes); no saves time while debugging. Just leave it empty..
-  if [[ "${@}" == *"-o"* ]]; then
-    echo "Overwrite mode enabled (default)"
-    OW="-o"
-  else
-    OW=""
-  fi
   
   subject=${PREFIX}${SUB}
-  spinoza_lineplanning ${OW} \
-                       -s ${subject} \
-                       -n ${ses_nr} \
-                       -i ${DIR_DATA_SOURCE}/${subject}/ses-${ses_nr}/planning \
-                       -p ${DIR_DATA_DERIV}/pycortex/${subject}/line_pycortex.csv \
-                       -h ${HEMI}
+  ${job} spinoza_lineplanning ${OW} \
+                              -s ${subject} \
+                              -n ${ses_nr} \
+                              -i ${DIR_DATA_SOURCE}/${subject}/ses-${ses_nr}/planning \
+                              -p ${DIR_DATA_DERIV}/pycortex/${subject}/line_pycortex.csv \
+                              -h ${HEMI}
 
 
   echo "[${module}] DONE" && echo
@@ -364,7 +438,7 @@ echo ${FLAG_executeModule} | grep -q ${module}
 if [[ $? -eq 0 ]]; then
 
   if [[ "${@}" == *"-q"* ]]; then
-    spinoza_newBIDSsession
+    ${job} spinoza_newBIDSsession
     exit 1
   fi
 
@@ -383,7 +457,7 @@ if [[ $? -eq 0 ]]; then
     exit 1
   fi
 
-  spinoza_newBIDSsession ${SUB} ${SES}\
+  ${job} spinoza_newBIDSsession ${SUB} ${SES}\
 
   echo "[${module}] DONE"
 
@@ -399,7 +473,7 @@ echo ${FLAG_executeModule} | grep -q ${module}
 if [[ $? -eq 0 ]]; then
 
   if [[ "${@}" == *"-q"* ]]; then
-    spinoza_scanner2bids
+    ${job} spinoza_scanner2bids
     exit 1
   fi
 
@@ -412,26 +486,13 @@ if [[ $? -eq 0 ]]; then
     exit 1
   fi
 
-  if [[ -z ${SUB} ]]; then
-    SUBJECT=""
-  else
-    SUBJECT="-s ${SUB}"
-  fi
-
   if [[ -z ${KWARGS} ]]; then
-    KWARGS=""
+    PRF_SES=""
   else
-    KWARGS="-n ${KWARGS}"
+    PRF_SES="-n ${KWARGS}"
   fi  
 
-  if [[ "${@}" == *"-o"* ]]; then
-    echo "Overwrite mode enabled (not default)"
-    OW="-o"
-  else
-    OW=""
-  fi  
-
-  spinoza_scanner2bids ${SUBJECT} ${KWARGS} ${OW} ${DIR_DATA_HOME} ${DIR_DATA_SOURCE} ${SES}
+  ${job} spinoza_scanner2bids ${SUBJECT} ${PRF_SES} ${OW} ${DIR_DATA_HOME} ${DIR_DATA_SOURCE} ${SES}
 
   echo "[${module}] DONE" && echo
 
@@ -447,37 +508,12 @@ echo ${FLAG_executeModule} | grep -q ${module}
 if [[ $? -eq 0 ]]; then
 
   if [[ "${@}" == *"-q"* ]]; then
-    spinoza_linereconstruction
+    ${job} spinoza_linereconstruction
     exit 1
   fi
 
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Reconstruct line data with MRecon"
-
-  if [[ -z ${SUB} ]]; then
-    SUBJECT=""
-  else
-    SUBJECT="-s ${SUB}"
-  fi
-
-  if [[ -z ${SES} ]]; then
-    SESSION="-n 2"
-  else
-    SESSION="-n ${SES}"
-  fi
-
-  if [[ "${@}" == *"-o"* ]]; then
-    echo "Overwrite mode enabled (default)"
-    OW="-o"
-  else
-    OW=""
-  fi
-
-  if [[ "${@}" == *"-j"* ]]; then
-    SGE="-j"
-  else
-    SGE=""
-  fi
 
   if [[ -z ${KWARGS} ]]; then
     KWARGS=""
@@ -485,7 +521,7 @@ if [[ $? -eq 0 ]]; then
     KWARGS="-m ${KWARGS}"
   fi    
 
-  spinoza_linereconstruction ${SUBJECT} ${SESSION} ${KWARGS} ${OW} ${SGE} ${DIR_DATA_HOME} ${DIR_DATA_SOURCE}
+  ${job} spinoza_linereconstruction ${SUBJECT} ${SESSION} ${KWARGS} ${OW} ${SGE} ${DIR_DATA_HOME} ${DIR_DATA_SOURCE}
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_linereconstruction exited with non-zero status"
@@ -506,33 +542,14 @@ echo ${FLAG_executeModule} | grep -q ${module}
 if [[ $? -eq 0 ]]; then
 
   if [[ "${@}" == *"-q"* ]]; then
-    spinoza_qmrimaps
+    ${job} spinoza_qmrimaps
     exit 1
   fi
 
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Multiparametric mapping"
 
-  if [[ -z ${SES} ]]; then
-    # Going to assume ses-1 here
-    SESSION="-n 1"
-  else
-    SESSION="-n ${SES}"
-  fi
-
-  if [[ -z ${SUB} ]]; then
-    SUBJECT=""
-  else
-    SUBJECT="-s ${SUB}"
-  fi
-
-  if [[ -z ${KWARGS} ]]; then
-    UPs=""
-  else
-    UPs="-u"
-  fi
-
-  spinoza_qmrimaps ${SUBJECT} ${SESSION} ${UPs} ${DIR_DATA_HOME} ${DIR_DATA_DERIV}/pymp2rage
+  ${job} spinoza_qmrimaps ${SUBJECT} ${SESSION} ${UPs} ${DIR_DATA_HOME} ${DIR_DATA_DERIV}/pymp2rage
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_qmrimaps exited with non-zero status"
@@ -553,28 +570,15 @@ echo ${FLAG_executeModule} | grep -q ${module}
 if [[ $? -eq 0 ]]; then
 
   if [[ "${@}" == *"-q"* ]]; then
-    spinoza_registration
+    ${job} spinoza_registration
     exit 1
   fi
 
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Register T1 from mp2rage to MNI152 for sagittal sinus mask"
 
-  if [[ -z ${SES} ]]; then
-    # Going to assume ses-1 here
-    SESSION="-n 1"
-  else
-    SESSION="-n ${SES}"
-  fi
-
-  if [[ -z ${SUB} ]]; then
-    SUBJECT=""
-  else
-    SUBJECT="-s ${SUB}"
-  fi
-
   if [[ ${DATA:u} == "AVERAGE" ]]; then
-    spinoza_registration ${SUBJECT} ${SESSION} ${DIR_DATA_DERIV}/pymp2rage ${DIR_DATA_DERIV}/ants
+    ${job} spinoza_registration ${SUBJECT} ${SESSION} ${DIR_DATA_DERIV}/pymp2rage ${DIR_DATA_DERIV}/ants
 
     if [[ $? -ne 0 ]]; then
       echo "ERROR in master: spinoza_registration exited with non-zero status"
@@ -599,30 +603,17 @@ echo ${FLAG_executeModule} | grep -q ${module}
 if [[ $? -eq 0 ]]; then
 
   if [[ "${@}" == *"-q"* ]]; then
-    spinoza_registration
+    ${job} spinoza_registration
     exit 1
   fi
 
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Register T1 from mp2rage to MNI152 for sagittal sinus mask"
-
-  if [[ -z ${SES} ]]; then
-    # Going to assume ses-1 here
-    SESSION="-n 1"
-  else
-    SESSION="-n ${SES}"
-  fi
-
-  if [[ -z ${SUB} ]]; then
-    SUBJECT=""
-  else
-    SUBJECT="-s ${SUB}"
-  fi
   
   if [[ -d ${DIR_DATA_DERIV}/pymp2rage ]]; then
-    spinoza_registration ${SUBJECT} ${SESSION} ${DIR_DATA_DERIV}/pymp2rage ${DIR_DATA_DERIV}/ants mni
+    ${job} spinoza_registration ${SUBJECT} ${SESSION} ${DIR_DATA_DERIV}/pymp2rage ${DIR_DATA_DERIV}/ants mni
   else
-    spinoza_registration ${SUBJECT} ${SESSION} ${DIR_DATA_HOME} ${DIR_DATA_DERIV}/ants mni
+    ${job} spinoza_registration ${SUBJECT} ${SESSION} ${DIR_DATA_HOME} ${DIR_DATA_DERIV}/ants mni
   fi
 
   if [[ $? -ne 0 ]]; then
@@ -644,49 +635,17 @@ echo ${FLAG_executeModule} | grep -q ${module}
 if [[ $? -eq 0 ]]; then
 
   if [[ "${@}" == *"-q"* ]]; then
-    spinoza_sinusfrommni
+    ${job} spinoza_sinusfrommni
     exit 1
   fi
 
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Create sagittal sinus mask using the MNI-mask & T1w/T2w-ratio"
 
-  if [[ -z ${SES} ]]; then
-    # Going to assume ses-1 here
-    SESSION="-n 1"
-  else
-    SESSION="-n ${SES}"
-  fi
-
-  if [[ -z ${SUB} ]]; then
-    SUBJECT=""
-  else
-    SUBJECT="-s ${SUB}"
-  fi
-
-  # if [[ ${DATA:u} == "AVERAGE" ]]; then
-  #   spinoza_averageanatomies ${SUBJECT} ${SESSION} ${DIR_DATA_DERIV}/ants ${DIR_DATA_DERIV}/average
-
-  #   if [[ $? -ne 0 ]]; then
-  #     echo "ERROR in master: spinoza_averageanatomies exited with non-zero status"
-  #     exit 1
-  #   fi
-
-  # else
-  #   echo "The variable \"DATA\" is \"${DATA}\"; must be \"AVERAGE\" for this module."
-  # fi
-
-  if [[ "${@}" == *"-o"* ]]; then
-    echo "Overwrite mode enabled (default)"
-    OW="-o"
-  else
-    OW=""
-  fi
-
   if [[ -d ${DIR_DATA_DERIV}/pymp2rage ]]; then
-    spinoza_sinusfrommni ${SUBJECT} ${SESSION} ${OW} ${DIR_DATA_DERIV}/pymp2rage ${DIR_DATA_DERIV}/ants ${DIR_DATA_DERIV}/manual_masks  
+    ${job} spinoza_sinusfrommni ${SUBJECT} ${SESSION} ${OW} ${DIR_DATA_DERIV}/pymp2rage ${DIR_DATA_DERIV}/ants ${DIR_DATA_DERIV}/manual_masks  
   else
-    spinoza_sinusfrommni ${SUBJECT} ${SESSION} ${OW} ${DIR_DATA_HOME} ${DIR_DATA_DERIV}/ants ${DIR_DATA_DERIV}/manual_masks
+    ${job} spinoza_sinusfrommni ${SUBJECT} ${SESSION} ${OW} ${DIR_DATA_HOME} ${DIR_DATA_DERIV}/ants ${DIR_DATA_DERIV}/manual_masks
   fi
 
   if [[ $? -ne 0 ]]; then
@@ -708,36 +667,17 @@ echo ${FLAG_executeModule} | grep -q ${module}
 if [[ $? -eq 0 ]]; then
 
   if [[ "${@}" == *"-q"* ]]; then
-    spinoza_biassanlm
+    ${job} spinoza_biassanlm
     exit 1
   fi
 
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Perform bias field correction and SANLM-filtering"
 
-  if [[ -z ${SES} ]]; then
-    # Going to assume ses-1 here
-    SESSION="-n 1"
-  else
-    SESSION="-n ${SES}"
-  fi
-
-  if [[ -z ${SUB} ]]; then
-    SUBJECT=""
-  else
-    SUBJECT="-s ${SUB}"
-  fi
-
-  if [[ ! -z ${KWARGS} ]]; then
-    NO_BIAS="-b"
-  else
-    NO_BIAS=""
-  fi
-
   if [[ -d ${DIR_DATA_DERIV}/pymp2rage ]]; then
-    spinoza_biassanlm ${SUBJECT} ${SESSION} ${NO_BIAS} ${DIR_DATA_DERIV}/pymp2rage ${DIR_DATA_DERIV}/denoised
+    ${job} spinoza_biassanlm ${SUBJECT} ${SESSION} ${NO_BIAS} ${DIR_DATA_DERIV}/pymp2rage ${DIR_DATA_DERIV}/denoised
   else
-    spinoza_biassanlm ${SUBJECT} ${SESSION} ${NO_BIAS} ${DIR_DATA_HOME} ${DIR_DATA_DERIV}/denoised
+    ${job} spinoza_biassanlm ${SUBJECT} ${SESSION} ${NO_BIAS} ${DIR_DATA_HOME} ${DIR_DATA_DERIV}/denoised
   fi
 
   # spinoza_biascorrection ${SUBJECT} ${SESSION} ${DIR_DATA_HOME} ${DIR_DATA_DERIV}/ants inv-2
@@ -761,36 +701,16 @@ echo ${FLAG_executeModule} | grep -q ${module}
 if [[ $? -eq 0 ]]; then
 
   if [[ "${@}" == *"-q"* ]]; then
-    spinoza_brainextraction
+    ${job} spinoza_brainextraction
     exit 1
   fi
 
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Brain extract MP2RAGE-INV2 with ANTs|FSL|CAT12"
 
-  if [[ -z ${SES} ]]; then
-    # Going to assume ses-1 here
-    SESSION="-n 1"
-  else
-    SESSION="-n ${SES}"
-  fi
-
-  if [[ -z ${SUB} ]]; then
-    SUBJECT=""
-  else
-    SUBJECT="-s ${SUB}"
-  fi
-
-  if [[ "${@}" == *"-o"* ]]; then
-    echo "Overwrite mode enabled (default)"
-    OW="-o"
-  else
-    OW=""
-  fi
-
   DO_STUFF="cat12"
   if [[ ${DO_STUFF} ==  "inv2" ]]; then
-    spinoza_brainextraction ${SUBJECT} ${SESSION} ${DIR_DATA_DERIV}/ants ${DIR_DATA_DERIV}/skullstripped ${DIR_DATA_DERIV}/manual_masks FSL
+    ${job} spinoza_brainextraction ${SUBJECT} ${SESSION} ${DIR_DATA_DERIV}/ants ${DIR_DATA_DERIV}/skullstripped ${DIR_DATA_DERIV}/manual_masks FSL
   elif [[ ${DO_STUFF} == "cat12" ]]; then
 
     if [[ "${@}" == *"-c"* ]]; then
@@ -799,7 +719,7 @@ if [[ $? -eq 0 ]]; then
       CAT_RUN=""
     fi
 
-    spinoza_brainextraction ${SUBJECT} ${SESSION} ${OW} ${CAT_RUN} ${DIR_DATA_DERIV}/denoised ${DIR_DATA_DERIV}/cat12 ${DIR_DATA_DERIV}/manual_masks cat12
+    ${job} spinoza_brainextraction ${SUBJECT} ${SESSION} ${OW} ${CAT_RUN} ${DIR_DATA_DERIV}/denoised ${DIR_DATA_DERIV}/cat12 ${DIR_DATA_DERIV}/manual_masks cat12
 
   fi
 
@@ -822,25 +742,12 @@ echo ${FLAG_executeModule} | grep -q ${module}
 if [[ $? -eq 0 ]]; then
 
   if [[ "${@}" == *"-q"* ]]; then
-    spinoza_noiselevelestimation
+    ${job} spinoza_noiselevelestimation
     exit 1
   fi
 
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Noise level estimation with AFNI's automask function"
-
-  if [[ -z ${SES} ]]; then
-    # Going to assume ses-1 here
-    SESSION="-n 1"
-  else
-    SESSION="-n ${SES}"
-  fi
-
-  if [[ -z ${SUB} ]]; then
-    SUBJECT=""
-  else
-    SUBJECT="-s ${SUB}"
-  fi
 
   # spinoza_noiselevelestimation ${SUBJECT} ${SESSION} ${DIR_DATA_HOME} ${DIR_DATA_DERIV} 0.5
   # if [[ $? -ne 0 ]]; then
@@ -862,27 +769,14 @@ echo ${FLAG_executeModule} | grep -q ${module}
 if [[ $? -eq 0 ]]; then
 
   if [[ "${@}" == *"-q"* ]]; then
-    spinoza_createskullduramasks
+    ${job} spinoza_createskullduramasks
     exit 1
   fi
 
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Use nighres to get skull and dura mask"
 
-  if [[ -z ${SES} ]]; then
-    # Going to assume ses-1 here
-    SESSION="-n 1"
-  else
-    SESSION="-n ${SES}"
-  fi
-
-  if [[ -z ${SUB} ]]; then
-    SUBJECT=""
-  else
-    SUBJECT="-s ${SUB}"
-  fi
-
-  spinoza_createskullduramasks ${SUBJECT} ${SESSION} ${DIR_DATA_DERIV}/cat12 ${DIR_DATA_HOME} ${DIR_DATA_DERIV}/nighres ${DIR_DATA_DERIV}/manual_masks
+  ${job} spinoza_createskullduramasks ${SUBJECT} ${SESSION} ${DIR_DATA_DERIV}/cat12 ${DIR_DATA_HOME} ${DIR_DATA_DERIV}/nighres ${DIR_DATA_DERIV}/manual_masks
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_createskullduramasks exited with non-zero status"
@@ -903,7 +797,7 @@ echo ${FLAG_executeModule} | grep -q ${module}
 if [[ $? -eq 0 ]]; then
 
   if [[ "${@}" == *"-q"* ]]; then
-    spinoza_createsagsinusmask
+    ${job} spinoza_createsagsinusmask
     exit 1
   fi
 
@@ -914,20 +808,7 @@ if [[ $? -eq 0 ]]; then
   # DATA = MEMP2RAGE  > arg1 = DIR_DATA_DERIV/pymp2rage
   # DATA = AVERAGE    > arg1 = DIR_DATA_DERIV/ants
 
-  if [[ -z ${SES} ]]; then
-    # Going to assume ses-1 here
-    SESSION="-n 1"
-  else
-    SESSION="-n ${SES}"
-  fi
-
-  if [[ -z ${SUB} ]]; then
-    SUBJECT=""
-  else
-    SUBJECT="-s ${SUB}"
-  fi
-
-  spinoza_createsagsinusmask ${SUBJECT} ${SESSION} ${DIR_DATA_DERIV}/cat12 ${DIR_DATA_DERIV}/manual_masks itk
+  ${job} spinoza_createsagsinusmask ${SUBJECT} ${SESSION} ${DIR_DATA_DERIV}/cat12 ${DIR_DATA_DERIV}/manual_masks itk
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_createsagsinusmask exited with non-zero status"
@@ -948,34 +829,14 @@ echo ${FLAG_executeModule} | grep -q ${module}
 if [[ $? -eq 0 ]]; then
 
   if [[ "${@}" == *"-q"* ]]; then
-    spinoza_masking
+    ${job} spinoza_masking
     exit 1
   fi
 
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Combine all masks and apply to average"
 
-  if [[ "${@}" == *"-o"* ]]; then
-    echo "Overwrite mode enabled (default)"
-    OW="-o"
-  else
-    OW=""
-  fi
-
-  if [[ -z ${SES} ]]; then
-    # Going to assume ses-1 here
-    SESSION="-n 1"
-  else
-    SESSION="-n ${SES}"
-  fi
-
-  if [[ -z ${SUB} ]]; then
-    SUBJECT=""
-  else
-    SUBJECT="-s ${SUB}"
-  fi
-
-  spinoza_masking ${SUBJECT} ${SESSION} ${OW} ${DIR_DATA_DERIV}/cat12 ${DIR_DATA_DERIV}/masked_${space,,} ${DIR_DATA_DERIV}/manual_masks ${DIR_DATA_DERIV}/skullstripped
+  ${job} spinoza_masking ${SUBJECT} ${SESSION} ${OW} ${DIR_DATA_DERIV}/cat12 ${DIR_DATA_DERIV}/masked_${space,,} ${DIR_DATA_DERIV}/manual_masks ${DIR_DATA_DERIV}/skullstripped
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_masking exited with non-zero status"
@@ -996,37 +857,24 @@ echo ${FLAG_executeModule} | grep -q ${module}
 if [[ $? -eq 0 ]]; then
 
   if [[ "${@}" == *"-q"* ]]; then
-    spinoza_segmentfreesurfer
+    ${job} spinoza_segmentfreesurfer
     exit 1
   fi
 
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Run FreeSurfer outside of fMRIprep"
 
-  if [[ -z ${SES} ]]; then
-    # Going to assume ses-1 here
-    SESSION="-n 1"
-  else
-    SESSION="-n ${SES}"
-  fi
-
-  if [[ -z ${SUB} ]]; then
-    SUBJECT=""
-  else
-    SUBJECT="-s ${SUB}"
-  fi
-
   if [[ -d ${DIR_DATA_DERIV}/masked_${space,,} ]]; then
     INPUT_DIR=${DIR_DATA_DERIV}/masked_${space,,}
   elif [[ -d ${DIR_DATA_DERIV}/denoised ]]; then
-      INPUT_DIR=${DIR_DATA_DERIV}/denoised
+    INPUT_DIR=${DIR_DATA_DERIV}/denoised
   elif [[ -d ${DIR_DATA_DERIV}/pymp2rage ]]; then
-      INPUT_DIR=${DIR_DATA_DERIV}/pymp2rage
+    INPUT_DIR=${DIR_DATA_DERIV}/pymp2rage
   else
     INPUT_DIR=${DIR_DATA_HOME}
   fi
 
-  spinoza_segmentfreesurfer ${SUBJECT} ${SESSION} ${INPUT_DIR} all ${DIR_DATA_HOME}
+  ${job} spinoza_segmentfreesurfer ${SUBJECT} ${SESSION} ${INPUT_DIR} all ${DIR_DATA_HOME}
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_segmentfreesurfer exited with non-zero status"
@@ -1047,36 +895,17 @@ echo ${FLAG_executeModule} | grep -q ${module}
 if [[ $? -eq 0 ]]; then
 
   if [[ "${@}" == *"-q"* ]]; then
-    spinoza_fmriprep
+    ${job} spinoza_fmriprep
     exit 1
   fi
 
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Preprocess session 1 data with fMRIprep"
 
-  if [[ -z ${SES} ]]; then
-    # Going to assume ses-1 here
-    SESSION="-n 1"
-  else
-    SESSION="-n ${SES}"
-  fi
-
-  if [[ -z ${SUB} ]]; then
-    SUBJECT=""
-  else
-    SUBJECT="-s ${SUB}"
-  fi
-
   if [[ -z ${TYPE} ]]; then
     TYPE="anat"
   else
     TYPE=${TYPE}
-  fi
-
-  if [[ ! -z ${KWARGS} ]]; then
-    REMOVE_WF="-r"
-  else
-    REMOVE_WF=""
   fi
 
   # decide on config file (overwrite earlier defaults)
@@ -1101,13 +930,7 @@ if [[ $? -eq 0 ]]; then
     ANAT_DIR=${DIR_DATA_HOME}
   fi
 
-  if [[ ! -z ${WHICH_MOD} ]]; then
-    run_local="-l"
-  else
-    run_local=""
-  fi
-
-  spinoza_fmriprep ${run_local} ${SUBJECT} ${SESSION} ${confFile} ${REMOVE_WF} -f ${DIR_DATA_HOME} -m ${TYPE} ${ANAT_DIR} ${DIR_DATA_DERIV} ${DIR_DATA_HOME}
+  ${job} spinoza_fmriprep ${use_bbr} ${run_local} ${SUBJECT} ${SESSION} ${confFile} ${REMOVE_WF} -f ${DIR_DATA_HOME} -m ${TYPE} ${ANAT_DIR} ${DIR_DATA_DERIV} ${DIR_DATA_HOME}
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_fmriprep exited with non-zero status"
@@ -1128,42 +951,14 @@ echo ${FLAG_executeModule} | grep -q ${module}
 if [[ $? -eq 0 ]]; then
 
   if [[ "${@}" == *"-q"* ]]; then
-    spinoza_denoising
+    ${job} spinoza_denoising
     exit 1
   fi
 
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Data denoising with pybest"
 
-  if [[ -z ${SES} ]]; then
-    # Going to assume ses-1 here
-    SESSION="-n 1"
-  else
-    SESSION="-n ${SES}"
-  fi
-
-  if [[ -z ${SUB} ]]; then
-    SUBJECT=""
-  else
-    SUBJECT="-s ${SUB}"
-  fi
-
-  # force overwrite (default = yes); no saves time while debugging. Just leave it empty..
-  if [[ "${@}" == *"-o"* ]]; then
-    echo "Overwrite mode enabled (default)"
-    OW="-o"
-  else
-    OW=""
-  fi
-
-  # insert grid-only flag if master -m 17 -x grid is used
-  if [[ ${KWARGS,,} == "sge" ]]; then
-    KWARGS="-c"
-  else
-    KWARGS=""
-  fi       
-
-  spinoza_denoising ${SUBJECT} ${SESSION} ${KWARGS} ${OW} ${DIR_DATA_DERIV}/fmriprep ${DIR_DATA_DERIV}/pybest
+  ${job} spinoza_denoising ${SUBJECT} ${SESSION} ${SGE} ${OW} ${DIR_DATA_DERIV}/fmriprep ${DIR_DATA_DERIV}/pybest
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_denoising exited with non-zero status"
@@ -1184,25 +979,12 @@ echo ${FLAG_executeModule} | grep -q ${module}
 if [[ $? -eq 0 ]]; then
 
   if [[ "${@}" == *"-q"* ]]; then
-    spinoza_fitprfs
+    ${job} spinoza_fitprfs
     exit 1
   fi
 
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] pRF-fitting with pRFpy"
-
-  if [[ -z ${SES} ]]; then
-    # Going to assume ses-1 here
-    SESSION="-n 1"
-  else
-    SESSION="-n ${SES}"
-  fi
-
-  if [[ -z ${SUB} ]]; then
-    SUBJECT=""
-  else
-    SUBJECT="-s ${SUB}"
-  fi
 
   if [[ -z ${PRF_MODEL} ]]; then
     MODEL=""
@@ -1210,24 +992,7 @@ if [[ $? -eq 0 ]]; then
     MODEL="-m ${PRF_MODEL}"
   fi
 
-  # insert grid-only flag if master -m 17 -x grid is used
-  if [[ ${KWARGS,,} == "grid" ]]; then
-    KWARGS="-g"
-  elif [[ ${KWARGS,,} == "local" ]]; then
-    KWARGS="-l"
-  else
-    KWARGS=""
-  fi     
-
-  # force overwrite (default = yes); no saves time while debugging. Just leave it empty..
-  if [[ "${@}" == *"-o"* ]]; then
-    echo "Overwrite mode enabled (default)"
-    OW="-o"
-  else
-    OW=""
-  fi
-
-  spinoza_fitprfs ${SUBJECT} ${SESSION} ${KWARGS} ${OW} ${MODEL} ${DIR_DATA_DERIV}/prf ${DIR_DATA_DERIV}/pybest ${DIR_DATA_SOURCE}
+  ${job} spinoza_fitprfs ${run_local} ${grid} ${SUBJECT} ${SESSION} ${OW} ${MODEL} ${DIR_DATA_DERIV}/prf ${DIR_DATA_DERIV}/pybest ${DIR_DATA_SOURCE}
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_fitprfs exited with non-zero status"
@@ -1248,25 +1013,12 @@ echo ${FLAG_executeModule} | grep -q ${module}
 if [[ $? -eq 0 ]]; then
 
   if [[ "${@}" == *"-q"* ]]; then
-    spinoza_bestvertex
+    ${job} spinoza_bestvertex
     exit 1
   fi
 
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Determine best vertex with pycortex"
-
-  if [[ -z ${SUB} ]]; then
-    SUBJECT=""
-  else
-    SUBJECT="-s ${SUB}"
-  fi
-
-  if [[ -z ${SES} ]]; then
-    # Going to assume ses-1 here
-    SESSION="-n 1"
-  else
-    SESSION="-n ${SES}"
-  fi
 
   if [[ -z ${VERTICES} ]]; then
     VERT=""
@@ -1274,26 +1026,13 @@ if [[ $? -eq 0 ]]; then
     VERT="-v ${VERTICES}"
   fi
 
-  # force overwrite (default = yes); no saves time while debugging. Just leave it empty..
-  if [[ "${@}" == *"-o"* ]]; then
-    OW="-o"
-  else
-    OW=""
-  fi
-
-  if [[ ! -z ${KWARGS} ]]; then
-    KWARGS="-f"
-  else
-    KWARGS=${KWARGS}
-  fi
-
-  if [[ ! -z ${WHICH_MOD} ]]; then
-    LABEL_FILE=${WHICH_MOD}
+  if [[ ! -z ${ROI} ]]; then
+    LABEL_FILE=${ROI}
   else
     LABEL_FILE="V1_exvivo.thresh"
   fi
 
-  spinoza_bestvertex ${SUBJECT} ${SESSION} ${VERT} ${KWARGS} ${OW} ${DIR_DATA_HOME} ${DIR_DATA_DERIV} ${LABEL_FILE}
+  ${job} spinoza_bestvertex ${SUBJECT} ${SESSION} ${VERT} ${FREEVIEW} ${OW} ${DIR_DATA_HOME} ${DIR_DATA_DERIV} ${LABEL_FILE}
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_bestvertex exited with non-zero status"
@@ -1314,35 +1053,14 @@ echo ${FLAG_executeModule} | grep -q ${module}
 if [[ $? -eq 0 ]]; then
 
   if [[ "${@}" == *"-q"* ]]; then
-    spinoza_segmentfast
+    ${job} spinoza_segmentfast
     exit 1
   fi
 
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] FAST segmentation with FSL"
 
-  # force overwrite (default = yes); no saves time while debugging. Just leave it empty..
-  if [[ "${@}" == *"-o"* ]]; then
-    echo "Overwrite mode enabled (default)"
-    OW="-o"
-  else
-    OW=""
-  fi
-
-  if [[ -z ${SES} ]]; then
-    # Going to assume ses-1 here
-    SESSION="-n 1"
-  else
-    SESSION="-n ${SES}"
-  fi
-
-  if [[ -z ${SUB} ]]; then
-    SUBJECT=""
-  else
-    SUBJECT="-s ${SUB}"
-  fi
-
-  spinoza_segmentfast ${SUBJECT} ${SESSION} ${OW} ${SKULLSTRIP} ${DIR_DATA_DERIV}/fsl
+  ${job} spinoza_segmentfast ${SUBJECT} ${SESSION} ${OW} ${SKULLSTRIP} ${DIR_DATA_DERIV}/fsl
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_segmentfast exited with non-zero status"
@@ -1363,36 +1081,15 @@ echo ${FLAG_executeModule} | grep -q ${module}
 if [[ $? -eq 0 ]]; then
 
   if [[ "${@}" == *"-q"* ]]; then
-    spinoza_segmentmgdm
+    ${job} spinoza_segmentmgdm
     exit 1
   fi
 
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] MGDM segmentation with nighres"
 
-  # force overwrite (default = yes); no saves time while debugging. Just leave it empty..
-  if [[ "${@}" == *"-o"* ]]; then
-    echo "Overwrite mode enabled (default)"
-    OW="-o"
-  else
-    OW=""
-  fi
-
-  if [[ -z ${SES} ]]; then
-    # Going to assume ses-1 here
-    SESSION="-n 1"
-  else
-    SESSION="-n ${SES}"
-  fi
-
-  if [[ -z ${SUB} ]]; then
-    SUBJECT=""
-  else
-    SUBJECT="-s ${SUB}"
-  fi
-
   if [[ ${PROJECT} == "URIS-MDD" ]]; then
-    spinoza_segmentmgdm ${SUBJECT} ${SESSION} ${OW} -t "gdh" ${DIR_DATA_DERIV}/skullstripped ${DIR_DATA_DERIV}/nighres ${DIR_DATA_DERIV}/manual_masks
+    ${job} spinoza_segmentmgdm ${SUBJECT} ${SESSION} ${OW} -t "gdh" ${DIR_DATA_DERIV}/skullstripped ${DIR_DATA_DERIV}/nighres ${DIR_DATA_DERIV}/manual_masks
   else
     spinoza_segmentmgdm ${SUBJECT} ${SESSION} ${OW} ${DIR_DATA_DERIV}/skullstripped ${DIR_DATA_DERIV}/nighres ${DIR_DATA_DERIV}/manual_masks
   fi
@@ -1416,42 +1113,20 @@ echo ${FLAG_executeModule} | grep -q ${module}
 if [[ $? -eq 0 ]]; then
 
   if [[ "${@}" == *"-q"* ]]; then
-    spinoza_extractregions
+    ${job} spinoza_extractregions
     exit 1
   fi
 
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Region extraction with nighres"
 
-  # force overwrite (default = yes); no saves time while debugging. Just leave it empty..
-  if [[ "${@}" == *"-o"* ]]; then
-    echo "Overwrite mode enabled (default)"
-    OW="-o"
+  if [[ ! -z ${ROI} ]]; then
+    ROI=${ROI}
   else
-    OW=""
+    ROI="cerebrum"
   fi
 
-  if [[ -z ${SES} ]]; then
-    # Going to assume ses-1 here
-    SESSION="-n 1"
-  else
-    SESSION="-n ${SES}"
-  fi
-
-  if [[ -z ${SUB} ]]; then
-    SUBJECT=""
-  else
-    SUBJECT="-s ${SUB}"
-  fi
-
-  if [[ ! -z ${KWARGS} ]]; then
-    KWARGS="-c"
-  else
-    KWARGS=""
-  fi    
-
-  roi="cerebrum"
-  spinoza_extractregions ${SUBJECT} ${SESSION} ${OW} ${KWARGS} -f ${DIR_DATA_DERIV}/fmriprep ${DIR_DATA_DERIV}/nighres ${DIR_DATA_DERIV}/manual_masks ${roi}
+  ${job} spinoza_extractregions ${SUBJECT} ${SESSION} ${OW} ${COMB_ONLY} -f ${DIR_DATA_DERIV}/fmriprep ${DIR_DATA_DERIV}/nighres ${DIR_DATA_DERIV}/manual_masks ${ROI}
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_extractregions exited with non-zero status"
@@ -1472,35 +1147,14 @@ echo ${FLAG_executeModule} | grep -q ${module}
 if [[ $? -eq 0 ]]; then
 
   if [[ "${@}" == *"-q"* ]]; then
-    spinoza_cortexreconstruction
+    ${job} spinoza_cortexreconstruction
     exit 1
   fi
 
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Cortex reconstruction with nighres"
 
-  # force overwrite (default = yes); no saves time while debugging. Just leave it empty..
-  if [[ "${@}" == *"-o"* ]]; then
-    echo "Overwrite mode enabled (default)"
-    OW="-o"
-  else
-    OW=""
-  fi
-
-  if [[ -z ${SES} ]]; then
-    # Going to assume ses-1 here
-    SESSION="-n 1"
-  else
-    SESSION="-n ${SES}"
-  fi
-
-  if [[ -z ${SUB} ]]; then
-    SUBJECT=""
-  else
-    SUBJECT="-s ${SUB}"
-  fi
-
-  spinoza_cortexreconstruction ${SUBJECT} ${SESSION} ${OW} ${DIR_DATA_DERIV}/manual_masks ${DIR_DATA_DERIV}/nighres cerebellum
+  ${job} spinoza_cortexreconstruction ${SUBJECT} ${SESSION} ${OW} ${DIR_DATA_DERIV}/manual_masks ${DIR_DATA_DERIV}/nighres cerebellum
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_cortexreconstruction exited with non-zero status"
@@ -1521,30 +1175,17 @@ echo ${FLAG_executeModule} | grep -q ${module}
 if [[ $? -eq 0 ]]; then
 
   if [[ "${@}" == *"-q"* ]]; then
-    spinoza_layering
+    ${job} spinoza_layering
     exit 1
   fi
 
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Equivolumetric layering"
 
-  if [[ -z ${SES} ]]; then
-    # Going to assume ses-1 here
-    SESSION="-n 1"
-  else
-    SESSION="-n ${SES}"
-  fi
-
-  if [[ -z ${SUB} ]]; then
-    SUBJECT=""
-  else
-    SUBJECT="-s ${SUB}"
-  fi
-
   if [[ "${@}" == *"-w"* ]]; then
-    spinoza_layering ${SUBJECT} ${SESSION} ${FS} st
+    ${job} spinoza_layering ${SUBJECT} ${SESSION} ${FS} st
   else
-    spinoza_layering ${SUBJECT} ${SESSION} ${DIR_DATA_DERIV}/nighres nighres
+    ${job} spinoza_layering ${SUBJECT} ${SESSION} ${DIR_DATA_DERIV}/nighres nighres
   fi
   
   if [[ $? -ne 0 ]]; then
@@ -1566,27 +1207,14 @@ echo ${FLAG_executeModule} | grep -q ${module}
 if [[ $? -eq 0 ]]; then
 
   if [[ "${@}" == *"-q"* ]]; then
-    spinoza_segmentsubcortex
+    ${job} spinoza_segmentsubcortex
     exit 1
   fi
 
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Subcortex parcellation with MASSP"
 
-  if [[ -z ${SES} ]]; then
-    # Going to assume ses-1 here
-    SESSION="-n 1"
-  else
-    SESSION="-n ${SES}"
-  fi
-
-  if [[ -z ${SUB} ]]; then
-    SUBJECT=""
-  else
-    SUBJECT="-s ${SUB}"
-  fi
-
-  spinoza_segmentsubcortex ${SUBJECT} ${SESSION} ${DIR_DATA_HOME} ${DIR_DATA_DERIV}/skullstripped ${DIR_DATA_DERIV}/nighres
+  ${job} spinoza_segmentsubcortex ${SUBJECT} ${SESSION} ${DIR_DATA_HOME} ${DIR_DATA_DERIV}/skullstripped ${DIR_DATA_DERIV}/nighres
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_segmentsubcortex exited with non-zero status"
@@ -1607,7 +1235,7 @@ echo ${FLAG_executeModule} | grep -q ${module}
 if [[ $? -eq 0 ]]; then
 
   if [[ "${@}" == *"-q"* ]]; then
-    spinoza_line2surface
+    ${job} spinoza_line2surface
     exit 1
   fi
 
@@ -1621,7 +1249,7 @@ if [[ $? -eq 0 ]]; then
   fi
 
   # input anat as defined in module 00
-  spinoza_line2surface -s ${subject} -y ${DIR_DATA_HOME}/${subject}/ses-2/anat/${subject}_ses-2_acq-MP2RAGE_T1w.nii.gz -o ${CTX} -i ${NIGHRES}/${subject}/ses-2
+  ${job} spinoza_line2surface -s ${subject} -y ${DIR_DATA_HOME}/${subject}/ses-2/anat/${subject}_ses-2_acq-MP2RAGE_T1w.nii.gz -o ${CTX} -i ${NIGHRES}/${subject}/ses-2
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_line2surface exited with non-zero status"
@@ -1642,32 +1270,12 @@ echo ${FLAG_executeModule} | grep -q ${module}
 if [[ $? -eq 0 ]]; then
 
   if [[ "${@}" == *"-q"* ]]; then
-    spinoza_profiling
+    ${job} spinoza_profiling
     exit 1
   fi
 
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Profile sampling using Nighres"
-
-  if [[ -z ${SES} ]]; then
-    # Going to assume ses-1 here
-    SESSION="-n 1"
-  else
-    SESSION="-n ${SES}"
-  fi
-
-  if [[ -z ${SUB} ]]; then
-    SUBJECT=""
-  else
-    SUBJECT="-s ${SUB}"
-  fi
-
-  if [[ "${@}" == *"-o"* ]]; then
-    echo "Overwrite mode enabled (default)"
-    OW="-o"
-  else
-    OW=""
-  fi
 
   if [[ -z ${KWARGS} ]]; then
     KWARGS="T2starmap"
@@ -1676,7 +1284,7 @@ if [[ $? -eq 0 ]]; then
   fi    
 
   # spinoza_profiling ${SUBJECT} ${SESSION} ${OW} ${DIR_DATA_DERIV}/nighres ${DIR_DATA_HOME} T1map
-  spinoza_profiling ${SUBJECT} ${SESSION} ${OW} ${DIR_DATA_DERIV}/nighres ${DIR_DATA_HOME} ${KWARGS}
+  ${job} spinoza_profiling ${SUBJECT} ${SESSION} ${OW} ${DIR_DATA_DERIV}/nighres ${DIR_DATA_HOME} ${KWARGS}
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_segmentsubcortex exited with non-zero status"
