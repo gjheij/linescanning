@@ -22,9 +22,7 @@ need to run autorecon2 and 3.
 
 Usage:
   call_freesurfer -s <subj_ID> -t <t1 input> -p <t2 input> -r <recon stage (all | 1 | 2 | 3)>
-                  -e <edit type> -o <other editing options> -f <open FreeView (0=no|1=yes)>
-                  -c <SGE|LOCAL>
-
+                  -e <edit type> -o <other editing options> [other options]
 Args:
   -s <subj ID>        subject ID as per output of FreeSurfer (e.g., 'sub-001')
 
@@ -53,17 +51,14 @@ Args:
 
   -o <other editing>  Here you can specify the gcut-option to remove latched on pial surface
 
-  -f <freeview>       Open FreeView automatically (default is YES!) [0=no|1=yes]
-
-  -c <SGE|LOCAL>      What system are we running the script on? Can either be 'SGE', where
-                      we'll submit the script to a Sun-of-Grid-Engine using a template script,
-                      or 'LOCAL'. Will by default read out your 'PLACE' variable, as per the
-                      spinoza_setup file.
 
   -v <version>        FreeSurfer version if multiple are available. Note that fMRIprep only 
                       uses 6.0.0, which is a bit worse at dealing with T2-images.
-
-  -x <force exec>     Force execution even though directory exists already
+  --freeview          Open FreeView automatically (default is NO!)
+  --force_exec        Force execution even though directory exists already
+  --sge               Submit the script to a cluster using a template script
+  --local             Force local processing even though cluster is available
+  --no_highres        Turn of highres mode by setting '-highres' flag empty
 
 Instructions for editing (from Andrew Jahn's YouTube series):
   - Control points (intensity normalization errors):
@@ -117,28 +112,54 @@ USAGE
 
 #-----------------------------------------------------------------------------
 # Deal with arguments
-while getopts xs:t:p:r:e:o:f:c:v: arg
+FREEVIEW=0
+FORCE_EXEC=0
+SGE=""
+NO_HIGHRES="-hires"
+while getopts :-:hs:t:p:r:e:o:f:c:v: arg
 do
-    case ${arg} in
-      s)  subj_ID=${OPTARG}
-            ;;
-      t)  T1=${OPTARG}
-            ;;
-      p)  T2=${OPTARG}
-            ;;
-      r)  stage=${OPTARG}
-            ;;
-      e)  edit=${OPTARG}
-            ;;
-      o)  option=${OPTARG}
-            ;;
-      f)  FV=${OPTARG}
-            ;;
-      c)  SGE=${OPTARG}
-            ;;
-      v)  VERSION=${OPTARG}
-            ;;            
-    esac
+  case ${arg} in
+    -)
+      case "${OPTARG}" in     
+        freeview)
+          FREEVIEW=1
+          ;;            
+        force_exec)
+          FORCE_EXEC=1
+          ;;          
+        sge)
+          SGE="SGE"
+          ;;        
+        local)
+          SGE="LOCAL"
+          ;;   
+        no_highres)
+          NO_HIGHRES=""
+          ;;                                                      
+        *)
+          if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
+            echo "Unknown option --${OPTARG}, possible options are:"
+            for ii in ${opts[@]}; do echo " ${ii}"; done
+            echo "Enter \"`basename ${0}`\" what these flags do"
+            exit 1
+          fi
+          ;;
+      esac;;    
+    s)  subj_ID=${OPTARG}
+          ;;
+    t)  T1=${OPTARG}
+          ;;
+    p)  T2=${OPTARG}
+          ;;
+    r)  stage=${OPTARG}
+          ;;
+    e)  edit=${OPTARG}
+          ;;
+    o)  option=${OPTARG}
+          ;;
+    v)  VERSION=${OPTARG}
+          ;;            
+  esac
 done
 
 if [[ $# -lt 2 ]] ; then
@@ -158,26 +179,11 @@ fi
 
 if [[ -z ${SGE} ]]; then
   # read from spinoza_setup
-  if [[ ${PLACE} == SGE ]]; then
-    RUN=SGE
+  if [[ ${PLACE} == "SGE" ]]; then
+    SGE="SGE"
   else
-    RUN=LOCAL
+    SGE="LOCAL"
   fi
-else
-  if [[ ${SGE} == "SGE" ]]; then
-    RUN=SGE
-  elif [[ ${SGE} == "LOCAL" ]]; then
-    RUN=LOCAL
-  else
-    echo "Unknown option specified: ${SGE}. Can either be \"SGE\" or \"LOCAL\". Leave empty if we should read this from spinoza_setup"
-  fi
-fi
-
-# check if we have to force execution
-if [[ "${@}" == *"-x"* ]]; then
-  FORCE_EXEC=1
-else
-  FORCE_EXEC=0
 fi
 
 #-----------------------------------------------------------------------------
@@ -190,7 +196,7 @@ CMD(){
   # $4 = T1_flag
   # $5 = T2_flag
 
-  if [[ ${RUN} == SGE ]]; then
+  if [[ ${SGE} == "SGE" ]]; then
     echo "Submitting job to cluster"
 
     # delete previously existing file
@@ -235,7 +241,7 @@ CMD(){
     echo "module load freesurfer/${version}"
     echo "export FREESURFER=/packages/freesurfer/${version}"
     echo "export SUBJECTS_DIR=${SUBJECTS_DIR}"
-    echo "recon-all -subjid ${1} ${4} -hires -parallel -openmp 12 ${3} ${5}"
+    echo "recon-all -subjid ${1} ${4} ${NO_HIGHRES} -parallel -openmp 12 ${3} ${5}"
     ) > ${fs_script}
     
     qsub ${fs_script}
@@ -245,10 +251,10 @@ CMD(){
     sleep 5
     qstat
 
-  elif [[ ${RUN} == LOCAL ]]; then
+  else
 
     echo "Running FreeSurfer locally"
-    recon-all -subjid ${1} ${4} -hires ${3} ${5}
+    recon-all -subjid ${1} ${4} ${NO_HIGHRES} ${3} ${5}
     echo "Now do some editing in FreeView if required."
 
   fi
@@ -308,20 +314,6 @@ if [[ ! -d ${SUBJECTS_DIR} ]]; then
   mkdir -p ${SUBJECTS_DIR}
 fi
 
-if [[ -z ${FV} ]]; then
-  FV="no"
-else
-  if [[ ! -z ${FV} ]]; then
-    if [[ ${FV} == "0" ]]; then
-      FV="no"
-    elif [[ ${FV} == "1" ]]; then
-      FV="yes"
-    else
-      echo "Unknown option specified for ${FV}. Leave empty to open FreeView automatically or specify \"-f 0\" to turn it off"
-    fi
-  fi
-fi
-
 # start with the simplest option: check if there's gcut
 if [[ ! -z ${option} ]]; then
 
@@ -348,7 +340,7 @@ if [[ ! -z ${option} ]]; then
     exit 1
   fi
 
-  if [[ ${FV} == "yes" ]]; then
+  if [[ ${FREEVIEW} -eq 1 ]]; then
 
     # check if we have a function called call_freeview
     call_checkfunction call_freeview
