@@ -81,16 +81,16 @@ echo "==========================================================================
 
 for dir in ${search}; do
 
-  declare -a ACQ=("MP2RAGE")
+  # declare -a ACQ=("MP2RAGE")
   # declare -a ACQ=(memp2rage mp2rage)
 
   if [[ ! -z ${ses} ]]; then
     nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
     base_path=$(basename ${dir})/ses-${nr}
-    base=$(basename ${dir})_ses-${nr}_acq-${DATA^^}
+    base=$(basename ${dir})_ses-${nr}
   else
     base_path=$(basename ${dir})
-    base=$(basename ${dir})_acq-${DATA^^}
+    base=$(basename ${dir})
   fi
 
   outdir=${OUTPUT}/${base_path}
@@ -100,6 +100,9 @@ for dir in ${search}; do
 
     input=`find "${outdir}" -maxdepth 1 -type f \( -name "*acq-${a^^}*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
     NoF=`find "${indir}" -type f \( -iname "*acq-${a}*" -and -not -name "*T1w*" -and -name "*.nii.gz" \) | wc -l 2>/dev/null`
+    
+    # set output name based on acquisition strategy
+    base=${base}_acq-${a^^}
 
     if [[ ! -f ${input} ]]; then
 
