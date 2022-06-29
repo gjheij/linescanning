@@ -484,43 +484,6 @@ def get_file_from_substring(filt, path, return_msg='error', exclude=None):
             else:
                 return None
 
-def get_bids_file(layout, filter=None):
-    """get_bids_file
-
-    This search function is more tailored for BIDSified data, and requires a list of BIDS-filenames as per output for `l = BIDSLayout(dir, validate=False)` & `fn = l.get(session='1', datatype='anat')` for instance. From this list the script will look the list of given filters.
-
-    Parameters
-    ----------
-    layout: :abbr:`BIDS (Brain Imaging Data Structure)` layout object
-        BIDS-layout object obtained with `BIDSLayout`
-    filter: str, optional
-        filter for particular strings
-
-    Returns
-    ----------
-    str
-        filenames meeting the specifications (i.e., existing in `layout` and containing strings specified in `filters`)
-
-    Example
-    ----------
-    >>> layout = BIDSLayout(somedir).get(session='1', datatype='anat')
-    >>> fn = get_bids_file(layout, filter=['str1', 'str2', 'str3'])
-    """
-
-    import warnings
-    warnings.filterwarnings("ignore")
-
-    l = []
-    for i in layout:
-        if all(f in i for f in filter) == True:
-            l.append(i)
-
-    if len(l) == 1:
-        return l[0]
-    else:
-        return l
-
-
 def get_matrixfromants(mat, invert=False):
     """get_matrixfromants
 
