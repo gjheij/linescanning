@@ -113,10 +113,10 @@ for dir in ${search}; do
 
   if [[ -d ${pn_anat} ]]; then
 
-    fn_ratio=${pn_anat}/${base}_acq-${space^^}_desc-ratio.nii.gz
-    fn_nuisance=${pn_anat}/${base}_acq-${space^^}_desc-nuisance.nii.gz
-    fn_mni=${pn_masks}/${base}_acq-${space^^}_space-MNI152Nlin6Aym_desc-sinus.nii.gz
-    fn_out=${pn_masks}/${base}_acq-${space^^}_desc-mni_sinus.nii.gz
+    fn_ratio=${pn_anat}/${base}_acq-${DATA^^}_desc-ratio.nii.gz
+    fn_nuisance=${pn_anat}/${base}_acq-${DATA^^}_desc-nuisance.nii.gz
+    fn_mni=${pn_masks}/${base}_acq-${DATA^^}_space-MNI152Nlin6Aym_desc-sinus.nii.gz
+    fn_out=${pn_masks}/${base}_acq-${DATA^^}_desc-mni_sinus.nii.gz
 
     if [[ ${OW} -eq 1 ]]; then
       rm ${fn_ratio} ${fn_nuisance} ${fn_out} ${fn_mni} 2>/dev/null
@@ -145,6 +145,7 @@ for dir in ${search}; do
             echo "Creating sinus mask directly from T2-image"
             fslmaths ${t2} -mas ${mask} $(dirname ${t2})/tmp_$(basename ${t2})
             fslmaths $(dirname ${t2})/tmp_$(basename ${t2}) -uthr 10000 -bin ${fn_nuisance}
+            rm $(dirname ${t2})/tmp_$(basename ${t2}) 2>/dev/null
           else
             echo "Creating T1w/T2w + thresholded image"
             call_t12ratio --t1 ${t1} --t2 ${t2} -o ${pn_anat}/${base}_acq-${space^^}
@@ -174,7 +175,7 @@ for dir in ${search}; do
           if [[ ! -z ${mat_file} && ! -z ${warp_file} ]]; then
             echo "Warping MNI152_T1_1mm_Dil3_sagsinus_mask to subject space"
 
-            call_antsapplytransforms -v -i "1 0" -t gen ${fn_nuisance} ${mni_mask} ${fn_mni} "${mat_file} ${warp_file}"
+            call_antsapplytransforms -i "1 0" -t gen ${fn_nuisance} ${mni_mask} ${fn_mni} "${mat_file} ${warp_file}"
 
             if [[ $? -ne 0 ]]; then
               echo "ERROR in `basename ${0}`: call_antsapplytransforms exited with non-zero status"
@@ -197,7 +198,7 @@ for dir in ${search}; do
         if [[ -f ${fn_mni} ]]; then
           echo "Multiplying template mask with nuisance-image"
           fslmaths ${fn_mni} -mul ${fn_nuisance} ${fn_out}
-          rm ${fn_mni}
+          rm ${fn_mni} 2>/dev/null
           echo "Created ${fn_out}"
 
           if [[ $? -ne 0 ]]; then

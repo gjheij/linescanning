@@ -20,16 +20,12 @@ ment and 'MNI' is specified, this first element is registered to the MNI templat
 relatively obsolete given that we don't really need it in MNI space + we can do that step with fMRI-
 prep.
 
-By default, the data type is set to the first element of the ACQ-variable as specified in the setup
-script and is no initial transformation file required.
-
 Usage:
-spinoza_registration <-s sub> <-n ses> <root input> <root output> <session> <data type> <initial
-                     trafo>
+  spinoza_registration <-s sub> <-n ses> <root input> <root output> <session> <data type>
 
 Example:
   spinoza_registration <project>/derivatives/pymp2rage <project>/derivatives/ants <session> 
-                       mp2rage n
+                       mp2rage
   spinoza_registration -s 001 -n 1 <project>/derivatives/pymp2rage <project>/derivatives/ants <ses-
                        sion> 
 
@@ -47,15 +43,21 @@ if [[ $# -lt 2 ]] ; then
   exit 1
 fi
 
+SGE=0
+OW=0
 # Check for subject flag
-while getopts s:n: argument
+while getopts ocs:n: argument
 do
-    case ${argument} in
-      s)  sub=${OPTARG}
-            ;;
-      n)  ses=${OPTARG}
-            ;;
-    esac
+  case ${argument} in
+    s)  sub=${OPTARG}
+          ;;
+    n)  ses=${OPTARG}
+          ;;
+    c)  SGE=1
+          ;;
+    o)  OW=1
+          ;;                     
+  esac
 done
 
 if [[ $# -lt 2 ]] ; then
@@ -66,7 +68,6 @@ fi
 INPUT=${@:$OPTIND:1}
 OUTPUT=${@:$OPTIND+1:1}
 TYPE=${@:$OPTIND+2:1}
-INIT=${@:$OPTIND+3:1}
 
 if [[ -z ${sub} ]]; then
   # loop through subjects
@@ -78,10 +79,6 @@ fi
 
 if [[ -z ${TYPE} ]]; then
   TYPE="${ACQ1,,}"
-fi
-
-if [[ -z ${INIT} ]]; then
-  INIT="n"
 fi
 
 #-----------------------------------------------------------------------------
@@ -126,8 +123,7 @@ for dir in ${search}; do
     txt="Registering ${ACQ2,,}-T1w to ${ACQ1,,}"
     suffix=MP2RAGE
     output=${OUTPUTDIR}/${base}_acq-${ACQ2^^}_space-${ACQ1^^}_T1w.nii.gz
-    initial=${OUTPUTDIR}/${base}_acq-${ACQ2^^}-${ACQ1^^}_desc-init.txt
-    ext="from-MEMP2RAGE_to-MP2RAGE_desc-"
+    ext="from-MEMP2RAGE_to-${MP2RAGE}_desc-"
     fixed=`find "${INPUTDIR}" -type f \( -iname "*${ACQ1^^}*" -and -not -iname "*${ACQ2^^}*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
     moving=`find "${INPUTDIR}" -type f \( -iname "*${ACQ1^^}*" -and -name "*_T1w.nii.gz" \) 2>/dev/null`
   elif [[ ${TYPE,,} == "mni" ]]; then
@@ -135,7 +131,7 @@ for dir in ${search}; do
     suffix=MNI152NLin6Asym
     fixed=${FSLDIR}/data/standard/MNI152_T1_1mm.nii.gz
     moving=`find "${INPUTDIR}" -type f \( -iname "*${DATA}*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
-    ext="from-MNI152Nlin6Asym_to-subject_desc-"
+    ext="from-${suffix}_to-T1w_desc-"
     output=${OUTPUTDIR}/$(basename ${moving} _T1w.nii.gz)_space-${suffix}_T1w.nii.gz
   else
     echo "Incorrect usage. Please specify mp2rage or mni"
@@ -152,151 +148,73 @@ for dir in ${search}; do
     mkdir -p ${OUTPUTDIR}
   fi
 
-  if [[ ! -f ${output} ]]; then
-    echo "Registering $(basename ${moving}) to $(basename ${fixed})"
 
-    if [[ -f ${fixed} && -f ${moving} ]]; then
+  if [[ -f ${fixed} && -f ${moving} ]]; then
 
-      if [[ ! -z ${INIT} ]]; then
-        if [[ ${INIT} == y ]]; then
-          if [[ ! -f ${initial} ]]; then
-            echo "Please create this first using ITKsnap and name it:"
-            echo "\"${initial}\""
-            echo
-            echo "Initiating ITKsnap"
-            itksnap -g ${fixed} -o ${moving}
+    if [[ ! -f ${outGenAff} ]]; then
+      echo "Registering $(basename ${moving}) to $(basename ${fixed})"
+      
+      if [[ ${TYPE,,} == "mni" ]]; then
+        type_reg="syn"
+      else
+        type_reg="rigid"
+      fi
 
-            if [[ ! -f ${initial} ]]; then
-              echo "Lil' bitch, you didnt do the initial transform.."
-              exit 1
-            fi
+      if [[ ${SGE} -eq 1 ]]; then
+        job="qsub -q ${SGE_QUEUE_LONG} -wd ${DIR_LOGS} -N reg_${sub_id} ${DIR_SCRIPTS}/bin/call_antsregistration"
+      else
+        job="call_antsregistration"
+      fi
 
-          fi
+      ${job} ${fixed} ${moving} ${OUTPUTDIR}/$(basename ${dir})_${ext} ${type_reg}
 
-        else
-          echo "No initial transformation will be used"
+      if [[ ${SGE} -eq 1 ]]; then
+        echo "Waiting to check qstat.."
+        sleep 10
+
+        wait_for_qsub "reg_${sub_id}"
+        if [[ $? -ne 0 ]]; then
+          echo "ERROR in `basename ${0}`: wait_for_qsub exited with non-zero status"
+          exit 1
         fi
       fi
 
-      if [[ ! -f ${outGenAff} ]]; then
+      if [[ $? != 0 ]]; then
+        echo
+        echo "---------------------------------------------------------------------------------------------------"
+        echo "ERROR in `basename ${0}`: call_antsregistration exited with non-zero status"
+        exit 1
+      fi
 
-        echo "Creating warp and matrix files"
-
-        if [[ ${TYPE,,} == "mni" ]]; then
-          type_reg="syn"
+      if [[ ${type_reg} != "rigid" ]]; then
+        if [[ -f ${OUTPUTDIR}/$(basename ${dir})_${ext}1Warp.nii.gz ]]; then
+          mv ${OUTPUTDIR}/$(basename ${dir})_${ext}1Warp.nii.gz ${outWarp}
         else
-          type_reg="rigid"
+          echo "Couldn't find `basename ${outWarp}`"
         fi
 
-        if [[ ${PLACE} == "SGE" ]]; then
-          job="qsub -q ${SGE_QUEUE_LONG} -wd ${DIR_LOGS} -N reg_${sub_id} ${DIR_SCRIPTS}/bin/call_antsregistration"
-          wait_for=1
+        if [[ -f ${OUTPUTDIR}/$(basename ${dir})_${ext}1InverseWarp.nii.gz ]]; then
+          mv ${OUTPUTDIR}/$(basename ${dir})_${ext}1InverseWarp.nii.gz ${outInvWarp}
         else
-          job="call_antsregistration"
-          wait_for=0
+          echo "Couldn't find `basename ${outInvWarp}`"
         fi
-
-        ${job} ${fixed} ${moving} ${OUTPUTDIR}/$(basename ${dir})_${ext} ${type_reg} ${initial}
-
-        if [[ ${wait_for} -eq 1 ]]; then
-          echo "Waiting to check qstat.."
-          sleep 10
-
-          wait_for_qsub "reg_${sub_id}"
-
-          if [[ $? -ne 0 ]]; then
-            echo "ERROR in `basename ${0}`: wait_for_qsub exited with non-zero status"
-            exit 1
-          fi
-        fi
-
-        if [[ $? != 0 ]]; then
-          echo
-          echo "---------------------------------------------------------------------------------------------------"
-          echo "ERROR in `basename ${0}`: call_antsregistration exited with non-zero status"
-          exit 1
-        fi
-
-        if [[ ${type_reg} != "rigid" ]]; then
-          if [[ -f ${OUTPUTDIR}/$(basename ${dir})_${ext}1Warp.nii.gz ]]; then
-            mv ${OUTPUTDIR}/$(basename ${dir})_${ext}1Warp.nii.gz ${outWarp}
-          else
-            echo "Couldn't find `basename ${outWarp}`"
-          fi
-
-          if [[ -f ${OUTPUTDIR}/$(basename ${dir})_${ext}1InverseWarp.nii.gz ]]; then
-            mv ${OUTPUTDIR}/$(basename ${dir})_${ext}1InverseWarp.nii.gz ${outInvWarp}
-          else
-            echo "Couldn't find `basename ${outInvWarp}`"
-          fi
-        fi
-
-      else
-
-        echo "Warp and matrix files are present. Skipping antsRegistration."
-
       fi
 
     else
 
-      if [[ ! -f ${fixed} ]]; then
-        echo "Missing fixed image"
-      elif [[ ! -f ${moving} ]]; then
-        echo "Missing moving image"
-      fi
+      echo "Warp and matrix files are present. Skipping antsRegistration."
 
     fi
 
+  else
+
+    if [[ ! -f ${fixed} ]]; then
+      echo "Missing fixed image"
+    elif [[ ! -f ${moving} ]]; then
+      echo "Missing moving image"
+    fi
+
   fi
-
-  # # Check if we can warp the other outputs of pymp2rage as well.
-  # if [[ `echo ${#ACQ[@]}` == 2 ]]; then
-
-  #   if [[ -f ${outGenAff} ]]; then
-
-  #     if [[ ${TYPE,,} == "${ACQ1,,}" ]]; then
-
-  #       declare -a MPM=(T2starmap T1map R2starmap S0 T2starw T1w)
-
-  #       for i in ${MPM[@]}; do
-
-  #         input=`find "${INPUTDIR}/$(basename ${dir})" -type f \( -name "*${i}*" -and -not -iname "*${ACQ2}*" \) 2>/dev/null`
-  #         output=${OUTPUTDIR}/${base}_acq-${ACQ2^^}-${TYPE^^}_${i}.nii.gz
-
-  #         if [[ -f ${fixed} ]]; then
-  #           if [[ -f ${input} ]]; then
-  #             if [[ ! -f ${output} ]]; then
-
-  #               echo "Warping ${i} to mp2rage"
-  #               call_antsapplytransforms ${fixed} ${input} ${output} ${outGenAff}
-
-  #               # Orient the output according to fixed image
-  #               sFormCode=`fslorient -getsformcode ${output}`
-  #               if [ ${sFormCode} == "0" ]; then
-  #                 fslcpgeom ${fixed} ${output}
-  #               fi
-
-  #             else
-  #               echo "`basename ${output}` already present"
-  #             fi
-  #           else
-  #             echo "Could not find image corresponding to ${i} >> run pymp2rage for these maps"
-  #           fi
-  #         else
-  #           echo "No fixed image found. This shouldn't happen..."
-  #         fi
-
-  #       done
-
-  #     fi
-
-  #   else
-
-  #     echo "Missing warp or matrix files"
-
-  #   fi
-
-  # fi
 
 done
 

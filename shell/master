@@ -19,17 +19,17 @@ job="bash"
 
 # Allocate input arguments to variables
 #
-use_bbr=""    # spinoza_fmriprep
-run_local=""  # spinoza_fmriprep
-UPs=""        # spinoza_qmrimaps
-NO_BIAS=""    # spinoza_qmrimaps
-REMOVE_WF=""  # spinoza_fmriprep
-SGE=""        # spinoza_denoising
-OW=""         # multiple (overwrite mode)
-FREEVIEW=""   # spinoza_bestvertex
-COMB_ONLY=""  # spinoza_extractregions
-GRID=""       # spinoza_fitprfs
-
+use_bbr=""      # spinoza_fmriprep
+run_local=""    # spinoza_fmriprep
+UPs=""          # spinoza_qmrimaps
+NO_BIAS=""      # spinoza_qmrimaps
+REMOVE_WF=""    # spinoza_fmriprep
+SGE=""          # spinoza_denoising
+OW=""           # multiple (overwrite mode)
+FREEVIEW=""     # spinoza_bestvertex
+COMB_ONLY=""    # spinoza_extractregions
+GRID=""         # spinoza_fitprfs
+DRAW_SAG="itk"  # spinzoa_create
 # use long options in bash:
 # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options
 declare -a opts=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid")
@@ -209,7 +209,7 @@ Args:
                     output that fMRIPrep needs to use
   --remove_surf_wf  Remove surface reconstruction workflow folder; refreshes the surfaces used for regi-
                     stration and transformation
-  --sge             maps to '-c' in spinoza_linereconstruction & spinoza_denoising; submits jobs to cluster
+  --sge             maps to '-c' in spinoza_linerecon & spinoza_denoising; submits jobs to cluster
   --grid            maps to '-g' in spinoza_fitprfs; runs gridfit only
   --no_freeview     disable FreeView during vertex selection (spinoza_bestvertex)
   --comb_only       skip nighres, only do combination of segmentations. Works with '-o' flag.   
@@ -230,28 +230,28 @@ Additional options:
 
 Available modules:                                     Script                           Time (pp)
   - 00: Register anat ses-1 to ms ses-1 for planning   (spinoza_lineplanning)
-  - 01: Make new session for subject                   (spinoza_newBIDSsession)
+  - 01: Make new session for subject                   (spinoza_bidssession)
   - 02: Convert raw files to nifti                     (spinoza_scanner2bids)
-  - 03: Reconstruction of line data                    (spinoza_linereconstruction)
+  - 03: Reconstruction of line data                    (spinoza_linerecon)
   - 04: Estimate T1's from mp2rage and memp2rage       (spinoza_qmrimaps)               00:01:30
   - 05: Register T1 from memp2rage to T1 from mp2rage  (spinoza_registration)           00:03:00
   - 06: Register T1 from mp2rage to MNI152             (spinoza_registration)             -
-  - 07: Averaging of (me)mp2rages and other qMRI-maps  (spinoza_averagesanatomies)      00:03:00
+  - 07: Make sinus mask from T1w/T2w ratio             (spinoza_sinusfrommni)           00:03:00
   - 08: Bias correction + SANLM denoising              (spinoza_biassanlm)              00:07:00
   - 09: Brain extract (CAT12 || ANTs || FSL)           (spinoza_brainextraction)        00:10:00
   - 10: Noise level estimation                         (spinoza_noiselevelestimation)   00:00:30
-  - 11: Dura estimation and skull estimations          (spinoza_createduraskullmasks)   00:08:00
-  - 12: Create mask of sagittal sinus                  (spinoza_createsagsinusmask)     00:03:00
+  - 11: Dura estimation and skull estimations          (spinoza_dura)   00:08:00
+  - 12: Create mask of sagittal sinus                  (spinoza_sagittalsinus)          00:03:00
   - 13: Combine all masks and apply to average         (spinoza_masking)                00:02:30
-  - 14: Surface segmentation with FreeSurfer           (spinoza_segmentfreesurfer)      09:30:00
+  - 14: Surface segmentation with FreeSurfer           (spinoza_freesurfer)             09:30:00
   - 15: Preprocessing with fMRIprep                    (spinoza_fmriprep)               14:00:00
   - 16: Data denoising with pybest                     (spinoza_denoising)              00:05:00
   - 17: pRF-fitting with pRFpy                         (spinoza_fitprfs)                00:07:00
   - 18: Determine best vertex with pycortex            (spinoza_bestvertex)             00:01:30
   - 19: Tissue segmentation with FAST                  (spinoza_segmentfast)            00:17:00
-  - 20: Tissue segmentation with MGDM                  (spinoza_segmentmgdm)            00:11:45
+  - 20: Tissue segmentation with MGDM                  (spinoza_mgdm)                   00:11:45
   - 21: Region extraction with nighres                 (spinoza_extractregions)         00:02:00
-  - 22: Cortex reconstruction with nighres             (spinoza_cortexreconstruction)   00:05:30
+  - 22: Cortex reconstruction with nighres             (spinoza_cortexrecon)            00:05:30
   - 23: Layering with nighres/surface_tools            (spinoza_layering)               00:07:30
   - 24: Subcortex parcellation with nighres            (spinoza_segmentsubcortex)       00:10:00
   - 25: Project line to surface                        (spinoza_line2surface)           00:02:00
@@ -269,6 +269,7 @@ Notes:
   - To know which mode we're running, type from your programs directory "call_whichmode"
 
 Edits
+  - 29/06/2022: rename some modules; improve argument parsing
   - 24/06/2022: specify subject/session flags once, add more long flagged arguments; add check for
                 bash version
   - 21/06/2022: assigned some of the KWARGS-argument to long flagged arguments
@@ -301,7 +302,7 @@ Edits
                 have multiple sessions or even none. Default is set to '1', so if you want to pro-
                 cess a different session, specify so with the '-n' flag when calling "master -m X"
   - 20/01/2021: added subject-switch to more modules: 'qmrimaps', 'registration', 'biascorrection',
-                'brainextraction', 'createduraskullmask', 'createsagsinusmask', 'denoising', 'fitprfs',
+                'brainextraction', 'createduraskullmask', 'sagittalsinus', 'denoising', 'fitprfs',
                 'bestvertex', 'segmentfast'
                 changed 'spinoza_estimateunit1' to 'spinoza_qmrimaps'
   - 14/01/2021: added subject-switches to 'masking', 'fmriprep', 'mgdm', 'region' modules, so that
@@ -438,7 +439,7 @@ echo ${FLAG_executeModule} | grep -q ${module}
 if [[ $? -eq 0 ]]; then
 
   if [[ "${@}" == *"-q"* ]]; then
-    ${job} spinoza_newBIDSsession
+    ${job} spinoza_bidssession
     exit 1
   fi
 
@@ -457,7 +458,7 @@ if [[ $? -eq 0 ]]; then
     exit 1
   fi
 
-  ${job} spinoza_newBIDSsession ${SUB} ${SES}\
+  ${job} spinoza_bidssession ${SUB} ${SES}\
 
   echo "[${module}] DONE"
 
@@ -508,7 +509,7 @@ echo ${FLAG_executeModule} | grep -q ${module}
 if [[ $? -eq 0 ]]; then
 
   if [[ "${@}" == *"-q"* ]]; then
-    ${job} spinoza_linereconstruction
+    ${job} spinoza_linerecon
     exit 1
   fi
 
@@ -521,10 +522,10 @@ if [[ $? -eq 0 ]]; then
     KWARGS="-m ${KWARGS}"
   fi    
 
-  ${job} spinoza_linereconstruction ${SUBJECT} ${SESSION} ${KWARGS} ${OW} ${SGE} ${DIR_DATA_HOME} ${DIR_DATA_SOURCE}
+  ${job} spinoza_linerecon ${SUBJECT} ${SESSION} ${KWARGS} ${OW} ${SGE} ${DIR_DATA_HOME} ${DIR_DATA_SOURCE}
 
   if [[ $? -ne 0 ]]; then
-    echo "ERROR in master: spinoza_linereconstruction exited with non-zero status"
+    echo "ERROR in master: spinoza_linerecon exited with non-zero status"
     exit 1
   fi
 
@@ -578,7 +579,7 @@ if [[ $? -eq 0 ]]; then
   echo "[${module}] Register T1 from mp2rage to MNI152 for sagittal sinus mask"
 
   if [[ ${DATA:u} == "AVERAGE" ]]; then
-    ${job} spinoza_registration ${SUBJECT} ${SESSION} ${DIR_DATA_DERIV}/pymp2rage ${DIR_DATA_DERIV}/ants
+    ${job} spinoza_registration ${SUBJECT} ${SESSION} ${SGE} ${DIR_DATA_DERIV}/pymp2rage ${DIR_DATA_DERIV}/ants
 
     if [[ $? -ne 0 ]]; then
       echo "ERROR in master: spinoza_registration exited with non-zero status"
@@ -611,10 +612,12 @@ if [[ $? -eq 0 ]]; then
   echo "[${module}] Register T1 from mp2rage to MNI152 for sagittal sinus mask"
   
   if [[ -d ${DIR_DATA_DERIV}/pymp2rage ]]; then
-    ${job} spinoza_registration ${SUBJECT} ${SESSION} ${DIR_DATA_DERIV}/pymp2rage ${DIR_DATA_DERIV}/ants mni
+    INPUT_DIR=${DIR_DATA_DERIV}/pymp2rage
   else
-    ${job} spinoza_registration ${SUBJECT} ${SESSION} ${DIR_DATA_HOME} ${DIR_DATA_DERIV}/ants mni
+    INPUT_DIR=${DIR_DATA_HOME}
   fi
+
+  ${job} spinoza_registration ${SUBJECT} ${SESSION} ${SGE} ${INPUT_DIR} ${DIR_DATA_DERIV}/ants mni
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_registration exited with non-zero status"
@@ -643,10 +646,12 @@ if [[ $? -eq 0 ]]; then
   echo "[${module}] Create sagittal sinus mask using the MNI-mask & T1w/T2w-ratio"
 
   if [[ -d ${DIR_DATA_DERIV}/pymp2rage ]]; then
-    ${job} spinoza_sinusfrommni ${SUBJECT} ${SESSION} ${OW} ${DIR_DATA_DERIV}/pymp2rage ${DIR_DATA_DERIV}/ants ${DIR_DATA_DERIV}/manual_masks  
+    INPUT_DIR=${DIR_DATA_DERIV}/pymp2rage
   else
-    ${job} spinoza_sinusfrommni ${SUBJECT} ${SESSION} ${OW} ${DIR_DATA_HOME} ${DIR_DATA_DERIV}/ants ${DIR_DATA_DERIV}/manual_masks
+    INPUT_DIR=${DIR_DATA_HOME}
   fi
+
+  ${job} spinoza_sinusfrommni ${SUBJECT} ${SESSION} ${OW} ${INPUT_DIR} ${DIR_DATA_DERIV}/ants ${DIR_DATA_DERIV}/manual_masks
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in `basename ${0}`: spinoza_sinusfrommni exited with non-zero status"
@@ -769,17 +774,17 @@ echo ${FLAG_executeModule} | grep -q ${module}
 if [[ $? -eq 0 ]]; then
 
   if [[ "${@}" == *"-q"* ]]; then
-    ${job} spinoza_createskullduramasks
+    ${job} spinoza_dura
     exit 1
   fi
 
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Use nighres to get skull and dura mask"
 
-  ${job} spinoza_createskullduramasks ${SUBJECT} ${SESSION} ${DIR_DATA_DERIV}/cat12 ${DIR_DATA_HOME} ${DIR_DATA_DERIV}/nighres ${DIR_DATA_DERIV}/manual_masks
+  ${job} spinoza_dura ${SUBJECT} ${SESSION} ${DIR_DATA_DERIV}/cat12 ${DIR_DATA_HOME} ${DIR_DATA_DERIV}/nighres ${DIR_DATA_DERIV}/manual_masks
 
   if [[ $? -ne 0 ]]; then
-    echo "ERROR in master: spinoza_createskullduramasks exited with non-zero status"
+    echo "ERROR in master: spinoza_dura exited with non-zero status"
     exit 1
   fi
 
@@ -797,7 +802,7 @@ echo ${FLAG_executeModule} | grep -q ${module}
 if [[ $? -eq 0 ]]; then
 
   if [[ "${@}" == *"-q"* ]]; then
-    ${job} spinoza_createsagsinusmask
+    ${job} spinoza_sagittalsinus
     exit 1
   fi
 
@@ -808,10 +813,10 @@ if [[ $? -eq 0 ]]; then
   # DATA = MEMP2RAGE  > arg1 = DIR_DATA_DERIV/pymp2rage
   # DATA = AVERAGE    > arg1 = DIR_DATA_DERIV/ants
 
-  ${job} spinoza_createsagsinusmask ${SUBJECT} ${SESSION} ${DIR_DATA_DERIV}/cat12 ${DIR_DATA_DERIV}/manual_masks itk
+  ${job} spinoza_sagittalsinus ${SUBJECT} ${SESSION} ${DIR_DATA_DERIV}/cat12 ${DIR_DATA_DERIV}/manual_masks itk
 
   if [[ $? -ne 0 ]]; then
-    echo "ERROR in master: spinoza_createsagsinusmask exited with non-zero status"
+    echo "ERROR in master: spinoza_sagittalsinus exited with non-zero status"
     exit 1
   fi
 
@@ -836,7 +841,7 @@ if [[ $? -eq 0 ]]; then
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Combine all masks and apply to average"
 
-  ${job} spinoza_masking ${SUBJECT} ${SESSION} ${OW} ${DIR_DATA_DERIV}/cat12 ${DIR_DATA_DERIV}/masked_${space,,} ${DIR_DATA_DERIV}/manual_masks ${DIR_DATA_DERIV}/skullstripped
+  ${job} spinoza_masking ${SUBJECT} ${SESSION} ${OW} ${DIR_DATA_DERIV}/cat12 ${DIR_DATA_DERIV}/masked_${DATA,,} ${DIR_DATA_DERIV}/manual_masks ${DIR_DATA_DERIV}/skullstripped
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_masking exited with non-zero status"
@@ -857,7 +862,7 @@ echo ${FLAG_executeModule} | grep -q ${module}
 if [[ $? -eq 0 ]]; then
 
   if [[ "${@}" == *"-q"* ]]; then
-    ${job} spinoza_segmentfreesurfer
+    ${job} spinoza_freesurfer
     exit 1
   fi
 
@@ -874,10 +879,10 @@ if [[ $? -eq 0 ]]; then
     INPUT_DIR=${DIR_DATA_HOME}
   fi
 
-  ${job} spinoza_segmentfreesurfer ${SUBJECT} ${SESSION} ${INPUT_DIR} all ${DIR_DATA_HOME}
+  ${job} spinoza_freesurfer ${SUBJECT} ${SESSION} ${INPUT_DIR} all ${DIR_DATA_HOME}
 
   if [[ $? -ne 0 ]]; then
-    echo "ERROR in master: spinoza_segmentfreesurfer exited with non-zero status"
+    echo "ERROR in master: spinoza_freesurfer exited with non-zero status"
     exit 1
   fi
 
@@ -1081,7 +1086,7 @@ echo ${FLAG_executeModule} | grep -q ${module}
 if [[ $? -eq 0 ]]; then
 
   if [[ "${@}" == *"-q"* ]]; then
-    ${job} spinoza_segmentmgdm
+    ${job} spinoza_mgdm
     exit 1
   fi
 
@@ -1089,13 +1094,13 @@ if [[ $? -eq 0 ]]; then
   echo "[${module}] MGDM segmentation with nighres"
 
   if [[ ${PROJECT} == "URIS-MDD" ]]; then
-    ${job} spinoza_segmentmgdm ${SUBJECT} ${SESSION} ${OW} -t "gdh" ${DIR_DATA_DERIV}/skullstripped ${DIR_DATA_DERIV}/nighres ${DIR_DATA_DERIV}/manual_masks
+    ${job} spinoza_mgdm ${SUBJECT} ${SESSION} ${OW} -t "gdh" ${DIR_DATA_DERIV}/skullstripped ${DIR_DATA_DERIV}/nighres ${DIR_DATA_DERIV}/manual_masks
   else
-    spinoza_segmentmgdm ${SUBJECT} ${SESSION} ${OW} ${DIR_DATA_DERIV}/skullstripped ${DIR_DATA_DERIV}/nighres ${DIR_DATA_DERIV}/manual_masks
+    spinoza_mgdm ${SUBJECT} ${SESSION} ${OW} ${DIR_DATA_DERIV}/skullstripped ${DIR_DATA_DERIV}/nighres ${DIR_DATA_DERIV}/manual_masks
   fi
 
   if [[ $? -ne 0 ]]; then
-    echo "ERROR in master: spinoza_segmentmgdm exited with non-zero status"
+    echo "ERROR in master: spinoza_mgdm exited with non-zero status"
     exit 1
   fi
 
@@ -1147,17 +1152,17 @@ echo ${FLAG_executeModule} | grep -q ${module}
 if [[ $? -eq 0 ]]; then
 
   if [[ "${@}" == *"-q"* ]]; then
-    ${job} spinoza_cortexreconstruction
+    ${job} spinoza_cortexrecon
     exit 1
   fi
 
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Cortex reconstruction with nighres"
 
-  ${job} spinoza_cortexreconstruction ${SUBJECT} ${SESSION} ${OW} ${DIR_DATA_DERIV}/manual_masks ${DIR_DATA_DERIV}/nighres cerebellum
+  ${job} spinoza_cortexrecon ${SUBJECT} ${SESSION} ${OW} ${DIR_DATA_DERIV}/manual_masks ${DIR_DATA_DERIV}/nighres cerebellum
 
   if [[ $? -ne 0 ]]; then
-    echo "ERROR in master: spinoza_cortexreconstruction exited with non-zero status"
+    echo "ERROR in master: spinoza_cortexrecon exited with non-zero status"
     exit 1
   fi
 

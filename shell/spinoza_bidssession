@@ -10,16 +10,16 @@ function Usage {
     cat <<USAGE
 
 ---------------------------------------------------------------------------------------------------
-spinoza_newBIDSsession
+spinoza_bidssession
 
 create BIDS structure for new session
 
 Usage:
-  spinoza_newBIDSsession.sh <SUBJECT NR> <SESSION NR>
+  spinoza_bidssession.sh <SUBJECT NR> <SESSION NR>
 
 Example:
-  ./spinoza_newBIDSsession.sh 001 1 (subject ID = 001 and session ID = 1)
-  ./spinoza_newBIDSsession.sh       (shows this help text)
+  ./spinoza_bidssession.sh 001 1 (subject ID = 001 and session ID = 1)
+  ./spinoza_bidssession.sh       (shows this help text)
 
 Notes:
   The project name should be specified in the setup.sh file in the variable PROJECT

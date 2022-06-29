@@ -6,13 +6,13 @@ function Usage {
     cat <<USAGE
 
 ---------------------------------------------------------------------------------------------------
-spinoza_segmentsubcortex
+spinoza_subcortex
 
 Subcortex segmentation using Nighres' MASSP-algorithm. Calls on call_nighresmassp; see that file
 for more information on the required inputs.
 
 Usage:
-  spinoza_segmentsubcortex <project root dir> <prob seg dir> <region> <overwrite>
+  spinoza_subcortex <project root dir> <prob seg dir> <region> <overwrite>
 
 Arguments:
   <-s sub>    digit subject number following '${PREFIX}'
@@ -24,8 +24,8 @@ Arguments:
   <output>    root output directory (<subject>/[<ses->] will be appended!)
 
 Example:
-  spinoza_segmentsubcortex $DIR_DATA_HOME $DIR_DATA_DERIV/nighres
-  spinoza_segmentsubcortex -s ${PREFIX}001 -n 1 $DIR_DATA_HOME $DIR_DATA_DERIV/nighres
+  spinoza_subcortex $DIR_DATA_HOME $DIR_DATA_DERIV/nighres
+  spinoza_subcortex -s ${PREFIX}001 -n 1 $DIR_DATA_HOME $DIR_DATA_DERIV/nighres
 
 ---------------------------------------------------------------------------------------------------
 

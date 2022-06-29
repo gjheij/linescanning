@@ -143,7 +143,7 @@ for dir in ${search}; do
 
     if [[ ! -d ${inputdir} ]]; then
 
-      echo "Could not find input directory containing PARREC-files.."
+      echo "`basename ${dir}`: \"${inputdir}\" does not exist"
       continue
 
     else
@@ -156,6 +156,7 @@ for dir in ${search}; do
       echo "Processing session ${SES_NR} - anatomical and PRF-session; using call_dcm2niix.py"
       call_pydcm2niix ${inputdir} True False 2019
 
+      echo "Reorienting images to LPI (conform fMRIPrep)"
       # for convenience, reorient all files to RAS+ (used by nibabel & fMRIprep)
       files=`find ${bidsdir} -type f -name "*.nii.gz"`
       for f in ${files[@]}; do

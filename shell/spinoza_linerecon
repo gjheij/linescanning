@@ -10,14 +10,14 @@ function Usage {
     cat <<USAGE
 
 ---------------------------------------------------------------------------------------------------
-spinoza_linereconstruction
+spinoza_linerecon
 
 wrapper for call_linerecon that performs the reconstruction of the line data. Uses MRecon, so we can
 only run it on the spinoza cluster. It calls upon call_linerecon, which internally uses a template
 for the reconstruction with MRecon based on scripts provided by Luisa Raimondo.
 
 Usage:
-  spinoza_linereconstruction <project root directory> <sourcedata>
+  spinoza_linerecon <project root directory> <sourcedata>
 
 Arguments:
   -s <subject>        subject ID (e.g., 01, 001, or 1)
@@ -29,19 +29,19 @@ Arguments:
   <sourcedata>        base directory containing the raw data for reconstruction
 
 Eample:
-  spinoza_linereconstruction ${DIR_DATA_HOME} ${DIR_DATA_SOURCE}
+  spinoza_linerecon ${DIR_DATA_HOME} ${DIR_DATA_SOURCE}
 
 Notes:
   relies on matlab scripts stored in '/data1/projects/MicroFunc/common'. As it relies on MRecon,
   we can only run this on the spinoza server
 
-  run with master:  "master -m 03 -s 003 -n 4 -x 5" (sub-003, ses-4, multi-echo (5) acquisition)
-                    "master -m 03 -s 003 -n 4"      (sub-003, ses-4, single-echo acquisition)
-                    "master -m 03 -s 003 -n 4 -x 5 -j" (submit to cluster)
-                    "master -m 03 -s 003 -n 4 -x 5 -o" (overwrite existing files)
-                    "master -m 03 -s 003 -n 4 -x 5 -o -j" (overwrite and submit)
+run with master:  "master -m 03 -s 003 -n 4 -e 5" (sub-003, ses-4, multi-echo (5) acquisition)
+                  "master -m 03 -s 003 -n 4"      (sub-003, ses-4, single-echo acquisition)
+                  "master -m 03 --sge"            (submit to cluster)
+                  "master -m 03 -o"               (overwrite existing files)
+                  "master -m 03 -o --sge"         (overwrite and submit)
 
-  Runs by default NORDIC denoising!
+Runs by default NORDIC denoising!
 ---------------------------------------------------------------------------------------------------
 
 USAGE

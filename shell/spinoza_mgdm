@@ -10,7 +10,7 @@ function Usage {
     cat <<USAGE
 
 ---------------------------------------------------------------------------------------------------
-spinoza_segmentmgdm
+spinoza_mgdm
 
 Tissue segmentation using nighres' MGDM. It assumes that you've run module from this pipeline before,
 so that you're directory structure is like derivatives/<process>/${PREFIX}xxx/ses-x. For this script, you
@@ -34,12 +34,12 @@ Arguments:
     <overwrite>       enable ('y') or disable ('n') overwrite mode (deletes existing files)
 
 Usage:
-  spinoza_segmentmgdm <-s sub> <-n ses> <type> <skullstripped> <mgdm> <masks> <overwrite>
+  spinoza_mgdm <-s sub> <-n ses> <type> <skullstripped> <mgdm> <masks> <overwrite>
 
 Example:
-  spinoza_segmentmgdm $SKULLSTRIP $NIGHRES/mgdm $MASKS n
-  spinoza_segmentmgdm -s 001 -n 1 $SKULLSTRIP $NIGHRES/mgdm $MASKS n
-  spinoza_segmentmgdm -s 001 -n 1 -t gdh $SKULLSTRIP $NIGHRES/mgdm $MASKS n
+  spinoza_mgdm $SKULLSTRIP $NIGHRES/mgdm $MASKS n
+  spinoza_mgdm -s 001 -n 1 $SKULLSTRIP $NIGHRES/mgdm $MASKS n
+  spinoza_mgdm -s 001 -n 1 -t gdh $SKULLSTRIP $NIGHRES/mgdm $MASKS n
 
 Notes:
   - Has the '-s' and '-n' switches to specify a particular subject and session if present

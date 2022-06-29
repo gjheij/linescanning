@@ -10,19 +10,18 @@ function Usage {
     cat <<USAGE
 
 ---------------------------------------------------------------------------------------------------
-spinoza_createskullduramasks
+spinoza_dura
 
 estimate the location of the skull and dura using nighres. You are to specify the path to the input
 T1w-images (e.g., pymp2rage), the input INV2 image (e.g., the bias field corrected INV2 in the ANTs
 folder, the nighres output folder, and the folder to store the masks.
 
 Usage:
-  spinoza_createskullduramasks <-s sub> <-n ses> <input anat> <input inv2> <nighres output>
-                               <mask output>
+  spinoza_dura <-s sub> <-n ses> <input anat> <input inv2> <nighres output> <mask output>
 
 Example:
-  spinoza_createskullduramasks T1wdir INV2dir nighresdir maskdir
-  spinoza_createskullduramasks -s 001 -n 1 T1wdir INV2dir nighresdir maskdir
+  spinoza_dura T1wdir INV2dir nighresdir maskdir
+  spinoza_dura -s 001 -n 1 T1wdir INV2dir nighresdir maskdir
 
 Notes:
   - Has the '-s' and '-n' switches to specify a particular subject and session if present

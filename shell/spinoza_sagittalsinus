@@ -10,7 +10,7 @@ function Usage {
     cat <<USAGE
 
 ---------------------------------------------------------------------------------------------------
-spinoza_createsagsinusmask
+spinoza_sagittalsinus
 
 This script creates the sagittal sinus mask based on the R2*-map from pymp2rage. It requires the user
 to refine the mask a bit, because the R2*-map is imperfect especially around the putamen and other
@@ -27,12 +27,12 @@ If you have MEMP2RAGE-data, then the script will look for the R2*-file in the sp
 If this is somewhere else, just copy it into that directory.
 
 Usage:
-  spinoza_createsagsinusmask <-s sub> <-n ses> <dir anat> <dir masks> <itk | fv>
+  spinoza_sagittalsinus <-s sub> <-n ses> <dir anat> <dir masks> <itk | fv>
 
 Example:
-  spinoza_createsagsinusmask DIR_ANAT DIR_MASKS SOFTWARE
-  spinoza_createsagsinusmask $DIR_DATA_DERIV/pymp2rage $DIR_DATA_DERIV/manual_masks itk
-  spinoza_createsagsinusmask -s 001 -n 1 $DIR_DATA_DERIV/pymp2rage $DIR_DATA_DERIV/manual_masks itk
+  spinoza_sagittalsinus DIR_ANAT DIR_MASKS SOFTWARE
+  spinoza_sagittalsinus $DIR_DATA_DERIV/pymp2rage $DIR_DATA_DERIV/manual_masks itk
+  spinoza_sagittalsinus -s 001 -n 1 $DIR_DATA_DERIV/pymp2rage $DIR_DATA_DERIV/manual_masks itk
 
 Notes:
   - Has the '-s' and '-n' switches to specify a particular subject and session if present
@@ -46,12 +46,12 @@ USAGE
 # Check for subject & session flags
 while getopts s:n: argument
 do
-    case ${argument} in
-      s)  sub=${OPTARG}
-            ;;
-      n)  ses=${OPTARG}
-            ;;
-    esac
+  case ${argument} in
+    s)  sub=${OPTARG}
+          ;;
+    n)  ses=${OPTARG}
+          ;;
+  esac
 done
 
 if [[ $# -lt 3 ]] ; then
@@ -188,40 +188,31 @@ for dir in ${search}; do
 
         echo "Creating `basename ${r2star_mask} `"
 
-        if [[ `hostname` != *"login-01"* ]]; then
-
-          # install itksnap from here: http://www.itksnap.org/pmwiki/pmwiki.php?n=Documentation.TutorialSectionInstallation
-          if [[ ${SOFTWARE} == "itk" ]] || [[ -z ${SOFTWARE} ]]; then
-            call_checkfunction itksnap
-            if [[ $? -eq 0 ]]; then
-              echo "Starting ITKsnap. Press add new segmentation and draw the sagittal sinus, save it as:"
-              echo "\"${r2star_mask}\" in the \"$(dirname ${MASKS})\" directory"
-              itksnap -g ${t1w} 2>/dev/null
-            else
-              echo "call_checkfunction itksnap exited with non-zero status. Make sure you have ITKsnap installed!"
-              echo "see: http://www.itksnap.org/pmwiki/pmwiki.php?n=Documentation.TutorialSectionInstallation"
-              exit 1
-            fi
-          elif [[ ${SOFTWARE} == "fv" ]]; then
-            echo "Starting FreeView. Press add new segmentation and draw the sagittal sinus, save it as:"
-            freeview -v ${t1w} 2>/dev/null
-          elif [[ ${SOFTWARE} == "fsl" ]]; then
-            echo "Starting FSLeyes. Press add new segmentation and draw the sagittal sinus, save it as:"
-            echo "\"${r2star_mask}\" in the \"manual_masks\" directory"
-            fsleyes --scene ortho ${t1w} 2>/dev/null
+        # install itksnap from here: http://www.itksnap.org/pmwiki/pmwiki.php?n=Documentation.TutorialSectionInstallation
+        if [[ ${SOFTWARE} == "itk" ]] || [[ -z ${SOFTWARE} ]]; then
+          call_checkfunction itksnap
+          if [[ $? -eq 0 ]]; then
+            echo "Starting ITKsnap. Press add new segmentation and draw the sagittal sinus, save it as:"
+            echo "\"${r2star_mask}\" in the \"$(dirname ${MASKS})\" directory"
+            itksnap -g ${t1w} 2>/dev/null
           else
-            echo "Unknown option specified: ${SOFTWARE}. I can deal with:"
-            echo " \"itk\": ITK-Snap"
-            echo " \"fv\":  FreeView"
-            echo " \"fsl\": FSLeyes"
-            continue
+            echo "call_checkfunction itksnap exited with non-zero status. Make sure you have ITKsnap installed!"
+            echo "see: http://www.itksnap.org/pmwiki/pmwiki.php?n=Documentation.TutorialSectionInstallation"
+            exit 1
           fi
-
+        elif [[ ${SOFTWARE} == "fv" ]]; then
+          echo "Starting FreeView. Press add new segmentation and draw the sagittal sinus, save it as:"
+          freeview -v ${t1w} 2>/dev/null
+        elif [[ ${SOFTWARE} == "fsl" ]]; then
+          echo "Starting FSLeyes. Press add new segmentation and draw the sagittal sinus, save it as:"
+          echo "\"${r2star_mask}\" in the \"manual_masks\" directory"
+          fsleyes --scene ortho ${t1w} 2>/dev/null
         else
-
-          echo "Can't run visual inspection in this node. Please edit files yourself on e.g. jupiter/minerva"
-          exit 1
-
+          echo "Unknown option specified: ${SOFTWARE}. I can deal with:"
+          echo " \"itk\": ITK-Snap"
+          echo " \"fv\":  FreeView"
+          echo " \"fsl\": FSLeyes"
+          continue
         fi
 
       else

@@ -6,14 +6,14 @@ function Usage {
     cat <<USAGE
 
 ---------------------------------------------------------------------------------------------------
-spinoza_cortexreconstruction
+spinoza_cortexrecon
 
 cortex reconstruction using nighres. Calls on call_nighrescruise; see that file for more information
 on the required inputs. This script is by default in overwrite mode, meaning that the files created
 earlier will be overwritten when re-ran. To disable, run this module as master -m <module> -o n
 
 Usage:
-  spinoza_cortexreconstruction <project root dir> <prob seg dir> <region> <overwrite>
+  spinoza_cortexrecon <project root dir> <prob seg dir> <region> <overwrite>
 
 Arguments:
   <-s sub>    digit subject number following '${PREFIX}'
@@ -25,8 +25,8 @@ Arguments:
   <region>    region you wish to reconstruct. Should be same as spinoza_extractregions
 
 Example:
-  spinoza_cortexreconstruction $PROBSEGS $CRUISE cerebrum
-  spinoza_cortexreconstruction -s ${PREFIX}001 -n 1 -o $PROBSEGS $CRUISE cerebellum
+  spinoza_cortexrecon $PROBSEGS $CRUISE cerebrum
+  spinoza_cortexrecon -s ${PREFIX}001 -n 1 -o $PROBSEGS $CRUISE cerebellum
 
 Notes:
   - Has overwrite mode to run the pipeline like G. de Hollander's one
