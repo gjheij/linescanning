@@ -123,7 +123,7 @@ for dir in ${search}; do
     txt="Registering ${ACQ2,,}-T1w to ${ACQ1,,}"
     suffix=MP2RAGE
     output=${OUTPUTDIR}/${base}_acq-${ACQ2^^}_space-${ACQ1^^}_T1w.nii.gz
-    ext="from-MEMP2RAGE_to-${MP2RAGE}_desc-"
+    ext="from-${ACQ2,,}_to-${ACQ1,,}_desc-"
     fixed=`find "${INPUTDIR}" -type f \( -iname "*${ACQ1^^}*" -and -not -iname "*${ACQ2^^}*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
     moving=`find "${INPUTDIR}" -type f \( -iname "*${ACQ1^^}*" -and -name "*_T1w.nii.gz" \) 2>/dev/null`
   elif [[ ${TYPE,,} == "mni" ]]; then
