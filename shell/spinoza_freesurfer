@@ -110,21 +110,21 @@ for dir in ${search}; do
     base="$(basename ${dir})_ses-${nr}"
   fi
 
-  if [[ ! -z ${T2} ]]; then
-    T2_DIR=${T2}/${base_dir}/anat
-    # LOOK FOR T2-/FLAIR WEIGHTED IMAGE
-    if [[ -d ${T2_DIR} ]]; then
-      input_t2w=`find "${T2_DIR}" -type f \( -name "*FLAIR*" -and -name "*.nii.gz" -or -name "*T2w*" -and -name "*.nii.gz" \) 2>/dev/null`
-    fi
+  # check number of T1w-files
+  T1_DIR=${T1}/${base_dir}
+  input_t1w=`find "${T1_DIR}" -type f \( -name "*T1w*" -and -name "*${DATA^^}*" -and -name "*.nii.gz" \) 2>/dev/null`
+
+  ct=0; for ii in ${input_t1w[@]}; do ((ct++)); done
+  if [ ${ct} -gt 1 ]; then
+    echo 
+    echo "---------------------------------------------------------------------------------------------------"
+    echo "ERROR in `basename ${0}`: Found T1w-multiple files (${ct})"
+    for ii in ${input_t1w[@]}; do echo " ${ii}"; done
+    echo "Rename or delete one and rerun"
+    echo 
+    exit 1
   fi
 
-  if [[ $(basename ${T1}) == *"masked_"* ]] || [[ ${T1} == ${DIR_DATA_HOME} ]]; then
-    T1_DIR=${T1}/${base_dir}/anat
-  else
-    T1_DIR=${T1}/${base_dir}
-  fi
-  
-  input_t1w=`find "${T1_DIR}" -type f \( -name "*T1w*" -and -name "*${DATA^^}*" -and -name "*.nii.gz" \) 2>/dev/null`
   if [[ ! -z ${input_t1w} ]]; then
 
     if [[ ! -d ${SUBJECTS_DIR}/$(basename ${dir}) ]]; then
@@ -133,12 +133,42 @@ for dir in ${search}; do
       echo "**************************************** Processing `basename ${dir}` ***************************************"
       echo "Running FreeSurfer on `basename ${input_t1w}` with autorecon \"${STAGE}\""
 
-      if [[ ! -z ${input_t2w} ]]; then
-        # also got T2w
-        call_freesurfer -s $(basename ${dir}) -t ${input_t1w} -r ${STAGE} -p ${input_t2w} -v "7.2.0"
+      # LOOK FOR T2-/FLAIR WEIGHTED IMAGE
+      if [ ! -z ${T2} ]; then
+        if [[ -d ${T2}/${base_dir} ]]; then
+
+          input_t2w=`find "${T2}/${base_dir}" -type f \( -name "*FLAIR*" -and -name "*.nii.gz" -or -name "*T2w*" -and -name "*.nii.gz" \) 2>/dev/null`
+          if [[ ! -z ${input_t2w} ]]; then
+
+            # throw error if multiple files are found
+            ct=0; for ii in ${input_t2w[@]}; do ((ct++)); done
+            if [ ${ct} -gt 1 ]; then
+              echo 
+              echo "---------------------------------------------------------------------------------------------------"
+              echo "ERROR in `basename ${0}`: Found T2w-multiple files (${ct})"
+              for ii in ${input_t2w[@]}; do echo " ${ii}"; done
+              echo "Rename or delete one and rerun"
+              echo 
+              exit 1
+            elif [ ${ct} -eq 1 ]; then
+              T2_flag="-p ${input_t2w}"
+            else
+              echo "ERROR in `basename ${0}`: not sure what went wrong.."
+              exit 1
+            fi
+
+          else
+            T2_flag=""
+          fi
+        else
+          echo "ERROR in `basename ${0}`: T2-path was given, but \"${T2}/${base_dir}\" does not exist"
+        fi
       else
-        call_freesurfer -s $(basename ${dir}) -t ${input_t1w} -r ${STAGE} -v "7.2.0"
+        T2_flag=""
       fi
+
+      # cmd
+      call_freesurfer -s $(basename ${dir}) -t ${input_t1w} -r ${STAGE} ${T2_flag} -v \"7.2.0\"
 
     else
       echo "`basename ${dir}`: FreeSurfer already ran"
