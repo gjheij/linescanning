@@ -23,7 +23,7 @@ from nilearn import image
 import nibabel as nb
 import platform
 from bids import BIDSLayout
-from linescanning.utils import get_bids_file, remove_files
+from linescanning.utils import get_file_from_substring, remove_files
 warnings.filterwarnings("ignore")
 opj = os.path.join
 
@@ -127,7 +127,7 @@ Notes:
     if inputdir != None:
         # we got an input directory; look for files with "acq-MP2RAGE"
         bids_fn     = BIDSLayout(opj(inputdir), validate=False).get(datatype='anat', extension=['nii.gz'], return_type='file')
-        select_fn   = get_bids_file(bids_fn, ['acq-MP2RAGE', 'inv'])
+        select_fn   = get_file_from_substring(['acq-MP2RAGE', 'inv'], bids_fn)
     else:
         select_fn = []
         # we did not get an input directory; check if separate files have been specified

@@ -21,7 +21,7 @@ from bids import BIDSLayout
 import nibabel as nb
 import numpy as np
 import platform
-from linescanning.utils import get_bids_file
+from linescanning.utils import get_file_from_substring
 warnings.filterwarnings("ignore")
 opj = os.path.join
 
@@ -115,7 +115,7 @@ Notes:
 
     # Define paths to images
     bids_fn     = BIDSLayout(opj(inputdir), validate=False).get(extension=['nii.gz'], return_type='file')
-    select_fn   = get_bids_file(bids_fn, ['inv'])
+    select_fn   = get_file_from_substring('inv', bids_fn)
     select_fn.sort()
 
     if len(select_fn) != 10:
