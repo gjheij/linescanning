@@ -274,6 +274,24 @@ class NideconvFitter():
             # get r2
             self.rsq_ = self.model.get_rsq()
 
+            # also get the predictions
+            self.fitters = self.model._get_response_fitters()
+
+            # loop through runs
+            self.predictions = []
+            for run in range(self.fitters.shape[0]):
+                preds = self.fitters.iloc[run].predict_from_design_matrix()
+                
+                # overwrite colums
+                preds.columns = self.tc_condition.columns
+
+                # append
+                self.predictions.append(preds)
+
+            # concatenate and index
+            self.predictions = pd.concat(self.predictions)
+            self.predictions.index = self.func.index
+
         elif self.fit_type == "ridge":
             # here we need to stitch stuff back together
             if not hasattr(self, 'ridge_models'):
