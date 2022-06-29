@@ -29,7 +29,8 @@ OW=""           # multiple (overwrite mode)
 FREEVIEW=""     # spinoza_bestvertex
 COMB_ONLY=""    # spinoza_extractregions
 GRID=""         # spinoza_fitprfs
-DRAW_SAG="itk"  # spinzoa_create
+DRAW_SAG="itk"  # spinzoa_sagittalsinus
+
 # use long options in bash:
 # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options
 declare -a opts=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid")
@@ -67,7 +68,16 @@ do
           ;;            
         grid)
           GRID="-g"
-          ;;                                  
+          ;;        
+        itk)
+          DRAW_SAG="itk"
+          ;;        
+        fsl)
+          DRAW_SAG="fsl"
+          ;;           
+        freeview)
+          DRAW_SAG="fv"
+          ;;                                              
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}, possible options are:"
@@ -212,7 +222,10 @@ Args:
   --sge             maps to '-c' in spinoza_linerecon & spinoza_denoising; submits jobs to cluster
   --grid            maps to '-g' in spinoza_fitprfs; runs gridfit only
   --no_freeview     disable FreeView during vertex selection (spinoza_bestvertex)
-  --comb_only       skip nighres, only do combination of segmentations. Works with '-o' flag.   
+  --comb_only       skip nighres, only do combination of segmentations. Works with '-o' flag. 
+  --itk             use ITK-Snap to draw sinus mask (spinoza_sagittalsinus) [default]
+  --fv              use FreeView to draw sinus mask (spinoza_sagittalsinus) 
+  --fsl             use FSLeyes to draw sinus mask (spinoza_sagittalsinus) 
 
 Usage:
   master -m <MODULES TO RUN>
@@ -813,7 +826,7 @@ if [[ $? -eq 0 ]]; then
   # DATA = MEMP2RAGE  > arg1 = DIR_DATA_DERIV/pymp2rage
   # DATA = AVERAGE    > arg1 = DIR_DATA_DERIV/ants
 
-  ${job} spinoza_sagittalsinus ${SUBJECT} ${SESSION} ${DIR_DATA_DERIV}/cat12 ${DIR_DATA_DERIV}/manual_masks itk
+  ${job} spinoza_sagittalsinus ${SUBJECT} ${SESSION} ${DIR_DATA_DERIV}/cat12 ${DIR_DATA_DERIV}/manual_masks ${DRAW_SAG}
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_sagittalsinus exited with non-zero status"

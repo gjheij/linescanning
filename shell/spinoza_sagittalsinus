@@ -131,16 +131,14 @@ for dir in ${search}; do
         if [[ ! -z ${t1w}  ]]; then
 
           # install itksnap from here: http://www.itksnap.org/pmwiki/pmwiki.php?n=Documentation.TutorialSectionInstallation
-          if [[ `hostname` != *"login-01"* ]]; then
-            call_checkfunction itksnap
-            if [[ $? -eq 0 ]]; then
-              echo "Starting ITKsnap. Fill in the sagittal sinus where needed and save the image"
-              itksnap -g ${t1w} -s ${r2star_mask} 2>/dev/null
-            else
-              echo "call_checkfunction itksnap exited with non-zero status. Make sure you have ITKsnap installed!"
-              echo "see: http://www.itksnap.org/pmwiki/pmwiki.php?n=Documentation.TutorialSectionInstallation"
-              exit 1
-            fi
+          call_checkfunction itksnap
+          if [[ $? -eq 0 ]]; then
+            echo "Starting ITKsnap. Fill in the sagittal sinus where needed and save the image"
+            itksnap -g ${t1w} -s ${r2star_mask} 2>/dev/null
+          else
+            echo "call_checkfunction itksnap exited with non-zero status. Make sure you have ITKsnap installed!"
+            echo "see: http://www.itksnap.org/pmwiki/pmwiki.php?n=Documentation.TutorialSectionInstallation"
+            exit 1
           fi
 
         else
