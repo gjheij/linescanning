@@ -153,7 +153,7 @@ Notes:
                 dura_mask = None
 
     try:
-        t1w_mask   = all_masks['cat_mask']
+        t1w_mask = all_masks['cat_mask']
     except:
         try:
             t1w_mask = all_masks['gdh_mask']
@@ -166,19 +166,17 @@ Notes:
         inv2_mask = None
 
     try:
-        outside   = all_masks['-outside']
+        outside = all_masks['-outside']
     except:
-        outside   = all_masks['sinus']
+        try:
+            outside = all_masks['sinus']
+        except:
+            raise ValueError("Could not find sinus mask")
 
     try:
-        inside   = all_masks['inside']
+        inside = all_masks['inside']
     except:
         inside = None
-
-    # try:
-    #     cat12   = all_masks['mask_T1wblab']
-    # except:
-    #     cat12 = None    
 
     print("Loading in masks")
     for i in [dura_mask, t1w_mask, outside, inside, inv2_mask]:
