@@ -39,12 +39,12 @@ fi
 # Check for subject & session flags
 while getopts s:n: argument
 do
-    case ${argument} in
-      s)  sub=${OPTARG}
-            ;;
-      n)  ses=${OPTARG}
-            ;;
-    esac
+  case ${argument} in
+    s)  sub=${OPTARG}
+          ;;
+    n)  ses=${OPTARG}
+          ;;
+  esac
 done
 
 if [[ $# -lt 2 ]] ; then
@@ -54,7 +54,6 @@ fi
 
 INPUT=${@:$OPTIND:1}
 OUTPUT=${@:$OPTIND+1:1}
-SESSION=${@:$OPTIND+2:1}
 
 if [[ -z ${sub} ]]; then
   # loop through subjects
@@ -93,14 +92,13 @@ for dir in ${search}; do
   echo
   echo "**************************************** Processing `basename ${dir}` ***************************************"
 
-  if [[ ! -z ${SESSION} ]]; then
-    outdir=${OUTPUT}/$(basename ${dir})/ses-${SESSION}
-    indir=${INPUT}/$(basename ${dir})/ses-${SESSION}
-    base="$(basename ${dir})_ses-${SESSION}"
+  if [[ ! -z ${ses} ]]; then
+    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
+    base_path=$(basename ${dir})/ses-${nr}
+    base=$(basename ${dir})_ses-${nr}
   else
-    outdir=${OUTPUT}/$(basename ${dir})
-    indir=${INPUT}/$(basename ${dir})
-    base="$(basename ${dir})"
+    base_path=$(basename ${dir})
+    base=$(basename ${dir})
   fi
 
   if [[ ! -d ${outdir} ]]; then
