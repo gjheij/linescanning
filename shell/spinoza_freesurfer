@@ -118,7 +118,7 @@ for dir in ${search}; do
   if [ ${ct} -gt 1 ]; then
     echo 
     echo "---------------------------------------------------------------------------------------------------"
-    echo "ERROR in `basename ${0}`: Found T1w-multiple files (${ct})"
+    echo "ERROR in `basename ${0}`: Found multiple T1w-files (${ct})"
     for ii in ${input_t1w[@]}; do echo " ${ii}"; done
     echo "Rename or delete one and rerun"
     echo 
@@ -145,7 +145,7 @@ for dir in ${search}; do
             if [ ${ct} -gt 1 ]; then
               echo 
               echo "---------------------------------------------------------------------------------------------------"
-              echo "ERROR in `basename ${0}`: Found T2w-multiple files (${ct})"
+              echo "ERROR in `basename ${0}`: Found multiple T2w-files (${ct})"
               for ii in ${input_t2w[@]}; do echo " ${ii}"; done
               echo "Rename or delete one and rerun"
               echo 
