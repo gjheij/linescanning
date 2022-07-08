@@ -115,7 +115,7 @@ for dir in ${search}; do
 
     fn_ratio=${pn_anat}/${base}_acq-${DATA^^}_desc-ratio.nii.gz
     fn_nuisance=${pn_anat}/${base}_acq-${DATA^^}_desc-nuisance.nii.gz
-    fn_mni=${pn_masks}/${base}_acq-${DATA^^}_space-MNI152Nlin6Aym_desc-sinus.nii.gz
+    fn_mni=${pn_masks}/${base}_acq-${DATA^^}_space-MNI152NLin6Asym_desc-sinus.nii.gz
     fn_out=${pn_masks}/${base}_acq-${DATA^^}_desc-mni_sinus.nii.gz
 
     if [[ ${OW} -eq 1 ]]; then
