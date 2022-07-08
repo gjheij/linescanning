@@ -38,18 +38,15 @@ for B1 inhomogenieties using a B1 map (Marques et al., 2014) and calculated seve
 metric maps (R2*, t1map, t2*)
 
 Args:
-    -s (--subject=)    subject number       (i was a bit lazy in programming this, given that regexp
+    -s (--subject=)     subject number      (i was a bit lazy in programming this, given that regexp
                                             are kind of annoying in python, I think. So just input
                                             the subject number as specified in the paths)
-
-    -n (--session=)    session number       session number, needed for extraction of the right files
-
-    -i (--inputdir=)   input directory      project root directory with the subject-directories on
+    -n (--session=)     session number      session number, needed for extraction of the right files
+    -i (--inputdir=)    input directory     project root directory with the subject-directories on
                                             which we need to run the script. <subject> will be ap-
                                             pended, as well as the session nr if specified
-
-    -o (--outputdir=)  output directory     path to pymp2rage. <subject> and <ses-x> (optional), will
-                                            be appended
+    -o (--outputdir=)   output directory    path to pymp2rage. <subject> and <ses-x> (optional), will be appended
+    -c                  make INV2 mask      no input required
 
 Outputs:
     r2star (Nifti1Image):       Relaxation map (1/T2*)
@@ -87,10 +84,11 @@ Notes:
     subject     = ''
     session     = None
     outputdir   = None
-    out         = None
+    outputbase  = "sample_desc"
+    do_stuff    = False
 
     try:
-        opts = getopt.getopt(argv,"hi:s:n:o:",["inputdir=", "subject=", "session=", "outputdir="])[0]
+        opts = getopt.getopt(argv,"hci:s:n:o:",["inputdir=", "subject=", "outputdir=", "outputbase="])[0]
     except getopt.GetoptError:
         print(main.__doc__)
         sys.exit(2)
@@ -104,9 +102,11 @@ Notes:
         elif opt in ("-o", "--outputdir"):
             outputdir = arg
         elif opt in ("-s", "--subject"):
-            subject = arg
-        elif opt in ("-n", "--session"):
-            session = arg
+            subject = args
+        elif opt in ("-b", "--outputbase"):
+            outputbase = arg
+        elif opt in ("-c"):
+            do_stuff = True            
 
     if len(argv) < 6:
         print("NOT ENOUGH ARGUMENTS SPECIFIED")
@@ -115,7 +115,7 @@ Notes:
 
     # Define paths to images
     bids_fn     = BIDSLayout(opj(inputdir), validate=False).get(extension=['nii.gz'], return_type='file')
-    select_fn   = get_file_from_substring('inv', bids_fn)
+    select_fn   = get_file_from_substring(['inv', 'acq-MP2RAGEME'], bids_fn)
     select_fn.sort()
 
     if len(select_fn) != 10:
@@ -135,31 +135,17 @@ Notes:
                           inv2ph    = [select_fn[3],select_fn[5],select_fn[7],select_fn[9]]
                           )
 
-    # We can also put the ME-MP2RAGE data in BIDS-format. That will look something like this:
-    # memp2rage = MEMP2RAGE.from_bids('D:\FSL\shared\spinoza\projects\ANAT_SEG-Raw', subject)
-
-    if not outputdir:
-        if session == None:
-            outputdir = opj(outputdir, subject)
-        else:
-            outputdir = opj(outputdir, subject, f'ses-{session}')
-
-    if not out:
-        if session == None:
-            out = f"{subject}"
-        else:
-            out = f"{subject}_ses-{session}_acq-MEMP2RAGE"    
-
+    # create output directory
     pathlib.Path(outputdir).mkdir(parents=True, exist_ok=True)
 
     # Calculate and right multiparametric maps to outputdir
     OUTPUT  = {
-        'r2starmap':   opj(outputdir, f'{out}_R2starmap.nii.gz'),
-        # 't1w_uni':     opj(outputdir, f'{out}_T1w.nii.gz'),
-        # 't1map':       opj(outputdir, f'{out}_T1map.nii.gz'),
-        # 't2starw':     opj(outputdir, f'{out}_T2starw.nii.gz'),
-        't2starmap':   opj(outputdir, f'{out}_T2starmap.nii.gz'),
-        # 's0':          opj(outputdir, f'{out}_S0.nii.gz')
+        'r2starmap':   opj(outputdir, f'{outputbase}_R2starmap.nii.gz'),
+        't1w_uni':     opj(outputdir, f'{outputbase}_T1w.nii.gz'),
+        't1map':       opj(outputdir, f'{outputbase}_T1map.nii.gz'),
+        't2starw':     opj(outputdir, f'{outputbase}_T2starw.nii.gz'),
+        't2starmap':   opj(outputdir, f'{outputbase}_T2starmap.nii.gz'),
+        's0':          opj(outputdir, f'{outputbase}_S0.nii.gz')
         }
 
     def write_nifti(FILE, DESC):
@@ -346,19 +332,42 @@ Notes:
         tmp = np.nan_to_num(tmp)
         nb.Nifti1Image(tmp.astype('float32'), affine=getattr(memp2rage, p).affine, header=getattr(memp2rage, p).header).to_filename(OUTPUT[p])
 
-    # brainmask = opj(outputdir, f'{out}_desc-brain_mask.nii.gz')
-    # if not os.path.exists(brainmask):
-    #     try:
-    #         print("Creating brain mask from INV2-image")
-    #         os.system(f'call_spmmask {select_fn[2]} {brainmask} y')
-    #     except:
-    #         pass
+    if do_stuff:
+        brainmask = opj(outputdir, f'{outputbase}_desc-spm_mask.nii.gz')
+        if not os.path.exists(brainmask):
 
-    # # try:
-    # print("Removing background")
-    # os.system(f"call_rmbackground -t {OUTPUT['t1w_uni']} -m {brainmask} -i {select_fn[2]} -o {OUTPUT['t1w_uni']}")
-    # # except:
-    # #     pass
+            try:
+                print("Make mask with FSL from INV2-image")
+                cmd = f"bet2 {select_fn[2]} {opj(inputdir, 'tmp')} -m -f 0.2"
+                os.system(cmd)
+            except:
+                pass
+            
+            try:
+                print("Make mask with SPM from INV2-image")
+                cmd = f'call_spmmask {select_fn[2]} {brainmask} y'
+                os.system(cmd)
+            except:
+                pass
+            
+            # SPM-mask sometimes gets rid of a part of the cerebellum; adding FSL's bet2 mask to it improves this area, 
+            # but also leaves in more dura. This will be removed, however, during the CAT12 stage
+            if os.path.exists(brainmask) and os.path.exists(opj(inputdir, 'tmp_mask.nii.gz')):
+                
+                print("Combining SPM & FSL mask to include cerebellum too")
+
+                new_mask = image.math_img('(spm + fsl) > 0', spm=brainmask, fsl=opj(inputdir, 'tmp_mask.nii.gz'))
+                new_mask.to_filename(brainmask)
+
+                # remove files starting with 'tmp'
+                remove_files(inputdir, 'tmp', ext=False)
+
+        # try:
+        print("Removing background")
+        os.system(f"call_rmbackground -t {OUTPUT['t1w_uni']} -m {brainmask} -i {select_fn[2]} -o {OUTPUT['t1w_uni']}")
+        # except:
+        #     pass
+        print("TIP: check the brain mask; if needed, edit it, remove T1w.nii.gz-file and re-run")
 
     print("Done")
 

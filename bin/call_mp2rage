@@ -49,8 +49,7 @@ Args:
                                             specify a different prefix for output files
 
     -c                  make INV2 mask      no input required
-    -u                  use UP-parameters   no input required; there's different MP2RAGE-parameters
-                                            for universal pulses
+    -u                  use UP-parameters   no input required; there's different MP2RAGE-parameters for universal pulses
 
 Optional args:
     Instead of an input directory, you can also specify the paths to the individual files. The files
@@ -127,7 +126,7 @@ Notes:
     if inputdir != None:
         # we got an input directory; look for files with "acq-MP2RAGE"
         bids_fn     = BIDSLayout(opj(inputdir), validate=False).get(datatype='anat', extension=['nii.gz'], return_type='file')
-        select_fn   = get_file_from_substring(['acq-MP2RAGE', 'inv'], bids_fn)
+        select_fn   = get_file_from_substring(['acq-MP2RAGE_', 'inv'], bids_fn)
     else:
         select_fn = []
         # we did not get an input directory; check if separate files have been specified
@@ -150,28 +149,28 @@ Notes:
     print("Loading all images to the mp2rage object")
     if not ups:
         mp2rage = MP2RAGE(MPRAGE_tr=5.5,
-                        invtimesAB=[0.8,2.7],
-                        flipangleABdegree=[6,6],
-                        nZslices=200,
-                        FLASH_tr=[0.0062, 0.0062],
-                        inv1      = select_fn[0],
-                        inv1ph    = select_fn[1],
-                        inv2      = select_fn[2],
-                        inv2ph    = select_fn[3]
-                        )
+                          invtimesAB=[0.8,2.7],
+                          flipangleABdegree=[6,6],
+                          nZslices=200,
+                          FLASH_tr=[0.0062, 0.0062],
+                          inv1=select_fn[0],
+                          inv1ph=select_fn[1],
+                          inv2=select_fn[2],
+                          inv2ph=select_fn[3]
+                          )
     else:
         # UPs
         print("Using parameters for Universal Pulses (UPs)")
         mp2rage = MP2RAGE(MPRAGE_tr=6.778,
-                        invtimesAB=[0.67,3.754],
-                        flipangleABdegree=[4,4],
-                        nZslices=150,
-                        FLASH_tr=[0.0062, 0.031273],
-                        inv1      = select_fn[0],
-                        inv1ph    = select_fn[1],
-                        inv2      = select_fn[2],
-                        inv2ph    = select_fn[3]
-                        )
+                          invtimesAB=[0.67,3.754],
+                          flipangleABdegree=[4,4],
+                          nZslices=150,
+                          FLASH_tr=[0.0062, 0.031273],
+                          inv1=select_fn[0],
+                          inv1ph=select_fn[1],
+                          inv2=select_fn[2],
+                          inv2ph=select_fn[3]
+                          )
 
     # We can also put the ME-MP2RAGE data in BIDS-format. That will look something like this:
     # memp2rage = MEMP2RAGE.from_bids('D:\FSL\shared\spinoza\projects\ANAT_SEG-Raw', subject)
@@ -188,10 +187,6 @@ Notes:
         if not os.path.exists(OUTPUT[p]):
 
             print(" writing {}-image: {}".format(p, os.path.basename(OUTPUT[p])))
-
-            # getattr(x, 'y') is equivalent to x.y
-            # setattr(x, 'y', v) is equivalent to x.y = v
-            # delattr(x, 'y') is equivalent to del x.y
             tmp = getattr(mp2rage, p).get_fdata()
             tmp = np.nan_to_num(tmp)
             nb.Nifti1Image(tmp.astype('float32'), affine=getattr(mp2rage, p).affine, header=getattr(mp2rage, p).header).to_filename(OUTPUT[p])
