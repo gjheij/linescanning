@@ -8,3 +8,4 @@ nbsphinx
 kneed
 statsmodels
 nipype
+pybids
