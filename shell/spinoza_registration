@@ -78,7 +78,7 @@ else
 fi
 
 if [[ -z ${TYPE} ]]; then
-  TYPE="${ACQ1,,}"
+  TYPE="${ACQ[0],,}"
 fi
 
 #-----------------------------------------------------------------------------
@@ -119,15 +119,15 @@ for dir in ${search}; do
   OUTPUTDIR=${OUTPUT}/${base_dir}
   INPUTDIR=${INPUT}/${base_dir}
 
-  if [[ ${TYPE,,} == ${ACQ1,,} ]]; then
-    txt="Registering ${ACQ2,,}-T1w to ${ACQ1,,}"
+  if [[ ${TYPE,,} == ${ACQ[0],,} ]]; then
+    txt="Registering ${ACQ[1],,}-T1w to ${ACQ[0],,}"
     suffix=MP2RAGE
-    output=${OUTPUTDIR}/${base}_acq-${ACQ2^^}_space-${ACQ1^^}_T1w.nii.gz
-    ext="from-${ACQ2,,}_to-${ACQ1,,}_desc-"
-    fixed=`find "${INPUTDIR}" -type f \( -iname "*${ACQ1^^}*" -and -not -iname "*${ACQ2^^}*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
-    moving=`find "${INPUTDIR}" -type f \( -iname "*${ACQ1^^}*" -and -name "*_T1w.nii.gz" \) 2>/dev/null`
+    output=${OUTPUTDIR}/${base}_acq-${ACQ[1]^^}_space-${ACQ[0]^^}_T1w.nii.gz
+    ext="from-${ACQ[1],,}_to-${ACQ[0],,}_desc-"
+    fixed=`find "${INPUTDIR}" -type f \( -iname "*${ACQ[0]^^}*" -and -not -iname "*${ACQ[1]^^}*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
+    moving=`find "${INPUTDIR}" -type f \( -iname "*${ACQ[0]^^}*" -and -name "*_T1w.nii.gz" \) 2>/dev/null`
   elif [[ ${TYPE,,} == "mni" ]]; then
-    txt="Registering ${ACQ1^^}-T1w to MNI152 template"
+    txt="Registering ${ACQ[0]^^}-T1w to MNI152 template"
     suffix=MNI152NLin6Asym
     fixed=${FSLDIR}/data/standard/MNI152_T1_1mm.nii.gz
     moving=`find "${INPUTDIR}" -type f \( -iname "*${DATA}*" -and -name "*T1w.nii.gz" \) 2>/dev/null`

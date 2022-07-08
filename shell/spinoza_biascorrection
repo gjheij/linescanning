@@ -16,7 +16,7 @@ tags specified in the third argument (not necessarily case sensitive).
 
 If the second inversion time image was specified, it will look automatically for the magnitude image
 and not the phase image. In addition to the flag specified in the third argument, the find command
-will also include whatever is in the ACQ1-variable. Usually this will be MP2RAGE, so make sure these
+will also include whatever is in the DATA-variable. Usually this will be MP2RAGE, so make sure these
 files have been named ""xxx_acq-MP2RAGE_T1w or something alike. This should have happened automati-
 cally if you have run spinoza_scanner2bids prior.
 
@@ -24,7 +24,7 @@ Usage:
   spinoza_biascorrection <-s sub> <-n ses> <dir_to_input_file> <output dir> <T1w|inv-2>
 
 Outputs:
-  <output dir>/<subject>/ses-1/<subject>${SES}_acq-${ACQ1}_desc-bfc_<T1w|inv-2>.nii.gz
+  <output dir>/<subject>/ses-1/<subject>${SES}_acq-${DATA}_desc-bfc_<T1w|inv-2>.nii.gz
 
 Example:
   spinoza_biascorrection $DIR_DATA_HOME $DIR_DATA_DERIV/ants "T1w"
@@ -108,8 +108,8 @@ for dir in ${search}; do
     continue
   fi
 
-  output=${OUTPUTDIR}/${base}_acq-${ACQ1^^}_desc-bfc_${MODALITY}.nii.gz
-  input=`find "${INPUTDIR}" -maxdepth 2 -type f \( -name "*acq-${ACQ1}*" -and -not -name "*phase*" -and -iname "*${MODALITY}*" -and -name "*.nii.gz" \) 2>/dev/null`
+  output=${OUTPUTDIR}/${base}_acq-${DATA^^}_desc-bfc_${MODALITY}.nii.gz
+  input=`find "${INPUTDIR}" -maxdepth 2 -type f \( -name "*acq-${DATA}*" -and -not -name "*phase*" -and -iname "*${MODALITY}*" -and -name "*.nii.gz" \) 2>/dev/null`
 
   if [[ ! -f ${output} ]]; then
     if [[ ! -z ${input} ]]; then

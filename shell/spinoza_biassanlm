@@ -13,7 +13,7 @@ be run prior to "spinoza_brainextraction", and runs a SANLM-filter over the imag
 field correction with SPM. The subsequent "spinoza_brainextraction" should be run with the "-m brain"
 flag as to turn off bias correction and denoising with CAT12.
 
-The input image is expected to reside in the input directory and to contain "acq-${ACQ1}" and end
+The input image is expected to reside in the input directory and to contain "acq-${DATA}" and end
 with *T1w.nii.gz.
 
 Arguments:
@@ -130,7 +130,7 @@ for dir in ${search}; do
     continue
   fi
 
-  input=`find "${INPUTDIR}" -maxdepth 1 -type f \( -name "*acq-${ACQ1}*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
+  input=`find "${INPUTDIR}" -maxdepth 1 -type f \( -name "*acq-${DATA}*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
 
   if [[ ! -z ${input} ]]; then
 
@@ -140,7 +140,7 @@ for dir in ${search}; do
       rm ${output}
     fi
 
-    t1map=`find "${INPUTDIR}" -maxdepth 1 -type f \( -name "*acq-${ACQ1}*" -and -name "*T1map.nii.gz" \) 2>/dev/null`
+    t1map=`find "${INPUTDIR}" -maxdepth 1 -type f \( -name "*acq-${DATA}*" -and -name "*T1map.nii.gz" \) 2>/dev/null`
     if [[ ! -z ${t1map} ]]; then
       # copy t1map to output for later reference
       cp ${t1map} $(dirname ${output})
@@ -198,7 +198,7 @@ for dir in ${search}; do
 
   fi
 
-  spm_mask=`find "${INPUTDIR}" -maxdepth 1 -type f \( -name "*acq-${ACQ1}*" -and -name "*spm_mask.nii.gz" \) 2>/dev/null`
+  spm_mask=`find "${INPUTDIR}" -maxdepth 1 -type f \( -name "*acq-${DATA}*" -and -name "*spm_mask.nii.gz" \) 2>/dev/null`
   if [ ! -z ${spm_mask} ]; then
     cp ${spm_mask} ${OUTPUTDIR} 2>/dev/null
   fi
