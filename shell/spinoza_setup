@@ -158,7 +158,7 @@ export FPREP_OUT_SPACES="fsnative fsaverage T1w func"
 export FPREP_BINDING="/data1/projects" # binding directory for singularity image
 export CIFTI=170k # leave empty if you don't want cifti output
 export DO_SYN=1 # set to zero if you do not want additional syn-distortion correction
-export BOLD_T1W_INIT="header" # default = register; for partial FOV, set to 'header'
+export BOLD_T1W_INIT="register" # default = register; for partial FOV, set to 'header'
 
 # PYBEST
 export PYBEST_SPACE="fsnative"
