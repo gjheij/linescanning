@@ -176,7 +176,7 @@ for i in ${inputs[@]}; do
     nr=`echo "${STRING//[!0-9]/}"`
     new_warp=${input}/${subj_ID}_space-T1w_desc-${search}${nr}.nii.gz
   else
-    new_warp=${input}/${subj_ID}_space-T1w_desc-${search}.nii.gz
+    new_warp=$(dirname ${input})/${subj_ID}_space-T1w_desc-${search}.nii.gz
   fi
 
   # warp to T1w-space
