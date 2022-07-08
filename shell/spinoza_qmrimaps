@@ -3,7 +3,7 @@
 #---------------------------------------------------------------------------------------------------------
 # check if there's is a setup file containing the major paths and source it if it exists
 echo
-call_loadsetup
+source ${DIR_SCRIPTS}/shell/spinoza_setup
 
 #---------------------------------------------------------------------------------------------------------
 # Create help text
@@ -80,9 +80,6 @@ echo "==========================================================================
 # Run it
 
 for dir in ${search}; do
-
-  # declare -a ACQ=("MP2RAGE")
-  # declare -a ACQ=(memp2rage mp2rage)
 
   if [[ ! -z ${ses} ]]; then
     nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`

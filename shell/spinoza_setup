@@ -166,21 +166,21 @@ export PYBEST_NORM="zscore"
 export PYBEST_ENV="mpl"
 
 # PROJECT
-export DIR_PROJECTS="/data1/projects/MicroFunc/Jurjen/projects" #"/data1/projects/MicroFunc/Luisa/Line_scan/AGEING_paper" #$(dirname $(dirname ${PATH_HOME}))/projects 
-export PROJECT="VE-pRF" # ANAT_SEG-Raw #URIS-MDD #hemifield
+export DIR_PROJECTS="/mnt/d/FSL/shared/spinoza/projects" #"/data1/projects/MicroFunc/Luisa/Line_scan/AGEING_paper" #$(dirname $(dirname ${PATH_HOME}))/projects 
+export PROJECT="hemifield" # ANAT_SEG-Raw #URIS-MDD #hemifield
 export TASK_SES1="pRF"
 export TASK_SES2="LR"
 export PREFIX="sub-"
 export COMBINE_SEGMENTATIONS="weighted"
 
 # DATA TYPE(S)
-declare -a ACQ=("MP2RAGE") # or ("MP2RAGE" "MEMP2RAGE")
+export ACQ=("MP2RAGE") # or ("MP2RAGE" "MP2RAGEME")
 export DATA=${ACQ[0]} # or MP2RAGEME/AVERAGE
 
 # For DATA == AVERAGE we'll need multiple acquisitions
 if [[ ${DATA} == "AVERAGE" ]]; then
   if [[ `echo ${#ACQ[@]}` -ne 2 ]]; then
-    echo "Average of what..? \"ACQ\" variable in spinoza_setup has ${#ACQ[@]} items"
+    echo "Average of what..? \"ACQ\" variable in spinoza_setup has ${#ACQ[@]} item(s) [\"${ACQ[@]}\"]"
     exit 1
   fi
 fi
@@ -222,16 +222,6 @@ export PATH=${PATH}:${DIR_SCRIPTS}/shell
 if [[ -f ${DIR_SCRIPTS}/misc/acq.txt ]]; then
   rm -r ${DIR_SCRIPTS}/misc/acq.txt 2>/dev/null
 fi
-
-touch ${DIR_SCRIPTS}/misc/acq.txt
-j=0
-for i in `seq 1 ${#ACQ[@]}`; do
-  echo "ACQ${i}=${ACQ[j]}" >> ${DIR_SCRIPTS}/misc/acq.txt
-  (( j++ ))
-done
-
-while IFS= read -r line; do export ${line}; done < ${DIR_SCRIPTS}/misc/acq.txt
-# source ${DIR_SCRIPTS}/bin/utils/acq.txt
 
 # set SSH_KEY for start_ssh
 export SSH_KEY="${HOME}/.ssh/hp_windows"
