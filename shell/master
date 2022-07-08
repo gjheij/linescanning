@@ -529,13 +529,13 @@ if [[ $? -eq 0 ]]; then
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Reconstruct line data with MRecon"
 
-  if [[ -z ${KWARGS} ]]; then
-    KWARGS=""
+  if [[ -z ${n_echoes} ]]; then
+    N_ECHOES=""
   else
-    KWARGS="-m ${KWARGS}"
+    N_ECHOES="-m ${n_echoes}"
   fi    
 
-  ${job} spinoza_linerecon ${SUBJECT} ${SESSION} ${KWARGS} ${OW} ${SGE} ${DIR_DATA_HOME} ${DIR_DATA_SOURCE}
+  ${job} spinoza_linerecon ${SUBJECT} ${SESSION} ${N_ECHOES} ${OW} ${SGE} ${DIR_DATA_HOME} ${DIR_DATA_SOURCE}
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_linerecon exited with non-zero status"
