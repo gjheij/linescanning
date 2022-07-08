@@ -10,54 +10,46 @@ call_stats2surf
 
 This script warps your statistical image to the FreeSurfer inflated surface using the registration
 files from fmriprep. First, we need to warp the rendered_zstat image to the T1w-space with from-
-template_to-T1w.h5 (call_antsapplytransforms), then we warp it to the surface with mri_vol2surf.
-
-I will always need at least a subject ID, a FEAT-directory with the stats map, and the warp file
-mapping template to T1w-space. You can leave fsdir empty if you want to use the path described in
-SUBJECTS_DIR.
+template_to-T1w.h5 (call_antsapplytransforms), then we warp it to the surface with mri_vol2surf. 
+I will always need at least a subject ID, a FEAT-directory with the stats map (or input file), and 
+the warp file mapping template to T1w-space. You can leave fsdir empty if you want to use the path 
+described in SUBJECTS_DIR.
 
 Usage:
-  call_stats2surf -s <subj_ID> -f <fsdir> -w <warpfile> -t 3.1
+  call_stats2surf -s <subj_ID> -f <fsdir> -w <warpfile> -t <threshold> -q <added flag> -a <search>
+                  -r <reference>
 
 Args:
   -s <subj ID>        subject ID as per output of FreeSurfer (e.g., 'sub-001')
-
   -f <fsdir>          path to freesurfer directory; if left empty > reads SUBJECTS_DIR
   -o <output dir>     by default in 'freesurfer/fsaverage/volumes'
-  -i <featdir>        path to FEAT-directory (can also be group-directory, but in that case it should
-                      be specified up to the dir.gfeat/cope?.feat-directory). Whatever you named the
-                      stats-map; make sure you have something with "zstat?" in it.. If you have com-
-                      pletely changed the name (while keeping zstat? [!!!]), use the '-a' flag
-
+  -i <input dir/file> Input file or path to FEAT-directory (can also be group-directory, but in that 
+                      case it should be specified up to the dir.gfeat/cope?.feat-directory). Whatever 
+                      you named the stats-map; make sure you have something with "zstat?" in it.. If 
+                      you have completely changed the name (while keeping zstat? [!!!]), use the '-a' 
+                      flag.
                       If you specify a gfeat directory, you have to specify some registration file to
                       on of the subjects, and warp it to the surface from there. So if you want to
                       warp the group-file to the surface:
                         - warp zstat to sub-xxx (-s sub-xxx)
                         - warp zstat_space-subxxx to surface of fsaverage
-
+  -r <reference>      reference file on which the <warp file> is based. If not specified, it will look
+                      for the preprocessed anatomical file from fMRIPrep in the folder from <warp file>.
+                      If that's empty, I'll assume the input is a FEAT-directory, in which case it will
+                      look for the highres.nii.gz file in <FEAT>/reg.
   -w <warp file>      h5 (or other) warp file mapping your stats file to T1w-space.
-
-  -a <str>            here you can specify substring to look for the statistical image. If you do not want
-                      to use the standard rendered_thresh_zstat1.nii.gz, add some more search criteria.
-                      For now, please use only 1 extra search parameter.. (leave this empty if you want
-                      to use the regular rendered_thresh_zstat?.nii.gz images)
-
+  -a <str>            here you can specify substring to look for the statistical image. If you do not 
+                      want to use the standard rendered_thresh_zstat1.nii.gz, add some more search cri-
+                      teria. For now, please use only 1 extra search parameter.. (leave this empty if 
+                      you want to use the regular rendered_thresh_zstat?.nii.gz images)
   -t <thresh>         threshold rendered stats map? Leave empty to skip thresholding. Skipping will
                       show both the negative and positive values of the zstat-image on the surface
-
-  -q <some suffix>    string to add to the .mgh files to differentiate?
+  -q <some suffix>    string to add to the .gii files to differentiate?
 
 Example:
   call_stats2surf -s sub-001 -f /path/to/freesurfer -i <featdir> -w /path/to/warp.h5 -t 3.1
   call_stats2surf -s sub-001 -f /path/to/freesurfer -i <gfeat/cope1.feat> -w /path/to/warp.h5
-
-You can view the results with:
-  freeview -f $SUBJECTS_DIR/sub-xxx/surf/?h.inflated:overlay=/path/to/?h.stats.mgh-file
-
-Notes:
-  - Given that I'm too lazy to implement each hemisphere separately, I'm just going to do both hemispheres
-    at once..
-  - Again, because I'm lazy, I will also do this for all zstat files I can find in the FEAT-directory..
+  call_stats2surf -s sub-001 -i some_file.nii.gz -w /path/to/warp.h5
 
 ---------------------------------------------------------------------------------------------------------
 
@@ -67,33 +59,37 @@ USAGE
 
 #-----------------------------------------------------------------------------
 # Deal with arguments
-while getopts s:f:o:i:w:a:t:q: arg
+while getopts s:f:o:i:w:a:t:q:r: arg
 do
-    case ${arg} in
-      s)  subj_ID=${OPTARG}
-            ;;
-      f)  fsdir=${OPTARG}
-            ;;
-      o)  outdir=${OPTARG}
-            ;;
-      i)  featdir=${OPTARG}
-            ;;            
-      w)  warp=${OPTARG}
-            ;;
-      a)  search=${OPTARG}
-            ;;
-      t)  thresh=${OPTARG}
-            ;;
-      q)  thresh=${OPTARG}
-            ;;
-    esac
-
+  case ${arg} in
+    s)  subj_ID=${OPTARG}
+          ;;
+    f)  fsdir=${OPTARG}
+          ;;
+    o)  outdir=${OPTARG}
+          ;;
+    i)  input=${OPTARG}
+          ;;            
+    w)  warp=${OPTARG}
+          ;;
+    a)  search=${OPTARG}
+          ;;
+    t)  thresh=${OPTARG}
+          ;;
+    q)  thresh=${OPTARG}
+          ;;
+    r)  reference=${OPTARG}
+          ;;          
+  esac
 done
 
 if [[ $# -lt 3 ]] ; then
   Usage >&2
   exit 1
 fi
+
+# source helper functions
+source call_bashhelper
 
 # we need SUBJECTS_DIR for mri_vol2surf
 if [[ -z ${fsdir} ]]; then
@@ -107,9 +103,9 @@ else
   export SUBJECTS_DIR=${fsdir}
 fi
 
-# start by warping file from template to anat-space
-if [[ ! -d ${fsdir} ]] || [[ ! -d ${featdir} ]]; then
-  echo "ERROR in `basename ${0}`: Could not find FreeSurfer and FEAT-directory.."
+# check if we have a valid subjects-directory
+if [[ ! -d ${fsdir} ]]; then
+  echo "ERROR in `basename ${0}`: Could not find FreeSurfer"
   exit 1
 fi
 
@@ -118,34 +114,55 @@ if [[ ! -f ${warp} ]]; then
   exit 1
 fi
 
-if [[ ! -z ${search} ]]; then
-  zstat=`find "${featdir}" -maxdepth 1 -type f \( -name "*.nii.gz" -and -name "*${search}*" -and -not -name "*space-*" \) 2>/dev/null`
+# check if input was directory or file
+if [[ -f ${input} ]]; then
+  input=`fetch_filepath ${input}`
+  ext=`fetch_extension ${input}`
+  search=$(basename ${input} .${ext})
+  
+  # for later output naming
+  set_zstat_id=0
+elif [[ -d ${input} ]]; then
+  set_zstat_id=1
+  if [[ ! -z ${search} ]]; then
+    input=`find "${input}" -maxdepth 1 -type f \( -name "*.nii.gz" -and -name "*${search}*" -and -not -name "*space-*" \) 2>/dev/null`
+  else
+    input=`find "${input}" -maxdepth 1 -type f \( -name "*rendered_thresh*" -and -name "*.nii.gz" \) 2>/dev/null`
+    search="zstat"
+  fi
 else
-  zstat=`find "${featdir}" -maxdepth 1 -type f \( -name "*rendered_thresh*" -and -name "*.nii.gz" \) 2>/dev/null`
-  search="zstat"
-fi
+  echo "ERROR in `basename ${0}`: Unknown input type. Must be a file or directory"
+  exit 1
+fi 
 
 # sort array
-IFS=$'\n' zstat=($(sort <<<"${zstat[*]}"))
+IFS=$'\n' input=($(sort <<<"${zstat[*]}"))
 unset IFS
 
 # get the reference anatomy (in native space)
-if [[ ${featdir} == *".gfeat"* ]]; then
-  T1=`find $(dirname ${warp}) -type f \( -name "*preproc_T1w.nii.gz" -and -not -name "*space-*" \) 2>/dev/null`
+if [[ -z ${reference} ]]; then
+  if [[ ${input} == *".gfeat"* ]]; then
+    T1=`find $(dirname ${warp}) -type f \( -name "*preproc_T1w.nii.gz" -and -not -name "*space-*" \) 2>/dev/null`
+  else
+    T1=`find "${input}" -type f \( -name "*highres*" -and -name "*.nii.gz" \) 2>/dev/null`
+  fi
 else
-  T1=`find "${featdir}" -type f \( -name "*highres*" -and -name "*.nii.gz" \) 2>/dev/null`
+  T1=${reference}
 fi
 
 if [[ ! -f ${T1} ]]; then
-  echo "ERROR in `basename ${0}`: Could not locate highres.nii.gz image.. Need this as reference"
+  echo "ERROR in `basename ${0}`: Could not locate reference image. "
+  echo " - If the input is gfeat-directory, I'm looking for \"preproc_T1w.nii.gz\" in \"$(dirname ${warp})\""
+  echo " - If the input is a FEAT-directory, I'm looking for \"highres.nii.gz\" in \"${input}\""
+  echo " - If the input is a file, I'm looking for the -r flag, \"${reference}\""
   exit 1
 fi
 
+# output stuff
 if [[ ! -z ${outdir} ]]; then
   if [[ ! -d ${outdir} ]]; then
     mkdir -p ${outdir}
   fi
-
   out_flag="-o ${outdir}"
 else
   out_flag=""
@@ -153,11 +170,16 @@ fi
 
 for i in ${zstat[@]}; do
 
-  # extract number from filename
-  STRING=$(basename ${i})
-  nr=`echo "${STRING//[!0-9]/}"`
-  new_warp=${featdir}/${subj_ID}_space-T1w_desc-${search}${nr}.nii.gz
+  # set output name for space-T1w file
+  if [[ ${set_zstat_id} -eq 1 ]]; then
+    STRING=$(basename ${i})
+    nr=`echo "${STRING//[!0-9]/}"`
+    new_warp=${input}/${subj_ID}_space-T1w_desc-${search}${nr}.nii.gz
+  else
+    new_warp=${input}/${subj_ID}_space-T1w_desc-${search}.nii.gz
+  fi
 
+  # warp to T1w-space
   if [[ ! -f ${new_warp} ]]; then
     echo "Warping `basename ${i}` image to T1w-space"
     call_antsapplytransforms ${T1} ${i} ${new_warp} ${warp}
@@ -167,7 +189,8 @@ for i in ${zstat[@]}; do
     echo "ERROR in `basename ${0}`: call_antsapplytransforms exited with nonzero status"
     exit 1
   fi
-
+  
+  # threshold zstat-images
   if [[ ! -z ${thresh} ]]; then
     if [[ `fslstats ${i} -R | awk '{print $1}'` != "0.000000" ]]; then
       echo "  thresholding `basename ${new_warp}` with z=${thresh}"
@@ -175,7 +198,14 @@ for i in ${zstat[@]}; do
     fi
   fi
 
+  # set output based on whether input was directory or file
+  if [[ ${set_zstat_id} -eq 1 ]]; then
+    base_out="${search}${nr}${q}"
+  else
+    base_out="${search}${q}"
+  fi 
+
   # project to fsaverage through fsnative of subj_ID
-  call_vol2fsaverage ${out_flag} -p "group" ${subj_ID} ${new_warp} "${search}${nr}${q}"
+  call_vol2fsaverage ${out_flag} -p "group" ${subj_ID} ${new_warp} "${base_out}"
 
 done
