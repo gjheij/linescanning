@@ -136,7 +136,7 @@ else
 fi 
 
 # sort array
-IFS=$'\n' input=($(sort <<<"${zstat[*]}"))
+IFS=$'\n' inputs=($(sort <<<"${input[*]}"))
 unset IFS
 
 # get the reference anatomy (in native space)
@@ -168,7 +168,7 @@ else
   out_flag=""
 fi
 
-for i in ${zstat[@]}; do
+for i in ${inputs[@]}; do
 
   # set output name for space-T1w file
   if [[ ${set_zstat_id} -eq 1 ]]; then
