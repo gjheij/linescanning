@@ -118,7 +118,15 @@ fi
 if [[ -f ${input} ]]; then
   input=`fetch_filepath ${input}`
   ext=`fetch_extension ${input}`
-  search=$(basename ${input} .${ext})
+
+  if [[ ${ext} == "gz" ]]; then
+    search=$(basename ${input} .nii.gz)
+  elif [[ ${ext} == "nii" ]]; then
+    search=$(basename ${input} .nii)
+  else
+    echo "ERROR in `basename ${0}`: input file must end with \".nii.gz\" or \".nii\", not \".${ext}\""
+    exit 1
+  fi
   
   # for later output naming
   set_zstat_id=0
@@ -174,9 +182,9 @@ for i in ${inputs[@]}; do
   if [[ ${set_zstat_id} -eq 1 ]]; then
     STRING=$(basename ${i})
     nr=`echo "${STRING//[!0-9]/}"`
-    new_warp=${input}/${subj_ID}_space-T1w_desc-${search}${nr}.nii.gz
+    new_warp=${i}/${subj_ID}_space-T1w_desc-${search}${nr}.nii.gz
   else
-    new_warp=$(dirname ${input})/${subj_ID}_space-T1w_desc-${search}.nii.gz
+    new_warp=$(dirname ${i})/${subj_ID}_space-T1w_desc-${search}.nii.gz
   fi
 
   # warp to T1w-space
