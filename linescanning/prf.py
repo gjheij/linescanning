@@ -18,12 +18,13 @@ from scipy import signal, io
 import subprocess
 import time
 import yaml
+import pickle
 
 opj = os.path.join
 
 def get_prfdesign(screenshot_path,
                   n_pix=40,
-                  dm_edges_clipping=[0, 0, 0, 0]):
+                  dm_edges_clipping=[0,0,0,0]):
     """
     get_prfdesign
 
@@ -50,48 +51,48 @@ def get_prfdesign(screenshot_path,
 
     image_list = os.listdir(screenshot_path)
 
+    # get first image to get screen size
+    img = (255*mpimg.imread(opj(screenshot_path, image_list[0]))).astype('int')
+
     # there is one more MR image than screenshot
-    design_matrix = np.zeros((n_pix, n_pix, 1+len(image_list)))
+    design_matrix = np.zeros((img.shape[0], img.shape[0], 1+len(image_list)))
 
     for image_file in image_list:
+        
         # assuming last three numbers before .png are the screenshot number
         img_number = int(image_file[-7:-4])-1
+        
         # subtract one to start from zero
         img = (255*mpimg.imread(opj(screenshot_path, image_file))).astype('int')
+        
         # make it square
         if img.shape[0] != img.shape[1]:
             offset = int((img.shape[1]-img.shape[0])/2)
             img = img[:, offset:(offset+img.shape[0])]
 
-        # downsample
-        downsampling_constant = int(img.shape[1]/n_pix)
-        downsampled_img = img[::downsampling_constant, ::downsampling_constant]
-#        import matplotlib.pyplot as pl
-#        fig = pl.figure()
-#        pl.imshow(downsampled_img)
-#        fig.close()
-
-        if downsampled_img[:, :, 0].shape != design_matrix[..., 0].shape:
-            print("please choose a n_pix value that is a divisor of " +
-                  str(img.shape[0]))
-
         # binarize image into dm matrix
         # assumes: standard RGB255 format; only colors present in image are black, white, grey, red, green.
-        design_matrix[:, :, img_number][np.where(((downsampled_img[:, :, 0] == 0) & (
-            downsampled_img[:, :, 1] == 0)) | ((downsampled_img[:, :, 0] == 255) & (downsampled_img[:, :, 1] == 255)))] = 1
+        design_matrix[...,img_number][np.where(((img[...,0] == 0) & (
+            img[...,1] == 0)) | ((img[...,0] == 255) & (img[...,1] == 255)))] = 1
 
-        design_matrix[:, :, img_number][np.where(((downsampled_img[:, :, 0] == downsampled_img[:, :, 1]) & (
-            downsampled_img[:, :, 1] == downsampled_img[:, :, 2]) & (downsampled_img[:, :, 0] != 127)))] = 1
+        design_matrix[...,img_number][np.where(((img[...,0] == img[...,1]) & (
+            img[...,1] == img[...,2]) & (img[...,0] != 127)))] = 1
 
+    # downsample with scipy.interpolate.interp2d
+    dm_resampled = np.zeros((n_pix, n_pix, design_matrix.shape[-1]))
+    
+    for img in range(design_matrix.shape[-1]):
+        dm_resampled[...,img] = utils.resample2d(design_matrix[...,img], n_pix)
+    
     #clipping edges
     #top, bottom, left, right
-    design_matrix[:dm_edges_clipping[0], :, :] = 0
-    design_matrix[(design_matrix.shape[0]-dm_edges_clipping[1]):, :, :] = 0
-    design_matrix[:, :dm_edges_clipping[2], :] = 0
-    design_matrix[:, (design_matrix.shape[0]-dm_edges_clipping[3]):, :] = 0
+    dm_resampled[:dm_edges_clipping[0], :, :] = 0
+    dm_resampled[(dm_resampled.shape[0]-dm_edges_clipping[1]):, :, :] = 0
+    dm_resampled[:, :dm_edges_clipping[2], :] = 0
+    dm_resampled[:, (dm_resampled.shape[0]-dm_edges_clipping[3]):, :] = 0
     # print("  Design matrix completed")
 
-    return design_matrix
+    return dm_resampled
 
 
 def radius(stim_arr):
@@ -324,7 +325,7 @@ def plot_stims(stims, n_rows=3, n_cols=11, figsize=(60,10)):
 
     plt.tight_layout()
 
-def make_prf(prf_object, mu_x=0, mu_y=0, size=None):
+def make_prf(prf_object, mu_x=0, mu_y=0, size=None, resize_pix=None):
     """make_prf
 
     Create an instantiation of a pRF using the parameters obtained during fitting.
@@ -338,7 +339,9 @@ def make_prf(prf_object, mu_x=0, mu_y=0, size=None):
     mu_y: float
         y-component of pRF. Leave default if you want to create size/response functions
     size: float
-        size of pRF
+        size of pRF, optional
+    resize_pix: int
+        resolution of pRF to resample to. For instance, if you've used a low-resolution design matrix, but you'd like a prettier image, you can set `resize` to something higher than the original (54 >> 270, for example). By default not used.
 
     Returns
     ----------
@@ -351,7 +354,10 @@ def make_prf(prf_object, mu_x=0, mu_y=0, size=None):
                                        mu=(mu_x, mu_y),
                                        sigma=size,
                                        normalize_RFs=False).T, axes=(1, 2))
-
+    if isinstance(resize_pix, int):
+        prf_squeezed = np.squeeze(prf, axis=0)
+        prf = utils.resample2d(prf_squeezed, resize_pix)[np.newaxis,...] 
+        
     return prf
 
 
@@ -764,7 +770,8 @@ def create_line_prf_matrix(log_dir,
                            baseline_before=24,
                            baseline_after=24,
                            skip_first_img=True,
-                           verbose=False):
+                           verbose=False,
+                           dm_edges_clipping=[0,0,0,0]):
 
     """create_line_prf_matrix
 
@@ -790,7 +797,9 @@ def create_line_prf_matrix(log_dir,
         length of stimulus presentation (in seconds; default = 1s)
     skip_first_img: boolean 
         depending on how you coded the screenshot capturing, the first empty screen is something also captured. With this flag we can skip that image (default = True).
-
+    dm_edges_clipping: list
+        people don't always see the entirety of the screen so it's important to check what the subject can actually see by showing them the cross of for instance the BOLD-screen (the matlab one, not the linux one) and clip the image accordingly
+        
     Returns
     ----------
     np.ndarray
@@ -806,9 +815,13 @@ def create_line_prf_matrix(log_dir,
     # we can use the loop below. If not, we need to loop through the TRs, find the onset time 
     # closest to it, and select that particular image
 
+    # get first image to get screen size
+    img = (255*mpimg.imread(opj(screenshot_path, image_list[0]))).astype('int')
+
+    # there is one more MR image than screenshot
+    design_matrix = np.zeros((img.shape[0], img.shape[0], 1+len(image_list)))
     if not round(stim_duration % TR, 5) > 0:
 
-        design_matrix = np.zeros((n_pix,n_pix,len(image_list*tr_in_duration)))
 
         point = 0
         for ii in image_list:
@@ -819,13 +832,24 @@ def create_line_prf_matrix(log_dir,
                 offset = int((img.shape[1]-img.shape[0])/2)
                 img = img[:, offset:(offset+img.shape[0])]
 
-            downsampling_constant = int(img.shape[1]/n_pix)
-            downsampled_img = img[::downsampling_constant, ::downsampling_constant]
-
-            design_matrix[:, :, point:point+tr_in_duration][np.where(((downsampled_img[:, :, 0] == 0) & (
-            downsampled_img[:, :, 1] == 0)) | ((downsampled_img[:, :, 0] == 255) & (downsampled_img[:, :, 1] == 255)))] = 1
+            # first binarize, then downsample
+            design_matrix[:, :, point:point+tr_in_duration][np.where(((img[...,0] == 0) & (
+            img[...,1] == 0)) | ((img[...,0] == 255) & (img[...,1] == 255)))] = 1
 
             point += tr_in_duration
+
+        # downsample
+        dm_resampled = np.zeros((n_pix, n_pix, design_matrix.shape[-1]))
+        
+        for img in range(design_matrix.shape[-1]):
+            dm_resampled[...,img] = utils.resample2d(design_matrix[...,img], n_pix)
+
+        #clipping edges
+        #top, bottom, left, right
+        dm_resampled[:dm_edges_clipping[0], :, :] = 0
+        dm_resampled[(dm_resampled.shape[0]-dm_edges_clipping[1]):, :, :] = 0
+        dm_resampled[:, :dm_edges_clipping[2], :] = 0
+        dm_resampled[:, (dm_resampled.shape[0]-dm_edges_clipping[3]):, :] = 0
 
         # deal with baseline and deleted volumes
         baseline_before = np.zeros((n_pix,n_pix,int(baseline_before/TR)))
@@ -838,17 +862,16 @@ def create_line_prf_matrix(log_dir,
         if deleted_last_timepoints != 0:
             baseline_after = baseline_after[...,:-deleted_last_timepoints]
         
-        print(f"Design itself has shape: {design_matrix.shape}")
+        print(f"Design itself has shape: {dm_resampled.shape}")
         print(f"Baseline after has shape: {baseline_after.shape}")
-        dm = np.dstack((baseline_before, design_matrix, baseline_after))
+        dm = np.dstack((baseline_before, dm_resampled, baseline_after))
         
         return dm
     else:
 
-        design_matrix = np.zeros((n_pix, n_pix, nr_trs))
-
         if verbose:
             print("Reading onset times from log-file")
+
         # get the onsets
         onsets = dataset.ParseExpToolsFile(utils.get_file_from_substring(".tsv", log_dir), 
                                            TR=TR, 
@@ -882,32 +905,31 @@ def create_line_prf_matrix(log_dir,
             
             if image_file != None:
                 
-                # if verbose:
-                #     if tr < 10:
-                #         print(f"TR = {tr} \t\t(@{round(tr_in_sec,2)}s| trial={ix}) \timg={os.path.basename(image_file)}")
-                #     else:
-                #         print(f"TR = {tr} \t(@{round(tr_in_sec,2)}s| trial={ix}) \timg={os.path.basename(image_file)}")
-
                 img = (255*mpimg.imread(image_file)).astype('int')
 
                 if img.shape[0] != img.shape[1]:
                     offset = int((img.shape[1]-img.shape[0])/2)
                     img = img[:, offset:(offset+img.shape[0])]
 
-                # downsample
-                downsampling_constant = int(img.shape[1]/n_pix)
-                downsampled_img = img[::downsampling_constant, ::downsampling_constant]
-
-                if downsampled_img[:, :, 0].shape != design_matrix[..., 0].shape:
-                    print("please choose a n_pix value that is a divisor of " +
-                        str(img.shape[0]))
-
                 # binarize image into dm matrix
                 # assumes: standard RGB255 format; only colors present in image are black, white, grey, red, green.
-                design_matrix[:, :, tr][np.where(((downsampled_img[:, :, 0] == 0) & (
-                    downsampled_img[:, :, 1] == 0)) | ((downsampled_img[:, :, 0] == 255) & (downsampled_img[:, :, 1] == 255)))] = 1
+                design_matrix[:, :, tr][np.where(((img[:, :, 0] == 0) & (
+                    img[:, :, 1] == 0)) | ((img[:, :, 0] == 255) & (img[:, :, 1] == 255)))] = 1
+        
+        # downsample
+        dm_resampled = np.zeros((n_pix, n_pix, design_matrix.shape[-1]))
+        
+        for img in range(design_matrix.shape[-1]):
+            dm_resampled[...,img] = utils.resample2d(design_matrix[...,img], n_pix)
 
-        return design_matrix
+        #clipping edges
+        #top, bottom, left, right
+        dm_resampled[:dm_edges_clipping[0], :, :] = 0
+        dm_resampled[(dm_resampled.shape[0]-dm_edges_clipping[1]):, :, :] = 0
+        dm_resampled[:, :dm_edges_clipping[2], :] = 0
+        dm_resampled[:, (dm_resampled.shape[0]-dm_edges_clipping[3]):, :] = 0
+
+        return dm_resampled
 
 def create_stim_library(n_pix, prf_stim, range_around_center=[40,40], concentricity=0.5, stim_factor=4, beam_size=26):
 
@@ -1025,7 +1047,7 @@ def generate_model_params(model='gauss', dm=None, TR=1.5, outputdir=None, settin
     if settings != None:
         yml_file = settings
     else:
-        yml_file = utils.get_file_from_substring("prf_analysis", opj(os.path.dirname(os.path.dirname(utils.__file__)), 'misc'))
+        yml_file = utils.get_file_from_substring("prf_analysis.yml", opj(os.path.dirname(os.path.dirname(utils.__file__)), 'misc'))
 
     with open(yml_file) as file:
         
@@ -1094,11 +1116,16 @@ def generate_model_params(model='gauss', dm=None, TR=1.5, outputdir=None, settin
         date = datetime.now().strftime("%Y%m%d")
 
     if settings == None:
-        fname = opj(outputdir, f'{date}_model-{model}_desc-settings.yml')
-        with open(fname, 'w') as yml_file:
-            yaml.safe_dump(data, yml_file)
 
-        return data, fname, prf_stim
+        if isinstance(outputdir, str):
+            fname = opj(outputdir, f'{date}_model-{model}_desc-settings.yml')
+            with open(fname, 'w') as yml_file:
+                yaml.safe_dump(data, yml_file)
+
+            return data, fname, prf_stim
+        
+        else:
+            return data, settings, prf_stim
 
     else:
         return data, settings, prf_stim
@@ -1212,18 +1239,15 @@ class pRFmodelFitting():
         self.rsq_threshold  = rsq_threshold
         self.fit_hrf        = fit_hrf
         self.__dict__.update(kwargs)
-    
-        if self.output_dir == None:
-            self.output_dir = os.getcwd()
 
         #----------------------------------------------------------------------------------------------------------------------------------------------------------
         # Fetch the settings
         self.settings, self.settings_file, self.prf_stim_ = generate_model_params(model=self.model, 
-                                                                                  dm=self.design_matrix, 
-                                                                                  outputdir=self.output_dir, 
-                                                                                  TR=self.TR,
-                                                                                  settings=self.settings_fn,
-                                                                                  fit_hrf=self.fit_hrf)
+                                                                                dm=self.design_matrix, 
+                                                                                outputdir=self.output_dir, 
+                                                                                TR=self.TR,
+                                                                                settings=self.settings_fn,
+                                                                                fit_hrf=self.fit_hrf)
 
         # overwrite rsq-threshold from settings file
         if self.rsq_threshold != None:
@@ -1410,6 +1434,7 @@ class pRFmodelFitting():
                                       self.surround_baseline_grid, 
                                       gaussian_params=self.old_params_filt,
                                       n_batches=self.nr_jobs,
+                                      verbose=self.verbose,
                                       rsq_threshold=self.rsq)
 
             elapsed = (time.time() - start)
@@ -1436,8 +1461,11 @@ class pRFmodelFitting():
 
                 ### save iterative parameters
                 self.norm_iter = utils.filter_for_nans(self.norm_fitter.iterative_search_params)
-                print("Norm iterfit completed at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+". Mean rsq>"+str(self.rsq)+": "+str(round(np.mean(self.norm_iter[self.norm_fitter.rsq_mask, -1]),2)))
-                print(f"Iterfit took {str(timedelta(seconds=elapsed))}")
+
+                if self.verbose:
+                    print("Norm iterfit completed at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+". Mean rsq>"+str(self.rsq)+": "+str(round(np.mean(self.norm_iter[self.norm_fitter.rsq_mask, -1]),2)))
+                    print(f"Iterfit took {str(timedelta(seconds=elapsed))}")
+
                 if self.write_files:
                     self.save_params(model="norm", stage="iter", predictions=True)
 
@@ -1474,7 +1502,18 @@ class pRFmodelFitting():
         """Load in a numpy array into the class; allows for quick plotting of voxel timecourses"""
 
         if isinstance(params_file, str):
-            params = np.load(params_file)
+            if params_file.endswith('npy'):
+                params = np.load(params_file)
+            elif params_file.endswith('pkl'):
+                with open(params_file, 'rb') as input:
+                    data = pickle.load(input)
+                    
+                params = data['pars']
+                self.settings = data['settings']
+                
+                if self.verbose:
+                    print("Reading settings from pickle-file (safest option; overwrites other settings)")
+
         elif isinstance(params_file, np.ndarray):
             params = params_file.copy()
         elif isinstance(params_file, pd.DataFrame):
@@ -1566,14 +1605,14 @@ class pRFmodelFitting():
                  make_figure=True, 
                  xkcd=False, 
                  title=None, 
-                 font_size=18, 
-                 line_width=1, 
+                 font_size=18,
                  transpose=False,
                  freq_spectrum=False,
                  freq_type='fft',
                  clip_power=None,
                  save_as=None,
                  axis_type="volumes",
+                 resize_pix=None,
                  **kwargs):
 
         """plot real and predicted timecourses for a voxel. Also returns parameters, the numpy array representing the pRF in visual space, and timecourse of data"""
@@ -1584,7 +1623,11 @@ class pRFmodelFitting():
             self.prediction = getattr(self, f"{model}_{stage}_predictions")[vox_nr]
 
         if make_figure:
-            prf_array = make_prf(self.prf_stim, size=params[2], mu_x=params[0], mu_y=params[1])
+            prf_array = make_prf(self.prf_stim, 
+                                 size=params[2], 
+                                 mu_x=params[0], 
+                                 mu_y=params[1], 
+                                 resize_pix=resize_pix)
 
             if freq_spectrum:
                 fig = plt.figure(constrained_layout=True, figsize=(20,5))
@@ -1664,15 +1707,26 @@ class pRFmodelFitting():
     def save_params(self, model="gauss", stage="grid", predictions=False):
 
         if hasattr(self, f"{model}_{stage}"):
+            # write simple numpy files
             params = getattr(self, f"{model}_{stage}")
             output = opj(self.output_dir, f'{self.output_base}_model-{model}_stage-{stage}_desc-prf_params.npy')
             np.save(output, params)
+
+            # write a pickle-file with relevant outputs
+            pkl_file = opj(self.output_dir, f'{self.output_base}_model-{model}_stage-{stage}_desc-prf_params.pkl')
+            out_dict = {}
+            out_dict['pars'] = params
+            out_dict['settings'] = self.settings
+            out_dict['predictions'] = self.make_predictions(model=model, stage=stage)
+
+            with open(pkl_file, 'wb') as f:
+                f.dump(out_dict, f)
 
             if self.verbose:
                 print(f"Save {stage}-fit parameters in {output}")
 
             if predictions:
-                predictions = self.make_predictions(model=model, stage=stage)
+                predictions = out_dict['predictions']
                 output = opj(self.output_dir, f'{self.output_base}_model-{model}_stage-{stage}_desc-predictions.npy')
                 np.save(output, predictions)
                 
