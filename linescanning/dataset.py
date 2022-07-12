@@ -3,10 +3,15 @@ from . import glm, plotting, preproc, utils
 import matplotlib.pyplot as plt
 import nibabel as nb
 from nilearn.signal import clean
+from niworkflows.reports import *
+from niworkflows.reports import core
 import numpy as np
 import os
+from pathlib import Path
 import pandas as pd
-from scipy import io, stats
+from scipy import io
+from time import strftime
+from uuid import uuid4
 import warnings
 
 opj = os.path.join
@@ -669,7 +674,7 @@ class ParseExpToolsFile(ParseEyetrackerFile):
             pass
 
         if set_index:
-            return df.set_index(['subject', 'event_type'])
+            return df.set_index(['subject', 'run', 'event_type'])
         else:
             return df        
 
@@ -1032,6 +1037,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                  gm_range=[355, 375],
                  tissue_thresholds=[0.7,0.7,0.7],
                  save_ext="pdf",
+                 report=False,
                  **kwargs):
 
         self.sub                        = subject
@@ -1067,11 +1073,13 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
         self.tissue_thresholds          = tissue_thresholds
         self.save_ext                   = save_ext
         self.filter_strategy            = filter_strategy
+        self.report                     = report
         self.__dict__.update(kwargs)
 
         # sampling rate and nyquist freq
         self.fs = 1/self.TR
         self.fn = self.fs/2
+
 
         if self.phys_file != None: 
             
@@ -1095,8 +1103,15 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
         if isinstance(self.func_file, str) or isinstance(self.func_file, np.ndarray):
             self.func_file = [self.func_file]
                 
+        # start boilerplate
+        self.func_pre_desc = """
+Functional data preprocessing
+
+For each of the {num_bold} BOLD run(s) found per subject (across all tasks and sessions), the following preprocessing was performed.
+""".format(num_bold=len(self.func_file))
+
         if isinstance(self.func_file, list):
-            
+
             # initiate some dataframes
             self.df_psc      = []    # psc-data (filtered or not)
             self.df_raw      = []    # raw-data (filtered or not)
@@ -1107,6 +1122,8 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
             self.acomp_objs  = []    # keep track of all aCompCor elements
             self.df_gm_only  = []    # aCompCor'ed data, only GM voxels
             self.gm_per_run  = []    # keep track of GM-voxel indices
+
+            # reports
             for run, func in enumerate(self.func_file):
                 
                 if self.verbose:
@@ -1122,10 +1139,34 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
 
                 if self.use_bids:
                     bids_comps = utils.split_bids_components(func)
-                    for el in ['sub', 'run']:
+                    for el in ['sub', 'run', 'ses']:
                         setattr(self, el, bids_comps[el])
                 else:
                     self.run = run+1
+                    self.ses = None
+                
+                # make LSprep output directory
+                if self.save_as == None:
+                    try:
+                        self.lsprep_dir = opj(os.environ.get("DIR_DATA_DERIV"), 'lsprep')
+                    except:
+                        raise ValueError(f"Please specify an output directory with 'save_as='")
+                else:
+                    self.lsprep_dir = save_as
+
+                if self.ses != None:
+                    self.lsprep_full = opj(self.lsprep_dir, f'sub-{self.sub}', f'ses-{self.ses}')
+                else:
+                    self.lsprep_full = opj(self.lsprep_dir, f'sub-{self.sub}')
+                    
+                # make figure directory
+                self.run_uuid = f"{strftime('%Y%m%d-%H%M%S')}_{uuid4()}"
+                self.lsprep_figures = opj(self.lsprep_dir, f'sub-{self.sub}', 'figures')
+                self.lsprep_runid = opj(self.lsprep_dir, f'sub-{self.sub}', 'log', self.run_uuid)
+                self.lsprep_logs = opj(self.lsprep_dir, 'logs')
+                for dir in self.lsprep_full, self.lsprep_figures, self.lsprep_logs, self.lsprep_runid:
+                    if not os.path.exists(dir):
+                        os.makedirs(dir, exist_ok=True)
 
                 # check if deleted_first_timepoints is list or not
                 delete_first = check_input_is_list(self, var="deleted_first_timepoints", list_element=run)
@@ -1148,7 +1189,6 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                                           deleted_last_timepoints=delete_last,
                                           acompcor=self.acompcor,
                                           reference_slice=ref_slice,
-                                          save_as=self.save_as,
                                           **kwargs)
                 
                 if self.standardization == "psc":
@@ -1229,6 +1269,28 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                                        verbose=self.verbose,
                                        **kwargs)
 
+        # write boilerplate
+        self.citation_file = Path(opj(self.lsprep_logs, "CITATION.md"))
+        self.citation_file.write_text(self.desc_func)
+
+        # write report
+        self.config = str(Path(utils.__file__).parents[1]/'misc'/'default.yml')
+        if not os.path.exists(self.config):
+            raise FileNotFoundError(f"Could not find 'default.yml'-file in '{str(Path(utils.__file__).parents[1]/'misc')}'")
+        
+        if self.report:
+            self.report_obj = core.Report(os.path.dirname(self.lsprep_dir),
+                                          self.run_uuid,
+                                          subject_id=self.sub,
+                                          packagename="lsprep",
+                                          config=self.config)
+
+            # generate report
+            self.report_obj.generate_report()
+
+            if self.verbose:
+                print(f" Saving report to {str(self.report_obj.out_dir/self.report_obj.out_filename)}")                                      
+
     def preprocess_func_file(self, 
                              func_file, 
                              run=1, 
@@ -1236,7 +1298,6 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                              deleted_last_timepoints=0,
                              acompcor=False,
                              reference_slice=None,
-                             save_as=None,
                              **kwargs):
 
         #----------------------------------------------------------------------------------------------------------------------------------------------------
@@ -1276,8 +1337,10 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
 
         # trim beginning and end
         if deleted_last_timepoints != 0:
+            self.desc_trim = f""" {deleted_first_timepoints} were removed from the beginning of the functional data."""
             self.ts_corrected = self.ts_magnitude[:,deleted_first_timepoints:-deleted_last_timepoints]
         else:
+            self.desc_trim = ""
             self.ts_corrected = self.ts_magnitude[:,deleted_first_timepoints:]
 
         if self.verbose:
@@ -1320,8 +1383,10 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
 
         if self.filter_strategy != "raw":
 
+            self.desc_filt = f"""DCT-high pass filter [removes low frequencies <{self.lb} Hz] was applied. """
+
             if self.verbose:
-                print(f" DCT-high pass filter [removes low frequencies <{self.lb} Hz]")
+                print(f" DCT-high pass filter [removes low frequencies <{self.lb} Hz] to correct low-frequency drifts.")
 
             self.hp_raw, self._cosine_drift = preproc.highpass_dct(self.data_raw, self.lb, TR=self.TR)
             self.hp_raw_df = self.index_func(self.hp_raw,
@@ -1357,6 +1422,10 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
             # ACOMPCOR AFTER HIGH-PASS FILTERING
             if acompcor:
 
+                self.desc_filt += f"""Data was then z-scored and fed into a custom implementation of `aCompCor` 
+(https://github.com/gjheij/linescanning/blob/main/linescanning/preproc.py), which is tailored 
+for line-scanning data: """
+
                 # do some checks beforehand
                 if reference_slice != None:
                     if self.use_bids:
@@ -1391,7 +1460,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                                               trafo_list=self.trafos,
                                               n_pca=self.n_pca,
                                               filter_pca=self.filter_pca,
-                                              save_as=self.save_as,
+                                              save_as=self.lsprep_figures,
                                               select_component=self.select_component, 
                                               summary_plot=self.verbose,
                                               TR=self.TR,
@@ -1425,9 +1494,21 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                                                     TR=self.TR,
                                                     set_index=True)            
                 
+                self.desc_filt += self.acomp.__desc__
+                self.desc_filt += """
+Output from aCompCor was then converted back to un-zscored data by multipying by the standard deviation and adding 
+the mean back. """
+
+                # get the image
+                # img = opj(self.lsprep_figures, f"{self.base_name}_run-{self.run}_desc-acompcor.{self.save_ext}")
+
             #----------------------------------------------------------------------------------------------------------------------------------------------------
             # LOW PASS FILTER
             if "lp" in self.filter_strategy:
+
+                self.desc_filt += f"""
+The data was then low-pass filtered using a Savitsky-Golay filter [removes high frequences] (window={self.window_size}, 
+order={self.poly_order}). """
 
                 if acompcor:
                     info = " Using aCompCor-data for low-pass filtering"
@@ -1458,12 +1539,16 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                 setattr(self, out_attr, tmp_filtered.copy())
                 setattr(self, f'{out_attr}_df', tmp_filtered_df.copy())
 
+        else:
+            self.desc_filt = ""
+
+        # final
+        self.desc_func = self.func_pre_desc + self.desc_trim + self.desc_filt
 
     def select_voxels_across_runs(self):
 
-        if self.verbose:
-            fig = plt.figure(figsize=(20,10))
-            gs = fig.add_gridspec(3,1, hspace=0.4)
+        fig = plt.figure(figsize=(20,10))
+        gs = fig.add_gridspec(3,1, hspace=0.4)
 
         self.voxel_classification = {}
         self.tissue_probabilities = {}
@@ -1507,14 +1592,8 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                                   line_width=2,
                                   add_hline=add_hline)
 
-    
-        if self.save_as != None:
-            fname = self.save_as+f"_desc-tissue_classification.{self.save_ext}"
-            
-            if self.verbose:
-                print(f" Saving {fname}")
-
-            fig.savefig(fname)        
+        fname = opj(self.lsprep_figures, f"sub-{self.sub}_ses-{self.ses}_desc-tissue_classification.{self.save_ext}")
+        fig.savefig(fname)        
                                    
     # def apply_retroicor(self, run=1, **kwargs):
 
@@ -1768,6 +1847,7 @@ class Dataset(ParseFuncFile):
                  tissue_thresholds=[0.7,0.7,0.7],
                  save_ext="pdf",
                  filter_strategy="hp",
+                 report=False,
                  **kwargs):
 
         if verbose:
@@ -1810,6 +1890,7 @@ class Dataset(ParseFuncFile):
                              tissue_thresholds=tissue_thresholds,
                              save_ext=save_ext,
                              filter_strategy=filter_strategy,
+                             report=report,
                             **kwargs)
 
         if verbose:
