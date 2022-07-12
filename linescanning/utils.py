@@ -8,7 +8,7 @@ import os
 import pandas as pd
 from PIL import ImageColor
 import random
-from scipy import io
+from scipy import io, interpolate
 from shapely import geometry
 import subprocess
 import warnings
@@ -1006,7 +1006,32 @@ def find_intersection(xx, curve1, curve2):
 
 
 def disassemble_fmriprep_wf(wf_path, subj_ID, prefix="sub-"):
+    """disassemble_fmriprep_wf
 
+    Parses the workflow-folder from fMRIPrep into its constituents to recreate a filename. Searches for the following keys: `['ses', 'task', 'acq', 'run']`.
+
+    Parameters
+    ----------
+    wf_path: str
+        Path to workflow-folder
+    subj_ID: str
+        Subject ID to append to `prefix`
+    prefix: str, optional
+        Forms together with `subj_ID` the beginning of the new filename. By default "sub-"
+
+    Returns
+    ----------
+    str
+        filename based on constituent file parts
+
+    Example
+    ----------
+    >>> from linescanning.utils import disassemble_fmriprep_wf
+    >>> wf_dir = "func_preproc_ses_2_task_pRF_run_1_acq_3DEPI_wf"
+    >>> fname = disassemble_fmriprep_wf(wf_dir, "001")
+    >>> fname
+    'sub-001_ses-2_task-pRF_acq-3DEPI_run-1'
+    """
     wf_name = [ii for ii in wf_path.split(os.sep) if "func_preproc" in ii][0]
     wf_elem = wf_name.split("_")
     fname = [f"{prefix}{subj_ID}"]
@@ -1019,3 +1044,44 @@ def disassemble_fmriprep_wf(wf_path, subj_ID, prefix="sub-"):
 
     fname = "_".join(fname)
     return fname
+
+
+def resample2d(array:np.ndarray, new_size:int, kind='linear'):
+    """resample2d
+
+    Resamples a 2D (or 3D) array with :func:`scipy.interpolate.interp2d` to `new_size`. If input is 2D, we'll loop over the final axis.
+
+    Parameters
+    ----------
+    array: np.ndarray
+        Array to be interpolated. Ideally axis have the same size.
+    new_size: int
+        New size of array
+    kind: str, optional
+        Interpolation method, by default 'linear'
+
+    Returns
+    ----------
+    np.ndarray
+        If 2D: resampled array of shape `(new_size,new_size)`
+        If 3D: resampled array of shape `(new_size,new_size, array.shape[-1])`
+    """
+    # set up interpolater
+    x = np.array(range(array.shape[0]))
+    y = np.array(range(array.shape[1]))
+
+    # define new grid
+    xnew = np.linspace(0, x.shape[0], new_size)
+    ynew = np.linspace(0, y.shape[0], new_size)
+
+    if array.ndim > 2:
+        new = np.zeros((new_size,new_size,array.shape[-1]))
+
+        for dd in range(array.shape[-1]):
+            f = interpolate.interp2d(x, y, array[...,dd], kind=kind)
+            new[...,dd] = f(xnew,ynew)
+
+        return new    
+    else:
+        f = interpolate.interp2d(x, y, array, kind=kind)
+        return f(xnew,ynew)
