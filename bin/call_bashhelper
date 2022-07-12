@@ -14,6 +14,15 @@ function search_character_substring {
   echo $starts_at
 }
 
+function check_file {
+  input=${1}
+  if [ -f ${input} ]; then
+    echo "File exists at ${input}"
+  else
+    echo "File \"${input}\" does not exist"
+  fi
+}
+
 function flywheel2bids {
   input_dir=${1}
   fname=${2}
