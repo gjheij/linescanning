@@ -2,7 +2,6 @@ from . import utils, plotting
 from .segmentations import Segmentations
 from kneed import KneeLocator
 import matplotlib.pyplot as plt
-import nibabel as nb
 from nilearn.signal import clean
 from nilearn.glm.first_level.design_matrix import _cosine_drift
 from nitime.timeseries import TimeSeries
@@ -10,8 +9,6 @@ from nitime.analysis import SpectralAnalyzer
 import numpy as np
 import os
 import pandas as pd
-from bids import BIDSLayout
-from scipy import io
 from scipy import signal
 import seaborn as sns
 from sklearn import decomposition
@@ -161,9 +158,16 @@ class aCompCor(Segmentations):
                 
                 if self.verbose:
                     print(f" Found {self.elbow_} component(s) in '{tissue}'-voxels with total explained variance of {round(sum(self.pca.explained_variance_ratio_[:self.elbow_]), 2)}%")
+
+                self.pca_desc = f"""
+Timecourses from these voxels were extracted and fed into a PCA. These components were used to clean the data from respiration/cardiac frequencies. """
+
             except:
                 if self.verbose:
                     print(f" PCA with {self.n_pca} was unsuccessful. Using WM/CSF timecourses")
+                    self.pca_desc = f"""
+PCA with {self.n_pca} was unsuccessful, so WM/CSF timecourses were used to clean the data from respiration/cardiac 
+frequencies. """
 
                 self.elbow_ = None
 
@@ -221,6 +225,12 @@ class aCompCor(Segmentations):
 
     def summary(self, **kwargs):
         
+        self.__desc__ = """
+Nighres segmentations were transformed to the individual slices of each run using antsApplyTransforms with `MultiLabel` interpolation. 
+White matter and CSF voxels were selected based on the CRUISE-segmentation if all voxels across the beam (in *phase-enconding* 
+direction) were assigned to this tissue type. This limited the possibility for partial voluming. """
+
+        self.__desc__ += self.pca_desc
 
         if self.do_pca:
             fig = plt.figure(figsize=(30, 7))
@@ -337,11 +347,12 @@ class aCompCor(Segmentations):
         sns.despine(offset=5, bottom=True, trim=True, ax=inset)
 
         if self.save_as != None:
-            fname = self.save_as+f"_run-{self.run}_desc-acompcor.{self.save_ext}"
-            
-            if self.verbose:
-                print(f" Saving {fname}")
+            if self.trg_session == None:
+                self.base_name = self.subject
+            else:
+                self.base_name = f"{self.subject}_ses-{self.trg_session}"
 
+            fname = opj(self.save_as, f"{self.base_name}_run-{self.run}_desc-acompcor.{self.save_ext}")
             fig.savefig(fname)
 
 class RegressOut():
