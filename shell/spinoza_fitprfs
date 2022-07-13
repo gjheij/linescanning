@@ -3,7 +3,7 @@
 #---------------------------------------------------------------------------------------------------------
 # check if there's is a setup file containing the major paths and source it if it exists
 echo
-call_loadsetup
+source ${DIR_SCRIPTS}/shell/spinoza_setup
 
 #---------------------------------------------------------------------------------------------------------
 # Create help text
@@ -13,35 +13,48 @@ function Usage {
 ---------------------------------------------------------------------------------------------------
 spinoza_fitprfs
 
-wrapper for call_prf that does the pRF-fitting using the output from pybest and the package pRFpy.
-If there is no design matrix for the pRF-modeling, we need to specify a path to the screenshots as
-outputted by the experiment on the stimulus computer. Not really sure what you should do if you do
-not have these screenshots, as it's important for pRFpy to know what kind of stimulus was presented
-when..
+Wrapper for call_prf that does the pRF-fitting using the output from pybest and the package pRFpy. 
+There's several options for design matrix cases (in order of priority):
+  - Place a design-matrix file called 'vis_design.mat' in DIR_DATA_HOME/code
+  - A directory with log-directories. A global search for a directory containing "Screenshots" is 
+    done. If more directories are found and '--one_design' is specified, we'll take the first direc-
+    tory
+  - A directory with log-directories, but '--one_design' is NOT specified, meaning that each run will
+    get a separate design matrix. This can be useful if you have multiple conditions that have dif-
+    ferent designs.
 
 Usage:
-  spinoza_fitprfs <-s sub> <-n ses> <prf dir> <pybest dir> <png dir>
+  spinoza_fitprfs [options] <input dir> <output dir> <png dir>
+
+Options:
+  -g              only run grid fit, skip iterative fit
+  -l              run locally even though we have SGE available.
+  -o              delete existing file and re-run analysis (y=yes|n=no)
+  --multi_design  specifies that for all runs in the dataset have run-/task-specific screenshot direc-
+                  tories. This requires that the directory names you saved must match your naming 
+                  scheme of functional files as we'll match on run-/task-ID
+  --hrf           fit the HRF during pRF-fitting. See 'call_prf' for more information
+  <-s sub>        digit subject number following '${PREFIX}'
+  <-n ses>        integer session number following 'ses-'
+  <-m model>      'gauss' or 'norm' for the type of model to use for the fitting
 
 Arguments:
-  -g            only run grid fit, skip iterative fit
-  -l            run locally even though we have SGE available.
-  <-s sub>      digit subject number following '${PREFIX}'
-  <-n ses>      integer session number following 'ses-'
-  <-m model>    'gauss' or 'norm' for the type of model to use for the fitting
-  <prf dir>     base output directory for prf data (derivatives/prf)
-  <pybest dir>  base input directory with pybest data (derivatives/pybest)
-  <png dir>     base path to where the pRF-experiment's Log-directories with png's is
-  <overwrite>   delete existing file and re-run analysis (y=yes|n=no)
-
+  <input dir>     base input directory with pybest data (e.g., 'DIR_DATA_DERIV/pybest')
+  <output dir>    base output directory for prf data (e.g., 'DIR_DATA_DERIV/prf')
+  <png dir>       base path of where sourcedata of subjects live. In any case, the subject ID will be
+                  appended to this path (if applicable, so will session ID). Inside THAT directory, 
+                  we'll search for directories with 'Screenshots'. So, if you specify DIR_DATA_SOURCE 
+                  for 'sub-005' and 'ses-1', we'll search in DIR_DATA_SOURCE/sub-005/ses-1/* for direc-
+                  tories with "Screenshots". If multiple directories are found, it depends on the options
+                  which directory is used: if --multi_design is specified, each directory will be matched
+                  with its corresponding functional run. If not, we'll take the 1st directory in the list.
 
 Eample:
-  spinoza_fitprfs ${DIR_DATA_DERIV}/prf ${DIR_DATA_DERIV}/pybest ${DIR_DATA_SOURCE}
-  spinoza_fitprfs -s 001 -n 1 ${DIR_DATA_DERIV}/prf ${DIR_DATA_DERIV}/pybest ${DIR_DATA_SOURCE}
-
-Notes:
-  - Has the '-s' and '-n' switches to specify a particular subject and session if present
-  - Also has overwrite switch
-  - Has the '-m' switch to specify type of model
+  spinoza_fitprfs DIR_DATA_DERIV/prf DIR_DATA_DERIV/pybest DIR_DATA_SOURCE
+  spinoza_fitprfs -s 001 -n 1 DIR_DATA_DERIV/prf DIR_DATA_DERIV/pybest DIR_DATA_SOURCE
+  spinoza_fitprfs --multi_design DIR_DATA_DERIV/prf DIR_DATA_DERIV/pybest DIR_DATA_SOURCE
+  spinoza_fitprfs -g -l DIR_DATA_DERIV/prf DIR_DATA_DERIV/pybest DIR_DATA_SOURCE
+  spinoza_fitprfs -o DIR_DATA_DERIV/prf DIR_DATA_DERIV/pybest DIR_DATA_SOURCE
 
 ---------------------------------------------------------------------------------------------------
 
@@ -53,9 +66,26 @@ USAGE
 OW=0
 run_locally=0
 grid_only=0
-while getopts gos:n:m: argument
+multi_design=0
+fit_hrf=""
+while getopts :-:lgos:n:m: argument
 do
   case ${argument} in
+    -)
+      case "${OPTARG}" in
+        multi_design)
+          multi_design=1
+          ;;           
+        hrf)
+          fit_hrf="--hrf"
+          ;;                                                        
+        *)
+          if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
+            echo "Unknown option --${OPTARG}"
+            exit 1
+          fi
+          ;;
+      esac;;    
     s)  sub=${OPTARG}
           ;;
     n)  ses=${OPTARG}
@@ -76,16 +106,16 @@ if [[ $# -lt 3 ]] ; then
   exit 1
 fi
 
-PRF=${@:$OPTIND:1}
-DENOISE=${@:$OPTIND+1:1}
+INPUT=${@:$OPTIND:1}
+OUTPUT=${@:$OPTIND+1:1}
 PNG=${@:$OPTIND+2:1}
 
 if [[ -z ${sub} ]]; then
   # loop through subjects
-  search="${DENOISE}/${PREFIX}*"
+  search="${INPUT}/${PREFIX}*"
 else
   # do for 1 subject
-  search="${DENOISE}/${PREFIX}${sub}"
+  search="${INPUT}/${PREFIX}${sub}"
 fi
 
 if [[ ${grid_flag} -eq 1 ]]; then
@@ -120,8 +150,8 @@ for dir in ${search}; do
     base_dir=$(basename ${dir})/ses-${nr}
   fi
 
-  prf_dir=${PRF}/${base_dir}
-  pybest_dir=${DENOISE}/${base_dir}
+  input_dir=${INPUT}/${base_dir}
+  prf_dir=${OUTPUT}/${base_dir}
   png_dir=${PNG}/${base_dir}
 
   # check if we got model specification
@@ -149,97 +179,124 @@ for dir in ${search}; do
     stage="stage-iter"
   fi
 
-  prf_params=`find ${prf_dir} -type f \( -name "*prf_params*" -and -name "*${use_model}*" -and -name "*${stage}*" -and -name "*task-${TASK_SES1}*" -and -name "*.npy" \) 2>/dev/null`
-  # Check if we should overwrite file
-  if [[ ${OW} -eq 1 ]]; then
-    if [[ -f ${prf_params} ]]; then
-      rm -r ${prf_params}
-    fi
+  # check if input is pybest or fmriprep
+  if [[ $(basename ${INPUT}) == "pybest" ]]; then
+    full_input=${input_dir}/denoising
+  elif [[ $(basename ${INPUT}) == "fmriprep" ]]; then
+    full_input=${input_dir}/func
+  else
+    full_input=${input_dir}
   fi
 
-  if [[ ! -f ${prf_params} ]]; then
+  # do stuff if input directory exists
+  if [[ -d ${full_input} ]]; then
 
-    # echo $pybest_dir
-    if [[ -d ${pybest_dir}/denoising ]]; then
+    echo
+    echo "**************************************** Processing `basename ${dir}` ***************************************"
 
-      echo
-      echo "**************************************** Processing `basename ${dir}` ***************************************"
+    
+    # fetch PNG-directories, sort, and save in array
+    PNG_UNSORTED=`find ${png_dir} -type d \( -name "*Screenshots*" \) 2>/dev/null`
+    IFS=$'\n' PNGS_DIR=($(sort <<<"${PNG_UNSORTED[*]}"))
+    unset IFS    
+    
+    echo "Running pRF-analysis; ${txt}"
+    # loop through tasks from spinoza_setup
+    for task in ${TASK_SES1[@]}; do
 
-      echo "Running pRF-analysis; ${txt}"
+      # Check if we should overwrite file
+      prf_params=`find ${prf_dir} -type f \( -name "*${use_model}*" -and -name "*${stage}*" -and -name "*task-${task}*" -and -name "*prf_params.npy" \) 2>/dev/null`
+      if [[ ${OW} -eq 1 ]]; then
+        if [[ -f ${prf_params} ]]; then
+          rm -r ${prf_params}
+        fi
+      fi
 
-      if [[ ! -f ${prf_dir}/vis_design.mat ]]; then
+      # run stuff if file doesn't exist
+      if [[ ! -f ${prf_params} ]]; then
 
-        if [[ -f ${DIR_DATA_HOME}/code/vis_design.mat ]]; then
-          echo "Creating symlink to ${PROJECT}/code/vis_design.mat"
-          ln -s ${DIR_DATA_HOME}/code/vis_design.mat ${prf_dir}/vis_design.mat
-        else
-          echo "Design matrix needs to be created.."
-          # Take second run just in case the first one is empty
-          PNGS_DIR=`find ${png_dir}/prf -type d \( -name "*Logs*" -and -name "*run-2*" \) -print 2>/dev/null`
-          if [[ ! -z ${PNGS_DIR} ]]; then
-            echo " found directory: ${PNGS_DIR}"
-            PNGS=`find ${PNGS_DIR} -type d \( -name "*Screenshots*" \) -print 2>/dev/null`
-          else
-            echo "ERROR: no \"Logs\" in \"${png_dir}/prf\""
-            continue
-          fi
+        # exclude rest as task
+        if [[ ${task} != "rest" ]]; then
 
-          if [[ ! -d ${PNGS} ]]; then
-            echo "ERROR: no \"Screenshot\" in \"${PNGS_DIR}\""
-            continue
-          else
-            echo " directory contains \"Screenshot\"-folder"
-            IMGS=`find ${PNGS} -type f \( -name "*.png" \) -print 2>/dev/null`
-            if [[ -z ${IMGS} ]]; then
-              echo "ERROR: no *.png-files in \"${PNGS}\""
-              continue
+          echo "Dealing with task-ID: ${task}"
+          # decide on design matrix for tasks in TASK_SES1
+          if [[ ${multi_design} -eq 0 ]]; then
+
+            if [[ -f ${DIR_DATA_HOME}/code/design_task-${task}.mat ]]; then
+              echo "Creating symlink to ${PROJECT}/code/design_task-${task}.mat"
+              ln -s ${DIR_DATA_HOME}/code/design_task-${task}.mat ${prf_dir}/design_task-${task}.mat
+              use_pngdir=""
             else
-              echo " Screenshot-folder contains png-files"
+              use_pngdir=${PNGS_DIR[0]}
+
+              # check if directory contains png-files
+              if [[ -z `find ${use_pngdir} -type f \( -name "*.png" \) 2>/dev/null` ]]; then
+                echo "ERROR in `basename ${0}`: no *.png-files in \"${use_pngdir}\""
+                continue
+              fi
+            fi
+            
+          else
+            # how cool; list comprehension-like structure in bash
+            # https://stackoverflow.com/a/6721137
+            task_dirs=($(for x in ${PNGS_DIR[@]}; do if [[ ${x} == *"task-${task}"* ]]; then echo ${x}; fi done))
+            if [[ ! -z ${task_dirs} ]]; then
+              use_pngdir=${task_dirs[0]}
+
+              # check if directory contains png-files
+              if [[ -z `find ${use_pngdir} -type f \( -name "*.png" \) 2>/dev/null` ]]; then
+                echo "ERROR in `basename ${0}`: no *.png-files in \"${use_pngdir}\""
+                continue
+              fi
+            else
+              echo "ERROR in `basename ${0}`: could not find \"task-${task}\" folders"
+              continue
             fi
           fi
+
+          echo "Using \"${use_pngdir}\" for design matrix"
+
+          # decide how to execute the process
+          if [[ ${PLACE} != "SGE" ]]; then
+            job="python"
+          else
+            if [[ ${run_locally} -eq 0 ]]; then
+              job="qsub -q ${SGE_QUEUE_LONG} -pe smp 5 -wd ${prf_dir} -N $(basename ${dir})_${task}"
+            elif [[ ${run_locally} -eq 1 ]]; then
+              job="python"
+            else
+              echo "ERROR in `basename ${0}`: invalid option \"${run_locally}\". Must be '0' or '1'"
+              exit 1
+            fi
+          fi
+  
+          # define call to call_prf
+          export DISPLAY=:0
+          ${job} ${DIR_SCRIPTS}/bin/call_prf ${grid_flag} ${fit_hrf} \
+            -s "$(basename ${dir} | cut -d'-' -f2)" \
+            -n ${nr} \
+            -t ${task} \
+            -o ${prf_dir} \
+            -i ${full_input} \
+            -p ${use_pngdir} \
+            -m ${use_model} \
+            -u ${PYBEST_SPACE}
+          
+          if [[ $? -ne 0 ]]; then
+            echo "ERROR in `basename ${0}`: call_prf did not execute cleanly"
+            exit 1
+          fi
+
         fi
-      
+
       else
-        echo "All good. Starting call_prf.."
+        echo "`basename ${prf_params}` file exists"
+        continue
       fi
-
-      # We need to specify a setup script with the variables if we want to qsub this job
-      if [[ ${PLACE} != "SGE" ]]; then
-        job="python"
-      else
-        if [[ ${run_locally} -eq 0 ]]; then
-          job="qsub -q ${SGE_QUEUE_LONG} -pe smp 25 -wd ${prf_dir} -N $(basename ${dir})_gauss"
-        elif [[ ${run_locally} -eq 1 ]]; then
-          job="python"
-        else
-          echo "ERROR in `basename ${0}`: invalid option \"${run_locally}\". Must be '0' or '1'"
-          exit 1
-        fi
-      fi
-      
-      export DISPLAY=:0
-      ${job} ${DIR_SCRIPTS}/bin/call_prf ${grid_flag} \
-        -s "$(basename ${dir} | cut -d'-' -f2)" \
-        -n ${nr} \
-        -t ${TASK_SES1} \
-        -o ${prf_dir} \
-        -i ${pybest_dir}/denoising \
-        -p ${PNGS} \
-        -m ${use_model} \
-        -u ${PYBEST_SPACE}
-
-    else
-
-      echo "`basename ${dir}`: might want to run pybest first.."
-      echo "  Directory \"${pybest_dir}/denoising\" not valid"
-
-    fi
+    done
 
   else
-
-    echo "`basename ${dir}`: pRF-data already present"
-    continue
-
+    echo "`basename ${dir}`: Directory \"${full_input}\" not valid."
   fi
 
 done

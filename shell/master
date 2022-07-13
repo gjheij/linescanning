@@ -19,22 +19,24 @@ job="bash"
 
 # Allocate input arguments to variables
 #
-use_bbr=""      # spinoza_fmriprep
-run_local=""    # spinoza_fmriprep
-UPs=""          # spinoza_qmrimaps
-NO_BIAS=""      # spinoza_qmrimaps
-REMOVE_WF=""    # spinoza_fmriprep
-SGE=""          # spinoza_denoising
-OW=""           # multiple (overwrite mode)
-FREEVIEW=""     # spinoza_bestvertex
-COMB_ONLY=""    # spinoza_extractregions
-GRID=""         # spinoza_fitprfs
-DRAW_SAG="itk"  # spinzoa_sagittalsinus
+use_bbr=""          # spinoza_fmriprep
+run_local=""        # spinoza_fmriprep/spinoza_fitprfs
+UPs=""              # spinoza_qmrimaps
+NO_BIAS=""          # spinoza_qmrimaps
+REMOVE_WF=""        # spinoza_fmriprep
+SGE=""              # spinoza_denoising
+OW=""               # multiple (overwrite mode)
+FREEVIEW=""         # spinoza_bestvertex
+COMB_ONLY=""        # spinoza_extractregions
+GRID=""             # spinoza_fitprfs
+DRAW_SAG="itk"      # spinzoa_sagittalsinus
+MULTIPLE_DESIGNS="" # spinoza_fitprfs
+FIT_HRF=""          # spinoza_fitprfs
 
 # use long options in bash:
 # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options
-declare -a opts=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid")
-while getopts :-:wcjqom:s:h:n:t:l:v:p:x:u:r:e: arg
+declare -a opts=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "hrf")
+while getopts :-:wcjqom:s:h:n:t:l:v:p:x:u:r:e:i: arg
 do
   case ${arg} in
     -)
@@ -77,7 +79,13 @@ do
           ;;           
         freeview)
           DRAW_SAG="fv"
-          ;;                                              
+          ;;    
+        multi_design)
+          MULTIPLE_DESIGNS="--multi_design"
+          ;;   
+        hrf)
+          FIT_HRF="--hrf"
+          ;;                                                                  
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}, possible options are:"
@@ -114,7 +122,9 @@ do
     r)  ROI=${OPTARG}
           ;;       
     e)  n_echoes=${OPTARG}
-          ;;               
+          ;;
+    i)  images=${OPTARG}
+          ;;             
   esac
 done
 
@@ -171,6 +181,8 @@ Args:
                     and brain extraction
   -e <n_echoes>     Specify the amount of echoes of the acquisition
   -h <hemisphere>   used for lineplanning, denotes which hemisphere to process
+  -i <image path>   specify custom path to PNG's for pRF-fitting. This allows deviation from the stan-
+                    dard path that 'spinoza_fitprfs' will be looking for
   -l <which mod>    look for a module number given a string to search for (e.g., master -l layer); can
                     also be used with:
                     - spinoza_bestvertex to use a particular label-file (default = V1_exvivo.thresh).
@@ -209,10 +221,19 @@ Args:
                       - spinoza_scanner2bids; denote the session number when you have a regular 
                         pRF-session, as the "-n" flag is used to specify this.   
                       - spinoza_profiling; specify the type of file to use
-  --no_bbr          maps to '--force-no-bbr' in call_fmriprep
+  --comb_only       skip nighres, only do combination of segmentations. Works with '-o' flag. 
+  --fv              use FreeView to draw sinus mask (spinoza_sagittalsinus) 
+  --fsl             use FSLeyes to draw sinus mask (spinoza_sagittalsinus) 
+  --grid            maps to '-g' in spinoza_fitprfs; runs gridfit only
+  --itk             use ITK-Snap to draw sinus mask (spinoza_sagittalsinus) [default]
   --local           maps to '-l' in spinoza_fmriprep & spinoza_fitprfs; runs the process locally.
-  --ups             maps to '-u' in spinoza_qmrimaps; turn on Universal Pulses
+  --multi_design    specifies that for all runs in the dataset have run-/task-specific screenshot direc-
+                    tories. This requires that the directory names you saved must match your naming 
+                    scheme of functional files as we'll match on run-/task-ID (spinoza_fitprfs)
+  --no_bbr          maps to '--force-no-bbr' in call_fmriprep
   --no_biascorr     maps to '-b' in spinoza_biassanlm; don't perform bias correction after denoising
+  --no_freeview     disable FreeView during vertex selection (spinoza_bestvertex)
+  --ups             maps to '-u' in spinoza_qmrimaps; turn on Universal Pulses
   --remove_wf       maps to '-r all' in spinoza_fmriprep; removes full fmriprep_wf folder. Be careful
                     with this one! Mainly used for debugging of a single subject. Use \"--remove_surf_wf\"
                     to specifically remove the surface reconstruction folder when you have new FreeSurfer
@@ -220,12 +241,6 @@ Args:
   --remove_surf_wf  Remove surface reconstruction workflow folder; refreshes the surfaces used for regi-
                     stration and transformation
   --sge             maps to '-c' in spinoza_linerecon & spinoza_denoising; submits jobs to cluster
-  --grid            maps to '-g' in spinoza_fitprfs; runs gridfit only
-  --no_freeview     disable FreeView during vertex selection (spinoza_bestvertex)
-  --comb_only       skip nighres, only do combination of segmentations. Works with '-o' flag. 
-  --itk             use ITK-Snap to draw sinus mask (spinoza_sagittalsinus) [default]
-  --fv              use FreeView to draw sinus mask (spinoza_sagittalsinus) 
-  --fsl             use FSLeyes to draw sinus mask (spinoza_sagittalsinus) 
 
 Usage:
   master -m <MODULES TO RUN>
@@ -1010,7 +1025,19 @@ if [[ $? -eq 0 ]]; then
     MODEL="-m ${PRF_MODEL}"
   fi
 
-  ${job} spinoza_fitprfs ${run_local} ${grid} ${SUBJECT} ${SESSION} ${OW} ${MODEL} ${DIR_DATA_DERIV}/prf ${DIR_DATA_DERIV}/pybest ${DIR_DATA_SOURCE}
+  if [[ -z ${images} ]]; then
+    PNG_DIR=${DIR_DATA_SOURCE}
+  else
+    PNG_DIR=${images}
+  fi
+
+  if [[ -d ${DIR_DATA_DERIV}/pybest ]]; then
+    PRF_INPUT=${DIR_DATA_DERIV}/pybest
+  else
+    PRF_INPUT=${DIR_DATA_DERIV}/fmriprep
+  fi
+
+  ${job} spinoza_fitprfs ${FIT_HRF} ${run_local} ${grid} ${MULTIPLE_DESIGNS} ${SUBJECT} ${SESSION} ${OW} ${MODEL} ${PRF_INPUT} ${DIR_DATA_DERIV}/prf ${PNG_DIR}
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_fitprfs exited with non-zero status"
