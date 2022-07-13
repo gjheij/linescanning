@@ -186,6 +186,7 @@ Example:
     # no space means native BOLD
     files = utils.get_file_from_substring(search_for, inputdir)
     
+    print("Loading in data")
     if not files[0].endswith(".nii.gz") and not files[0].endswith(".nii"):
         # chunk into L/R pairs
         hemi_pairs = [[i, j] for i, j in zip(files[:-1], files[1:])]
@@ -241,7 +242,7 @@ Example:
     np.save(opj(outputdir, f'{out}_hemi-R_desc-avg_bold.npy'), m_prf_tc_data[:,n_verts[0]:])
 
     # assume TR (read from gifti if possible)
-    if giftis != None:
+    if giftis:
         tr = dataset.ParseGiftiFile(pair[0]).TR_sec
         print(f"Setting TR to {tr}")
     else:
