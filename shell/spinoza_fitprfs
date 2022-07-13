@@ -237,6 +237,14 @@ for dir in ${search}; do
           # decide on design matrix for tasks in TASK_SES1
           if [[ ${multi_design} -eq 0 ]]; then
 
+            if [[ ! -z ${task_ID} ]]; then
+              echo
+              echo "---------------------------------------------------------------------------------------------------"
+              echo "WARNING in `basename ${0}`: custom task \"${task_ID}\" was/were specified, but \"--multi_design\"-flag omitted."
+              echo "This may result in selection of the wrong png-folder. Please rerun with \"--multi_design\""
+              exit 2
+            fi
+
             if [[ -f ${DIR_DATA_HOME}/code/design_task-${task}.mat ]]; then
               echo "Creating symlink to ${PROJECT}/code/design_task-${task}.mat"
               ln -s ${DIR_DATA_HOME}/code/design_task-${task}.mat ${prf_dir}/design_task-${task}.mat
