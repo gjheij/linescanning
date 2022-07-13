@@ -219,97 +219,96 @@ for dir in ${search}; do
     # loop through tasks
     for task in ${search_tasks[@]}; do
 
-      echo $task
+      # Check if we should overwrite file
+      prf_params=`find ${prf_dir} -type f \( -name "*${use_model}*" -and -name "*${stage}*" -and -name "*task-${task}*" -and -name "*prf_params.npy" \) 2>/dev/null`
+      if [[ ${OW} -eq 1 ]]; then
+        if [[ -f ${prf_params} ]]; then
+          rm -r ${prf_params}
+        fi
+      fi
 
-      # # Check if we should overwrite file
-      # prf_params=`find ${prf_dir} -type f \( -name "*${use_model}*" -and -name "*${stage}*" -and -name "*task-${task}*" -and -name "*prf_params.npy" \) 2>/dev/null`
-      # if [[ ${OW} -eq 1 ]]; then
-      #   if [[ -f ${prf_params} ]]; then
-      #     rm -r ${prf_params}
-      #   fi
-      # fi
+      # run stuff if file doesn't exist
+      if [[ ! -f ${prf_params} ]]; then
 
-      # # run stuff if file doesn't exist
-      # if [[ ! -f ${prf_params} ]]; then
+        # exclude rest as task
+        if [[ ${task} != "rest" ]]; then
 
-      #   # exclude rest as task
-      #   if [[ ${task} != "rest" ]]; then
+          echo "Dealing with task-ID: ${task}"
+          # decide on design matrix for tasks in TASK_SES1
+          if [[ ${multi_design} -eq 0 ]]; then
 
-      #     echo "Dealing with task-ID: ${task}"
-      #     # decide on design matrix for tasks in TASK_SES1
-      #     if [[ ${multi_design} -eq 0 ]]; then
+            if [[ -f ${DIR_DATA_HOME}/code/design_task-${task}.mat ]]; then
+              echo "Creating symlink to ${PROJECT}/code/design_task-${task}.mat"
+              ln -s ${DIR_DATA_HOME}/code/design_task-${task}.mat ${prf_dir}/design_task-${task}.mat
+              use_pngdir=""
+            else
+              use_pngdir=${PNGS_DIR[0]}
 
-      #       if [[ -f ${DIR_DATA_HOME}/code/design_task-${task}.mat ]]; then
-      #         echo "Creating symlink to ${PROJECT}/code/design_task-${task}.mat"
-      #         ln -s ${DIR_DATA_HOME}/code/design_task-${task}.mat ${prf_dir}/design_task-${task}.mat
-      #         use_pngdir=""
-      #       else
-      #         use_pngdir=${PNGS_DIR[0]}
-
-      #         # check if directory contains png-files
-      #         if [[ -z `find ${use_pngdir} -type f \( -name "*.png" \) 2>/dev/null` ]]; then
-      #           echo "ERROR in `basename ${0}`: no *.png-files in \"${use_pngdir}\""
-      #           continue
-      #         fi
-      #       fi
+              # check if directory contains png-files
+              if [[ -z `find ${use_pngdir} -type f \( -name "*.png" \) 2>/dev/null` ]]; then
+                echo "ERROR in `basename ${0}`: no *.png-files in \"${use_pngdir}\""
+                continue
+              fi
+            fi
             
-      #     else
-      #       # how cool; list comprehension-like structure in bash
-      #       # https://stackoverflow.com/a/6721137
-      #       task_dirs=($(for x in ${PNGS_DIR[@]}; do if [[ ${x} == *"task-${task}"* ]]; then echo ${x}; fi done))
-      #       if [[ ! -z ${task_dirs} ]]; then
-      #         use_pngdir=${task_dirs[0]}
+          else
+            # how cool; list comprehension-like structure in bash
+            # https://stackoverflow.com/a/6721137
+            task_dirs=($(for x in ${PNGS_DIR[@]}; do if [[ ${x} == *"task-${task}"* ]]; then echo ${x}; fi done))
+            if [[ ! -z ${task_dirs} ]]; then
+              use_pngdir=${task_dirs[0]}
 
-      #         # check if directory contains png-files
-      #         if [[ -z `find ${use_pngdir} -type f \( -name "*.png" \) 2>/dev/null` ]]; then
-      #           echo "ERROR in `basename ${0}`: no *.png-files in \"${use_pngdir}\""
-      #           continue
-      #         fi
-      #       else
-      #         echo "ERROR in `basename ${0}`: could not find \"task-${task}\" folders"
-      #         continue
-      #       fi
-      #     fi
+              # check if directory contains png-files
+              if [[ -z `find ${use_pngdir} -type f \( -name "*.png" \) 2>/dev/null` ]]; then
+                echo "ERROR in `basename ${0}`: no *.png-files in \"${use_pngdir}\""
+                continue
+              fi
+            else
+              echo "ERROR in `basename ${0}`: could not find \"task-${task}\" folders"
+              continue
+            fi
+          fi
 
-      #     echo "Using \"${use_pngdir}\" for design matrix"
+          echo "Using \"${use_pngdir}\" for design matrix"
 
-      #     # decide how to execute the process
-      #     if [[ ${PLACE} != "SGE" ]]; then
-      #       job="python"
-      #     else
-      #       if [[ ${run_locally} -eq 0 ]]; then
-      #         job="qsub -q ${SGE_QUEUE_LONG} -pe smp 5 -wd ${prf_dir} -N $(basename ${dir})_${task}"
-      #       elif [[ ${run_locally} -eq 1 ]]; then
-      #         job="python"
-      #       else
-      #         echo "ERROR in `basename ${0}`: invalid option \"${run_locally}\". Must be '0' or '1'"
-      #         exit 1
-      #       fi
-      #     fi
+          # decide how to execute the process
+          if [[ ${PLACE} != "SGE" ]]; then
+            job="python"
+          else
+            if [[ ${run_locally} -eq 0 ]]; then
+              job="qsub -q ${SGE_QUEUE_LONG} -pe smp 5 -wd ${prf_dir} -N $(basename ${dir})_${task}"
+            elif [[ ${run_locally} -eq 1 ]]; then
+              job="python"
+            else
+              echo "ERROR in `basename ${0}`: invalid option \"${run_locally}\". Must be '0' or '1'"
+              exit 1
+            fi
+          fi
   
-      #     # define call to call_prf
-      #     export DISPLAY=:0
-      #     ${job} ${DIR_SCRIPTS}/bin/call_prf ${grid_flag} ${fit_hrf} \
-      #       -s "$(basename ${dir} | cut -d'-' -f2)" \
-      #       -n ${nr} \
-      #       -t ${task} \
-      #       -o ${prf_dir} \
-      #       -i ${full_input} \
-      #       -p ${use_pngdir} \
-      #       -m ${use_model} \
-      #       -u ${PYBEST_SPACE}
+          # define call to call_prf
+          export DISPLAY=:0
+          ${job} ${DIR_SCRIPTS}/bin/call_prf ${grid_flag} ${fit_hrf} \
+            -s "$(basename ${dir} | cut -d'-' -f2)" \
+            -n ${nr} \
+            -t ${task} \
+            -o ${prf_dir} \
+            -i ${full_input} \
+            -p ${use_pngdir} \
+            -m ${use_model} \
+            -u ${PYBEST_SPACE}
           
-      #     if [[ $? -ne 0 ]]; then
-      #       echo "ERROR in `basename ${0}`: call_prf did not execute cleanly"
-      #       exit 1
-      #     fi
+          if [[ $? -ne 0 ]]; then
+            echo "ERROR in `basename ${0}`: call_prf did not execute cleanly"
+            exit 1
+          fi
 
-      #   fi
+        fi
 
-      # else
-      #   echo "`basename ${prf_params}` file exists"
-      #   continue
-      # fi
+      else
+        echo "`basename ${prf_params}` file exists"
+        continue
+      fi
+      
     done
 
   else
