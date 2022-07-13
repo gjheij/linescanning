@@ -203,8 +203,12 @@ Args:
                     brings up the help-text from module 00 (spinoza_lineplanning)
   -r <roi>          Set label file for 'spinoza_bestvertex' or ROI for 'spinoza_extractregions'
   -s <subject ID>   ID without prefix (e.g., 'sub-001' > '-s 001')
-  -t <type>         used for fMRIprep, to run either the 'anat' workflow only, or also include func
-                    data ('func') or a direct task-identifier such as '${TASK_SES1}'
+  -t <type|task>    used for;
+                      - spinoza_fmriprep: to run either the 'anat' workflow only, or also include func
+                        data ('func') or a direct task-identifier such as '${TASK_SES1[0]}'
+                      - spinoza_fitprfs: limit pRF-fitting to a given task. You can also specify multi-
+                        ple tasks if you want to bypass the setup file completely. In that case, use 
+                        the format '-t <task1>,<task2>,<task3>'
   -u <config>       specify configuration file for fMRIprep (see linescanning/misc for examp-
                     les). If not specified, no configuration will be used. If ses-1 is specified,
                     linescanning/misc/fmriprep_config.json is used; above that, fmriprep_con-
@@ -1037,7 +1041,13 @@ if [[ $? -eq 0 ]]; then
     PRF_INPUT=${DIR_DATA_DERIV}/fmriprep
   fi
 
-  ${job} spinoza_fitprfs ${FIT_HRF} ${run_local} ${grid} ${MULTIPLE_DESIGNS} ${SUBJECT} ${SESSION} ${OW} ${MODEL} ${PRF_INPUT} ${DIR_DATA_DERIV}/prf ${PNG_DIR}
+  if [[ ! -z ${TYPE} ]]; then
+    TASK_ID="-t ${TYPE}"
+  else
+    TASK_ID=""
+  fi  
+
+  ${job} spinoza_fitprfs ${TASK_ID} ${FIT_HRF} ${run_local} ${grid} ${MULTIPLE_DESIGNS} ${SUBJECT} ${SESSION} ${OW} ${MODEL} ${PRF_INPUT} ${DIR_DATA_DERIV}/prf ${PNG_DIR}
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_fitprfs exited with non-zero status"
