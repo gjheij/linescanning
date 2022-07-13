@@ -3,11 +3,11 @@
 #$ -cwd
 #$ -V
 
+import ast
 import getopt
 from linescanning import prf,utils,dataset
-import matplotlib.pyplot as plt
-import nibabel as nb
 import numpy as np
+import nibabel as nb
 import os
 from scipy import io
 import sys
@@ -29,49 +29,76 @@ call_prf
 Wrapper for population receptive field fitting with pRFpy. If not present yet, it will create a
 design matrix based on a specified path to screenshots as outputted by the pRF-experiment script.
 If you're not running that particular experiment, you'll need to create a design matrix yourself.
-After it has created or loaded the design matrix, an initial grid search will be performed, of
-which the output will be stored in a specified name or otherwise a file with a default output
-name (e.g., sub-xxx_desc-prf_params.npy). This numpy-array is later used in call_pycortex to
-calculate the optimal vertex. Assumes the input is BIDS compliant, as it will extract certain
-features from the filenames.
+Assumes the input is BIDS compliant, as it will extract certain features from the filenames.
+Currently compatible with output from pybest (ending with "*desc-denoised_bold.npy") and from fMRI-
+Prep (ending with "*bold.func.gii"). It will throw an error if neither of these conditions are met.
+If you have a different case (e.g., nifti's), please open an issue so we can deal with that. We'll 
+select files from the input directory based on 'space-' (check spinoza_setup)/'run-'/'task-IDs. They
+are then paired into left+right hemisphere. Finally, the median over all runs is calculated and inser-
+ted in the model-fitting object.
 
 Usage:
-  call_prf.py <subject number> <session number> <task> <output name parameters> <input directory>
+  call_prf [arguments] [options]
 
 Arguments:
-  -s (--sub)    <sub number>      number of subject's FreeSurfer directory from which you can omit
-                                  "sub-" (e.g.,for "sub-001", enter "001").
-  -n (--ses)    <session number>  session number (e.g., "1")
-  -t (--task)   <task name>       name of the experiment performed (e.g., "2R")
-  -o (--out)    <prf dir>         output directory containing pRF-stuff (/derivatives/prf)
-  -i (--in)     <input dir>       input directory (e.g., output of pybest)
-  -p (--png)    <path to pngs>    path to png's if you ran M. Aqil's experiment
-  -m (--model)  <model type>      standard Gaussian model or Normalization model (for now)
-  -x (--params) <gaussian params> path to numpy array containing old parameters of Gaussian model
-                                  to use for the Normalization model
-  -g (--grid)   <grid only>       only run a grid-fit with the specified model
-  -u (--space)  <fit space>       default is set as PYBEST_SPACE in spinoza_setup
-    
+    -s|--sub)    <sub number>       number of subject's FreeSurfer directory from which you can 
+                                    omit "sub-" (e.g.,for "sub-001", enter "001").
+    -n|--ses)    <session number>   session number (e.g., "1")
+    -t|--task)   <task name>        name of the experiment performed (e.g., "2R")
+    -o|--out)    <prf dir>          output directory containing pRF-stuff (/derivatives/prf)
+    -i|--in)     <input dir>        input directory (e.g., output of pybest/fMRIPrep)
+    -p|--png)    <path to pngs>     path to png's if you ran M. Aqil's experiment
+    -m|--model)  <model type>       standard Gaussian model or Normalization model (for now)
+    -x|--params) <gaussian params>  path to numpy array containing old parameters of Gaussian model
+                                    to use for the Normalization model
+    -u|--space)  <fit space>        default is set as PYBEST_SPACE in spinoza_setup
+
+Options:                                  
+    --hrf           Fit the HRF during pRF-fitting. If `True`, the fitting will consist of two 
+                    stages: first, a regular fitting without HRF estimation. Then, the fitting 
+                    object of that fit is inserted as `previous_gaussian_fitter` into a new fitter 
+                    object with HRF estimation turned on. Default = False.
+    --clip          clip the edges of design matrix in the space of 'n_pix' (by default = 100). 
+                    You will need to calculate how many pixels are to be set to zero given the vi-
+                    sual field of the subject in the scanner (with a screensize of [1920,1080]px
+                    and height of 70cm). Format needs to be '--clip "a,b,c,d"' or --clip [a,b,c,d]
+                    to ensure it's read in like a list
+    -g|--grid       only run a grid-fit with the specified model
+    -v|--verbose    print some stuff to a log-file
+    --file_ending   Overwrite default search-targets from pybest/fMRIPrep output. E.g., for fMRI-
+                    Prep, we look for 'bold.func.gii' and 'desc-denoised_bold.npy' for Pybest. With
+                    <file_ending> you can specify to use the volumetric data from fMRIPrep (e.g., 
+                    preproc_bold.nii.gz [also requires different 'space-' flag!]). If volumetric
+                    data is supplied, we'll convert it to 2D with `linescanning.dataset.Dataset`.
+                    If you want to provide cifti's or nifti's, we assume everything's been prepro-
+                    cessed appropriately. There's no filtering, percent-signal changing or other
+                    stuff.
+
 Example:
   call_prf -s 001 -n 1 -t 2R -o /path/derivatives/prf -i /path/to/pybest/sub-001 -p /path/png
   call_prf --sub 001 --ses 1 --task 2R --out /path/derivatives/prf --in /path/to/pybest/sub-001
 
 ---------------------------------------------------------------------------------------------------
-
 """
 
     sub         = None
     ses         = None
-    task        = ''
-    out_dir     = ''
-    in_dir      = ''
-    png_dir     = ''
+    task        = None
+    outputdir   = None
+    inputdir    = None
+    png_dir     = None
     model       = "gauss"
     grid_only   = False
-    space       = "fsnative"
+    space       = None
+    giftis      = False
+    fit_hrf     = False
+    verbose     = True
+    n_pix       = 100
+    clip_dm     = [0,0,0,0]
+    file_ending = None
 
     try:
-        opts = getopt.getopt(argv,"ghs:n:t:o:i:p:m:x:u:",["sub=", "model=", "ses=", "task=", "out=", "in=", "png=", "params=", "grid=", "space="])[0]
+        opts = getopt.getopt(argv,"ghs:n:t:o:i:p:m:x:u:",["sub=", "model=", "ses=", "task=", "out=", "in=", "png=", "params=", "grid=", "space=", "hrf=", "n_pix=", "clip=", "verbose=", "file_ending="])[0]
     except getopt.GetoptError:
         print(main.__doc__)
         sys.exit(2)
@@ -83,13 +110,13 @@ Example:
         elif opt in ("-s", "--sub"):
             sub = arg
         elif opt in ("-n", "--ses"):
-            ses = arg
+            ses = int(arg)
         elif opt in ("-t", "--task"):
             task = arg
         elif opt in ("-o", "--out"):
-            out_dir = arg
+            outputdir = arg
         elif opt in ("-i", "--in"):
-            in_dir = arg
+            inputdir = arg
         elif opt in ("-p", "--png"):
             png_dir = arg
         elif opt in ("-m", "--model"):
@@ -98,153 +125,171 @@ Example:
             space = arg
         elif opt in ("-g", "--grid"):
             grid_only = True
+        elif opt in ("--hrf"):
+            fit_hrf = True
+        elif opt in ("--n_pix"):
+            n_pix = int(arg)
+        elif opt in ("-v", "--verbose"):
+            verbose = True
+        elif opt in ("--clip"):
+            clip_dm = list(ast.literal_eval(arg))
+        elif opt in ("--file_ending"):
+            file_ending = arg
 
     if len(argv) < 2:
         print("\nNOT ENOUGH ARGUMENTS SPECIFIED")
         print(main.__doc__)
         sys.exit()
 
-    # %%
-    if sub.isdecimal() != True:
-        print(f"ERROR: input contains non-digit elements. Subject = {sub}")
-        sys.exit(1)
-
-
+    out = f"sub-{sub}"
     if ses != None:
-        if ses.isdecimal() != True:
-            print(f"ERROR: input contains non-digit elements. Session = {ses}")
-            sys.exit(1)
+        out += f"_ses-{ses}"
+    
+    if task != None:
+        out += f"_task-{task}"
 
-        out = f"sub-{sub}_ses-{ses}_task-{task}"
-        base_dir = opj(f"sub-{sub}", f"ses-{ses}")
-        # outputdir = opj(out_dir,  f"sub-{sub}", f'ses-{ses}')
-    else:
-        out = f"sub-{sub}_ses-{ses}_task-{task}"
-        base_dir = f"sub-{sub}"
-        # outputdir = opj(out_dir, f"sub-{sub}")
-
-    if os.path.exists(in_dir):
-        pass
-    else:
-        print("ERROR: input directory does not exist. Run pybest first")
-        sys.exit(1)
-
-    # %%
     # Create design matrix if it doesn't exists
-    outputdir = out_dir
-    if os.path.isfile(opj(outputdir, 'vis_design.mat')):
-        print("Design matrix: {mat}".format(mat=opj(outputdir, 'vis_design.mat')))
-        design_matrix = io.loadmat(opj(outputdir, 'vis_design.mat'))
+    design_file = opj(outputdir, f'design_task-{task}.mat')
+    if os.path.isfile(design_file):
+        print(f"Design matrix: {design_file}")
+        design_matrix = io.loadmat(design_file)
     else:
         print("Creating new design matrix")
         if os.path.isdir(png_dir):
+            try:
+                dm = prf.get_prfdesign(png_dir, n_pix=n_pix, dm_edges_clipping=clip_dm)
+            except:
+                raise TypeError(f"Failed to create {design_file}")
 
-            dm = utils.get_prfdesign(png_dir, n_pix=270, dm_edges_clipping=[6,1,0,1])
-
-            if os.path.exists(opj(outputdir)):
-                pass
-            else:
-                os.mkdir(opj(outputdir))
-
-            io.savemat(opj(outputdir, 'vis_design.mat'), {"stim": dm})
-            design_matrix = io.loadmat(opj(outputdir, 'vis_design.mat'))
-
+            io.savemat(design_file, {"stim": dm})
+            design_matrix = io.loadmat(design_file)
         else:
-
-            print("ERROR: Could not find path to screenshots")
+            print("\n---------------------------------------------------------------------------------------------------")
+            print(f"ERROR in {os.path.basename(__file__)}: invalid directory '{png_dir}'")
             sys.exit(1)
 
-    f, ss = plt.subplots(1,20,figsize=(24,3))
-    for x in range(15,35):
-        ss[x-15].imshow(design_matrix['stim'][...,x])
+    # fetch available runs
+    if file_ending == None:
+        if "pybest" in inputdir:
+            file_ending = "desc-denoised_bold.npy"
+        elif "fmriprep" in inputdir:
+            file_ending = "bold.func.gii"
+            giftis = True
+        else:
+            raise ValueError(f"Unknown input directory '{inputdir}'. Expecting output from pybest ('*desc-denoised_bold.npy') or fMRIPrep ('*bold.func.gii')")
 
-    f.savefig(opj(outputdir, 'vis_design.png'))
+    # search for space-/task-/ and file ending
+    search_for = [f"task-{task}", file_ending]
+    if space != None:
+        search_for += [f"space-{space}"]
 
-    # %%
-    # tps, xdim, ydim = design_matrix['stim'].T.shape
-    # # print(tps, xdim, ydim)
-    # # print(design_matrix['stim'].shape)
+    # no space means native BOLD
+    files = utils.get_file_from_substring(search_for, inputdir)
+    
+    if not files[0].endswith(".nii.gz") and not files[0].endswith(".nii"):
+        # chunk into L/R pairs
+        hemi_pairs = [[i, j] for i, j in zip(files[:-1], files[1:])]
 
-    # # good_runs = np.arange(13,25) # sub-001
-    # # good_runs = np.arange(1,7) # sub-004
-    all_runs = [f for f in os.listdir(opj(in_dir)) if "run" in f and f.endswith('denoised_bold.npy') and f"task-{task}" in f]
-    n_runs = int(len(set(all_runs)) / 2)
+        # load them in
+        prf_tc_data = []
+        for pair in hemi_pairs:
+            
+            if giftis:
+                hemi_data = [dataset.ParseGiftiFile(pair[ix]).data for ix in range(len(pair))]
+            else:
+                hemi_data = [np.load(pair[ix]) for ix in range(len(pair))]
+            
+            prf_tc_data.append(np.hstack(hemi_data))
 
-    # sub-001 has deviating run numbers
-    # if sub == "001":
-    #     lower, upper = 13, 25
-    # else:
-
-    lower, upper = 1, n_runs+1
-
-    if n_runs > 2:
-        print(f"Loading in data from run {lower}-{n_runs} of task-{task}")
+        # take median of data
+        m_prf_tc_data = np.median(np.array(prf_tc_data), 0)
     else:
-        print(f"Loading in data from run-{lower} of task-{task}")
+        obj = dataset.Dataset(files,
+                              verbose=verbose, 
+                              standardization='raw', 
+                              use_bids=True, 
+                              filter_strategy="raw")
 
-    good_runs = np.arange(lower,upper)
-    prf_tc_data = []
-    for gr in good_runs:
-        prf_tc_data.append(np.hstack([
-            np.load(opj(in_dir, f'{out}_run-{gr}_space-fsnative_hemi-{hemi}_desc-denoised_bold.npy'))
-        for hemi in ['L', 'R']]))
-    m_prf_tc_data = np.median(np.array(prf_tc_data), 0)
+        # get pandas dataframe with all runs
+        prf_tc_data = obj.fetch_fmri()
 
-    # vertices per hemi
-    n_verts_per_hemi = [np.load(opj(in_dir, f'{out}_run-{gr}_space-{space}_hemi-{hemi}_desc-denoised_bold.npy')).shape[-1] for hemi in ['L', 'R']]
-    # print(f"Nr of vertices in func data: {n_verts_per_hemi}")
+        # get run IDs
+        run_ids = obj.get_runs(prf_tc_data)
 
-    # check if this matches with FreeSurfer surfaces
-    n_verts_fs = []
-    for i in ['lh', 'rh']:
-        surf = opj(os.environ['SUBJECTS_DIR'], f"sub-{sub}", 'surf', f'{i}.white')
-        verts = nb.freesurfer.io.read_geometry(surf)[0].shape[0]
-        n_verts_fs.append(verts)
+        # loop through run IDs and get median into <time,voxels> array
+        m_prf_tc_data = np.median([utils.select_from_df(prf_tc_data, expression=f"run = {ii}").values for ii in run_ids], axis=0)
 
-    # print(f"Nr of vertices in FS data:   {n_verts_fs}")
+    if space == "fsnative":
+        # vertices per hemi
+        n_verts = [ii.shape[-1] for ii in hemi_data]
 
-    if n_verts_fs == n_verts_per_hemi:
-        print("Vertex check ok!")
-    else:
-        raise ValueError(f"Mismatch between number of vertices in pRF-analysis ({n_verts_per_hemi}) and FreeSurfer ({n_verts_fs})..?\nYou're probably using an older surface reconstruction. Check if you've re-ran fMRIprep again with new FreeSurfer-segment")
+        # check if this matches with FreeSurfer surfaces
+        n_verts_fs = []
+        for i in ['lh', 'rh']:
+            surf = opj(os.environ['SUBJECTS_DIR'], f"sub-{sub}", 'surf', f'{i}.white')
+            verts = nb.freesurfer.io.read_geometry(surf)[0].shape[0]
+            n_verts_fs.append(verts)
+
+        if n_verts_fs == n_verts:
+            print("Vertex check ok!")
+        else:
+            raise ValueError(f"Mismatch between number of vertices in pRF-analysis ({n_verts}) and FreeSurfer ({n_verts_fs})..?\nYou're probably using an older surface reconstruction. Check if you've re-ran fMRIprep again with new FreeSurfer-segment")
         
     print("Saving avg-BOLD in .npy-files")
-    np.save(opj(outputdir, f'{out}_desc-avg_bold_hemi-LR.npy'), m_prf_tc_data)
-    np.save(opj(outputdir, f'{out}_desc-avg_bold_hemi-L.npy'), m_prf_tc_data[:,:n_verts_per_hemi[0]])
-    np.save(opj(outputdir, f'{out}_desc-avg_bold_hemi-R.npy'), m_prf_tc_data[:,n_verts_per_hemi[0]:])
+    np.save(opj(outputdir, f'{out}_hemi-LR_desc-avg_bold_.npy'), m_prf_tc_data)
+    np.save(opj(outputdir, f'{out}_hemi-L_desc-avg_bold.npy'), m_prf_tc_data[:,:n_verts[0]])
+    np.save(opj(outputdir, f'{out}_hemi-R_desc-avg_bold.npy'), m_prf_tc_data[:,n_verts[0]:])
 
-    # %%
-    # Try to fetch a gifti-file to extract the repetition time from.. I'm not too happy with this solution, but I can't think of anything better atm.
-    func_path = opj(os.environ['DIR_DATA_DERIV'], 'fmriprep', base_dir, 'func')
-    func_file = utils.get_file_from_substring(f"run-{lower}_space-fsnative_hemi-L_bold.func.gii", func_path)
-
-    if func_file != None:
-        gifti = dataset.ParseGiftiFile(func_file)
-        tr = gifti.TR_sec
-
-        print(f"Func-file found; setting TR to {tr}")
+    # assume TR (read from gifti if possible)
+    if giftis != None:
+        tr = dataset.ParseGiftiFile(pair[0]).TR_sec
+        print(f"Setting TR to {tr}")
     else:
         print("Could not find func-file, setting TR to 1.5; CHECK THIS!")
         tr = 1.5
 
-    # %%
-    # class pRFmodelFitting
+    # plop everything if pRFmodelFitting object
     if grid_only:
         stage = "grid"
     else:
         stage = "grid+iter"
 
-    modelling = prf.pRFmodelFitting(m_prf_tc_data.T, 
-                                    design_matrix=design_matrix['stim'], 
-                                    TR=tr, 
-                                    model=model, 
-                                    stage=stage, 
-                                    verbose=True, 
-                                    output_dir=outputdir,
-                                    output_base=out,
-                                    nr_jobs=25,
-                                    write_files=True)
-    modelling.fit()
-    # %%
+    # stage 1 - no HRF
+    stage1 = prf.pRFmodelFitting(m_prf_tc_data.T, 
+                                 design_matrix=design_matrix['stim'], 
+                                 TR=tr, 
+                                 model=model, 
+                                 stage=stage, 
+                                 verbose=verbose, 
+                                 output_dir=outputdir,
+                                 output_base=out,
+                                 write_files=True,
+                                 fit_hrf=False)
+    stage1.fit()
+
+    # stage2 - fit HRF after initial iterative fit
+    if fit_hrf:
+
+        previous_fitter = f"{model}_fitter"
+        if not hasattr(stage1, previous_fitter):
+            raise ValueError(f"fitter does not have attribute {previous_fitter}")
+
+        # add tag to output to differentiate between HRF=false and HRF=true
+        out += "_hrf-true"
+
+        # initiate fitter object with previous fitter
+        stage2 = prf.pRFmodelFitting(m_prf_tc_data.T, 
+                                     design_matrix=stage1.design, 
+                                     TR=stage1.TR, 
+                                     model=model, 
+                                     stage=stage, 
+                                     verbose=stage1.verbose,
+                                     fit_hrf=True,
+                                     output_dir=stage1.output_dir,
+                                     output_base=out,
+                                     write_files=True,                                
+                                     previous_gaussian_fitter=stage1.previous_fitter)
+        stage2.fit()    
+
 if __name__ == "__main__":
     main(sys.argv[1:])
