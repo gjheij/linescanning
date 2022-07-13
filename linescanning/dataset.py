@@ -1160,13 +1160,14 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                     self.lsprep_full = opj(self.lsprep_dir, f'sub-{self.sub}')
                     
                 # make figure directory
-                self.run_uuid = f"{strftime('%Y%m%d-%H%M%S')}_{uuid4()}"
-                self.lsprep_figures = opj(self.lsprep_dir, f'sub-{self.sub}', 'figures')
-                self.lsprep_runid = opj(self.lsprep_dir, f'sub-{self.sub}', 'log', self.run_uuid)
-                self.lsprep_logs = opj(self.lsprep_dir, 'logs')
-                for dir in self.lsprep_full, self.lsprep_figures, self.lsprep_logs, self.lsprep_runid:
-                    if not os.path.exists(dir):
-                        os.makedirs(dir, exist_ok=True)
+                if self.report:
+                    self.run_uuid = f"{strftime('%Y%m%d-%H%M%S')}_{uuid4()}"
+                    self.lsprep_figures = opj(self.lsprep_dir, f'sub-{self.sub}', 'figures')
+                    self.lsprep_runid = opj(self.lsprep_dir, f'sub-{self.sub}', 'log', self.run_uuid)
+                    self.lsprep_logs = opj(self.lsprep_dir, 'logs')
+                    for dir in self.lsprep_full, self.lsprep_figures, self.lsprep_logs, self.lsprep_runid:
+                        if not os.path.exists(dir):
+                            os.makedirs(dir, exist_ok=True)
 
                 # check if deleted_first_timepoints is list or not
                 delete_first = check_input_is_list(self, var="deleted_first_timepoints", list_element=run)
@@ -1270,26 +1271,27 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                                        **kwargs)
 
         # write boilerplate
-        self.citation_file = Path(opj(self.lsprep_logs, "CITATION.md"))
-        self.citation_file.write_text(self.desc_func)
-
-        # write report
-        self.config = str(Path(utils.__file__).parents[1]/'misc'/'default.yml')
-        if not os.path.exists(self.config):
-            raise FileNotFoundError(f"Could not find 'default.yml'-file in '{str(Path(utils.__file__).parents[1]/'misc')}'")
-        
         if self.report:
-            self.report_obj = core.Report(os.path.dirname(self.lsprep_dir),
-                                          self.run_uuid,
-                                          subject_id=self.sub,
-                                          packagename="lsprep",
-                                          config=self.config)
+            self.citation_file = Path(opj(self.lsprep_logs, "CITATION.md"))
+            self.citation_file.write_text(self.desc_func)
 
-            # generate report
-            self.report_obj.generate_report()
+            # write report
+            self.config = str(Path(utils.__file__).parents[1]/'misc'/'default.yml')
+            if not os.path.exists(self.config):
+                raise FileNotFoundError(f"Could not find 'default.yml'-file in '{str(Path(utils.__file__).parents[1]/'misc')}'")
+            
+            if self.report:
+                self.report_obj = core.Report(os.path.dirname(self.lsprep_dir),
+                                            self.run_uuid,
+                                            subject_id=self.sub,
+                                            packagename="lsprep",
+                                            config=self.config)
 
-            if self.verbose:
-                print(f" Saving report to {str(self.report_obj.out_dir/self.report_obj.out_filename)}")                                      
+                # generate report
+                self.report_obj.generate_report()
+
+                if self.verbose:
+                    print(f" Saving report to {str(self.report_obj.out_dir/self.report_obj.out_filename)}")                                      
 
     def preprocess_func_file(self, 
                              func_file, 
@@ -1326,8 +1328,13 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
 
             elif func_file.endswith("nii") or func_file.endswith("gz"):
                 fdata = nb.load(func_file).get_fdata()
-                xdim,ydim,zdim,time_points = fdata.shape
-                self.ts_magnitude = fdata.reshape(xdim*ydim*zdim, time_points)
+
+                # cifti nii's are already 2D
+                if fdata.ndim > 2:
+                    xdim,ydim,zdim,time_points = fdata.shape
+                    self.ts_magnitude = fdata.reshape(xdim*ydim*zdim, time_points)
+                else:
+                    self.ts_magnitude = fdata.copy().T
 
         elif isinstance(func_file, np.ndarray):
             self.ts_magnitude = func_file.copy()
