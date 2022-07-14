@@ -16,10 +16,6 @@ import warnings
 warnings.filterwarnings('ignore')
 opj = os.path.join
 
-# Ignore nistats warning
-# print("---------------------------------------------------------------------------------------------------")
-# print("Ignore stuff above. Starting pRF-fitting\n")
-
 def main(argv):
 
     """
@@ -187,6 +183,9 @@ Example:
     files = utils.get_file_from_substring(search_for, inputdir)
     
     print("Loading in data")
+    for ff in files:
+        print(f" {ff}")
+
     if not files[0].endswith(".nii.gz") and not files[0].endswith(".nii"):
         # chunk into L/R pairs
         hemi_pairs = [[i, j] for i, j in zip(files[:-1], files[1:])]
@@ -231,12 +230,10 @@ Example:
             verts = nb.freesurfer.io.read_geometry(surf)[0].shape[0]
             n_verts_fs.append(verts)
 
-        if n_verts_fs == n_verts:
-            print("Vertex check ok!")
-        else:
+        if n_verts_fs != n_verts:
             raise ValueError(f"Mismatch between number of vertices in pRF-analysis ({n_verts}) and FreeSurfer ({n_verts_fs})..?\nYou're probably using an older surface reconstruction. Check if you've re-ran fMRIprep again with new FreeSurfer-segment")
-        
-    print("Saving avg-BOLD in .npy-files")
+    
+    # save files
     np.save(opj(outputdir, f'{out}_hemi-LR_desc-avg_bold_.npy'), m_prf_tc_data)
     np.save(opj(outputdir, f'{out}_hemi-L_desc-avg_bold.npy'), m_prf_tc_data[:,:n_verts[0]])
     np.save(opj(outputdir, f'{out}_hemi-R_desc-avg_bold.npy'), m_prf_tc_data[:,n_verts[0]:])
