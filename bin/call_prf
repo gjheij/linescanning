@@ -234,7 +234,7 @@ Example:
             raise ValueError(f"Mismatch between number of vertices in pRF-analysis ({n_verts}) and FreeSurfer ({n_verts_fs})..?\nYou're probably using an older surface reconstruction. Check if you've re-ran fMRIprep again with new FreeSurfer-segment")
     
     # save files
-    np.save(opj(outputdir, f'{out}_hemi-LR_desc-avg_bold_.npy'), m_prf_tc_data)
+    np.save(opj(outputdir, f'{out}_hemi-LR_desc-avg_bold.npy'), m_prf_tc_data)
     np.save(opj(outputdir, f'{out}_hemi-L_desc-avg_bold.npy'), m_prf_tc_data[:,:n_verts[0]])
     np.save(opj(outputdir, f'{out}_hemi-R_desc-avg_bold.npy'), m_prf_tc_data[:,n_verts[0]:])
 
