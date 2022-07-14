@@ -1029,7 +1029,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                  n_pca=5,
                  func_tag=None,
                  select_component=None,
-                 standardization="zscore",
+                 standardization="psc",
                  filter_pca=None,
                  ses1_2_ls=None,
                  run_2_run=None,
@@ -1852,7 +1852,7 @@ class Dataset(ParseFuncFile):
                  save_as=None,
                  gm_range=[355,375],
                  tissue_thresholds=[0.7,0.7,0.7],
-                 save_ext="pdf",
+                 save_ext="svg",
                  filter_strategy="hp",
                  report=False,
                  **kwargs):
