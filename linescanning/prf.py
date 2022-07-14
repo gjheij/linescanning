@@ -818,10 +818,10 @@ def create_line_prf_matrix(log_dir,
     # get first image to get screen size
     img = (255*mpimg.imread(opj(screenshot_path, image_list[0]))).astype('int')
 
-    # there is one more MR image than screenshot
-    design_matrix = np.zeros((img.shape[0], img.shape[0], 1+len(image_list)))
     if not round(stim_duration % TR, 5) > 0:
 
+        # define native resolution design matrix
+        design_matrix = np.zeros((img.shape[0],img.shape[0],len(image_list*tr_in_duration)))
 
         point = 0
         for ii in image_list:
@@ -838,11 +838,8 @@ def create_line_prf_matrix(log_dir,
 
             point += tr_in_duration
 
-        # downsample
-        dm_resampled = np.zeros((n_pix, n_pix, design_matrix.shape[-1]))
-        
-        for img in range(design_matrix.shape[-1]):
-            dm_resampled[...,img] = utils.resample2d(design_matrix[...,img], n_pix)
+        # downsample (resample2d can also deal with 3D input)
+        dm_resampled = utils.resample2d(design_matrix, n_pix)
 
         #clipping edges
         #top, bottom, left, right
@@ -868,6 +865,9 @@ def create_line_prf_matrix(log_dir,
         
         return dm
     else:
+        
+        # define empty design matrix
+        design_matrix = np.zeros((img.shape[0], img.shape[0], nr_trs))
 
         if verbose:
             print("Reading onset times from log-file")
@@ -917,10 +917,7 @@ def create_line_prf_matrix(log_dir,
                     img[:, :, 1] == 0)) | ((img[:, :, 0] == 255) & (img[:, :, 1] == 255)))] = 1
         
         # downsample
-        dm_resampled = np.zeros((n_pix, n_pix, design_matrix.shape[-1]))
-        
-        for img in range(design_matrix.shape[-1]):
-            dm_resampled[...,img] = utils.resample2d(design_matrix[...,img], n_pix)
+        dm_resampled = utils.resample2d(design_matrix, n_pix)
 
         #clipping edges
         #top, bottom, left, right
@@ -1719,8 +1716,9 @@ class pRFmodelFitting():
             out_dict['settings'] = self.settings
             out_dict['predictions'] = self.make_predictions(model=model, stage=stage)
 
-            with open(pkl_file, 'wb') as f:
-                f.dump(out_dict, f)
+            f = open(pkl_file, "wb")
+            pickle.dump(out_dict, f)
+            f.close()
 
             if self.verbose:
                 print(f"Save {stage}-fit parameters in {output}")
