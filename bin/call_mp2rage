@@ -11,7 +11,6 @@
 #
 # We start by importing the MEMP2RAGE-class (rather than the MP2RAGE-class).
 
-from numpy.lib.function_base import select
 from pymp2rage import MP2RAGE
 import os
 import pathlib

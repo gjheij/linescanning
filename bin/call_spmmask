@@ -111,19 +111,14 @@ if [[ ! -d $(dirname ${OUTPUT}) ]]; then
   mkdir -p $(dirname ${OUTPUT})
 fi
 
-mask_img=`find $(dirname ${in_file}) -type f -name "mask*" 2>/dev/null`
-if [[ -z ${mask_img} ]]; then
+make_mask_script ${SPM_PATH} ${in_file} ${new_script}
+  
+# call_matlab = in call_bashhelper
+call_matlab ${new_script}
 
-  make_mask_script ${SPM_PATH} ${in_file} ${new_script}
-    
-  # call_matlab = in call_bashhelper
-  call_matlab ${new_script}
-
-  if [[ $? -ne 0 ]]; then
-    echo "ERROR: matlab exited with non-zero status"
-    exit 1
-  fi
-
+if [[ $? -ne 0 ]]; then
+  echo "ERROR: matlab exited with non-zero status"
+  exit 1
 fi
 
 if [[ ${RM} == "y" ]]; then
@@ -132,7 +127,7 @@ fi
 
 # Convert SPM's .nii-files to .nii.gz if the input file was nii.gz
 if [[ ${ext} == "gz" ]]; then
-  mask_img=`find $(dirname ${in_file}) -type f -name "mask*" 2>/dev/null`
+  mask_img=`find $(dirname ${in_file}) -type f -name "mask_$(basename ${in_file})*" 2>/dev/null`
   if [[ ! -z ${mask_img} ]]; then
     gzip -c ${mask_img} > ${OUTPUT} 2>/dev/null
 
@@ -142,4 +137,6 @@ if [[ ${ext} == "gz" ]]; then
     fi
   fi
   rm -r ${in_file}
+else
+  mv ${mask_img} $(dirname ${OUTPUT})
 fi

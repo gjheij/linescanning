@@ -18,10 +18,12 @@ import sys, getopt
 import json
 import warnings
 from bids import BIDSLayout
+from nilearn import image
 import nibabel as nb
-import numpy as np
 import platform
-from linescanning.utils import get_file_from_substring
+from bids import BIDSLayout
+import numpy as np
+from linescanning.utils import get_file_from_substring, remove_files
 warnings.filterwarnings("ignore")
 opj = os.path.join
 
@@ -29,7 +31,7 @@ def main(argv):
 
     """
 ---------------------------------------------------------------------------------------------------
-call_memp2rage
+call_mp2rageme
 
 This script is a wrapper for the memp2rage object that can calculate a Unified T1-weighted
 image and a quantitative T1 map, based on the magnitude and phase-information of the two
@@ -82,13 +84,12 @@ Notes:
 
     inputdir    = ''
     subject     = ''
-    session     = None
     outputdir   = None
     outputbase  = "sample_desc"
     do_stuff    = False
 
     try:
-        opts = getopt.getopt(argv,"hci:s:n:o:",["inputdir=", "subject=", "outputdir=", "outputbase="])[0]
+        opts = getopt.getopt(argv,"hci:s:n:o:b:",["inputdir=", "subject=", "outputdir=", "outputbase="])[0]
     except getopt.GetoptError:
         print(main.__doc__)
         sys.exit(2)
@@ -102,7 +103,7 @@ Notes:
         elif opt in ("-o", "--outputdir"):
             outputdir = arg
         elif opt in ("-s", "--subject"):
-            subject = args
+            subject = arg
         elif opt in ("-b", "--outputbase"):
             outputbase = arg
         elif opt in ("-c"):
@@ -114,8 +115,8 @@ Notes:
         sys.exit(1)
 
     # Define paths to images
-    bids_fn     = BIDSLayout(opj(inputdir), validate=False).get(extension=['nii.gz'], return_type='file')
-    select_fn   = get_file_from_substring(['inv', 'acq-MP2RAGEME'], bids_fn)
+    bids_fn = BIDSLayout(opj(inputdir), validate=False).get(extension=['nii.gz'], return_type='file')
+    select_fn = get_file_from_substring(['inv', 'acq-MP2RAGEME'], bids_fn)
     select_fn.sort()
 
     if len(select_fn) != 10:
@@ -328,23 +329,24 @@ Notes:
     for p in OUTPUT:
         write_nifti(OUTPUT[p], p)
 
-        tmp = getattr(memp2rage, p).get_fdata()
-        tmp = np.nan_to_num(tmp)
-        nb.Nifti1Image(tmp.astype('float32'), affine=getattr(memp2rage, p).affine, header=getattr(memp2rage, p).header).to_filename(OUTPUT[p])
+        # tmp = getattr(memp2rage, p).get_fdata()
+        # tmp = np.nan_to_num(tmp)
+        # nb.Nifti1Image(tmp.astype('float32'), affine=getattr(memp2rage, p).affine, header=getattr(memp2rage, p).header).to_filename(OUTPUT[p])
 
     if do_stuff:
         brainmask = opj(outputdir, f'{outputbase}_desc-spm_mask.nii.gz')
+        print(brainmask)
         if not os.path.exists(brainmask):
 
             try:
-                print("Make mask with FSL from INV2-image")
-                cmd = f"bet2 {select_fn[2]} {opj(inputdir, 'tmp')} -m -f 0.2"
+                print(f"Make FSL mask from {select_fn[2]}")
+                cmd = f"bet2 {select_fn[2]} {opj(outputdir, 'tmp')} -m -f 0.2"
                 os.system(cmd)
             except:
                 pass
             
             try:
-                print("Make mask with SPM from INV2-image")
+                print(f"Make SPM mask from {select_fn[2]}")
                 cmd = f'call_spmmask {select_fn[2]} {brainmask} y'
                 os.system(cmd)
             except:
@@ -352,21 +354,18 @@ Notes:
             
             # SPM-mask sometimes gets rid of a part of the cerebellum; adding FSL's bet2 mask to it improves this area, 
             # but also leaves in more dura. This will be removed, however, during the CAT12 stage
-            if os.path.exists(brainmask) and os.path.exists(opj(inputdir, 'tmp_mask.nii.gz')):
+            if os.path.exists(brainmask) and os.path.exists(opj(outputdir, 'tmp_mask.nii.gz')):
                 
                 print("Combining SPM & FSL mask to include cerebellum too")
 
-                new_mask = image.math_img('(spm + fsl) > 0', spm=brainmask, fsl=opj(inputdir, 'tmp_mask.nii.gz'))
+                new_mask = image.math_img('(spm + fsl) > 0', spm=brainmask, fsl=opj(outputdir, 'tmp_mask.nii.gz'))
                 new_mask.to_filename(brainmask)
 
                 # remove files starting with 'tmp'
-                remove_files(inputdir, 'tmp', ext=False)
+                remove_files(outputdir, 'tmp', ext=False)
 
-        # try:
         print("Removing background")
         os.system(f"call_rmbackground -t {OUTPUT['t1w_uni']} -m {brainmask} -i {select_fn[2]} -o {OUTPUT['t1w_uni']}")
-        # except:
-        #     pass
         print("TIP: check the brain mask; if needed, edit it, remove T1w.nii.gz-file and re-run")
 
     print("Done")
