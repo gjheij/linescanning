@@ -18,8 +18,10 @@ function check_file {
   input=${1}
   if [ -f ${input} ]; then
     echo "File exists at ${input}"
+  elif [ -d ${input} ]; then
+    echo "Directory exists at ${input}"
   else
-    echo "File \"${input}\" does not exist"
+    echo "File/directory \"${input}\" does not exist"
   fi
 }
 
