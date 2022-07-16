@@ -19,23 +19,27 @@ job="bash"
 
 # Allocate input arguments to variables
 #
-use_bbr=""          # spinoza_fmriprep
-run_local=""        # spinoza_fmriprep/spinoza_fitprfs
-UPs=""              # spinoza_qmrimaps
-NO_BIAS=""          # spinoza_qmrimaps
-REMOVE_WF=""        # spinoza_fmriprep
-SGE=""              # spinoza_denoising
-OW=""               # multiple (overwrite mode)
-FREEVIEW=""         # spinoza_bestvertex
-COMB_ONLY=""        # spinoza_extractregions
-GRID=""             # spinoza_fitprfs
-DRAW_SAG="itk"      # spinzoa_sagittalsinus
-MULTIPLE_DESIGNS="" # spinoza_fitprfs
-FIT_HRF=""          # spinoza_fitprfs
+use_bbr=""            # spinoza_fmriprep
+run_local=""          # spinoza_fmriprep/spinoza_fitprfs
+UPs=""                # spinoza_qmrimaps
+NO_BIAS=""            # spinoza_qmrimaps
+REMOVE_WF=""          # spinoza_fmriprep
+SGE=""                # spinoza_denoising
+OW=""                 # multiple (overwrite mode)
+FREEVIEW=""           # spinoza_bestvertex
+COMB_ONLY=""          # spinoza_extractregions
+GRID=""               # spinoza_fitprfs
+DRAW_SAG="itk"        # spinzoa_sagittalsinus
+MULTIPLE_DESIGNS=""   # spinoza_fitprfs
+FIT_HRF=""            # spinoza_fitprfs
+REG_TYPE=""           # spinoza_registration
+SES_TYPE=""           # spinoza_scanner2bids
+GDH_FLAG=""           # spinoza_mgdm
+LAYER_FLAG=""         # spinoza_layering
 
 # use long options in bash:
 # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options
-declare -a opts=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "hrf")
+declare -a opts=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface")
 while getopts :-:wcjqom:s:h:n:t:l:v:p:x:u:r:e:i: arg
 do
   case ${arg} in
@@ -85,7 +89,28 @@ do
           ;;   
         hrf)
           FIT_HRF="--hrf"
-          ;;                                                                  
+          ;;
+        rigid)
+          REG_TYPE="--rigid"
+          ;;
+        syn)
+          REG_TYPE="--syn"
+          ;;
+        affine)
+          REG_TYPE="--affine"
+          ;;
+        lines)
+          SES_TYPE="--lines"
+          ;;     
+        gdh)
+          GDH_FLAG="--gdh"
+          ;;
+        nighres)
+          LAYER_FLAG="nighres"
+          ;;
+        surface)
+          LAYER_FLAG="surface"
+          ;;              
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}, possible options are:"
@@ -195,14 +220,15 @@ Args:
                           fsnative.gii' file)
   -m <module>       always required, specifies which module to run. Multiple modules should be com-
                     ma separated
-  -n <session>      session nr, used to create file structure according to BIDS
+  -n <session>      session nr, used to create file structure according to BIDS. Specify '-n none' if 
+                    you don't want to differentiate between sessions
   -o                turn on overwrite mode; removes subject-specific directories or crucial files so 
                     that the process is re-ran.
   -p <prf_model>    switch to specify what type of model to use for the pRF-modeling. For now, the
   -q <info mod>     query the usage-information of a given module number: e.g., master -m 00 -q
                     brings up the help-text from module 00 (spinoza_lineplanning)
   -r <roi>          Set label file for 'spinoza_bestvertex' or ROI for 'spinoza_extractregions'
-  -s <subject ID>   ID without prefix (e.g., 'sub-001' > '-s 001')
+  -s <subject>      Subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
   -t <type|task>    used for;
                       - spinoza_fmriprep: to run either the 'anat' workflow only, or also include func
                         data ('func') or a direct task-identifier such as '${TASK_SES1[0]}'
@@ -223,14 +249,14 @@ Args:
                     model. Should/can be use for module 17, pRF-fitting
   -x <**kwargs>     Can be used for a variety of options by setting it to ANYTHING other than empty. 
                     Usages include:
-                      - spinoza_scanner2bids; denote the session number when you have a regular 
-                        pRF-session, as the "-n" flag is used to specify this.   
                       - spinoza_profiling; specify the type of file to use
   --comb_only       skip nighres, only do combination of segmentations. Works with '-o' flag. 
   --fv              use FreeView to draw sinus mask (spinoza_sagittalsinus) 
   --fsl             use FSLeyes to draw sinus mask (spinoza_sagittalsinus) 
   --grid            maps to '-g' in spinoza_fitprfs; runs gridfit only
   --itk             use ITK-Snap to draw sinus mask (spinoza_sagittalsinus) [default]
+  --lines           tell spinoza_scanner2bids that we're dealing with line-scanning session rather
+                    than standard whole-brain session.
   --local           maps to '-l' in spinoza_fmriprep & spinoza_fitprfs; runs the process locally.
   --multi_design    specifies that for all runs in the dataset have run-/task-specific screenshot direc-
                     tories. This requires that the directory names you saved must match your naming 
@@ -390,6 +416,8 @@ call_loadsetup
 if [[ -z ${SES} ]]; then
   # Going to assume ses-1 here
   SESSION="-n 1"
+elif [[ ${SES,,} == "none" ]]; then
+  SESSION=""
 else
   SESSION="-n ${SES}"
 fi
@@ -514,19 +542,8 @@ if [[ $? -eq 0 ]]; then
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Convert raw files to nifti"
 
-  if [[ -z ${SES} ]]; then
-    echo "ERROR: Need a session number for this module. Specify the subject number with the -n flag in the master script"
-    echo "  e.g., ./master -m 02 -n 1"
-    exit 1
-  fi
 
-  if [[ -z ${KWARGS} ]]; then
-    PRF_SES=""
-  else
-    PRF_SES="-n ${KWARGS}"
-  fi  
-
-  ${job} spinoza_scanner2bids ${SUBJECT} ${PRF_SES} ${OW} ${DIR_DATA_HOME} ${DIR_DATA_SOURCE} ${SES}
+  ${job} spinoza_scanner2bids ${SES_TYPE} ${SUBJECT} ${SESSION} ${OW} ${DIR_DATA_HOME} ${DIR_DATA_SOURCE}
 
   echo "[${module}] DONE" && echo
 
@@ -583,7 +600,7 @@ if [[ $? -eq 0 ]]; then
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Multiparametric mapping"
 
-  ${job} spinoza_qmrimaps ${SUBJECT} ${SESSION} ${UPs} ${DIR_DATA_HOME} ${DIR_DATA_DERIV}/pymp2rage
+  ${job} spinoza_qmrimaps ${SUBJECT} ${SESSION} ${OW} ${UPs} ${DIR_DATA_HOME} ${DIR_DATA_DERIV}/pymp2rage
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_qmrimaps exited with non-zero status"
@@ -595,8 +612,8 @@ if [[ $? -eq 0 ]]; then
 fi
 
 #---------------------------------------------------------------------------------------------------
-# STEP 05: Register T1 from memp2rage to T1 from mp2rage
-module=05
+# STEP 05a: Register T1 from memp2rage to T1 from mp2rage
+module=05a
 
 # Check whether the module should be executed
 echo ${FLAG_executeModule} | grep -q ${module}
@@ -609,10 +626,10 @@ if [[ $? -eq 0 ]]; then
   fi
 
   echo "---------------------------------------------------------------------------------------------------"
-  echo "[${module}] Register T1 from mp2rage to MNI152 for sagittal sinus mask"
+  echo "[${module}] Register T1 from memp2rage to T1 from mp2rage"
 
   if [[ ${DATA:u} == "AVERAGE" ]]; then
-    ${job} spinoza_registration ${SUBJECT} ${SESSION} ${SGE} ${DIR_DATA_DERIV}/pymp2rage ${DIR_DATA_DERIV}/ants
+    ${job} spinoza_registration ${REG_TYPE} ${SUBJECT} ${OW} ${SESSION} ${SGE} ${DIR_DATA_DERIV}/pymp2rage ${DIR_DATA_DERIV}/ants
 
     if [[ $? -ne 0 ]]; then
       echo "ERROR in master: spinoza_registration exited with non-zero status"
@@ -628,8 +645,8 @@ if [[ $? -eq 0 ]]; then
 fi
 
 #---------------------------------------------------------------------------------------------------
-# STEP 06: Register T1 from mp2rage to MNI152 for sagittal sinus mask
-module=06
+# STEP 05b: Register T1 from mp2rage to MNI152 for sagittal sinus mask
+module=05b
 
 # Check whether the module should be executed
 echo ${FLAG_executeModule} | grep -q ${module}
@@ -650,11 +667,57 @@ if [[ $? -eq 0 ]]; then
     INPUT_DIR=${DIR_DATA_HOME}
   fi
 
-  ${job} spinoza_registration ${SUBJECT} ${SESSION} ${SGE} ${INPUT_DIR} ${DIR_DATA_DERIV}/ants mni
+  ${job} spinoza_registration ${REG_TYPE} ${SUBJECT} ${OW} ${SESSION} ${SGE} ${INPUT_DIR} ${DIR_DATA_DERIV}/ants mni
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_registration exited with non-zero status"
     exit 1
+  fi
+
+  echo "[${module}] DONE" && echo
+
+fi
+
+#---------------------------------------------------------------------------------------------------
+# STEP 06: Calculate averages of UNIT1, INV1, and INV2
+module=06
+
+# Check whether the module should be executed
+echo ${FLAG_executeModule} | grep -q ${module}
+
+if [[ $? -eq 0 ]]; then
+
+  if [[ "${@}" == *"-q"* ]]; then
+    spinoza_averageanatomies
+    exit 1
+  fi
+
+  echo "---------------------------------------------------------------------------------------------------"
+  echo "[${module}] Calculate averages of the T1-weighted image and T1map"
+
+  if [[ -z ${SES} ]]; then
+    # Going to assume ses-1 here
+    SESSION="-n 1"
+  else
+    SESSION="-n ${SES}"
+  fi
+
+  if [[ -z ${SUB} ]]; then
+    SUBJECT=""
+  else
+    SUBJECT="-s ${SUB}"
+  fi
+
+  if [[ ${DATA^^} == "AVERAGE" ]]; then
+    spinoza_averageanatomies ${SUBJECT} ${SESSION} ${DIR_DATA_DERIV}/pymp2rage ${DIR_DATA_DERIV}/pymp2rage
+
+    if [[ $? -ne 0 ]]; then
+      echo "ERROR in master: spinoza_averageanatomies exited with non-zero status"
+      exit 1
+    fi
+
+  else
+    echo "The variable \"DATA\" is \"${DATA}\"; must be \"AVERAGE\" for this module."
   fi
 
   echo "[${module}] DONE" && echo
@@ -675,23 +738,28 @@ if [[ $? -eq 0 ]]; then
     exit 1
   fi
 
-  echo "---------------------------------------------------------------------------------------------------"
-  echo "[${module}] Create sagittal sinus mask using the MNI-mask & T1w/T2w-ratio"
+  if [[ ${DATA^^} != "AVERAGE" ]]; then
+    echo "---------------------------------------------------------------------------------------------------"
+    echo "[${module}] Create sagittal sinus mask using the MNI-mask & T1w/T2w-ratio"
 
-  if [[ -d ${DIR_DATA_DERIV}/pymp2rage ]]; then
-    INPUT_DIR=${DIR_DATA_DERIV}/pymp2rage
+    if [[ -d ${DIR_DATA_DERIV}/pymp2rage ]]; then
+      INPUT_DIR=${DIR_DATA_DERIV}/pymp2rage
+    else
+      INPUT_DIR=${DIR_DATA_HOME}
+    fi
+
+    ${job} spinoza_sinusfrommni ${SUBJECT} ${SESSION} ${OW} ${INPUT_DIR} ${DIR_DATA_DERIV}/ants ${DIR_DATA_DERIV}/manual_masks
+
+    if [[ $? -ne 0 ]]; then
+      echo "ERROR in `basename ${0}`: spinoza_sinusfrommni exited with non-zero status"
+      exit 1
+    fi
+
+    echo "[${module}] DONE" && echo
+
   else
-    INPUT_DIR=${DIR_DATA_HOME}
+    echo "DATA-variable \"${DATA^^}\" not compatible with this function"
   fi
-
-  ${job} spinoza_sinusfrommni ${SUBJECT} ${SESSION} ${OW} ${INPUT_DIR} ${DIR_DATA_DERIV}/ants ${DIR_DATA_DERIV}/manual_masks
-
-  if [[ $? -ne 0 ]]; then
-    echo "ERROR in `basename ${0}`: spinoza_sinusfrommni exited with non-zero status"
-    exit 1
-  fi
-
-  echo "[${module}] DONE" && echo
 
 fi
 
@@ -711,14 +779,14 @@ if [[ $? -eq 0 ]]; then
 
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Perform bias field correction and SANLM-filtering"
-
+  
   if [[ -d ${DIR_DATA_DERIV}/pymp2rage ]]; then
-    ${job} spinoza_biassanlm ${SUBJECT} ${SESSION} ${NO_BIAS} ${DIR_DATA_DERIV}/pymp2rage ${DIR_DATA_DERIV}/denoised
+    INPUT_DIR=${DIR_DATA_DERIV}/pymp2rage
   else
-    ${job} spinoza_biassanlm ${SUBJECT} ${SESSION} ${NO_BIAS} ${DIR_DATA_HOME} ${DIR_DATA_DERIV}/denoised
+    INPUT_DIR=${DIR_DATA_HOME}
   fi
 
-  # spinoza_biascorrection ${SUBJECT} ${SESSION} ${DIR_DATA_HOME} ${DIR_DATA_DERIV}/ants inv-2
+  ${job} spinoza_biassanlm ${SUBJECT} ${SESSION} ${NO_BIAS} ${INPUT_DIR} ${DIR_DATA_DERIV}/denoised
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in `basename ${0}`: spinoza_biassanlm exited with non-zero status"
@@ -792,6 +860,7 @@ if [[ $? -eq 0 ]]; then
   #   echo "ERROR in master: spinoza_noiselevelestimation exited with non-zero status"
   #   exit 1
   # fi
+  echo "DEPRECATED"
 
   echo "[${module}] DONE" && echo
 
@@ -814,7 +883,7 @@ if [[ $? -eq 0 ]]; then
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Use nighres to get skull and dura mask"
 
-  ${job} spinoza_dura ${SUBJECT} ${SESSION} ${DIR_DATA_DERIV}/cat12 ${DIR_DATA_HOME} ${DIR_DATA_DERIV}/nighres ${DIR_DATA_DERIV}/manual_masks
+  ${job} spinoza_dura ${SUBJECT} ${SESSION} ${OW} ${DIR_DATA_DERIV}/cat12 ${DIR_DATA_HOME} ${DIR_DATA_DERIV}/nighres ${DIR_DATA_DERIV}/manual_masks
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_dura exited with non-zero status"
@@ -846,7 +915,7 @@ if [[ $? -eq 0 ]]; then
   # DATA = MEMP2RAGE  > arg1 = DIR_DATA_DERIV/pymp2rage
   # DATA = AVERAGE    > arg1 = DIR_DATA_DERIV/ants
 
-  ${job} spinoza_sagittalsinus ${SUBJECT} ${SESSION} ${DIR_DATA_DERIV}/cat12 ${DIR_DATA_DERIV}/manual_masks ${DRAW_SAG}
+  ${job} spinoza_sagittalsinus ${SUBJECT} ${SESSION} ${OW} ${DIR_DATA_DERIV}/pymp2rage ${DIR_DATA_DERIV}/manual_masks ${DRAW_SAG}
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_sagittalsinus exited with non-zero status"
@@ -872,7 +941,7 @@ if [[ $? -eq 0 ]]; then
   fi
 
   echo "---------------------------------------------------------------------------------------------------"
-  echo "[${module}] Combine all masks and apply to average"
+  echo "[${module}] Combine all masks and apply to image"
 
   ${job} spinoza_masking ${SUBJECT} ${SESSION} ${OW} ${DIR_DATA_DERIV}/cat12 ${DIR_DATA_DERIV}/masked_${DATA,,} ${DIR_DATA_DERIV}/manual_masks ${DIR_DATA_DERIV}/skullstripped
 
@@ -1144,11 +1213,7 @@ if [[ $? -eq 0 ]]; then
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] MGDM segmentation with nighres"
 
-  if [[ ${PROJECT} == "URIS-MDD" ]]; then
-    ${job} spinoza_mgdm ${SUBJECT} ${SESSION} ${OW} -t "gdh" ${DIR_DATA_DERIV}/skullstripped ${DIR_DATA_DERIV}/nighres ${DIR_DATA_DERIV}/manual_masks
-  else
-    spinoza_mgdm ${SUBJECT} ${SESSION} ${OW} ${DIR_DATA_DERIV}/skullstripped ${DIR_DATA_DERIV}/nighres ${DIR_DATA_DERIV}/manual_masks
-  fi
+  spinoza_mgdm ${SUBJECT} ${SESSION} ${OW} ${GDH_FLAG} ${DIR_DATA_DERIV}/skullstripped ${DIR_DATA_DERIV}/nighres ${DIR_DATA_DERIV}/manual_masks
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_mgdm exited with non-zero status"
@@ -1207,10 +1272,24 @@ if [[ $? -eq 0 ]]; then
     exit 1
   fi
 
+  if [[ ! -z ${ROI} ]]; then
+    ROI=${ROI}
+  else
+    ROI="cerebrum"
+  fi
+
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Cortex reconstruction with nighres"
 
-  ${job} spinoza_cortexrecon ${SUBJECT} ${SESSION} ${OW} ${DIR_DATA_DERIV}/manual_masks ${DIR_DATA_DERIV}/nighres cerebellum
+  
+  if [[ ${LAYER_FLAG} == "nighres" ]]; then
+    PROBSEG=${DIR_DATA_DERIV}/nighres
+  else
+    PROBSEG=${DIR_DATA_DERIV}/manual_masks
+  fi
+
+  ${job} spinoza_cortexrecon ${SUBJECT} ${SESSION} ${OW} ${PROBSEG} ${DIR_DATA_DERIV}/nighres ${ROI}
+
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_cortexrecon exited with non-zero status"
@@ -1238,11 +1317,16 @@ if [[ $? -eq 0 ]]; then
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Equivolumetric layering"
 
-  if [[ "${@}" == *"-w"* ]]; then
-    ${job} spinoza_layering ${SUBJECT} ${SESSION} ${FS} st
+  if [[ -z ${LAYER_FLAG} || ${LAYER_FLAG} == "surface" ]]; then
+    INPUT_DIR=${FS}
+  elif [[ ${LAYER_FLAG} == "nighres" ]]; then
+    INPUT_DIR=${DIR_DATA_DERIV}/nighres
   else
-    ${job} spinoza_layering ${SUBJECT} ${SESSION} ${DIR_DATA_DERIV}/nighres nighres
+    echo "ERROR in `basename ${0}`: Unknown flag \"${LAYER_FLAG}\". Must be \"nighres\" or \"surface\""
+    exit 1
   fi
+
+  ${job} spinoza_layering ${SUBJECT} ${SESSION} ${INPUT_DIR} ${LAYER_FLAG}
   
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_layering exited with non-zero status"
