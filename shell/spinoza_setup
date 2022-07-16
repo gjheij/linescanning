@@ -153,7 +153,8 @@ export SKIP_LINES=30
 # fMRIPREP
 export MRIQC_SIMG=${PATH_HOME}/mriqc/containers_bids-mriqc--0.15.1.simg
 export FPREP_SIMG=${PATH_HOME}/fmriprep/containers_bids-fmriprep--21.0.2.simg
-export FPREP_OUT_SPACES="fsnative fsaverage MNI152NLin6Asym:res-1 T1w func"
+# export FPREP_OUT_SPACES="fsnative fsaverage MNI152NLin6Asym:res-1 T1w func"
+export FPREP_OUT_SPACES="fsnative fsaverage T1w func"
 export FPREP_BINDING="/data1/projects" # binding directory for singularity image
 export CIFTI=170k # leave empty if you don't want cifti output
 export DO_SYN=1 # set to zero if you do not want additional syn-distortion correction
@@ -165,16 +166,16 @@ export PYBEST_NORM="zscore"
 export PYBEST_ENV="mpl"
 
 # PROJECT
-export DIR_PROJECTS="/data1/projects/MicroFunc/Jurjen/projects" #"/data1/projects/MicroFunc/Luisa/Line_scan/AGEING_paper" #$(dirname $(dirname ${PATH_HOME}))/projects 
-export PROJECT="AverageAnat" # ANAT_SEG-Raw #URIS-MDD #hemifield
-export TASK_SES1=("pRF")
+export DIR_PROJECTS="/mnt/d/FSL/shared/spinoza/projects" #"/data1/projects/MicroFunc/Luisa/Line_scan/AGEING_paper" #$(dirname $(dirname ${PATH_HOME}))/projects 
+export PROJECT="hemifield" # ANAT_SEG-Raw #URIS-MDD #hemifield
+export TASK_SES1="pRF"
 export TASK_SES2="LR"
 export PREFIX="sub-"
 export COMBINE_SEGMENTATIONS="weighted"
 
 # DATA TYPE(S)
-export ACQ=("MP2RAGE" "MP2RAGEME") # or ("MP2RAGE" "MP2RAGEME")
-export DATA="AVERAGE" #${ACQ[0]} # or MP2RAGEME/AVERAGE
+export ACQ=("MP2RAGE") # or ("MP2RAGE" "MP2RAGEME")
+export DATA=${ACQ[0]} # or MP2RAGEME/AVERAGE
 
 # For DATA == AVERAGE we'll need multiple acquisitions
 if [[ ${DATA} == "AVERAGE" ]]; then
