@@ -1,4 +1,5 @@
 import csv
+import fnmatch
 import json
 import matplotlib.colors as mcolors
 import nibabel as nb
@@ -1085,3 +1086,24 @@ def resample2d(array:np.ndarray, new_size:int, kind='linear'):
     else:
         f = interpolate.interp2d(x, y, array, kind=kind)
         return f(xnew,ynew)
+
+class FindFiles():
+
+    def __init__(self, directory, extension):
+
+        self.directory = directory
+        self.extension = extension
+        self.files = []
+
+        for filename in self.find_files(self.directory, f'*{self.extension}'):
+            self.files.append(filename)
+
+        self.files.sort()
+
+    @staticmethod
+    def find_files(directory, pattern):
+        for root, dirs, files in os.walk(directory):
+            for basename in files:
+                if fnmatch.fnmatch(basename, pattern):
+                    filename = os.path.join(root, basename)
+                    yield filename
