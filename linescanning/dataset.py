@@ -9,7 +9,7 @@ import numpy as np
 import os
 from pathlib import Path
 import pandas as pd
-from scipy import io
+from scipy import io, stats
 from time import strftime
 from uuid import uuid4
 import warnings
@@ -431,14 +431,14 @@ class ParseExpToolsFile(ParseEyetrackerFile):
 
     Parameters
     ----------
-    tsv_file: str
+    tsv_file: str, list
         path pointing to the output file of the experiment
     subject: int
         subject number in the returned pandas DataFrame (should start with 1, ..., n)
     run: int
         run number you'd like to have the onset times for
     button: bool
-        boolean whether to include onset times of button responses (default is false)
+        boolean whether to include onset times of button responses (default is false). ['space'] will be ignored as response
     blinks: str, np.ndarray
         string or array containing the onset times of eye blinks as extracted with hedfpy
     TR: float
@@ -447,6 +447,24 @@ class ParseExpToolsFile(ParseEyetrackerFile):
         number of volumes to delete to correct onset times for deleted volumes. Can be specified for each individual run if `tsv_file` is a list
     use_bids: bool, optional
         If true, we'll read BIDS-components such as 'sub', 'run', 'task', etc from the input file and use those as indexers, rather than sequential 1,2,3.
+    funcs: str, list, optional
+        List of functional files that is being passed down down to :class:`linescanning.dataset.ParseEyetrackerFile`. Required for correct resampling to functional space
+    edfs: str, list, optional
+        List of eyetracking output files that is being passed down down to :class:`linescanning.dataset.ParseEyetrackerFile`.
+    verbose: bool, optional
+        Print details to the terminal, default is False
+    phase_onset: int, optional
+        Which phase of exptools-trial should be considered the actual stimulus trial. Usually, `phase_onset=0` means the interstimulus interval. Therefore, default = 1
+    stim_duration: str, int, optional
+        If desired, add stimulus duration to onset dataframe. Can be one of 'None', 'stim' (to use duration from exptools'  log file) or any given integer
+    add_events: str, list, optional
+        Add additional events to onset dataframe. Must be an existing column in the exptools log file. For intance, `responses` and `event_type = stim` are read in by default, but if we have a separate column containing the onset of some target (e.g., 'target_onset'), we can add these times to the dataframe with `add_events='target_onset'`.
+    event_names: str, list, optional
+        Custom names for manually added events through `add_events` if the column names are not the names you want to use in the dataframe. E.g., if I find `target_onset` too long of a name, I can specify `event_names='target'`. If `add_events` is a list, then `event_names` must be a list of equal length if custom names are desired. By default we'll take the names from `add_events`
+    RTs: bool, optional
+        If we have a design that required some response to a stimulus, we can request the reaction times. Default = False
+    RT_relative_to: str, optional
+        If `RTs=True`, we need to know relative to what time the button response should be offset. Only correct responses are considered, as there's a conditional statement that requires the present of the reference time (e.g., `target_onset`) and button response. If there's a response but no reference time, the reaction time cannot be calculated. If you do not have a separate reference time column, you can specify `RT_relative_to='start'` to calculate the reaction time relative to onset time. If `RT_relative_to != 'start'`, I'll assume you had a target in your experiment in X/n_trials. From this, we can calculate the accuracy and save that to `self.df_accuracy`, while reaction times are saved in`self.df_rts`
 
     Examples
     ----------
@@ -476,6 +494,8 @@ class ParseExpToolsFile(ParseEyetrackerFile):
                  run=1, 
                  button=False, 
                  blinks=None, 
+                 RTs=False,
+                 RT_relative_to=None,
                  TR=0.105, 
                  deleted_first_timepoints=0, 
                  edfs=None, 
@@ -484,6 +504,8 @@ class ParseExpToolsFile(ParseEyetrackerFile):
                  verbose=False,
                  phase_onset=1,
                  stim_duration=None,
+                 add_events=None,
+                 event_names=None,
                  **kwargs):
 
         self.tsv_file                       = tsv_file
@@ -499,6 +521,10 @@ class ParseExpToolsFile(ParseEyetrackerFile):
         self.verbose                        = verbose
         self.phase_onset                    = phase_onset
         self.stim_duration                  = stim_duration
+        self.RTs                            = RTs
+        self.RT_relative_to                 = RT_relative_to
+        self.add_events                     = add_events
+        self.event_names                    = event_names
         self.__dict__.update(kwargs)
 
         if self.edfs != None:
@@ -519,6 +545,8 @@ class ParseExpToolsFile(ParseEyetrackerFile):
 
         if isinstance(self.tsv_file, list):
             df_onsets = []
+            df_rts = []
+            df_accuracy = []
             for run, onset_file in enumerate(self.tsv_file):
 
                 if self.use_bids:
@@ -541,8 +569,33 @@ class ParseExpToolsFile(ParseEyetrackerFile):
                 # append to df
                 df_onsets.append(self.get_onset_df(index=False))
 
+                # check if we got RTs
+                try:
+                    df_rts.append(self.get_rts_df(index=False))
+                except:
+                    pass
+
+                # check if we got accuracy (only if RT_relative_to != 'start')
+                try:
+                    df_accuracy.append(self.get_accuracy(index=False))
+                except:
+                    pass
+
+
             # concatemate df
             self.df_onsets = pd.concat(df_onsets).set_index(['subject', 'run', 'event_type'])
+
+            # rts
+            try:
+                self.df_rts = pd.concat(df_rts).set_index(['subject', 'run'])
+            except:
+                pass
+
+            # accuracy
+            try:
+                self.df_accuracy = pd.concat(df_accuracy).set_index(['subject', 'run'])
+            except:
+                pass
 
         # get events per run
         self.events_per_run = self.events_per_run()
@@ -572,8 +625,6 @@ class ParseExpToolsFile(ParseEyetrackerFile):
         delete_time         = delete_vols*self.TR
         self.data           = data_onsets[0]
         self.start_time     = float(timings.loc[(timings['event_type'] == "pulse") & (timings['response'] == "t")].loc[(timings['trial_nr'] == 1) & (timings['phase'] == 0)]['onset'].values)
-        # self.data_cut_start = self.data.drop([q for q in np.arange(0,self.start_times.index[0])])
-        # self.onset_times    = pd.DataFrame(self.data_cut_start[(self.data_cut_start['event_type'] == 'stim') & (self.data_cut_start['condition'].notnull()) | (self.data_cut_start['response'] == 'b')][['onset', 'condition']]['onset'])
 
         self.trimmed = timings.loc[(timings['event_type'] == "stim") & (timings['phase'] == phase_onset)].iloc[1:,:]
         self.onset_times = self.trimmed['onset'].values[...,np.newaxis]
@@ -592,14 +643,59 @@ class ParseExpToolsFile(ParseEyetrackerFile):
         
         # add button presses
         if self.button:
-            self.response = self.data_cut_start[(self.data_cut_start['response'] == 'b')]
-            self.condition.loc[self.response.index] = 'response'
 
-        # self.onset = np.concatenate((self.onset_times, self.condition), axis=1)
+            # get dataframe with responses
+            self.response_df = timings.loc[(timings['event_type'] == "response") & (timings['response'] != 'space')]
+
+            # get the onset times
+            self.response_times = self.response_df['onset'].values[...,np.newaxis]
+
+            # stack onset times
+            self.onset_times = np.vstack([self.onset_times, self.response_times])
+
+            # make a condition column
+            self.response_condition = self.response_df['response'].values[...,np.newaxis]
+
+            # stack it onto existing condition array
+            self.condition = np.vstack([self.condition, self.response_condition])
+        
+        # check if we should include other events
+        if isinstance(self.add_events, str):
+            self.add_events = [self.add_events]
+
+        if isinstance(self.event_names, str):
+            self.event_names = [self.event_names]            
+
+        if isinstance(self.add_events, list):
+            if isinstance(self.event_names, list):
+                if len(self.event_names) != len(self.add_events):
+                    raise ValueError(f"Length ({len(self.add_events)}) of added events {self.add_events} does not equal the length ({len(self.event_names)}) of requested event names {self.event_names}")
+            else:
+                self.event_names = self.add_events.copy()
+
+            for ix,ev in enumerate(self.add_events):
+                ev_times = np.array([ii for ii in np.unique(timings[ev].values)])
+
+                # filter for nan (https://stackoverflow.com/a/11620982)
+                ev_times = ev_times[~np.isnan(ev_times)][...,np.newaxis]
+
+                # create condition
+                ev_names = np.full(ev_times.shape, self.event_names[ix])
+
+                # add times and names to array
+                self.onset_times = np.vstack((self.onset_times, ev_times))
+                self.condition = np.vstack((self.condition, ev_names))
+
+        # check if we should add duration (can't be used in combination with add_events)
         if not skip_duration:
+            if isinstance(self.add_events, list):
+                raise TypeError(f"Cannot do this operation because I don't know the durations for the added events. Please consider using 'stim_duration!={self.stim_duration}' or 'add_events=None'")
             self.onset = np.hstack((self.onset_times, self.condition, self.durations))
         else:
             self.onset = np.hstack((self.onset_times, self.condition))
+
+        # sort array based on onset times (https://stackoverflow.com/a/2828121)        
+        self.onset = self.onset[self.onset[:,0].argsort()]
 
         # add eyeblinks
         if isinstance(self.blinks, np.ndarray) or isinstance(self.blinks, str):
@@ -654,6 +750,107 @@ class ParseExpToolsFile(ParseEyetrackerFile):
             
         self.onset_df = self.index_onset(self.onset, columns=columns, subject=self.sub, run=run)
 
+        # check if we should do reaction times
+        if self.RTs:
+            if not isinstance(self.RT_relative_to, str):
+                raise ValueError(f"Need a reference column to calculate reaction times (RTs), not '{self.RT_relative_to}'")
+            
+
+            # get response times
+            if not hasattr(self, "response_df"):
+                self.response_df = timings.loc[(timings['event_type'] == "response") & (timings['response'] != 'space')]
+                
+            # get trial IDs where response occurred
+            self.id_responses = self.response_df.loc[(timings['event_type'] == "response")]['trial_nr'].values
+
+            # fetch trials were target happened
+            self.id_target = {}
+            self.id_no_target = []
+            self.false_alarms = []
+            self.correct_rejection = []
+            for idx in self.trimmed['trial_nr'].values:
+
+                # cross-check
+                trial_overview = timings.loc[(timings['trial_nr'] == idx)]
+                
+                # get the values of reference column; skip if all elements are nan
+                if self.RT_relative_to != "start":
+                    ref_values = np.unique(trial_overview[self.RT_relative_to].values)
+                    has_nans = np.isnan(ref_values)
+
+                    # should be safe as any response will not have a value in reference column
+                    if False in has_nans:
+                        
+                        # increase number of target to remain agnostic about design
+                        id_no_nan = np.where(has_nans == False)[0]
+                        if len(id_no_nan) != 0:
+                            self.id_target[idx] = ref_values[id_no_nan]
+                    else:
+                        # append no targets
+                        self.id_no_target.append(idx)
+                        
+                        # false alarm = no target but response
+                        if 'response' in list(trial_overview['event_type'].values):
+                            self.false_alarms.append(idx)
+                        else:
+                            # correct rejection = no target and no response
+                            self.correct_rejection.append(idx)
+
+            self.rts = []
+            self.hits = []
+            for target_trial in self.id_target.keys():
+        
+                # get corresponding reference value
+                if self.RT_relative_to != "start":
+                    ref_value = self.id_target[target_trial]
+                else:
+                    ref_value = trial_overview.loc[(trial_overview['event_type'] == 'stim')]['onset'].values
+                
+                # get response value (length will be 0 if dataframe is empty)
+                response_value = self.response_df.loc[(self.response_df['trial_nr'] == target_trial)]['onset'].values
+
+                # check if lengths of reference value and response value are equal
+                if len(response_value) == len(ref_value):
+                    rt = response_value - ref_value
+
+                    # ignore negative reaction times..
+                    if rt > 0:
+                        self.rts.append(rt)
+                
+            if len(self.rts) >= 1:
+                self.rts = np.array(self.rts)
+
+            if len(self.id_target) != 0:
+                self.hits = len(self.rts)/len(self.id_target)
+                self.miss = (len(self.id_target)-len(self.rts))/len(self.id_target)
+                self.fa = len(self.false_alarms)/len(self.id_no_target)
+                self.cr = len(self.correct_rejection)/len(self.id_no_target)
+
+                # calculate d-prime
+                self.hitZ = stats.norm.ppf(self.hits)
+                self.faZ = stats.norm.ppf(self.fa)
+                self.dPrime = self.hitZ-self.faZ
+
+                # d-prime=0 is considered as pure guessing.
+                # d-prime=1 is considered as good measure of signal sensitivity/detectability.
+                # d-prime=2 is considered as awesome.
+                
+                self.accuracy_df = self.index_accuracy(np.array([self.hits, self.miss, self.fa, self.cr, self.dPrime], dtype=float)[np.newaxis,...], columns=['hits','miss','fa','cr','d_prime'], subject=self.sub, run=run)
+
+            if self.verbose:
+                if hasattr(self, 'dPrime'):
+                    print(f" Hits:\t{self.hits}\t({len(self.rts)}/{len(self.id_target)})")
+                    print(f" Miss:\t{self.miss}\t({(len(self.id_target)-len(self.rts))}/{len(self.id_target)})")
+                    print(f" FA:\t{self.fa}\t({len(self.false_alarms)}/{len(self.id_no_target)})")
+                    print(f" CR:\t{self.cr}\t({len(self.correct_rejection)}/{len(self.id_no_target)})")
+                    print(f" D':\t{round(self.dPrime,2)}\t(0=guessing;1=good;2=awesome)")
+                
+                print(f" Average reaction time (RT) = {round(self.rts.mean(),2)}s (relative to '{self.RT_relative_to}').")
+
+            # parse into dataframe
+            self.rts_df = self.index_rts(self.rts, columns=["RTs"], subject=self.sub, run=run)
+
+
     @staticmethod
     def index_onset(array, columns=None, subject=1, run=1, TR=0.105, set_index=False):
         
@@ -678,6 +875,39 @@ class ParseExpToolsFile(ParseEyetrackerFile):
         else:
             return df        
 
+    @staticmethod
+    def index_rts(array, columns=None, subject=1, run=1, set_index=False):
+        
+        if columns == None:
+            df = pd.DataFrame(array)
+        else:
+            df = pd.DataFrame(array, columns=columns)
+            
+        df['subject']   = subject
+        df['run']       = run
+        df['RTs']       = df['RTs'].astype(float)
+
+        if set_index:
+            return df.set_index(['subject', 'run'])
+        else:
+            return df        
+
+    @staticmethod
+    def index_accuracy(array, columns=None, subject=1, run=1, set_index=False):
+        
+        if columns == None:
+            df = pd.DataFrame(array)
+        else:
+            df = pd.DataFrame(array, columns=columns)
+            
+        df['subject']   = subject
+        df['run']       = run
+
+        if set_index:
+            return df.set_index(['subject', 'run'])
+        else:
+            return df                   
+
     def get_onset_df(self, index=False):
         """Return the indexed DataFrame containing onset times"""
 
@@ -685,6 +915,22 @@ class ParseExpToolsFile(ParseEyetrackerFile):
             return self.onset_df.set_index(['subject', 'run', 'event_type'])
         else:
             return self.onset_df
+
+    def get_rts_df(self, index=False):
+        """Return the indexed DataFrame containing reaction times"""
+
+        if index:
+            return self.rts_df.set_index(['subject', 'run'])
+        else:
+            return self.rts_df
+
+    def get_accuracy(self, index=False):
+        """Return the indexed DataFrame containing reaction times"""
+
+        if index:
+            return self.accuracy_df.set_index(['subject', 'run'])
+        else:
+            return self.accuracy_df             
 
     def onsets_to_fsl(self, fmt='3-column', amplitude=1, output_base=None):
         """onsets_to_fsl
@@ -1082,8 +1328,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
 
 
         if self.phys_file != None: 
-            
-            # super(ParsePhysioFile, self).__init__(**kwargs)                                              
+                                                        
             ParsePhysioFile.__init__(self, 
                                      self.phys_file, 
                                      physio_mat=self.phys_mat, 
@@ -1458,6 +1703,12 @@ for line-scanning data: """
                 else:
                     self.trafos = self.ses1_2_ls            
 
+                # don't save figures if report=False
+                if self.report:
+                    save_as = self.save_as
+                else:
+                    save_as = None
+
                 # aCompCor implemented in `preproc` module
                 self.acomp = preproc.aCompCor(self.hp_zscore_df,
                                               subject=self.subject,
@@ -1467,7 +1718,7 @@ for line-scanning data: """
                                               trafo_list=self.trafos,
                                               n_pca=self.n_pca,
                                               filter_pca=self.filter_pca,
-                                              save_as=self.lsprep_figures,
+                                              save_as=save_as,
                                               select_component=self.select_component, 
                                               summary_plot=self.verbose,
                                               TR=self.TR,
@@ -1599,8 +1850,9 @@ order={self.poly_order}). """
                                   line_width=2,
                                   add_hline=add_hline)
 
-        fname = opj(self.lsprep_figures, f"sub-{self.sub}_ses-{self.ses}_desc-tissue_classification.{self.save_ext}")
-        fig.savefig(fname)        
+        if self.report:
+            fname = opj(self.lsprep_figures, f"sub-{self.sub}_ses-{self.ses}_desc-tissue_classification.{self.save_ext}")
+            fig.savefig(fname)        
                                    
     # def apply_retroicor(self, run=1, **kwargs):
 
@@ -1793,6 +2045,18 @@ class Dataset(ParseFuncFile):
         (List of) Transformation(s) mapping the slices of subsequent runs to the first acquired `1slice` image. Default is None.
     save_as: str, optional
         Directory + basename for several figures that can be created during the process (mainly during aCompCor)        
+    phase_onset: int, optional
+        Which phase of exptools-trial should be considered the actual stimulus trial. Usually, `phase_onset=0` means the interstimulus interval. Therefore, default = 1
+    stim_duration: str, int, optional
+        If desired, add stimulus duration to onset dataframe. Can be one of 'None', 'stim' (to use duration from exptools'  log file) or any given integer
+    add_events: str, list, optional
+        Add additional events to onset dataframe. Must be an existing column in the exptools log file. For intance, `responses` and `event_type = stim` are read in by default, but if we have a separate column containing the onset of some target (e.g., 'target_onset'), we can add these times to the dataframe with `add_events='target_onset'`.
+    event_names: str, list, optional
+        Custom names for manually added events through `add_events` if the column names are not the names you want to use in the dataframe. E.g., if I find `target_onset` too long of a name, I can specify `event_names='target'`. If `add_events` is a list, then `event_names` must be a list of equal length if custom names are desired. By default we'll take the names from `add_events`
+    RTs: bool, optional
+        If we have a design that required some response to a stimulus, we can request the reaction times. Default = False
+    RT_relative_to: str, optional
+        If `RTs=True`, we need to know relative to what time the button response should be offset. Only correct responses are considered, as there's a conditional statement that requires the present of the reference time (e.g., `target_onset`) and button response. If there's a response but no reference time, the reaction time cannot be calculated. If you do not have a separate reference time column, you can specify `RT_relative_to='start'` to calculate the reaction time relative to onset time. If `RT_relative_to != 'start'`, I'll assume you had a target in your experiment in X/n_trials. From this, we can calculate the accuracy and save that to `self.df_accuracy`, while reaction times are saved in`self.df_rts`        
 
     Example
     ----------
@@ -1855,6 +2119,12 @@ class Dataset(ParseFuncFile):
                  save_ext="svg",
                  filter_strategy="hp",
                  report=False,
+                 RTs=False,
+                 RT_relative_to=None,
+                 phase_onset=1,
+                 stim_duration=None,
+                 add_events=None,
+                 event_names=None,                 
                  **kwargs):
 
         if verbose:
@@ -1898,6 +2168,11 @@ class Dataset(ParseFuncFile):
                              save_ext=save_ext,
                              filter_strategy=filter_strategy,
                              report=report,
+                             RTs=RTs,
+                             RT_relative_to=RT_relative_to,
+                             add_events=add_events,
+                             event_names=event_names,
+                             phase_onset=phase_onset,
                             **kwargs)
 
         if verbose:
@@ -1945,6 +2220,24 @@ class Dataset(ParseFuncFile):
                 return self.df_onsets
         else:
             print("No event-data was provided")
+
+    def fetch_rts(self, strip_index=False):
+        if hasattr(self, 'df_rts'):
+            if strip_index:
+                return self.df_rts.reset_index().drop(labels=list(self.df_rts.index.names), axis=1)
+            else:
+                return self.df_rts
+        else:
+            print("No reaction times were provided")            
+
+    def fetch_accuracy(self, strip_index=False):
+        if hasattr(self, 'df_accuracy'):
+            if strip_index:
+                return self.df_accuracy.reset_index().drop(labels=list(self.df_accuracy.index.names), axis=1)
+            else:
+                return self.df_accuracy
+        else:
+            print("No accuracy measurements found")                 
 
     def fetch_physio(self, strip_index=False):
         if hasattr(self, 'df_physio'):
