@@ -46,15 +46,15 @@ if [[ ! -f ${output} ]]; then
   if [[ ! -f $(dirname ${output})/tmp_$(basename ${output}) ]]; then
 
     # Print which files we're concatenating
-    echo "  Merging the following files:"
-    for i in ${inputs[@]}; do echo "   `basename ${i}`"; done
+    echo "Merging the following files:"
+    for i in ${inputs[@]}; do echo " `basename ${i}`"; done
 
     # Execute command
     COMMAND "${output}" "${inputs[@]}"
 
   fi
 
-  echo "  Calculating mean"
+  echo "Calculating mean"
   fslmaths $(dirname ${output})/tmp_$(basename ${output}) -Tmean ${output}
   rm $(dirname ${output})/tmp_$(basename ${output})
 

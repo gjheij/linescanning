@@ -7,6 +7,8 @@
 #$ -cwd
 #$ -V
 
+source ${DIR_SCRIPTS}/shell/spinoza_setup
+
 #---------------------------------------------------------------------------------------------------------
 # Create help text
 function Usage {
@@ -24,10 +26,10 @@ best in it. Check for instruction this page https://github.com/lukassnoek/pybest
 
 Usage:
   call_pybest -r <subject number> -n <session number> -o <output directory> -s <space>
-              -f <fprep dir> -c <slots> -e <environment> -v <setup file>
+              -f <fprep dir> -c <slots> -e <environment>
 
 Arguments:
-  -r <sub number>     number of subject's FreeSurfer directory from which you can omit "sub-" (e.g.,
+  -s <sub number>     number of subject's FreeSurfer directory from which you can omit "sub-" (e.g.,
                       for "sub-001", enter "001"). If left empty pybest will process everything it
                       can find in the fmriprep folder
   -n <ses number>     session number. If left empty pybest will process everything it can find in
@@ -35,7 +37,7 @@ Arguments:
   -o <output dir>     path to output directory. By default it will create a subject-specific folder,
                       but you can set where that subject folder is going to go. By default this
                       script will output to /projectroot/derivatives/pybest
-  -s <space>          the space to process. fMRIprep outputs several kinds of standard spaces such
+  -r <space>          the space to process. fMRIprep outputs several kinds of standard spaces such
                       as the MNI152NLin2009cAsym, or FSL-templates, but also fsnative. The latter
                       is the default, because we want to project the results in pycortex.
   -f <fprep dir>      path to fmriprep derivatives directory. Will look by default in the /project/
@@ -47,10 +49,10 @@ Arguments:
   -z <standardizing>  method for signal standardization; 'zscore' or 'psc'
 
 Example:
-  call_pybest -r "001" -n "1" -o /derivatives/pybest -s "fsnative" -f /derivatives/fmriprep -c 10
-  call_pybest -r "001" -n "1" -o /derivatives/pybest -s "fsnative" -f /derivatives/fmriprep -c 10
+  call_pybest -s "001" -n "1" -o /derivatives/pybest -r "fsnative" -f /derivatives/fmriprep -c 10
+  call_pybest -s "001" -n "1" -o /derivatives/pybest -r "fsnative" -f /derivatives/fmriprep -c 10
               -e pybest
-  call_pybest -r "001" -o /derivatives/pybest -s "MNI152NLin2009cAsym" -f /derivatives/fmriprep
+  call_pybest -s "001" -o /derivatives/pybest -r "MNI152NLin2009cAsym" -f /derivatives/fmriprep
 
 ---------------------------------------------------------------------------------------------------
 
@@ -58,15 +60,15 @@ USAGE
     exit 1
 }
 
-while getopts r:n:o:s:f:c:e:z:v: arg; do
+while getopts s:n:o:s:f:c:e:z:v: arg; do
   case $arg in
-    r)  run=${OPTARG}
+    s)  sub=${OPTARG}
           ;;
     n)  ses=${OPTARG}
           ;;
     o)  outputdir=${OPTARG}
           ;;
-    s)  in_space=${OPTARG}
+    r)  in_space=${OPTARG}
           ;;
     f)  fprepdir=${OPTARG}
           ;;
@@ -76,24 +78,12 @@ while getopts r:n:o:s:f:c:e:z:v: arg; do
           ;;
     z)  normalization=${OPTARG}
           ;;
-    v)  setup=${OPTARG}
-          ;;
   esac
 done
 
 if [[ $# -lt 4 ]] ; then
   Usage >&2
   exit 1
-fi
-
-#---------------------------------------------------------------------------------------------------------
-# if we qsub this script we need a setup file, we need to specify the setup file for environmental variables
-if [ ! -z $setup ]; then
-  source $setup
-else
-  #---------------------------------------------------------------------------------------------------------
-  # check if there's is a setup file containing the major paths and source it if it exists
-  call_loadsetup
 fi
 
 #-----------------------------------------------------------------------------
@@ -114,8 +104,8 @@ fi
 
 # Make sure we run the specified subject or all subjects pybest can find will be
 # processed
-if [[ ! -z ${run} ]]; then
-  sub_input="--subject ${run}"
+if [[ ! -z ${sub} ]]; then
+  sub_input="--subject ${sub}"
 else
   sub_input=""
 fi
@@ -124,10 +114,10 @@ fi
 # processed
 if [[ ! -z ${ses} ]]; then
   ses_input="--session ${ses}"
-  base_dir="sub-${run}/ses-${ses}"
+  base_dir="sub-${sub}/ses-${ses}"
 else
   ses_input=""
-  base_dir="sub-${run}"
+  base_dir="sub-${sub}"
 fi
 
 # Make sure we run the specified session or all sessions pybest can find will be
@@ -162,13 +152,13 @@ fi
 #
 # source activate ${env}
 source activate ${conda_env}
-if [[ ! -d ${output_dir}/sub-${run} ]]; then
-  mkdir -p ${output_dir}/sub-${run}
+if [[ ! -d ${output_dir}/sub-${sub} ]]; then
+  mkdir -p ${output_dir}/sub-${sub}
 fi
 
 if [ ! -d ${input_dir}/${base_dir}/func ]; then
   echo "ERROR: no func in \"${input_dir}/${base_dir}\""
-  echo "       make sure to run \"master -m 15 -s ${run} -t func\" to fMRIprep with FS-surfaces"
+  echo "       make sure to run \"master -m 15 -s ${sub} -t func\" to fMRIprep with FS-surfaces"
   exit 1
 fi
 
