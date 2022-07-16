@@ -1532,6 +1532,9 @@ class pRFmodelFitting():
         else:
             raise ValueError(f"Unrecognized input type for '{params_file}'")
 
+        if self.verbose:
+            print(f"Inserting parameters in '{model}_{stage}' in {self}")
+
         setattr(self, f'{model}_{stage}', params)
 
         if acq != None:
@@ -1542,7 +1545,7 @@ class pRFmodelFitting():
         if run != None:
             search_list.extend(f"run-{run}")          
 
-        preds = utils.get_file_from_substring(search_list, os.path.dirname(self.settings_fn), return_msg=None)
+        preds = utils.get_file_from_substring(search_list, os.path.dirname(params_file), return_msg=None)
         if preds != None:
             if isinstance(preds, list):
                 raise ValueError(f"Found multiple instances for {search_list}: {preds}")
@@ -1723,6 +1726,7 @@ class pRFmodelFitting():
             if self.verbose:
                 print(f"Save {stage}-fit parameters in {output}")
 
+            # save predictions
             if predictions:
                 predictions = out_dict['predictions']
                 output = opj(self.output_dir, f'{self.output_base}_model-{model}_stage-{stage}_desc-predictions.npy')
@@ -1730,8 +1734,27 @@ class pRFmodelFitting():
                 
                 if self.verbose:
                     print(f"Save {stage}-fit predictions in {output}")
+
+            # save HRFs if applicable
+            if self.fit_hrf:
+                
+                # get correct model
+                used_model = getattr(self, f"{self.model}_model")
+
+                # HRFs
+                try:
+                    self.hrfs = [used_model.create_hrf(hrf_params=[1,*params[ii,-3:-1]]).T for ii in range(self.data.shape[0])]
+                except:
+                    raise IOError(f"Could not create HRFs from '{used_model}'")
+
+                output = opj(self.output_dir, f'{self.output_base}_model-{model}_stage-{stage}_desc-hrfs.npy')
+                np.save(output, self.hrfs)
+                
+                if self.verbose:
+                    print(f"Save {stage}-HRFs in {output}")
+
         else:
-            raise ValueError(f"class does not have attribute '{model}_{stage}'. Not saving parameters")
+            raise ValueError(f"{self} does not have attribute '{model}_{stage}'. Not saving parameters")
 
 def find_most_similar_prf(reference_prf, look_in_params, verbose=False, return_nr='all', r2_thresh=0.5):
 
