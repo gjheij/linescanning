@@ -3,6 +3,7 @@
 #---------------------------------------------------------------------------------------------------------
 # check if there's is a setup file containing the major paths and source it if it exists
 call_loadsetup
+source call_bashhelper
 
 #---------------------------------------------------------------------------------------------------------
 # Create help text
@@ -20,7 +21,7 @@ Usage:
   spinoza_linerecon <project root directory> <sourcedata>
 
 Arguments:
-  -s <subject>        subject ID (e.g., 01, 001, or 1)
+  -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
   -n <session>        session ID (e.g., 1, 2, or n)
   -m <n_echoes>       number of echoes in the acquisition (e.g., 5)
   -c                  submit job to cluster (SGE)
@@ -29,7 +30,7 @@ Arguments:
   <sourcedata>        base directory containing the raw data for reconstruction
 
 Eample:
-  spinoza_linerecon ${DIR_DATA_HOME} ${DIR_DATA_SOURCE}
+  spinoza_linerecon DIR_DATA_HOME DIR_DATA_SOURCE
 
 Notes:
   relies on matlab scripts stored in '/data1/projects/MicroFunc/common'. As it relies on MRecon,
@@ -83,9 +84,10 @@ if [[ -z ${sub} ]]; then
   # loop through subjects
   search="${INPUT}/${PREFIX}*"
 else
-  # do for 1 subject
-  sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
-  search="${INPUT}/${PREFIX}${sub_nr}"
+  # read specified subjects into array
+  IFS=', ' read -r -a search <<< "${sub}"
+  search=${search[@]}
+  unset IFS
 fi
 
 if [[ ! -z ${ses} ]]; then
@@ -114,12 +116,28 @@ echo "==========================================================================
 #-----------------------------------------------------------------------------
 # Run it
 
-for dir in ${search}; do
+for subID in ${search}; do
 
-  lab_func=${INPUT}/$(basename ${dir})/ses-${nr}
+  # collect subject name
+  if [[ ! -z ${sub} ]]; then
+    sub_name=${PREFIX}${subID}
+  else
+    sub_name=$(basename ${subID})
+  fi
+
+  if [[ ! -z ${ses} ]]; then
+    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
+    base_path=${sub_name}/ses-${nr}
+    base=${sub_name}_ses-${nr}
+  else
+    base_path=${sub_name}
+    base=${sub_name}
+  fi
+
+  lab_func=${INPUT}/${base_path}
   if [[ -d ${lab_func} ]]; then
 
-    bidsfunc=${OUTPUT}/$(basename ${dir})/ses-${nr}/func
+    bidsfunc=${OUTPUT}/${base_path}/func
     if [[ ! -d ${bidsfunc} ]]; then
       mkdir -p ${bidsfunc}
     fi
@@ -130,7 +148,7 @@ for dir in ${search}; do
     unset IFS
 
     if [[ -z ${bold_files} ]]; then
-      echo "`basename ${dir}`: Could not find BOLD-data"
+      echo "${sub_name}: Could not find BOLD-data"
       continue
     fi
 
@@ -138,7 +156,7 @@ for dir in ${search}; do
     if [[ ${PLACE} == "SGE" ]]; then
 
       echo
-      echo "**************************************** Processing `basename ${dir}` ***************************************"
+      echo "**************************************** Processing ${sub_name} ***************************************"
 
       count=0
       old_lsd=""
@@ -156,7 +174,7 @@ for dir in ${search}; do
         task=`task_id ${bold}`
 
         # set output name
-        outputbase=${bidsfunc}/$(basename ${dir})_ses-${nr}_task-${task}_run-${run}_bold
+        outputbase=${bidsfunc}/${base}_task-${task}_run-${run}_bold
         if [[ ${OW} -eq 1 ]]; then
           rm -r ${outputbase}.mat 2>/dev/null
         fi
@@ -179,7 +197,7 @@ for dir in ${search}; do
           fi
           
           if [[ ${SGE} -eq 1 ]]; then
-            job="qsub -N recon_${IDnr}_${run} -wd ${OUTPUT}/$(basename ${dir})/ses-${nr}"
+            job="qsub -N recon_${IDnr}_${run} -wd ${OUTPUT}/${base_path}"
           else
             echo "Running recon for run-${run} (task-${task})"
             job="bash"
@@ -209,7 +227,7 @@ for dir in ${search}; do
 
   else
 
-    echo "`basename ${dir}`: ses-${nr} not yet performed"
+    echo "${sub_name}: ses-${nr} not yet performed"
     continue
 
   fi

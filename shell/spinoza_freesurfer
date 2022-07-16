@@ -42,9 +42,6 @@ Example:
   spinoza_freesurfer $DIR_DATA_DERIV/masked_mp2rage all $DIR_DATA_HOME
   spinoza_freesurfer -s 001 -n 1 $DIR_DATA_ANAT all $DIR_DATA_HOME
 
-Notes:
-  - Has the '-s' and '-n' switches to specify a particular subject and session if present
-
 ---------------------------------------------------------------------------------------------------
 
 USAGE
@@ -52,14 +49,17 @@ USAGE
 }
 
 # Check for subject & session flags
-while getopts s:n: argument
+OW=0
+while getopts os:n: argument
 do
-    case ${argument} in
-      s)  sub=${OPTARG}
-            ;;
-      n)  ses=${OPTARG}
-            ;;
-    esac
+  case ${argument} in
+    s)  sub=${OPTARG}
+          ;;
+    n)  ses=${OPTARG}
+          ;;
+    o)  OW=1
+          ;;          
+  esac
 done
 
 if [[ $# -lt 2 ]] ; then
@@ -84,8 +84,9 @@ fi
 # Start clock
 #-----------------------------------------------------------------------------
 
+echo
 echo "==================================================================================================="
-printf "NEW SURFACE PARCELLATION WITH FREESURFER\n"
+printf "SURFACE PARCELLATION WITH FREESURFER\n"
 start=`date +%s`
 start_date=`date`
 
@@ -94,24 +95,26 @@ echo "==========================================================================
 
 #-----------------------------------------------------------------------------
 # Run it
+for subID in ${search}; do
 
-for dir in ${search}; do
-
-  #----------------------------------------------------------------------------------------------------------------------------------------------------------
-  # Running FreeSurfer with call_freesurfer
-
-  # LOOK FOR T1-WEIGHTED IMAGE; SHOULD BE FMRIPREP'S INPUT IDEALLY
-  if [[ -z ${ses} ]]; then
-    base_dir=$(basename ${dir})
-    base="$(basename ${dir})"
+  # collect subject name
+  if [[ ! -z ${sub} ]]; then
+    sub_name=${PREFIX}${subID}
   else
+    sub_name=$(basename ${subID})
+  fi
+
+  if [[ ! -z ${ses} ]]; then
     nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
-    base_dir=$(basename ${dir})/ses-${nr}
-    base="$(basename ${dir})_ses-${nr}"
+    base_path=${sub_name}/ses-${nr}
+    base=${sub_name}_ses-${nr}
+  else
+    base_path=${sub_name}
+    base=${sub_name}
   fi
 
   # check number of T1w-files
-  T1_DIR=${T1}/${base_dir}
+  T1_DIR=${T1}/${base_path}
   input_t1w=`find "${T1_DIR}" -type f \( -name "*T1w*" -and -name "*${DATA^^}*" -and -name "*.nii.gz" \) 2>/dev/null`
 
   ct=0; for ii in ${input_t1w[@]}; do ((ct++)); done
@@ -125,19 +128,25 @@ for dir in ${search}; do
     exit 1
   fi
 
+  # check if we should delete subject folder (rather dangerous, really..)
+  if [[ ${OW} -eq 1 ]]; then
+    rm -r ${SUBJECTS_DIR}/${sub_name} 2>/dev/null
+  fi
+
+  # run if input exists
   if [[ ! -z ${input_t1w} ]]; then
 
-    if [[ ! -d ${SUBJECTS_DIR}/$(basename ${dir}) ]]; then
+    if [[ ! -d ${SUBJECTS_DIR}/${sub_name} ]]; then
 
       echo
-      echo "**************************************** Processing `basename ${dir}` ***************************************"
+      echo "**************************************** Processing ${sub_name} ***************************************"
       echo "Running FreeSurfer on `basename ${input_t1w}` with autorecon \"${STAGE}\""
 
       # LOOK FOR T2-/FLAIR WEIGHTED IMAGE
       if [ ! -z ${T2} ]; then
-        if [[ -d ${T2}/${base_dir} ]]; then
+        if [[ -d ${T2}/${base_path} ]]; then
 
-          input_t2w=`find "${T2}/${base_dir}" -type f \( -name "*FLAIR*" -and -name "*.nii.gz" -or -name "*T2w*" -and -name "*.nii.gz" \) 2>/dev/null`
+          input_t2w=`find "${T2}/${base_path}" -type f \( -name "*FLAIR*" -and -name "*.nii.gz" -or -name "*T2w*" -and -name "*.nii.gz" \) 2>/dev/null`
           if [[ ! -z ${input_t2w} ]]; then
 
             # throw error if multiple files are found
@@ -161,17 +170,17 @@ for dir in ${search}; do
             T2_flag=""
           fi
         else
-          echo "ERROR in `basename ${0}`: T2-path was given, but \"${T2}/${base_dir}\" does not exist"
+          echo "ERROR in `basename ${0}`: T2-path was given, but \"${T2}/${base_path}\" does not exist"
         fi
       else
         T2_flag=""
       fi
 
       # cmd
-      call_freesurfer -s $(basename ${dir}) -t ${input_t1w} -r ${STAGE} ${T2_flag} -v \"7.2.0\"
+      call_freesurfer -s ${sub_name} -t ${input_t1w} -r ${STAGE} ${T2_flag} -v \"7.2.0\"
 
     else
-      echo "`basename ${dir}`: FreeSurfer already ran"
+      echo "${sub_name}: FreeSurfer already ran"
     fi
 
   else

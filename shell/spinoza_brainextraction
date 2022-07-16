@@ -19,13 +19,19 @@ you added the location of antsBrainExtraction.sh to your path e.g., in your ~/.b
 Usage:
   spinoza_brainextraction <input dir> <skullstrip output> <mask output> <ants/FSL/cat12>
 
+Arguments:
+  -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
+  -n <session>        session ID (e.g., 1, 2, or n)
+  -o                  overwrite existing files
+  <input directory>   directory for inputs
+  <skullstrip>        directory for skull-stripped outputs
+  <mask>              directory for masks
+  <software>          which software to use: ants|FSL|CAT12
+
 Example:
   spinoza_brainextraction dir/to/t1w dir/to/skullstrip /dir/to/masks ants
-  spinoza_brainextraction dir/to/pymp2rage dir/to/cat12 /dir/to/masks cat12
-  spinoza_brainextraction dir/to/inv2 dir/to/skullstrip /dir/to/masks inv2
-
-Notes:
-  Has the '-s' and '-n' switches to specify a particular subject and session if present
+  spinoza_brainextraction -o dir/to/pymp2rage dir/to/cat12 /dir/to/masks cat12
+  spinoza_brainextraction -s 01,02 -n 2 dir/to/inv2 dir/to/skullstrip /dir/to/masks inv2
 
 ---------------------------------------------------------------------------------------------------
 
@@ -63,9 +69,10 @@ if [[ -z ${sub} ]]; then
   # loop through subjects
   search="${INPUT}/${PREFIX}*"
 else
-  # do for 1 subject
-  sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
-  search="${INPUT}/${PREFIX}${sub_nr}"
+  # read specified subjects into array
+  IFS=', ' read -r -a search <<< "${sub}"
+  search=${search[@]}
+  unset IFS
 fi
 
 if [[ ${SOFTWARE,,} != "ants" ]] && [[ ${SOFTWARE,,} != "fsl" ]] && [[ ${SOFTWARE,,} != "cat12" ]]; then
@@ -88,20 +95,27 @@ echo "==========================================================================
 
 #-----------------------------------------------------------------------------
 # Run it
-for dir in ${search}; do
+for subID in ${search}; do
 
-  if [[ -z ${ses} ]]; then
-    base=$(basename ${dir})
-    base_dir=$(basename ${dir})
+  # collect subject name
+  if [[ ! -z ${sub} ]]; then
+    sub_name=${PREFIX}${subID}
   else
-    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
-    base="$(basename ${dir})_ses-${nr}"
-    base_dir=$(basename ${dir})/ses-${nr}
+    sub_name=$(basename ${subID})
   fi
 
-  INPUTDIR=${INPUT}/${base_dir}
-  BET=${OUTPUT}/${base_dir}
-  MASKS=${SKULL}/${base_dir}
+  if [[ ! -z ${ses} ]]; then
+    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
+    base_path=${sub_name}/ses-${nr}
+    base=${sub_name}_ses-${nr}
+  else
+    base_path=${sub_name}
+    base=${sub_name}
+  fi
+
+  INPUTDIR=${INPUT}/${base_path}
+  BET=${OUTPUT}/${base_path}
+  MASKS=${SKULL}/${base_path}
   
   if [ ! -d ${MASKS} ]; then
     mkdir -p ${MASKS}
@@ -128,8 +142,7 @@ for dir in ${search}; do
       if [[ ! -f ${final_brain} ]]; then
 
         echo
-        echo "**************************************** Processing `basename ${dir}` ***************************************"
-
+        echo "**************************************** Processing ${sub_name} ***************************************"
         echo "ANTs was selected, using following parameters:"
         echo " -input     = `basename ${input}`"
         echo " -prefix    = `basename ${final_brain} _brain.nii.gz`_"
@@ -176,7 +189,7 @@ for dir in ${search}; do
 
     else
 
-      echo "`basename ${dir}`: couldn't find input in ${INPUTDIR}"
+      echo "${sub_name}: couldn't find input in ${INPUTDIR}"
       continue
 
     fi
@@ -195,7 +208,7 @@ for dir in ${search}; do
       if [[ ! -z ${input} ]]; then
 
         echo
-        echo "**************************************** Processing `basename ${dir}` ***************************************"
+        echo "**************************************** Processing ${sub_name} ***************************************"
 
         if [[ ! -d ${BET} ]]; then
           mkdir -p ${BET}
@@ -247,7 +260,7 @@ for dir in ${search}; do
       else
 
         if [[ -z ${input} ]]; then
-          echo "`basename ${dir}`: No input file found"
+          echo "${sub_name}: No input file found"
         fi
 
       fi
@@ -255,7 +268,7 @@ for dir in ${search}; do
     else
 
       if [[ -f ${output_mask} ]]; then
-        echo "`basename ${dir}`: inv-2 brain mask already present"
+        echo "${sub_name}: inv-2 brain mask already present"
       fi
     fi
 
@@ -292,7 +305,7 @@ for dir in ${search}; do
     if [[ ! -f ${corrected_t1w} ]]; then
 
       echo
-      echo "**************************************** Processing `basename ${dir}` ***************************************"
+      echo "**************************************** Processing ${sub_name} ***************************************"
 
       # create BIDS-compatible output directory
       if [[ ! -d $(dirname ${corrected_t1w}) ]]; then
@@ -319,27 +332,6 @@ for dir in ${search}; do
             echo "CAT12 was selected, using following parameters:"
             echo " -input     = `basename ${input}`"
             echo " -output    = `basename ${brainmask}`"
-
-            # if [[ ${PLACE} == "SPINOZA" ]]; then
-            #   qsub -N cat12_$(basename ${dir} | cut -d'-' -f2) -wd ${DIR_LOGS} \
-            #     ${DIR_SCRIPTS}/bin/call_cat12 ${input} ${BET}
-
-            #   if [[ `hostname` == *"spinozacentre"* ]]; then
-            #     PID=$(qstat | grep -A0 "cat12_$(basename ${dir} | cut -d'-' -f2)" | awk '{print $1}')
-            #     # PID=$(qstat | grep -A0 "qsub_test" | awk '{print $1}')
-            #     echo "Waiting for CAT12 to finish"
-            #     while true; do
-            #       JOBRUNNING=$(qstat -u "`whoami`" | awk '$1 == '"${PID}"'' | wc -l)
-            #       if [[ ${JOBRUNNING} == "0" ]]; then
-            #         echo "Job done"
-            #         break
-            #       fi
-            #     done
-            #   fi
-
-            # else
-            #   call_cat12 -s ${SPM_PATH} ${input} ${BET}
-            # fi
             
             call_cat12 -s ${SPM_PATH} -m ${mode} ${input} ${BET}
 
@@ -356,15 +348,10 @@ for dir in ${search}; do
             fi
           
           else
-
             echo "`basename ${brainmask}` already exists. Skipping CAT12"
-            
           fi
-
         else
-
           echo "Found existing output"
-
         fi
 
         # this gets T1-weighted and T1map in one directory for spinoza_masking
@@ -377,7 +364,7 @@ for dir in ${search}; do
         fi
 
         # clip and rescale m-image if needed:
-        biascorr=`find ${BET} -type f -name "m$(basename ${dir})*" 2>/dev/null`
+        biascorr=`find ${BET} -type f -name "m${sub_name}*" 2>/dev/null`
         if [[ ! -z ${biascorr} ]]; then
           
           # val=`fslstats ${biascorr} -R | awk '{print $2}'`
@@ -462,28 +449,35 @@ for dir in ${search}; do
           fi
           
         else
-          
           echo "Could not find m*-image; copying input to CAT12-directory"
           cp ${input} ${BET}
-
         fi
 
       else
 
         if [[ -z ${input} ]]; then
-          echo "`basename ${dir}`: No input file found"
+          echo "${sub_name}: No input file found"
         fi
 
       fi
 
     else
-
-      echo "`basename ${dir}`: bias-field and intensity corrected image exists"
-
+      echo "${sub_name}: bias-field and intensity corrected image exists"
     fi
 
     # still copy SPM-mask even if heavy CAT12-processing was turned off
-    spm_mask=`find $(dirname ${input}) -type f -name "*spm_mask*" -and -name "*.nii.gz" -print -quit 2>/dev/null`
+    spm_mask=`find $(dirname ${input}) -type f -name "*spm_mask*" -and -name "*.nii.gz" 2>/dev/null`
+    IFS=$'\n' spm_sorted=($(sort <<<"${spm_mask[*]}"))
+    unset IFS 
+    count=0; for ii in ${spm_sorted[@]}; do ((count++)); done
+    if [[ ${count} -gt 1 ]]; then
+      echo "Found more than 1 files with \"spm_mask\" and \".nii.gz\" (${count})"
+      for ii in ${spm_sorted[@]}; do
+        echo " ${ii}"
+      done
+      continue
+    fi
+
     if [[ ! -z ${spm_mask} ]]; then
       cp ${spm_mask} ${spm}
     fi

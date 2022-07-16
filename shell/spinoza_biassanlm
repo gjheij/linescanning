@@ -11,29 +11,21 @@ spinoza_biassanlm
 Sometimes CAT12 can be a bit of an overkill with smoothing and bias corrections. This script should
 be run prior to "spinoza_brainextraction", and runs a SANLM-filter over the image as well as an bias
 field correction with SPM. The subsequent "spinoza_brainextraction" should be run with the "-m brain"
-flag as to turn off bias correction and denoising with CAT12.
-
-The input image is expected to reside in the input directory and to contain "acq-${DATA}" and end
-with *T1w.nii.gz.
+flag as to turn off bias correction and denoising with CAT12. The input image is expected to reside 
+in the input directory and to contain "acq-${DATA}" and end with *T1w.nii.gz.
 
 Arguments:
-  <-s sub>    digit subject number following '${PREFIX}'
-  <-n ses>    integer session number following 'ses-'
-  <-b>        skip bias correction with SPM
-  <anat dir>  parent directory containing the sub-xxx folders for anatomies. Can be e.g., DIR_DATA_-
-              HOME or DIR_DATA_HOME/derivatives/pymp2rage
-  <output>    Output directory for the denoised images (something like DIR_DATA_DERIV/denoised)
+  -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
+  -n <session>        session ID (e.g., 1, 2, or none)
+  -b                  skip bias correction with SPM
+  <anat dir>          parent directory containing the sub-xxx folders for anatomies. Can be e.g., 
+                      DIR_DATA_HOME or DIR_DATA_HOME/derivatives/pymp2rage
+  <output>            Output directory for the denoised images (something like DIR_DATA_DERIV/denoised)
 
 Example:
   spinoza_biascorrection DIR_DATA_DERIV/pymp2rage DIR_DATA_DERIV/denoised
-  spinoza_biascorrection -s 001 -n 1 $DIR_DATA_HOME DIR_DATA_DERIV/denoised
-  spinoza_biascorrection -s 001 -n 1 -b $DIR_DATA_HOME DIR_DATA_DERIV/denoised
-
-Notes:
-  - Has the '-s' and '-n' switches to specify a particular subject and session if present
-  - <dir_to_output> is not a required argument. If not specified, the input file will be overwritten.
-    The latter is default.
-  - Bias correction can be skipped using the '-b'-flag
+  spinoza_biascorrection -s 001 -n 1 DIR_DATA_HOME DIR_DATA_DERIV/denoised
+  spinoza_biascorrection -s 001 -n 1 -b DIR_DATA_HOME DIR_DATA_DERIV/denoised
 
 ---------------------------------------------------------------------------------------------------
 
@@ -42,6 +34,8 @@ USAGE
 }
 
 # Check for subject flag
+OW=0
+NO_BIAS=0
 while getopts bos:n: argument
 do
   case ${argument} in
@@ -49,6 +43,10 @@ do
           ;;
     n)  ses=${OPTARG}
           ;;
+    o)  OW=1
+          ;;          
+    b)  NO_BIAS=1
+          ;;            
   esac
 done
 
@@ -64,21 +62,10 @@ if [[ -z ${sub} ]]; then
   # loop through subjects
   search="${INPUT}/${PREFIX}*"
 else
-  # do for 1 subject
-  sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
-  search="${INPUT}/${PREFIX}${sub_nr}"
-fi
-
-if [[ "${@}" == *"-o"* ]]; then
-  OW=1
-else
-  OW=0
-fi
-
-if [[ "${@}" == *"-b"* ]]; then
-  NO_BIAS=1
-else
-  NO_BIAS=0
+  # read specified subjects into array
+  IFS=', ' read -r -a search <<< "${sub}"
+  search=${search[@]}
+  unset IFS
 fi
 
 #-----------------------------------------------------------------------------
@@ -96,27 +83,33 @@ echo "==========================================================================
 
 #-----------------------------------------------------------------------------
 # Run it
+for subID in ${search}; do
 
-for dir in ${search}; do
-
-  if [[ -z ${ses} ]]; then
-    base_dir=$(basename ${dir})
-    base="$(basename ${dir})"
+  # collect subject name
+  if [[ ! -z ${sub} ]]; then
+    sub_name=${PREFIX}${subID}
   else
+    sub_name=$(basename ${subID})
+  fi
+
+  if [[ ! -z ${ses} ]]; then
     nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
-    base_dir=$(basename ${dir})/ses-${nr}
-    base="$(basename ${dir})_ses-${nr}"
+    base_path=${sub_name}/ses-${nr}
+    base=${sub_name}_ses-${nr}
+  else
+    base_path=${sub_name}
+    base=${sub_name}
   fi
 
   if [[ "${INPUT}" == "${DIR_DATA_HOME}" ]]; then
-    INPUTDIR=${INPUT}/${base_dir}/anat
+    INPUTDIR=${INPUT}/${base_path}/anat
   else
-    INPUTDIR=${INPUT}/${base_dir}
+    INPUTDIR=${INPUT}/${base_path}
   fi
 
   # set outputdir to inputdir if outputdir not specified
   if [[ ! -z ${OUTPUT} ]]; then
-    OUTPUTDIR=${OUTPUT}/${base_dir}
+    OUTPUTDIR=${OUTPUT}/${base_path}
   else
     OUTPUTDIR=${INPUTDIR}
   fi
@@ -126,7 +119,7 @@ for dir in ${search}; do
   fi
 
   if [[ ! -d ${INPUTDIR} ]]; then
-    echo " `basename ${dir}`: Could not find directory containing file to be bias field corrected"
+    echo " ${sub_name}: Could not find directory containing file to be bias field corrected"
     continue
   fi
 
@@ -140,7 +133,7 @@ for dir in ${search}; do
       rm ${output}
     fi
 
-    t1map=`find "${INPUTDIR}" -maxdepth 1 -type f \( -name "*acq-${DATA}*" -and -name "*T1map.nii.gz" \) 2>/dev/null`
+    t1map=`find "${INPUTDIR}" -maxdepth 1 -type f \( -name "*acq-${DATA}_*" -and -name "*T1map.nii.gz" \) 2>/dev/null`
     if [[ ! -z ${t1map} ]]; then
       # copy t1map to output for later reference
       cp ${t1map} $(dirname ${output})
@@ -149,7 +142,7 @@ for dir in ${search}; do
     if [[ ! -f ${output} ]]; then
 
       echo
-      echo "**************************************** Processing `basename ${dir}` ***************************************"
+      echo "**************************************** Processing ${sub_name} ***************************************"
 
       echo "Running SANLM-filter"
       call_spmsanlm ${input} ${OUTPUTDIR}/denoised.nii.gz
@@ -188,18 +181,24 @@ for dir in ${search}; do
 
     else
       echo "`basename ${output}` already exists"
-      continue
     fi
 
   else
-
-    echo "`basename ${dir}`: Did not find an input file"
+    echo "${sub_name}: Did not find an input file"
     continue
-
   fi
 
-  spm_mask=`find "${INPUTDIR}" -maxdepth 1 -type f \( -name "*acq-${DATA}*" -and -name "*spm_mask.nii.gz" \) 2>/dev/null`
-  if [ ! -z ${spm_mask} ]; then
+  spm_mask=`find "${INPUTDIR}" -type f \( -name "*acq-${DATA}_*" -and -name "*spm_mask.nii.gz" \) 2>/dev/null`
+  IFS=$'\n' spm_sorted=($(sort <<<"${spm_mask[*]}"))
+  unset IFS 
+  count=0; for ii in ${spm_sorted[@]}; do ((count++)); done
+  if [[ ${count} -gt 1 ]]; then
+    echo "Found more than 1 files with \"acq-${DATA}_\", \"spm_mask\", and \".nii.gz\" (${count})"
+    for ii in ${spm_sorted[@]}; do
+      echo " ${ii}"
+    done
+    continue
+  else
     cp ${spm_mask} ${OUTPUTDIR} 2>/dev/null
   fi
 

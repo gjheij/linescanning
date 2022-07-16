@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 
 #---------------------------------------------------------------------------------------------------------
+# check if there's is a setup file containing the major paths and source it if it exists
+echo
+source ${DIR_SCRIPTS}/shell/spinoza_setup
+
+#---------------------------------------------------------------------------------------------------------
 # Create help text
 function Usage {
     cat <<USAGE
@@ -10,17 +15,21 @@ spinoza_averagesanatomies
 
 This script takes the MP2RAGE and MEMP2RAGE-derived T1-weighted images to calculate the average. This re-
 sults in an image that takes advantage of the better WM/GM contrast of the MP2RAGE and the QSM-properties
-of the MEMP2RAGE sequence.
-
-This will only happen if you have two elements in the ACQ variable of the setup script and if the DATA-
+of the MEMP2RAGE sequence. This will only happen if you have two elements in the ACQ variable of the setup script and if the DATA-
 variable is set to "AVERAGE"
 
 Usage:
-  spinoza_averagesanatomies <-s sub> <-n ses> <directory with anatomies to average> <root output directory>
+  spinoza_averagesanatomies <-s sub> <-n ses> <anats> <outputs>
+
+Arguments:
+  -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
+  -n <session>        session ID (e.g., 1, 2, or none)
+  <anat directory>    directory containing the files to be registered
+  <output>            path to directory where registration file/outputs should be stored
 
 Example:
-  spinoza_averagesanatomies $DIR_DATA_DERIV $DIR_DATA_DERIV
-  spinoza_averagesanatomies -s 001 -n 1 $DIR_DATA_DERIV $DIR_DATA_DERIV
+  spinoza_averagesanatomies DIR_DATA_DERIV DIR_DATA_DERIV
+  spinoza_averagesanatomies -s 001 -n 1 DIR_DATA_DERIV DIR_DATA_DERIV
 
 Notes:
   - Has the '-s' and '-n' switches to specify a particular subject and session if present
@@ -57,11 +66,12 @@ OUTPUT=${@:$OPTIND+1:1}
 
 if [[ -z ${sub} ]]; then
   # loop through subjects
-  search="${INPUT}/${PREFIX}*"
+  search="${SOURCEDATA}/${PREFIX}*"
 else
-  # do for 1 subject
-  sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
-  search="${INPUT}/${PREFIX}${sub_nr}"
+  # read specified subjects into array
+  IFS=', ' read -r -a search <<< "${sub}"
+  search=${search[@]}
+  unset IFS
 fi
 
 #-----------------------------------------------------------------------------
@@ -69,7 +79,7 @@ fi
 #-----------------------------------------------------------------------------
 
 echo "==================================================================================================="
-printf "NEW AVERAGING OF ANATOMICAL SCANS CREATED WITH PYMP2RAGE AND REGISTERED WITH ANTs\n"
+printf "AVERAGE `for ii in ${ACQ[@]}; do echo $ii; done` images\n"
 start=`date +%s`
 start_date=`date`
 
@@ -79,30 +89,40 @@ echo "==========================================================================
 #-----------------------------------------------------------------------------
 # Run it
 
-for dir in ${search}; do
+for subID in ${search}; do
 
-  if [[ ! -d ${INPUT} ]]; then
-    echo "`basename ${dir}`: Could not find input directory"
-		continue
+  # collect subject name
+  if [[ ! -z ${sub} ]]; then
+    sub_name=${PREFIX}${subID}
+  else
+    sub_name=$(basename ${subID})
+  fi
+
+  if [[ ! -z ${ses} ]]; then
+    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
+    base_path=${sub_name}/ses-${nr}
+    base=${sub_name}_ses-${nr}
+  else
+    base_path=${sub_name}
+    base=${sub_name}
+  fi
+
+  input_dir=${INPUT}/${base_path}
+  output_dir=${OUTPUT}/${base_path}
+
+  if [ ! -d ${input_dir} ]; then
+    echo "${sub_name}: could not find input directory \"${input_dir}\""
+    continue
   fi
 
   #-------------------------------------------------------------------------------------------------
   # calculate the averages of UNI T1, INV1, and INV2
-
+  
   echo
-  echo "**************************************** Processing `basename ${dir}` ***************************************"
+  echo "**************************************** Processing ${sub_name} ***************************************"
 
-  if [[ ! -z ${ses} ]]; then
-    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
-    base_path=$(basename ${dir})/ses-${nr}
-    base=$(basename ${dir})_ses-${nr}
-  else
-    base_path=$(basename ${dir})
-    base=$(basename ${dir})
-  fi
-
-  if [[ ! -d ${outdir} ]]; then
-    mkdir -p ${outdir}
+  if [[ ! -d ${output_dir} ]]; then
+    mkdir -p ${output_dir}
   fi
 
   if [[ ${DATA^^} != "AVERAGE" ]]; then
@@ -115,12 +135,12 @@ for dir in ${search}; do
 
   for i in ${OUTPUTS[@]}; do
 
-    out=${outdir}/${base}_acq-${DATA}_${i}.nii.gz
+    out=${output_dir}/${base}_acq-${DATA}_${i}.nii.gz
 
     if [[ ! -f ${out} ]]; then
 
-      in_1=`find "${indir}" -type f \( -name "*acq-${ACQ[0]^^}*" -and -name "*${i}.nii.gz" \) 2>/dev/null`
-      in_2=`find "${indir}" -type f \( -name "*space-${ACQ[0]^^}*" -and -name "*acq-${ACQ[1]^^}*" -and -name "*${i}.nii.gz" \) 2>/dev/null`
+      in_1=`find "${input_dir}" -type f \( -name "*acq-${ACQ[0]^^}_*" -and -name "*${i}.nii.gz" \) 2>/dev/null`
+      in_2=`find "${input_dir}" -type f \( -name "*space-${ACQ[0]^^}*" -and -name "*acq-${ACQ[1]^^}_*" -and -name "*${i}.nii.gz" \) 2>/dev/null`
 
       if [[ ! -z ${in_1} && ! -z ${in_2} ]]; then
 
@@ -157,20 +177,34 @@ for dir in ${search}; do
             max=${MAX[1]}
           fi
 
-          echo "Rescaling to [0, ${max}] with ImageMath"
+          echo "Rescaling ${i}-image to [0, ${max}] with ImageMath"
           call_rescale ${out} 0 ${max}
 
         fi
-
       fi
-
     else
-
       echo "`basename ${out}` already present"
-
     fi
 
+    # check if we can copy SPM mask from MP2RAGE
+    spm_mask=`find ${input_dir} -type f \( -name "*acq-MP2RAGE_*" -and -name "*desc-spm_mask.nii.gz" \) 2>/dev/null`
+
   done
+
+  # copy spm mask
+  if [ ! -z ${spm_mask} ]; then
+  
+    # sort so we can verify there's only 1 file
+    IFS=$'\n' spm_imgs=($(sort <<<"${spm_mask[*]}"))
+    unset IFS
+
+    # take first image regardless..
+    spm=${spm_imgs[0]}
+
+    # rename
+    echo "Creating ${base}_acq-${DATA}_desc-spm-mask.nii.gz"
+    cp ${spm} ${output_dir}/${base}_acq-${DATA}_desc-spm_mask.nii.gz 2>/dev/null
+  fi
 
 done
 

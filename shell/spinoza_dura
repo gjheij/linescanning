@@ -19,12 +19,18 @@ folder, the nighres output folder, and the folder to store the masks.
 Usage:
   spinoza_dura <-s sub> <-n ses> <input anat> <input inv2> <nighres output> <mask output>
 
+Arguments:
+  -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
+  -n <session>        session ID (e.g., 1, 2, or n)
+  -o                  overwrite existing files
+  <anat directory>    folder containing the T1w-file
+  <inv2 directory>    folder containing the INV2-image
+  <nighres output>    output folder for Nighres
+  <mask output>       output folder for masks
+
 Example:
   spinoza_dura T1wdir INV2dir nighresdir maskdir
   spinoza_dura -s 001 -n 1 T1wdir INV2dir nighresdir maskdir
-
-Notes:
-  - Has the '-s' and '-n' switches to specify a particular subject and session if present
 
 ---------------------------------------------------------------------------------------------------
 
@@ -33,14 +39,17 @@ USAGE
 }
 
 # Check for subject & session flags
-while getopts s:n: argument
+OW=0
+while getopts os:n: argument
 do
-    case ${argument} in
-      s)  sub=${OPTARG}
-            ;;
-      n)  ses=${OPTARG}
-            ;;
-    esac
+  case ${argument} in
+    s)  sub=${OPTARG}
+          ;;
+    n)  ses=${OPTARG}
+          ;;
+    o)  OW=${OPTARG}
+          ;;          
+  esac
 done
 
 if [[ $# -lt 4 ]] ; then
@@ -55,11 +64,12 @@ MASKS=${@:$OPTIND+3:1}
 
 if [[ -z ${sub} ]]; then
   # loop through subjects
-  search="${T1W}/${PREFIX}*"
+  search="${INPUT}/${PREFIX}*"
 else
-  # do for 1 subject
-  sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
-  search="${T1W}/${PREFIX}${sub_nr}"
+  # read specified subjects into array
+  IFS=', ' read -r -a search <<< "${sub}"
+  search=${search[@]}
+  unset IFS
 fi
 
 #-----------------------------------------------------------------------------
@@ -77,33 +87,46 @@ echo "==========================================================================
 
 #-----------------------------------------------------------------------------
 # Run it
+for subID in ${search}; do
 
-for dir in ${search}; do
-
-  if [[ -z ${ses} ]]; then
-    base_dir=$(basename ${dir})
-    base="$(basename ${dir})"
+  # collect subject name
+  if [[ ! -z ${sub} ]]; then
+    sub_name=${PREFIX}${subID}
   else
-    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
-    base_dir=$(basename ${dir})/ses-${nr}
-    base="$(basename ${dir})_ses-${nr}"
+    sub_name=$(basename ${subID})
   fi
 
-  mask_dir=${MASKS}/${base_dir}
-  input_dir=${T1W}/${base_dir}
-  inv2_dir=${INV2}/${base_dir}
-  outdir_dura=${OUTPUT}/${base_dir}/dura
-  outdir_skull=${OUTPUT}/${base_dir}/skullstrip
-
-  # LOOK FOR THE SECOND INVERSION IMAGE; PREFERABLY THE BIAS FIELD CORRECTED ONE
-  if [[ ${DATA} == "MEMP2RAGE" ]]; then
-    inv2=`find "${inv2_dir}" -type f \( -name "$(basename ${dir})*" -and -name "*echo-1*" -and -name "*inv-2*" -and -name "*${DATA^^}*" -and -name "*part-mag*" -and -name "*.nii.gz" \) 2>/dev/null`
+  if [[ ! -z ${ses} ]]; then
+    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
+    base_path=${sub_name}/ses-${nr}
+    base=${sub_name}_ses-${nr}
   else
-    inv2=`find "${inv2_dir}" -type f \( -name "$(basename ${dir})*" -and -not -name "*echo-*" -and -name "*inv-2*" -and -name "*${DATA^^}*" -and -name "*part-mag*" -and -name "*.nii.gz" \) 2>/dev/null`
+    base_path=${sub_name}
+    base=${sub_name}
+  fi
+
+  mask_dir=${MASKS}/${base_path}
+  input_dir=${T1W}/${base_path}
+  inv2_dir=${INV2}/${base_path}
+  outdir_dura=${OUTPUT}/${base_path}/dura
+  outdir_skull=${OUTPUT}/${base_path}/skullstrip
+
+  # get INV2-image
+  if [[ ${DATA} == "MP2RAGEME" ]]; then
+    inv2=`find "${inv2_dir}" -type f \( -name "${sub_name}*" -and -name "*echo-1*" -and -name "*inv-2*" -and -name "*acq-${DATA^^}_*" -and -name "*part-mag*" -and -name "*.nii.gz" \) 2>/dev/null`      
+    search_for=${DATA^^}
+  else
+    # take the MP2RAGE INV-2 if DATA == AVERAGE
+    if [[ ${DATA} == "AVERAGE" ]]; then
+      inv2=`find "${inv2_dir}" -type f \( -name "${sub_name}*" -and -not -name "*echo-*" -and -name "*inv-2*" -and -name "*acq-MP2RAGE_*" -and -name "*part-mag*" -and -name "*.nii.gz" \) 2>/dev/null`
+    else
+      inv2=`find "${inv2_dir}" -type f \( -name "${sub_name}*" -and -not -name "*echo-*" -and -name "*inv-2*" -and -name "*acq-${DATA^^}_*" -and -name "*part-mag*" -and -name "*.nii.gz" \) 2>/dev/null`
+    fi
+    search_for="MP2RAGE"
   fi
 
   # LOOK FOR THE T1W IMAGE
-  t1w=`find "${input_dir}" -type f \( -name "$(basename ${dir})*" -and -name "*acq-${DATA^^}*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
+  t1w=`find "${input_dir}" -type f \( -name "${sub_name}*" -and -name "*acq-${DATA^^}*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
 
   # LOOK FOR THE T1-MAP IMAGE
   t1map=`find "${input_dir}" -type f \( -name "*acq-${DATA^^}*" -and -name "*T1map.nii.gz" \) 2>/dev/null`
@@ -112,40 +135,44 @@ for dir in ${search}; do
   # Running dura mask module with call_nighresdura
   output_root="${base}_acq-${DATA^^}_desc"
 	output_dura=${outdir_dura}/${output_root}-dura_proba.nii.gz
-  output_mask=${MASKS}/$(basename ${dir})/ses-1/${output_root}-dura_orig.nii.gz
+  output_mask=${MASKS}/${base_path}/${output_root}-dura_orig.nii.gz
+
+  # check if we should overwrite
+  if [[ ${OW} -eq 1 ]]; then
+    rm ${output_mask} 2>/dev/null
+  fi
 
   if [[ ! -f ${output_mask} ]]; then
 
     inv2_mask=`find "${mask_dir}" -type f \( -name "*${DATA^^}*" -and -name "*spm_mask.nii.gz" \) 2>/dev/null`
 
     if [[ -z ${inv2} ]]; then
-      echo "`basename ${dir}`: Missing INV2-image. Check ${inv2_dir} for:"
-      echo "  \"`basename ${dir}`\""
-      echo "  \"echo-1\""
-      echo "  \"inv-2\""
-      echo "  \"${DATA^^}\""
-      echo "  \"part-mag\""
-      echo
+      echo "${sub_name}: Missing INV2-image. Check ${inv2_dir} for:"
+      echo " \"${sub_name}\""
+      echo " \"echo-1\""
+      echo " \"inv-2\""
+      echo " \"${search_for}\""
+      echo " \"part-mag\""
       continue
     fi
 
     if [[ -z ${t1w} ]]; then
-      echo "`basename ${dir}`: Missing T1-weighted image. Check your input directory in the master script."
+      echo "${sub_name}: Missing T1-weighted image. Check your input directory in the master script."
       continue
     fi
 
     if [[ -z ${t1map} ]]; then
-      echo "  `basename ${dir}`: Missing T1map image. Check your input directory in the master script."
+      echo "${sub_name}: Missing T1map image. Check your input directory in the master script."
       continue
     fi
 
     if [[ -z ${inv2_mask} ]]; then
-      echo "`basename ${dir}`: Missing INV2-mask image. Run brain extraction on INV2 first."
+      echo "${sub_name}: Missing INV2-mask image. Run brain extraction on INV2 first."
       continue
     fi
 
     echo
-    echo "**************************************** Processing `basename ${dir}` ***************************************"
+    echo "**************************************** Processing ${sub_name} ***************************************"
 
     if [[ ! -d ${outdir_dura} ]]; then
       mkdir -p ${outdir_dura}
@@ -155,6 +182,11 @@ for dir in ${search}; do
     echo " -inv2: ${inv2}"
     echo " -mask: ${inv2_mask}"
     echo " -out:  ${outdir_dura}/${output_root}_dura-proba.nii.gz"
+
+    # check if we should overwrite
+    if [[ ${OW} -eq 1 ]]; then
+      rm ${output_dura} 2>/dev/null
+    fi
 
     if [[ ! -f ${output_dura} ]]; then
 
@@ -169,33 +201,28 @@ for dir in ${search}; do
           fi
 
         else
-
           echo "Missing input files. Check if you ran spinoza_registration.sh before this"
           continue
-
         fi
 
       else
-
         echo "Found nighres output. Renaming it"
         mv ${outdir_dura}/${output_root}_dura-proba.nii.gz ${output_dura}
-
       fi
 
     fi
 
     echo "Thresholding and binarizing `basename ${output_dura}`"
-
-    if [[ -f ${MASKS}/$(basename ${dir})/ses-1/tmp_$(basename ${output_dura}) ]]; then
-      rm ${MASKS}/$(basename ${dir})/ses-1/tmp_$(basename ${output_dura})
+    if [[ -f ${MASKS}/${base_path}/tmp_$(basename ${output_dura}) ]]; then
+      rm ${MASKS}/${base_path}/tmp_$(basename ${output_dura})
     fi
 
     # thresholding
     if [[ -f ${output_dura} ]]; then
-      fslmaths ${output_dura} -thr 0.8 ${MASKS}/$(basename ${dir})/ses-1/tmp_$(basename ${output_dura})
+      fslmaths ${output_dura} -thr 0.8 ${MASKS}/${base_path}/tmp_$(basename ${output_dura})
 
       # binarizing
-      fslmaths ${MASKS}/$(basename ${dir})/ses-1/tmp_$(basename ${output_dura}) -bin ${output_mask}
+      fslmaths ${MASKS}/${base_path}/tmp_$(basename ${output_dura}) -bin ${output_mask}
       fslcpgeom ${inv2_mask} ${output_mask}
 
     else
@@ -203,20 +230,23 @@ for dir in ${search}; do
     fi
 
     # clearing out directory
-    if [[ -f ${MASKS}/$(basename ${dir})/ses-1/tmp_$(basename ${output_dura}) ]]; then
-      rm ${MASKS}/$(basename ${dir})/ses-1/tmp_$(basename ${output_dura})
+    if [[ -f ${MASKS}/${base_path}/tmp_$(basename ${output_dura}) ]]; then
+      rm ${MASKS}/${base_path}/tmp_$(basename ${output_dura})
     fi
 
   else
-
     echo "`basename ${output_mask}` already exists"
-
   fi
 
   #----------------------------------------------------------------------------------------------------------------------------------------------------------
   # Running skullstrip module with call_nighresskullstrip.py
 
 	output_skullstrip=${outdir_skull}/${output_root}-strip_mask.nii.gz
+
+  # check if we should overwrite
+  if [[ ${OW} -eq 1 ]]; then
+    rm ${output_skullstrip} 2>/dev/null
+  fi
 
   if [[ ! -f ${output_skullstrip} ]]; then
 

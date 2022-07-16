@@ -23,20 +23,27 @@ debugging reasons this module also has the option to disable overwrite mode. You
 cifying 'spinoza_maskaverages <dir subject> <derivatives> n' or with the master script itself: 'mas-
 ter -m 13 -n'. As said, if you specify 'y' or leave it empty, it will overwrite existing files.
 
+Arguments:
+  -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
+  -n <session>        session ID (e.g., 1, 2, or none)
+  -o                  overwrite existing files
+  <anat dir>          parent directory containing the sub-xxx folders for anatomies
+  <output skull>      output folder for masked T1w-image (with skull)
+  <mask dir>          folder containing a bunch of masks from previous modules. Should contains files 
+                      ending on;
+                        -dura:   \"*dura_dil.nii.gz\", \"*cat_dura.nii.gz\", or \"*dura_orig.nii.gz\"
+                        -brain:  \"*cat_mask.nii.gz\" or \"*gdh_mask.nii.gz\" 
+                        -inv2:   \"*spm_mask.nii.gz\"
+                        -sinus:  \"*sinus\"
+  <output no skull>   output folder for brain-extracted output (generally the input for Nighres)
+
 Usage:
   spinoza_masking <-s sub> <-n ses> <directory to anats> <output dir> <mask dir> <skullstrip dir>
                   <overwrite mode>
 
 Example:
-  spinoza_masking DIR_DATA_DERIV/pymp2rage DIR_DATA_DERIV/masked_mp2rage DIR_DATA_DERIV/manual_masks 
-                  DIR_DATA_DERIV/skullstripped y
-
-  spinoza_masking -s 001 -n 1 DIR_DATA_DERIV/pymp2rage DIR_DATA_DERIV/masked_mp2rage DIR_DATA_DERIV/
-                  manual_masks DIR_DATA_DERIV/skullstripped y
-
-Notes:
-  - Will overwrite by default, you can disable overwrite in the master call with -o "n"
-  - Has the '-s' and '-n' switches to specify a particular subject and session if present
+spinoza_masking <dir>/pymp2rage <dir>/masked_mp2rage <dir>/manual_masks <dir>/skullstripped
+spinoza_masking -s 01 -n 1 <dir>/pymp2rage <dir>/masked_mp2rage <dir>/manual_masks <dir>/skullstripped
 
 ---------------------------------------------------------------------------------------------------
 
@@ -72,9 +79,10 @@ if [[ -z ${sub} ]]; then
   # loop through subjects
   search="${INPUT}/${PREFIX}*"
 else
-  # do for 1 subject
-  sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
-  search="${INPUT}/${PREFIX}${sub_nr}"
+  # read specified subjects into array
+  IFS=', ' read -r -a search <<< "${sub}"
+  search=${search[@]}
+  unset IFS
 fi
 
 #-----------------------------------------------------------------------------
@@ -83,7 +91,7 @@ fi
 
 echo
 echo "==================================================================================================="
-printf "NEW MASKING OF AVERAGE IMAGES FOR FREESURFER AND ANTS BRAIN EXTRACTION INPUT\n"
+printf "MASK OUT GARBAGE TO CREATE INPUT FOR FREESURFER/fMRIPprep/NIGHRES\n"
 start=`date +%s`
 start_date=`date`
 
@@ -91,53 +99,47 @@ printf "Started at ${start_date}\n"
 echo "==================================================================================================="
 
 #-----------------------------------------------------------------------------
-#
-for dir in ${search}; do
+# Run it
+for subID in ${search}; do
 
-  if [[ -z ${ses} ]]; then
-    base_dir=$(basename ${dir})
-    base="$(basename ${dir})"
+  # collect subject name
+  if [[ ! -z ${sub} ]]; then
+    sub_name=${PREFIX}${subID}
   else
-    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
-    base="$(basename ${dir})_ses-${nr}"
-    base_dir=$(basename ${dir})/ses-${nr}
+    sub_name=$(basename ${subID})
   fi
 
-  input_dir=${INPUT}/${base_dir}
-  output_dir=${OUTPUT}/${base_dir}/anat
-  mask_dir=${MASKS}/${base_dir}
-  skull_dir=${SKULL}/${base_dir}
+  if [[ ! -z ${ses} ]]; then
+    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
+    base_path=${sub_name}/ses-${nr}
+    base=${sub_name}_ses-${nr}
+  else
+    base_path=${sub_name}
+    base=${sub_name}
+  fi
 
-  # because we need to overwrite this here and there, don't check for files first.
-  # Just run the loop immediately
-
-  # Do check for some directories though.
+  input_dir=${INPUT}/${base_path}
+  output_dir=${OUTPUT}/${base_path}/anat
+  mask_dir=${MASKS}/${base_path}
+  skull_dir=${SKULL}/${base_path}
 
   if [[ ! -d ${input_dir} ]]; then
-
-    echo "`basename ${dir}`: could not find subject in `basename ${INPUT}`-folder"
+    echo "${sub_name}: could not find subject in `basename ${INPUT}`-folder"
     continue
-
   else
     search_for_mask="cat_dura"
-    t1w_fn=`find ${input_dir} -maxdepth 1 -type f \( -name "$(basename ${dir})*" -and -not -name "*skull*" -and -name "*acq-${DATA^^}*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
-    t1m_fn=`find ${input_dir} -type f \( -name "*acq-${DATA^^}*" -and -not -name "*skull*" -and -name "*T1map.nii.gz" \) 2>/dev/null`
+    t1w_fn=`find ${input_dir} -type f \( -name "${sub_name}*" -and -name "*acq-${DATA^^}*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
+    t1m_fn=`find ${input_dir} -type f \( -name "*acq-${DATA^^}*" -and -name "*T1map.nii.gz" \) 2>/dev/null`
     MASKED=`find "${output_dir}" -maxdepth 1 -type f \( -name "*${DATA^^}*" -and -name "*masked_T1w.nii.gz" \) 2>/dev/null`
-    MASK=`find "${mask_dir}" -maxdepth 1 -type f \( -name "*${DATA^^}*" -and -name "*${search_for_mask}*" \) 2>/dev/null`
-
-    # echo $input_dir
-    # echo $output_dir
-    # echo $MASKED
-    # exit 1
+    MASK=`find "${mask_dir}" -type f \( -name "*${DATA^^}*" -and -name "*${search_for_mask}*" \) 2>/dev/null`
 
     if [[ ! -f ${t1w_fn} ]]; then
-      echo "`basename ${dir}`: missing T1-weighted image"
+      echo "${sub_name}: missing T1-weighted image"
       continue
     fi
 
     # overwrite mode
     if [[ ${OW} -eq 1 ]]; then
-      txt="Overwrite mode: deleting files with \"${DATA^^}\""
       if [[ -d ${output_dir} ]]; then
         rm -r ${output_dir}/*acq-${DATA^^}* 2>/dev/null
       fi
@@ -145,23 +147,21 @@ for dir in ${search}; do
       if [[ -f ${MASKED} ]]; then
       	rm -r ${MASKED}
       fi
-    else
-      txt="Overwrite mode disabled"
     fi
 
     if [[ -f ${MASKED} ]]; then
-      echo "`basename ${dir}`: Masked T1-weighted image exists"
+      echo "${sub_name}: Masked T1-weighted image exists"
     else
       echo
-      echo "**************************************** Processing `basename ${dir}` ***************************************"
+      echo "**************************************** Processing ${sub_name} ***************************************"
       echo ${txt}
 
-      if [[ -z ${MASKED} ]] || [[ ! -f ${MASKED} ]]; then
+      if [[ ! -f ${MASKED} ]]; then
         
         # if we cannot do masking, then just copy the input image as "masked" image
         if [[ ! -z ${MASK} ]]; then
           echo "Remove background noise with call_gdhmasking"
-          call_gdhmasking -s $(basename ${dir}) -n ${nr} -t ${t1w_fn}
+          call_gdhmasking -s ${sub_name} -n ${nr} -t ${t1w_fn}
 
           if [[ $? != 0 ]]; then
             echo
@@ -203,18 +203,16 @@ for dir in ${search}; do
         fi
 
       else
-        echo "`basename ${dir}`: masked file already exist"
+        echo "${sub_name}: masked file already exist"
       fi
 
     fi
 
+    # define skullstrip output (input for Nighres)
     bet_t1w=${skull_dir}/${base}_acq-${DATA^^}_desc-skullstrip_T1w.nii.gz
     bet_t1m=${skull_dir}/${base}_acq-${DATA^^}_desc-skullstrip_T1map.nii.gz
 
-    # echo $bet_t1w
-    # echo $bet_t1m
-    # exit 1
-
+    # check if we should overwrite
     if [[ ${OW} -eq 1 ]]; then
       rm -r ${bet_t1m} ${bet_t1w} 2>/dev/null
     fi
@@ -225,18 +223,12 @@ for dir in ${search}; do
         mkdir -p ${skull_dir}
       fi
 
-      MASKED=`find "${output_dir}" -maxdepth 1 -type f \( -name "*${DATA^^}*" -and -name "*masked_T1w.nii.gz" \) 2>/dev/null`
-      mask_img=`find ${mask_dir} -type f -name "*spm_mask.nii.gz" -print -quit 2>/dev/null`
-      t1map=`find "${input_dir}" -type f \( -name "*T1map*" -and -name "*${DATA^^}*" -and -name "*.nii.gz" \) 2>/dev/null`
+      MASKED=`find "${output_dir}" -type f \( -name "*${DATA^^}*" -and -name "*masked_T1w.nii.gz" \) 2>/dev/null`
+      mask_img=`find ${mask_dir} -type f \( -name "*acq-${DATA^^}_*" -and -name "*spm_mask.nii.gz" \) 2>/dev/null`
+      t1map=`find "${input_dir}" -type f \( -name "*T1map*" -and -name "*acq-${DATA^^}_*" -and -name "*.nii.gz" \) 2>/dev/null`
 
       if [[ ! -z ${mask_img} ]]; then
-
-        # if [[ `fslorient -getqformcode ${mask}` -ne 1 ]]; then
-        #   fslorient -setqformcode 1 ${mask}
-        # fi
-
         echo "Skullstripping files for mgdm-input"
-
         if [[ ! -z ${MASKED} ]]; then
           echo " apply mask to masked T1-weighted image"
           fslmaths ${MASKED} -mas ${mask_img} ${bet_t1w}

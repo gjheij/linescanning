@@ -18,19 +18,19 @@ nicely with the anatomical and functional stuff or call_dcm2niix.sh, which is mo
 line scanning stuff.
 
 Input options:
-  -s <subject ID>   ID following PREFIX (e.g., if 'sub-008', specify '-s 008')
-  -n <prf ses>      In case session == pRF, but we have multiple pRF sessions
-  -o                Overwrite old output
-  <project root>    directory to output BIDSified data to
-  <sourcedata>      directory containing to be converted data
-  <session number>  session number to be converted (ses-1 and ses-${SES_NR} require different types of con-
-                    version, whereas session 1 can be converted with call_dcm2niix.py, we need to
-                    use a custom conversion for session 2 to get it somewhat in BIDS-format)
+  -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
+  -n <session>        session ID (e.g., 1, 2, or none)
+  -o                  Overwrite existing output
+  <project root>      directory to output BIDSified data to
+  <sourcedata>        directory containing to be converted data
+  --lines             flag to tell we're dealing with a line-scanning session. By default 'regular',
+                      which means standard whole-brain acquisitions.
 
 Example:
-  spinoza_scanner2bids /path/to/project_root /path/to/your/project/sourcedata 1
-  spinoza_scanner2bids (shows this help text)
-  spinoza_scanner2bids $DIR_DATA_HOME $DIR_DATA_SOURCE 1
+  spinoza_scanner2bids /path/to/project_root /path/to/your/project/sourcedata     # regular
+  spinoza_scanner2bids -n 1/path/to/project_root /path/to/your/project/sourcedata # regular|ses-1
+  spinoza_scanner2bids (shows this help text)                                     # help
+  spinoza_scanner2bids --lines -n 2 DIR_DATA_HOME DIR_DATA_SOURCE                 # lines|ses-2
 
 Notes:
   Assumes that you ran spinoza_newBIDSsession with the following data structure:
@@ -60,12 +60,25 @@ EOF
 
 # Check for subject & session flags
 OW=0
-while getopts os:n: argument
+SES_TYPE="regular"
+while getopts :-:os:n: argument
 do
   case ${argument} in
+    -)
+      case "${OPTARG}" in
+        lines)
+          SES_TYPE="lines"
+          ;;
+        *)
+          if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
+            echo "Unknown option --${OPTARG}, did you mean \"--lines\"?"
+            exit 1
+          fi
+          ;;  
+      esac;;    
     s)  sub=${OPTARG}
           ;;
-    n)  prf_ses=${OPTARG}
+    n)  ses=${OPTARG}
           ;;     
     o)  OW=1
           ;;                            
@@ -79,27 +92,15 @@ fi
 
 PROJECT_ROOT=${@:$OPTIND:1}
 SOURCEDATA=${@:$OPTIND+1:1}
-SES_NR=${@:$OPTIND+2:1}
 
 if [[ -z ${sub} ]]; then
   # loop through subjects
   search="${SOURCEDATA}/${PREFIX}*"
 else
-  # do for 1 subject
-  search="${SOURCEDATA}/${PREFIX}${sub}"
-fi
-
-# if we're dealing with a pRF session, we can specify the number with the -n flag (-x flag in master command)
-if [[ ${SES_NR,,} == "prf" ]]; then
-  if [[ -z ${prf_ses} ]]; then
-    txt="pRF-session was selected, but no session ID was provided; assuming \"ses-1\""
-    ses_id=1
-  else
-    ses_id=${prf_ses}
-    txt="pRF-session was selected with ses-ID: \"ses-${ses_id}\""
-  fi
-else
-  ses_id=${SES_NR}
+  # read specified subjects into array
+  IFS=', ' read -r -a search <<< "${sub}"
+  search=${search[@]}
+  unset IFS
 fi
 
 # 'import' some bash functions
@@ -119,46 +120,62 @@ echo "==========================================================================
 
 #-----------------------------------------------------------------------------
 # Run it
-for dir in ${search}; do
+for subID in ${search}; do
 
-  inputdir=${SOURCEDATA}/$(basename ${dir})/ses-${ses_id}
-  outputdir=${inputdir}/nifti
-  bidsdir=${PROJECT_ROOT}/$(basename ${dir})/ses-${ses_id}
-
-  if [[ ${OW} -eq 1 ]]; then
-    rm -r ${bidsdir}/* 2>/dev/null
+  # collect subject name
+  if [[ ! -z ${sub} ]]; then
+    sub_name=${PREFIX}${subID}
+  else
+    sub_name=$(basename ${subID})
   fi
 
-  if [[ ${SES_NR} == "prf" ]]; then
+  if [[ ! -z ${ses} ]]; then
+    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
+    base_path=${sub_name}/ses-${nr}
+    base=${sub_name}_ses-${nr}
+    msg="${sub_name} ses-${ses}: already processed"
+  else
+    base_path=${sub_name}
+    base=${sub_name}
+    msg="${sub_name}: already processed"
+  fi  
 
-    if [[ -d ${bidsdir}/anat && -d ${bidsdir}/func ]]; then
-      nr_anat=`ls -l ${bidsdir}/anat | grep "total" | cut -d' ' -f2`
-      nr_func=`ls -l ${bidsdir}/func | grep "total" | cut -d' ' -f2`
+  input_dir=${SOURCEDATA}/${base_path}
+  output_dir=${input_dir}/nifti
+  bids_dir=${PROJECT_ROOT}/${base_path}
+
+  if [[ ${OW} -eq 1 ]]; then
+    rm -r ${bids_dir}/* 2>/dev/null
+  fi
+
+  if [[ ${SES_TYPE} == "regular" ]]; then
+
+    if [[ -d ${bids_dir}/anat && -d ${bids_dir}/func ]]; then
+      nr_anat=`ls -l ${bids_dir}/anat | grep "total" | cut -d' ' -f2`
+      nr_func=`ls -l ${bids_dir}/func | grep "total" | cut -d' ' -f2`
       if [ ${nr_anat} -ne 0 ] && [ ${nr_func} -ne 0 ]; then
-        echo "`basename ${dir}` ses-${ses_id}: already processed; use \"master -m 02 -o\" to overwrite"
+        echo "${msg}; use \"master -m 02 -o\" to overwrite"
         echo " anat = ${nr_anat} | func = ${nr_func}"
         continue
       fi
     fi
 
-    if [[ ! -d ${inputdir} ]]; then
-
-      echo "`basename ${dir}`: \"${inputdir}\" does not exist"
+    if [[ ! -d ${input_dir} ]]; then
+      echo "${sub_name}: \"${input_dir}\" does not exist"
       continue
-
     else
 
       echo
-      echo "**************************************** Processing `basename ${dir}` ***************************************"
+      echo "**************************************** Processing ${sub_name} ***************************************"
       echo ${txt}
       
       # We're dealing with session-1, the anatomical and pRF-mapping part, so we'll use FromScannerToBIDS.py/call_dcm2niix.py
-      echo "Processing session ${SES_NR} - anatomical and PRF-session; using call_dcm2niix.py"
-      call_pydcm2niix ${inputdir} True False 2019
+      echo "Regular scan session (whole-brain data); using call_pydcm2niix"
+      call_pydcm2niix ${input_dir} True False 2019
 
       echo "Reorienting images to LPI (conform fMRIPrep)"
       # for convenience, reorient all files to RAS+ (used by nibabel & fMRIprep)
-      files=`find ${bidsdir} -type f -name "*.nii.gz"`
+      files=`find ${bids_dir} -type f -name "*.nii.gz"`
       for f in ${files[@]}; do
         val=`fslval ${f} qform_xorient`
         if [ ${val} != "Left-to-Right" ]; then
@@ -168,40 +185,36 @@ for dir in ${search}; do
 
     fi
 
-  elif [[ ${SES_NR} != "prf" ]]; then
+  elif [[ ${SES_TYPE} == "lines" ]]; then
 
-    # echo $inputdir
-    # echo $outputdir
-
-    # We're dealing with session-2, the line scanning part, so we'll use call_dcm2niix.sh
-    if [[ ! -d ${inputdir} ]]; then
-
-      echo "`basename ${dir}` ses-${ses_id}: not yet performed"
+    # check if input directory exists
+    if [[ ! -d ${input_dir} ]]; then
+      echo "${sub_name}: could not find input directory \"${input_dir}\""
       continue
-
     else
 
-      if [[ ! -d ${bidsdir}/anat && ! -d ${bidsdir}/func ]]; then
+
+      if [[ ! -d ${bids_dir}/anat && ! -d ${bids_dir}/func ]]; then
 
         echo
-        echo "**************************************** Processing `basename ${dir}` ***************************************"
-        echo "Processing session ${ses_id} - line-scanning session; using call_dcm2niix"
+        echo "**************************************** Processing ${sub_name} ***************************************"
+        echo "Line-scanning session; using call_dcm2niix"
 
-        if [[ ! -d ${bidsdir}/anat ]]; then
-          mkdir -p ${bidsdir}/anat
+        if [[ ! -d ${bids_dir}/anat ]]; then
+          mkdir -p ${bids_dir}/anat
         fi
 
-        if [[ ! -d ${bidsdir}/func ]]; then
-          mkdir -p ${bidsdir}/func
+        if [[ ! -d ${bids_dir}/func ]]; then
+          mkdir -p ${bids_dir}/func
         fi
 
         #-------------------------------------------------------------------------------------------------------------------------------
         # PARREC TO NIFTI
-        if [[ -d ${outputdir} ]]; then
+        if [[ -d ${output_dir} ]]; then
           echo "Directory exists, skipping conversion."
         else
           echo "Converting files to nifti-format"
-          call_dcm2niix -i ${inputdir} -o ${outputdir}
+          call_dcm2niix -i ${input_dir} -o ${output_dir}
         fi
 
         echo "BIDSifying data .."
@@ -210,9 +223,9 @@ for dir in ${search}; do
         # NIFTI TO BIDS
 
         ## Low resolution anatomical scan
-        anat_lowres=`find "${inputdir}/planning/nifti" -type f \( -name "*real*" -and -name "*t10*" -and -name "*.nii.gz" \) 2>/dev/null`
-        anat_t1map=`find "${inputdir}/planning/nifti" -type f \( -name "*real*" -and -name "*t29*" -and -name "*.nii.gz" \) 2>/dev/null`
-        if [[ ! -f ${bidsdir}/anat/$(basename ${dir})_ses-${SES_NR}_acq-MP2RAGE_T1w.nii.gz ]]; then
+        anat_lowres=`find "${input_dir}/planning/nifti" -type f \( -name "*real*" -and -name "*t10*" -and -name "*.nii.gz" \) 2>/dev/null`
+        anat_t1map=`find "${input_dir}/planning/nifti" -type f \( -name "*real*" -and -name "*t29*" -and -name "*.nii.gz" \) 2>/dev/null`
+        if [[ ! -f ${bids_dir}/anat/${base}_acq-MP2RAGE_T1w.nii.gz ]]; then
           if [[ -f ${anat_lowres} && -f ${anat_t1map} ]]; then
 
             min=`fslstats ${anat_lowres} -R | awk '{print $1}'`
@@ -221,9 +234,9 @@ for dir in ${search}; do
               call_maskmp2rage ${anat_lowres} ${anat_t1map} ${anat_lowres}
             fi
 
-            echo " Relocating lowres MP2RAGE-file as $(basename ${dir})_ses-${ses_id}_acq-MP2RAGE_T1w.nii.gz"
-            cp ${anat_lowres} ${bidsdir}/anat/$(basename ${dir})_ses-${ses_id}_acq-MP2RAGE_T1w.nii.gz
-            cp $(dirname ${anat_lowres})/$(basename ${anat_lowres} .nii.gz).json ${bidsdir}/anat/$(basename ${dir})_ses-${ses_id}_acq-MP2RAGE_T1w.json
+            echo " Relocating lowres MP2RAGE-file as ${base}_acq-MP2RAGE_T1w.nii.gz"
+            cp ${anat_lowres} ${bids_dir}/anat/${base}_acq-MP2RAGE_T1w.nii.gz
+            cp $(dirname ${anat_lowres})/$(basename ${anat_lowres} .nii.gz).json ${bids_dir}/anat/${base}_acq-MP2RAGE_T1w.json
           fi
 
         else
@@ -231,7 +244,7 @@ for dir in ${search}; do
         fi
 
         ## Multi-slice files
-        motion_img=`find "${outputdir}" -type f \( -name "*motion*" -and -name "*.nii.gz" \) 2>/dev/null`
+        motion_img=`find "${output_dir}" -type f \( -name "*motion*" -and -name "*.nii.gz" \) 2>/dev/null`
         IFS=$'\n' motion_img=($(sort <<<"${motion_img[*]}"))
         unset IFS    
 
@@ -243,7 +256,7 @@ for dir in ${search}; do
             run=i
           fi
 
-          fname=${bidsdir}/anat/$(basename ${dir})_ses-${ses_id}_acq-MP2RAGE_rec-motion${run}.nii.gz
+          fname=${bids_dir}/anat/${base}_acq-MP2RAGE_rec-motion${run}.nii.gz
           if [[ ! -f ${fname} ]]; then
             if [[ -f ${motion_img} ]]; then
               echo "  renaming to $(basename ${fname})"
@@ -253,13 +266,13 @@ for dir in ${search}; do
               echo " WARNING: apparently found ${n_motion} motion file(s), but cannot find file with \"motion${run}\" and \"*.nii.gz\""
             fi
           else
-            echo "  $(basename ${dir})_ses-${ses_id}_acq-9slice_run-${run}_T1w.nii.gz exists"
+            echo "  ${base}_acq-9slice_run-${run}_T1w.nii.gz exists"
           fi
         done
 
 
         ## Single-slice
-        slice_img=`find "${outputdir}" -type f \( -name "*1slice*" -and -not -name "*space*" -and -name "*anat*" -and -name "*.nii.gz" \) 2>/dev/null`
+        slice_img=`find "${output_dir}" -type f \( -name "*1slice*" -and -not -name "*space*" -and -name "*anat*" -and -name "*.nii.gz" \) 2>/dev/null`
         
         # sort array (https://stackoverflow.com/questions/7442417/how-to-sort-an-array-in-bash)
         IFS=$'\n' slice_img=($(sort <<<"${slice_img[*]}"))
@@ -280,7 +293,7 @@ for dir in ${search}; do
               run=${count}
             fi     
           
-            bids_slice=${bidsdir}/anat/$(basename ${dir})_ses-${ses_id}_acq-1slice_run-${run}_T1w.nii.gz
+            bids_slice=${bids_dir}/anat/${base}_acq-1slice_run-${run}_T1w.nii.gz
             if [[ ! -f ${bids_slice} ]]; then
               if [[ -f ${slice} ]]; then
                 echo "  renaming to $(basename ${bids_slice})"
@@ -294,11 +307,11 @@ for dir in ${search}; do
           done
         
         else
-          echo "  WARNING: no \"1slice\"-files were found in ${outputdir}"
+          echo "  WARNING: no \"1slice\"-files were found in ${output_dir}"
         fi
 
         ## bold files
-        bold_files=`find "${inputdir}" -type f \( -name "*bold_*" -and -name "*.lab" \) 2>/dev/null`
+        bold_files=`find "${input_dir}" -type f \( -name "*bold_*" -and -name "*.lab" \) 2>/dev/null`
 
         # sort array (https://stackoverflow.com/questions/7442417/how-to-sort-an-array-in-bash)
         IFS=$'\n' bold_files=($(sort <<<"${bold_files[*]}"))
@@ -310,7 +323,7 @@ for dir in ${search}; do
           echo " Found raw bold-files (*.lab)"
   
           # get foldover direction
-          info_file=`find "${DIR_DATA_DERIV}/pycortex/$(basename ${dir})" -type f \( -name "*desc-info*" -and -name "*.csv" \) 2>/dev/null`
+          info_file=`find "${DIR_DATA_DERIV}/pycortex/${sub_name}" -type f \( -name "*desc-info*" -and -name "*.csv" \) 2>/dev/null`
           if [[ -f ${info_file} ]]; then
             fold=`grep -A0 "foldover" ${info_file} | cut -d',' -f3`
           else
@@ -324,7 +337,7 @@ for dir in ${search}; do
             ((count++))
 
             # use run-1 as template
-            slice_img=`find "${bidsdir}/anat" -type f \( -name "*1slice*" -and -name "*run-1*" -and -name "*.nii.gz" \) 2>/dev/null`
+            slice_img=`find "${bids_dir}/anat" -type f \( -name "*1slice*" -and -name "*run-1*" -and -name "*.nii.gz" \) 2>/dev/null`
             
             # fetch task
             task=`task_id ${bold}`
@@ -340,7 +353,7 @@ for dir in ${search}; do
               run=${count}
             fi   
 
-            line_img=${bidsdir}/func/$(basename ${dir})_ses-${ses_id}_task-${task}_run-${run}_bold.nii.gz
+            line_img=${bids_dir}/func/${base}_task-${task}_run-${run}_bold.nii.gz
 
             if [[ -f ${slice_img} ]]; then
               if [[ ! -f ${line_img} ]]; then
@@ -364,11 +377,11 @@ for dir in ${search}; do
           done
         
         else
-          echo "  WARNING: no \"bold*.lab\"-files were found in ${inputdir}"
+          echo "  WARNING: no \"bold*.lab\"-files were found in ${input_dir}"
         fi
 
         # check if we also did partial 3DEPI stuff
-        bold_files=`find "${inputdir}" -type f \( -name "*acq-3DEPI*" -and -name "*bold.nii.gz" \) 2>/dev/null`
+        bold_files=`find "${input_dir}" -type f \( -name "*acq-3DEPI*" -and -name "*bold.nii.gz" \) 2>/dev/null`
 
         # sort array (https://stackoverflow.com/questions/7442417/how-to-sort-an-array-in-bash)
         IFS=$'\n' bold_files=($(sort <<<"${bold_files[*]}"))
@@ -386,19 +399,19 @@ for dir in ${search}; do
               run=${count}
             fi 
 
-            func=`find "${outputdir}" -type f \( -name "*acq-3DEPI*" -and -name "*run-${run}*" -and -name "*bold.nii.gz" \) 2>/dev/null`
-            fmap=`find "${outputdir}" -type f \( -name "*acq-3DEPI*" -and -name "*run-${run}*" -and -name "*epi.nii.gz" \) 2>/dev/null`
-            phase=`find "${outputdir}" -type f \( -name "*acq-3DEPI*" -and -name "*run-${run}*" -and -name "*bold_ph.nii.gz" \) 2>/dev/null`
+            func=`find "${output_dir}" -type f \( -name "*acq-3DEPI*" -and -name "*run-${run}*" -and -name "*bold.nii.gz" \) 2>/dev/null`
+            fmap=`find "${output_dir}" -type f \( -name "*acq-3DEPI*" -and -name "*run-${run}*" -and -name "*epi.nii.gz" \) 2>/dev/null`
+            phase=`find "${output_dir}" -type f \( -name "*acq-3DEPI*" -and -name "*run-${run}*" -and -name "*bold_ph.nii.gz" \) 2>/dev/null`
             task=`task_id ${func}`
 
             # -acq needs to be after task to be compatible with fMRIprep
-            tmp_dir=$(dirname ${outputdir})/func
+            tmp_dir=$(dirname ${output_dir})/func
             if [[ ! -d ${tmp_dir} ]]; then
               mkdir -p ${tmp_dir}
             fi
 
             # rename 'bold', 'epi', and 'phase'
-            fname=${tmp_dir}/$(basename ${dir})_ses-${ses_id}_task-${task}_run-${run}_acq-3DEPI
+            fname=${tmp_dir}/${base}_task-${task}_run-${run}_acq-3DEPI
             for ext in "_bold.nii.gz" "_epi.nii.gz" "_bold_ph.nii.gz"; do
               ff=${fname}${ext}
 
@@ -428,7 +441,7 @@ for dir in ${search}; do
           done
 
           # check for physio files
-          phys=`find "${inputdir}" -type f \( -name "SCANPHYS*" -and -name "*bold_*.log" \) 2>/dev/null`
+          phys=`find "${input_dir}" -type f \( -name "SCANPHYS*" -and -name "*bold_*.log" \) 2>/dev/null`
 
           # sort array
           IFS=$'\n' phys=($(sort <<<"${phys[*]}"))
@@ -436,8 +449,8 @@ for dir in ${search}; do
           if [[ ! -z ${phys} ]]; then
 
             echo " Found physio file(s)"
-            if [[ ! -d ${bidsdir}/physio ]]; then
-              mkdir -p ${bidsdir}/physio
+            if [[ ! -d ${bids_dir}/physio ]]; then
+              mkdir -p ${bids_dir}/physio
             fi            
 
             count=0
@@ -460,34 +473,23 @@ for dir in ${search}; do
                 run=${count}
               fi              
 
-              bids_phys=${bidsdir}/physio/$(basename ${dir})_ses-${ses_id}_task-${task}_run-${run}_physio.log
+              bids_phys=${bids_dir}/physio/${base}_task-${task}_run-${run}_physio.log
               if [[ ! -f ${bids_phys} ]]; then
                 echo "  renaming physio-file to `basename ${bids_phys}`"
                 cp ${file} ${bids_phys}
               fi              
             done
-
           fi
-
           echo " Done"
-
         fi
-
         echo "Done"
-
       else
-
-        echo "ses-${ses_id} of `basename ${dir}` already processed; use \"master -m 02 -o\" to overwrite"
-
+        echo "${msg}; use \"master -m 02 -o\" to overwrite"
       fi
-
     fi
-
   else
-
-    echo "Session number is ${SES_NR}; not sure what to do with this.."
+    echo "Invalid session-type \"${SES_TYPE}\". Must be 'regular' or 'lines'"
     continue
-
   fi
 
 done

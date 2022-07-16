@@ -27,9 +27,19 @@ Possible inputs for software are:
 Usage:
   spinoza_layering <input dir (FS|nighres)> <software>
 
+Arguments:
+  -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
+  -n <session>        session ID (e.g., 1, 2, or none)
+  -o                  overwrite existing files
+  <input folder>      if software == 'nighres', then we need the nighres output folder (generally 
+                      DIR_DATA_DERIV/nighres). If software == 'freesurfer', then we need the SUB-
+                      JECTS_DIR
+  <software>          'nighres' or 'surface', for Nighres equivolumetric layering or 'fs' for Wagstyl's
+                      equivolumetric layering function 
+
 Example:
-  spinoza_layering $FS surface
-  spinoza_layering $DIR_DATA_DERIV/nighres nighres
+  spinoza_layering SUBJECTS_DIR surface
+  spinoza_layering DIR_DATA_DERIV/nighres nighres
 
 Notes:
   - The script will recognize any of the software inputs specified above, with these variations in
@@ -64,6 +74,7 @@ if [[ $# -lt 2 ]] ; then
 fi
 
 # Check for subject & session flags
+OW=0
 while getopts os:n: argument
 do
   case ${argument} in
@@ -71,18 +82,14 @@ do
           ;;
     n)  ses=${OPTARG}
           ;;
+    o)  OW=1
+          ;;          
   esac
 done
 
 if [[ $# -lt 3 ]] ; then
   Usage >&2
   exit 1
-fi
-
-if [[ "${@}" == *"-o"* ]]; then
-  OW=1
-else
-  OW=0
 fi
 
 INPUT=${@:$OPTIND:1}
@@ -92,9 +99,10 @@ if [[ -z ${sub} ]]; then
   # loop through subjects
   search="${INPUT}/${PREFIX}*"
 else
-  # do for 1 subject
-  sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
-  search="${INPUT}/${PREFIX}${sub_nr}"
+  # read specified subjects into array
+  IFS=', ' read -r -a search <<< "${sub}"
+  search=${search[@]}
+  unset IFS
 fi
 
 if [[ ${SOFTWARE,,} == "nighres" ]] || [[ ${SOFTWARE} == "nigh" ]]; then
@@ -152,22 +160,31 @@ echo "==========================================================================
 
 #-----------------------------------------------------------------------------
 # Run it
-for dir in ${search}; do
+for subID in ${search}; do
+
+  # collect subject name
+  if [[ ! -z ${sub} ]]; then
+    sub_name=${PREFIX}${subID}
+    sub_id=${subID}
+  else
+    sub_name=$(basename ${subID})
+    sub_id=`get_id ${sub_name} ${PREFIX}`
+  fi
 
   if [[ -z ${ses} ]]; then
-    input_dir=${INPUT}/$(basename ${dir})
-    base="$(basename ${dir})"
+    input_dir=${INPUT}/${sub_name}
+    base="${sub_name}"
   else
     nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
 
     # remove this statement if you have multiple freesurfer sessions
     if [[ $(basename ${INPUT}) == *"freesurfer"* ]]; then
-      input_dir=${INPUT}/$(basename ${dir})
+      input_dir=${INPUT}/${sub_name}
     else
-      input_dir=${INPUT}/$(basename ${dir})/ses-${nr}
+      input_dir=${INPUT}/${sub_name}/ses-${nr}
     fi
 
-    base="$(basename ${dir})_ses-${nr}"
+    base="${sub_name}_ses-${nr}"
   fi
 
   if [[ ${software,,} == "nighres" ]]; then
@@ -176,7 +193,7 @@ for dir in ${search}; do
     # Running equivolumetric layering with nighres
 
     if [[ ! -d ${input_dir}/cruise ]]; then
-      echo "`basename ${dir}`: Could not find nighres' CRUISE directory"
+      echo "${sub_name}: Could not find nighres' CRUISE directory"
       continue
     fi
 
@@ -211,7 +228,7 @@ for dir in ${search}; do
     if [[ ! -f ${output} ]]; then
       
       echo
-      echo "**************************************** Processing `basename ${dir}` ***************************************"
+      echo "**************************************** Processing ${sub_name} ***************************************"
       nr_layers=10
       echo "Creating `basename ${output}` with ${nr_layers} layers"
       call_nighreslayering \
@@ -230,14 +247,14 @@ for dir in ${search}; do
 
     else
 
-      echo "`basename ${dir}`: `basename ${output}` already exists"
+      echo "${sub_name}: `basename ${output}` already exists"
 
     fi
 
   elif [[ ${software,,} == "surface" ]]; then
 
     echo
-    echo "**************************************** Processing `basename ${dir}` ***************************************"  
+    echo "**************************************** Processing ${sub_name} ***************************************"  
 
     #----------------------------------------------------------------------------------------------------------------------------------------------------------
     # Running equivolumetric layering with surface tools
@@ -246,11 +263,6 @@ for dir in ${search}; do
       echo "This program requires you to run FreeSurfer first. Couldn't find subject's directory"
       continue
     fi
-
-    # if [[ -z ${SUBJECTS_DIR} ]]; then
-    #   echo "  SUBJECTS_DIR not set"
-    #   continue
-    # fi
 
     export SUBJECTS_DIR=${INPUT}
 
@@ -264,9 +276,9 @@ for dir in ${search}; do
         5 \
         ${i}.equi \
         --software freesurfer \
-        --subject_id $(basename ${dir})
+        --subject_id ${sub_name}
 
-      echo "Stored outputs in ${FS}/$(basename ${dir})/surf"
+      echo "Stored outputs in ${SUBJECTS_DIR}/${sub_name}/surf"
       echo
 
     done

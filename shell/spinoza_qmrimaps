@@ -17,7 +17,14 @@ wrapper for estimation of T1 and other parametric maps from the (ME)MP2RAGE sequ
 the two inversion and phase images in PYMP2RAGE (https://github.com/Gilles86/pymp2rage).
 
 Usage:
-  spinoza_qmrimaps <-s sub> <-n ses> <project root> <derivatives> <session nr>
+  spinoza_qmrimaps <-s sub> <-n ses> <project root> <derivatives>
+
+Arguments:
+  -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
+  -n <session>        session ID (e.g., 1, 2, or none)
+  <project root>      directory containing the T1w and T2w files; should generally be pymp2rage-
+                      folder
+  <derivatives>       path to output mask directory  
 
 Example:
   spinoza_qmrimaps DIR_DATA_HOME DERIVATIVES/pymp2rage 1
@@ -35,7 +42,8 @@ USAGE
 
 # Check for subject flag
 UPs=""
-while getopts us:n: argument
+OW=0
+while getopts ous:n: argument
 do
   case ${argument} in
     s)  sub=${OPTARG}
@@ -43,7 +51,9 @@ do
     n)  ses=${OPTARG}
           ;;   
     u)  UPs="-u"
-          ;;               
+          ;;  
+    o)  OW=1
+          ;;                         
   esac
 done
 
@@ -59,9 +69,10 @@ if [[ -z ${sub} ]]; then
   # loop through subjects
   search="${INPUT}/${PREFIX}*"
 else
-  # do for 1 subject
-  sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
-  search="${INPUT}/${PREFIX}${sub_nr}"
+  # read specified subjects into array
+  IFS=', ' read -r -a search <<< "${sub}"
+  search=${search[@]}
+  unset IFS
 fi
 
 #-----------------------------------------------------------------------------
@@ -78,62 +89,74 @@ echo "==========================================================================
 
 #-----------------------------------------------------------------------------
 # Run it
+for subID in ${search}; do
 
-for dir in ${search}; do
+  # collect subject name
+  if [[ ! -z ${sub} ]]; then
+    sub_name=${PREFIX}${subID}
+  else
+    sub_name=$(basename ${subID})
+  fi
 
   if [[ ! -z ${ses} ]]; then
     nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
-    base_path=$(basename ${dir})/ses-${nr}
-    base=$(basename ${dir})_ses-${nr}
+    base_path=${sub_name}/ses-${nr}
+    base=${sub_name}_ses-${nr}
   else
-    base_path=$(basename ${dir})
-    base=$(basename ${dir})
+    base_path=${sub_name}
+    base=${sub_name}
   fi
 
-  outdir=${OUTPUT}/${base_path}
-  indir=${INPUT}/${base_path}
+  input_dir=${INPUT}/${base_path}
+  output_dir=${OUTPUT}/${base_path}
 
+  if [[ ! -d ${input_dir} ]]; then
+    echo "${sub_name}: could not find input directory \"${input_dir}\""
+    continue
+  else
+    echo
+    echo "**************************************** Processing ${sub_name} ***************************************"
+  fi
+  
+  # loop through available datatype (see spinoza_setup)
   for a in ${ACQ[@]}; do
 
-    input=`find "${outdir}" -maxdepth 1 -type f \( -name "*acq-${a^^}*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
-    NoF=`find "${indir}" -type f \( -iname "*acq-${a}*" -and -not -name "*T1w*" -and -name "*.nii.gz" \) | wc -l 2>/dev/null`
+    t1w=`find "${output_dir}" -maxdepth 1 -type f \( -name "*acq-${a^^}_*" -and -name "*T1w.nii.gz" -and -not -name "*space-*" \) 2>/dev/null`
+    t1map=`find "${output_dir}" -maxdepth 1 -type f \( -name "*acq-${a^^}_*" -and -name "*T1map.nii.gz" -and -not -name "*space-*" \) 2>/dev/null`    
+    NoF=`find "${input_dir}" -type f \( -iname "*acq-${a}*" -and -not -name "*T1w*" -and -name "*.nii.gz" \) | wc -l 2>/dev/null`
     
     # set output name based on acquisition strategy
-    base=${base}_acq-${a^^}
+    output_base=${base}_acq-${a^^}
 
-    if [[ ! -f ${input} ]]; then
+    # check if we should overwrite
+    if [[ ${OW} -eq 1 ]]; then
+      rm ${t1w} ${t1map} 2>/dev/null
+    fi
+
+    if [[ ! -f ${t1w} || ! -f ${t1map} ]]; then
 
       if [[ ${NoF} -eq 0 ]]; then
-        echo "`basename ${dir}`: ${NoF} files available for ${a^^}"
+        echo "${sub_name}: ${NoF} files available for ${a^^}"
         break
       else
-        echo
-        echo "**************************************** Processing `basename ${dir}` ***************************************"
-
-        if [[ ! -d ${outdir} ]]; then
-          mkdir -p ${outdir}
-        fi
-
-        if [[ ${a^^} == "MP2RAGE" ]]; then
-          make_mask="-c"
-        else
-          make_mask=""
+        if [[ ! -d ${output_dir} ]]; then
+          mkdir -p ${output_dir}
         fi
 
         echo "Creating ${a} derivatives with pymp2rage"
-        call_${a,,} ${UPs} -i ${indir} -o ${outdir} -b ${base} ${make_mask}
+        call_${a,,} ${UPs} -i ${input_dir} -o ${output_dir} -b ${output_base} -c
       fi
 
     else
-      echo "`basename ${dir}`: ${a^^} T1-weighted file already exist"
+      echo "${output_base}_T1w.nii.gz already exist"
     fi
 
   done
 
   # copy T2w-file to pymp2rage folder for later convenience
-  t2=`find "${indir}" -type f \( -name "*T2w.nii.gz" \) 2>/dev/null`
+  t2=`find "${input_dir}" -type f \( -name "*T2w.nii.gz" \) 2>/dev/null`
   if [ ! -z ${t2} ]; then
-    cp ${t2} ${outdir} 2>/dev/null
+    cp ${t2} ${output_dir} 2>/dev/null
   fi
 
 done

@@ -4,6 +4,7 @@
 # check if there's is a setup file containing the major paths and source it if it exists
 echo
 source ${DIR_SCRIPTS}/shell/spinoza_setup
+source call_bashhelper
 
 #---------------------------------------------------------------------------------------------------------
 # Create help text
@@ -34,10 +35,10 @@ Options:
                   tories. This requires that the directory names you saved must match your naming 
                   scheme of functional files as we'll match on run-/task-ID
   --hrf           fit the HRF during pRF-fitting. See 'call_prf' for more information
-  <-s sub>        digit subject number following '${PREFIX}'
-  <-n ses>        integer session number following 'ses-'
-  <-m model>      'gauss' or 'norm' for the type of model to use for the fitting
-  <-t task ID>    If you have mutiple tasks specified in TASK_SES1 or you just have multiple tasks and 
+  -s <subject>    subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
+  -n <session>    session ID (e.g., 1, 2, or none)
+  -m <model>      'gauss' or 'norm' for the type of model to use for the fitting
+  -t <task ID>    If you have mutiple tasks specified in TASK_SES1 or you just have multiple tasks and 
                   you want to run only one, specify the task name here ('task-rest' is ignored by default!).
                   You can also specify multiple tasks if you want to bypass the setup file completely. In
                   that case, use the format '-t <task1>,<task2>,<task3>'
@@ -69,7 +70,7 @@ USAGE
 # Check for subject & session flags
 OW=0
 run_locally=0
-grid_only=0
+grid_flag=""
 multi_design=0
 fit_hrf=""
 while getopts :-:lgos:n:m:t: argument
@@ -102,7 +103,7 @@ do
           ;;   
     l)  run_locally=1
           ;;      
-    g)  grid_only=1
+    g)  grid_flag="-g"
           ;;       
   esac
 done
@@ -120,14 +121,10 @@ if [[ -z ${sub} ]]; then
   # loop through subjects
   search="${INPUT}/${PREFIX}*"
 else
-  # do for 1 subject
-  search="${INPUT}/${PREFIX}${sub}"
-fi
-
-if [[ ${grid_flag} -eq 1 ]]; then
-  grid_flag="-g"
-else
-  grid_flag=""
+  # read specified subjects into array
+  IFS=', ' read -r -a search <<< "${sub}"
+  search=${search[@]}
+  unset IFS
 fi
 
 #-----------------------------------------------------------------------------
@@ -144,21 +141,29 @@ echo "==========================================================================
 
 #-----------------------------------------------------------------------------
 # Run it
+for subID in ${search}; do
 
-for dir in ${search}; do
-
-  if [[ -z ${ses} ]]; then
-    base="$(basename ${dir})"
-    base_dir=${base}
+  # collect subject name
+  if [[ ! -z ${sub} ]]; then
+    sub_name=${PREFIX}${subID}
+    sub_id=${subID}
   else
-    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
-    base="$(basename ${dir})_ses-${nr}"
-    base_dir=$(basename ${dir})/ses-${nr}
+    sub_name=$(basename ${subID})
+    sub_id=`get_id ${sub_name} ${PREFIX}`
   fi
 
-  input_dir=${INPUT}/${base_dir}
-  prf_dir=${OUTPUT}/${base_dir}
-  png_dir=${PNG}/${base_dir}
+  if [[ ! -z ${ses} ]]; then
+    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
+    base_path=${sub_name}/ses-${nr}
+    base=${sub_name}_ses-${nr}
+  else
+    base_path=${sub_name}
+    base=${sub_name}
+  fi
+
+  input_dir=${INPUT}/${base_path}
+  prf_dir=${OUTPUT}/${base_path}
+  png_dir=${PNG}/${base_path}
 
   # check if we got model specification
   if [[ -z ${model} ]]; then
@@ -198,7 +203,7 @@ for dir in ${search}; do
   if [[ -d ${full_input} ]]; then
 
     echo
-    echo "**************************************** Processing `basename ${dir}` ***************************************"
+    echo "**************************************** Processing ${sub_name} ***************************************"
 
     
     # fetch PNG-directories, sort, and save in array
@@ -284,7 +289,7 @@ for dir in ${search}; do
             job="python"
           else
             if [[ ${run_locally} -eq 0 ]]; then
-              job="qsub -q ${SGE_QUEUE_LONG} -pe smp 5 -wd ${prf_dir} -N $(basename ${dir})_${task}"
+              job="qsub -q ${SGE_QUEUE_LONG} -pe smp 5 -wd ${prf_dir} -N ${sub_id}_${task}"
             elif [[ ${run_locally} -eq 1 ]]; then
               job="python"
             else
@@ -296,7 +301,7 @@ for dir in ${search}; do
           # define call to call_prf
           export DISPLAY=:0
           ${job} ${DIR_SCRIPTS}/bin/call_prf ${grid_flag} ${fit_hrf} \
-            -s "$(basename ${dir} | cut -d'-' -f2)" \
+            -s ${sub_id} \
             -n ${nr} \
             -t ${task} \
             -o ${prf_dir} \
@@ -320,7 +325,7 @@ for dir in ${search}; do
     done
 
   else
-    echo "`basename ${dir}`: Directory \"${full_input}\" not valid."
+    echo "${sub_name}: Directory \"${full_input}\" not valid."
   fi
 
 done

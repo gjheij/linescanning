@@ -22,20 +22,24 @@ login node (where you can't open GUIs). It will try to open a GUI for everything
 cified node-name. For instance, if you're running this on your local system, your hostname will be
 that of your system, and will therefore attempt to open the specified GUI (default = ITKsnap, it will
 check if that exists. Other options are 'FSL' or 'FV' for freeview).
-
 If you have MEMP2RAGE-data, then the script will look for the R2*-file in the specified ANAT folder.
 If this is somewhere else, just copy it into that directory.
 
 Usage:
   spinoza_sagittalsinus <-s sub> <-n ses> <dir anat> <dir masks> <itk | fv>
 
+Arguments:
+  -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
+  -n <session>        session ID (e.g., 1, 2, or n)
+  -o                  overwrite existing files
+  <input directory>   folder where anatomical files live
+  <skullstrip>        output folder for masks
+  <software>          which software to use: FreeSurfer|FSL|ITK
+
 Example:
   spinoza_sagittalsinus DIR_ANAT DIR_MASKS SOFTWARE
   spinoza_sagittalsinus $DIR_DATA_DERIV/pymp2rage $DIR_DATA_DERIV/manual_masks itk
   spinoza_sagittalsinus -s 001 -n 1 $DIR_DATA_DERIV/pymp2rage $DIR_DATA_DERIV/manual_masks itk
-
-Notes:
-  - Has the '-s' and '-n' switches to specify a particular subject and session if present
 
 ---------------------------------------------------------------------------------------------------
 
@@ -44,13 +48,15 @@ USAGE
 }
 
 # Check for subject & session flags
-while getopts s:n: argument
+while getopts os:n: argument
 do
   case ${argument} in
     s)  sub=${OPTARG}
           ;;
     n)  ses=${OPTARG}
           ;;
+    o)  OW=${OPTARG}
+          ;;          
   esac
 done
 
@@ -67,9 +73,10 @@ if [[ -z ${sub} ]]; then
   # loop through subjects
   search="${ANAT}/${PREFIX}*"
 else
-  # do for 1 subject
-  sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
-  search="${ANAT}/${PREFIX}${sub_nr}"
+  # read specified subjects into array
+  IFS=', ' read -r -a search <<< "${sub}"
+  search=${search[@]}
+  unset IFS
 fi
 
 #-----------------------------------------------------------------------------
@@ -87,34 +94,40 @@ echo "==========================================================================
 
 #-----------------------------------------------------------------------------
 # Run it
+for subID in ${search}; do
 
-for dir in ${search}; do
-
-  if [[ -z ${ses} ]]; then
-    base="$(basename ${dir})"
-    base_dir=$(basename ${dir})
+  # collect subject name
+  if [[ ! -z ${sub} ]]; then
+    sub_name=${PREFIX}${subID}
   else
-    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
-    base="$(basename ${dir})_ses-${nr}"
-    base_dir=$(basename ${dir})/ses-${nr}
+    sub_name=$(basename ${subID})
   fi
 
-  input_dir=${ANAT}/${base_dir}
-  mask_dir=${MASKS}/${base_dir}
+  if [[ ! -z ${ses} ]]; then
+    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
+    base_path=${sub_name}/ses-${nr}
+    base=${sub_name}_ses-${nr}
+  else
+    base_path=${sub_name}
+    base=${sub_name}
+  fi
+
+  input_dir=${ANAT}/${base_path}
+  mask_dir=${MASKS}/${base_path}
 
   if [[ ! -d ${mask_dir} ]]; then
     mkdir -p ${mask_dir}
   fi
 
   if [[ ${DATA} == "MP2RAGEME" ]] || [[ ${DATA} == "AVERAGE" ]]; then
-    r2star=`find "${input_dir}" -type f \( -name "*R2*" -and -name "*.nii.gz" \) 2>/dev/null`
+    r2star=`find "${input_dir}" -type f \( -name "*acq-${DATA^^}_*" -and -name "*R2starmap.nii.gz" \) 2>/dev/null`
     if [[ ! -z ${r2star} ]]; then
 
       r2star_mask=${mask_dir}/${base}_acq-${DATA^^}_desc-sagittalsinus.nii.gz
       if [[ ! -f ${r2star_mask} ]]; then
 
         echo
-        echo "**************************************** Processing `basename ${dir}` ***************************************"
+        echo "**************************************** Processing ${sub_name} ***************************************"
 
         if [[ -f $(dirname ${r2star})/tmp_$(basename ${r2star}) ]]; then
           rm -r $(dirname ${r2star})/tmp_$(basename ${r2star})
@@ -157,32 +170,28 @@ for dir in ${search}; do
         fi
 
       else
-
-        echo "`basename ${dir}`: R2*-mask is already present"
-
+        echo "${sub_name}: R2*-mask is already present"
       fi
 
     else
-
-      echo "Could not find R2star image. Please make sure you've run pymp2rage and registered the image to mp2rage space"
-      echo " - spinoza_qmrimaps"
-      echo " - spinoza_registration"
+      echo "${sub_name}: Could not find R2star image. Please make sure you've run pymp2rage and registered the image to mp2rage space"
+      echo " -spinoza_qmrimaps"
+      echo " -spinoza_registration"
       continue
-
     fi
 
-  elif [[ ${DATA} == "MP2RAGE" ]]; then
+  else
 
     r2star_mask=${mask_dir}/${base}_acq-${DATA^^}_desc-sagittalsinus.nii.gz
 
     if [[ ! -f ${r2star_mask} ]]; then
 
-      t1w=`find "${input_dir}" -type f \( -name "$(basename ${dir})*" -and -name "*${DATA^^}*" -and -not -iname "*memp2rage*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
+      t1w=`find "${input_dir}" -type f \( -name "$(basename ${dir})*" -and -name "*${DATA^^}_*" -and -not -iname "*space-*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
 
       if [[ ! -z ${t1w} ]]; then
 
         echo
-        echo "**************************************** Processing `basename ${dir}` ***************************************"
+        echo "**************************************** Processing ${sub_name} ***************************************"
 
         echo "Creating `basename ${r2star_mask} `"
 
@@ -215,7 +224,7 @@ for dir in ${search}; do
 
       else
 
-        echo "`basename ${dir}`: could not find T1-weighted image"
+        echo "${sub_name}: could not find T1-weighted image"
         continue
 
       fi
@@ -240,7 +249,7 @@ for dir in ${search}; do
 
     else
 
-      echo "`basename ${dir}`: sagittal sinus mask is already present"
+      echo "${sub_name}: sagittal sinus mask is already present"
 
     fi
 

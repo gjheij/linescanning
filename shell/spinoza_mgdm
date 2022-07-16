@@ -3,6 +3,7 @@
 #---------------------------------------------------------------------------------------------------------
 # check if there's is a setup file containing the major paths and source it if it exists
 call_loadsetup
+source call_bashhelper
 
 #---------------------------------------------------------------------------------------------------------
 # Create help text
@@ -22,29 +23,21 @@ preprocessing pipeline for optimizing the segmentations. To disable, run this pa
 the overwrite switch set to 'n': master -m <module> -o n
 
 Arguments:
-  flags
-    -s <sub>    str| subject ID as specifed in DIR_DATA_HOME
-    -n <ses>    int| session number
-    -t <type>   str| run regular MGDM [empty] or GdH-pipeline version (call_gdhmgdm) ["gdh"]
-
-  positional
-    <skullstripped>   path to skullstripped data
-    <mgdm>            path to output directory
-    <masks>           path to masks
-    <overwrite>       enable ('y') or disable ('n') overwrite mode (deletes existing files)
+  -s <subject>      subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
+  -n <session>      session ID (e.g., 1, 2, or none)
+  -o                overwrite existing files
+  --gdh             run GdH-pipeline version (call_gdhmgdm). Default = regular MGDM
+  <skullstripped>   path to skullstripped data
+  <mgdm>            path to output directory
+  <masks>           path to masks
 
 Usage:
-  spinoza_mgdm <-s sub> <-n ses> <type> <skullstripped> <mgdm> <masks> <overwrite>
+  spinoza_mgdm <-s sub> <-n ses> <--gdh> <-o> <skullstripped> <mgdm> <masks>
 
 Example:
-  spinoza_mgdm $SKULLSTRIP $NIGHRES/mgdm $MASKS n
-  spinoza_mgdm -s 001 -n 1 $SKULLSTRIP $NIGHRES/mgdm $MASKS n
-  spinoza_mgdm -s 001 -n 1 -t gdh $SKULLSTRIP $NIGHRES/mgdm $MASKS n
-
-Notes:
-  - Has the '-s' and '-n' switches to specify a particular subject and session if present
-  - Has a '-t' flag to specify whether you want to run the GdH-version (call_gdhmgdm) or the regu-
-    lar version of MGDM segmentation (call_nighresmgdm)
+  spinoza_mgdm SKULLSTRIP NIGHRES/mgdm MASKS
+  spinoza_mgdm -s 001 -n 1 SKULLSTRIP NIGHRES/mgdm MASKS
+  spinoza_mgdm -s 001 -n 1 --gdh SKULLSTRIP NIGHRES/mgdm MASKS
 
 ---------------------------------------------------------------------------------------------------
 
@@ -59,9 +52,22 @@ fi
 
 # Check for subject & session flags
 OW=0
-while getopts os:n:t: argument
+type=""
+while getopts :-:os:n:t: argument
 do
   case ${argument} in
+    -)
+      case "${OPTARG}" in
+        gdh)
+          type="gdh"
+          ;;                                                       
+        *)
+          if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
+            echo "Unknown option --${OPTARG}"
+            exit 1
+          fi
+          ;;
+      esac;;   
     s)  sub=${OPTARG}
           ;;
     n)  ses=${OPTARG}
@@ -82,15 +88,14 @@ INPUT=${@:$OPTIND:1}
 OUTPUT=${@:$OPTIND+1:1}
 MASKS=${@:$OPTIND+2:1}
 
-# echo "$OW"
-
 if [[ -z ${sub} ]]; then
   # loop through subjects
   search="${INPUT}/${PREFIX}*"
 else
-  # do for 1 subject
-  sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
-  search="${INPUT}/${PREFIX}${sub_nr}"
+  # read specified subjects into array
+  IFS=', ' read -r -a search <<< "${sub}"
+  search=${search[@]}
+  unset IFS
 fi
 
 #-----------------------------------------------------------------------------
@@ -108,22 +113,29 @@ echo "==========================================================================
 
 #-----------------------------------------------------------------------------
 # Run it
+for subID in ${search}; do
 
-for dir in ${search}; do
-
-  if [[ -z ${ses} ]]; then
-    base="$(basename ${dir})"
-    base_dir=${base}
-    nr=""
+  # collect subject name
+  if [[ ! -z ${sub} ]]; then
+    sub_name=${PREFIX}${subID}
+    sub_id=${subID}
   else
-    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
-    base="$(basename ${dir})_ses-${nr}"
-    base_dir=$(basename ${dir})/ses-${nr}
+    sub_name=$(basename ${subID})
+    sub_id=`get_id ${sub_name} ${PREFIX}`
   fi
 
-  input_dir=${INPUT}/${base_dir}
-  output_dir=${OUTPUT}/${base_dir}
-  mask_dir=${MASKS}/${base_dir}
+  if [[ ! -z ${ses} ]]; then
+    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
+    base_path=${sub_name}/ses-${nr}
+    base=${sub_name}_ses-${nr}
+  else
+    base_path=${sub_name}
+    base=${sub_name}
+  fi
+
+  input_dir=${INPUT}/${base_path}
+  output_dir=${OUTPUT}/${base_path}
+  mask_dir=${MASKS}/${base_path}
 
   #----------------------------------------------------------------------------------------------------------------------------------------------
   # Look for files
@@ -155,7 +167,7 @@ for dir in ${search}; do
     if [[ ! -f ${mgdm_seg} ]]; then
 
       echo
-      echo "**************************************** Processing `basename ${dir}` ***************************************"
+      echo "**************************************** Processing ${sub_name} ***************************************"
       echo "Running GhD-version of MGDM with call_gdhmgdm"
       echo ${txt}
 
@@ -191,35 +203,17 @@ for dir in ${search}; do
       fi
 
     else
-
-      echo "`basename ${dir}`: segmentation already present"
-
+      echo "${sub_name}: segmentation already present"
     fi
-
   else
 
-    # if [[ -z ${mask_skull} ]]; then
-    #   echo "`basename ${dir}`: Could not find skull mask image.. "
-    #   continue
-    # fi
-
-    # if [[ -z ${mask_sinus} ]]; then
-    #   echo "`basename ${dir}`: Could not find sagittal sinus image.. "
-    #   continue
-    # fi
-
-    # if [[ -z ${mask_dura} ]]; then
-    #   echo "`basename ${dir}`: Could not find dura mask image.. "
-    #   continue
-    # fi
-
     if [[ -z ${bet_uni} ]]; then
-      echo "`basename ${dir}`: Could not find skullstripped T1-image.. "
+      echo "${sub_name}: Could not find skullstripped T1-image.. "
       continue
     fi
 
     if [[ -z ${bet_t1m} ]]; then
-      echo "`basename ${dir}`: Could not find skullstripped T1map-image.. "
+      echo "${sub_name}: Could not find skullstripped T1map-image.. "
       continue
     fi
 
@@ -230,17 +224,9 @@ for dir in ${search}; do
     if [[ ! -f ${mgdm_seg} ]]; then
 
       echo
-      echo "**************************************** Processing `basename ${dir}` ***************************************"
+      echo "**************************************** Processing ${sub_name} ***************************************"
       echo "Running regular version of MGDM with call_nighresmgdm"
       echo "Creating `basename ${mgdm_seg}`"
-
-      # call_nighresmgdm \
-      #   -t ${bet_uni} \
-      #   -m ${bet_t1m} \
-      #   -s ${mask_skull} \
-      #   -d ${mask_dura} \
-      #   -o ${masked_seg} \
-      #   -b ${output_root}
 
       call_nighresmgdm \
         -t ${bet_uni} \
@@ -256,11 +242,8 @@ for dir in ${search}; do
       fi
 
     else
-
-      echo "`basename ${dir}`: segmentation already present"
-
+      echo "${sub_name}: segmentation already present"
     fi
-
   fi
 
 done

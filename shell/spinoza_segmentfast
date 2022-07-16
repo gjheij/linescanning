@@ -20,17 +20,14 @@ on these images
 
 By default, it's set to overwrite existing files in order to be able to iterate over the structural
 preprocessing pipeline for optimizing the segmentations. To disable, run this particular module with
-the overwrite switch set to 'n': master -m <module> -o n
+the overwrite switch set to 'n': master -m <module> -o
 
 Usage:
   spinoza_segmentfast <-s sub> <-n ses> <skullstripped dir> <output dir> <overwrite>
 
 Example:
-  spinoza_segmentfast $DIR_DATA_DERIV/skullstripped $DIR_DATA_DERIV/fsl n
-  spinoza_segmentfast -s 001 -n 1 $DIR_DATA_DERIV/skullstripped $DIR_DATA_DERIV/fsl n
-
-Notes:
-  - Has the '-s' and '-n' switches to specify a particular subject and session if present
+  spinoza_segmentfast $DIR_DATA_DERIV/skullstripped $DIR_DATA_DERIV/fsl
+  spinoza_segmentfast -s 001 -n 1 $DIR_DATA_DERIV/skullstripped $DIR_DATA_DERIV/fsl
 
 ---------------------------------------------------------------------------------------------------
 
@@ -85,28 +82,38 @@ echo "==========================================================================
 #-----------------------------------------------------------------------------
 # Run it
 
-for dir in ${search}; do
+for subID in ${search}; do
 
-  if [[ -z ${ses} ]]; then
-    input_dir=${SKULL}/$(basename ${dir})
-    output_dir=${FSL}/$(basename ${dir})
-    base="$(basename ${dir})"
+  # collect subject name
+  if [[ ! -z ${sub} ]]; then
+    sub_name=${PREFIX}${subID}
+    sub_id=${subID}
   else
-    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
-    input_dir=${T1W}/$(basename ${dir})/ses-${nr}
-    output_dir=${INV2}/$(basename ${dir})/ses-${nr}
-    base="$(basename ${dir})_ses-${nr}"
+    sub_name=$(basename ${subID})
+    sub_id=`get_id ${sub_name} ${PREFIX}`
   fi
 
+  if [[ ! -z ${ses} ]]; then
+    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
+    base_path=${sub_name}/ses-${nr}
+    base=${sub_name}_ses-${nr}
+  else
+    base_path=${sub_name}
+    base=${sub_name}
+  fi
+
+  input_dir=${SKULL}/${base_path}
+  output_dir=${FSL}/${base_path}
+
   #----------------------------------------------------------------------------------------------------------------------------------------------------------
-  # Running FreeSurfer with call_freesurfer
+  # Running FAST with call_fslfast
 
   if [[ ! -d ${input_dir} ]]; then
-    echo "  `basename ${dir}`: Could not find skullstripped directory. Make sure you run module 12 first"
+    echo "${sub_name}: Could not find skullstripped directory. Make sure you run module 12 first"
     continue
   fi
 
-  input_t1w=`find "${input_dir}" -type f \( -name "*${DATA^^}*" -and -name "*T1w*" -and -name "*.nii.gz" \) 2>/dev/null`
+  input_t1w=`find "${input_dir}" -type f \( -name "*${DATA^^}*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
 
   declare -a OUTPUTS=(mixeltype pve_0 pve_1 pve_2 pveseg seg)
   outputroot=${output_dir}/${base}_acq-${DATA^^}_desc
@@ -114,7 +121,7 @@ for dir in ${search}; do
   # OVERWRITE ALL CREATED FILES; SHOULD BE DEFAULT AND CAN BE DISABLE BY SPECIFYING MASTER -M <MODULE> -O N
   if [[ ${OW} -eq 1 ]]; then
     if [[ -d ${output_dir} ]]; then
-      echo "  Overwrite mode: deleting files with \"${base}_acq-${DATA^^}_desc\""
+      echo "Overwrite mode: deleting files with \"${base}_acq-${DATA^^}_desc\""
       rm -r ${output_dir}/${base}_acq-${DATA^^}_desc* 2>/dev/null
     fi
   fi
@@ -124,7 +131,7 @@ for dir in ${search}; do
     if [[ ! -f ${outputroot}-seg.nii.gz ]]; then
 
       echo
-      echo "**************************************** Processing `basename ${dir}` ***************************************"
+      echo "**************************************** Processing ${sub_name} ***************************************"
 
       if [[ ! -f ${output_dir} ]]; then
         mkdir -p ${output_dir}
@@ -161,12 +168,12 @@ for dir in ${search}; do
       echo "Done"
 
     else
-      echo "`basename ${dir}`: segmentations already exist"
+      echo "${sub_name}: segmentations already exist"
     fi
 
   else
     
-    echo "`basename ${dir}`: No skullstripped T1-weighted image found"
+    echo "${sub_name}: No skullstripped T1-weighted image found"
     continue
 
   fi

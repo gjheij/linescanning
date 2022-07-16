@@ -4,6 +4,7 @@
 # check if there's is a setup file containing the major paths and source it if it exists
 echo
 call_loadsetup
+source call_bashhelper
 
 #---------------------------------------------------------------------------------------------------------
 # Create help text
@@ -20,17 +21,16 @@ Usage:
   spinoza_denoising <-s sub> <-n ses> <fmriprep directory> <pybest output directory>
 
 Arguments:
-  <-s sub>            digit subject number following '${PREFIX}'
-  <-n ses>            integer session number following 'ses-'
+  -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
+  -n <session>        session ID (e.g., 1, 2, or none)
+  -o                  overwrite existing files
   <project root>      base directory containing the derivatives and the subject's folders.
   <derivatives>       path to the derivatives folder
 
 Eample:
-  spinoza_denoising ${DIR_DATA_HOME} ${DIR_DATA_DERIV}
-  spinoza_denoising -s 001 -n 1 ${DIR_DATA_HOME} ${DIR_DATA_DERIV}
-
-Notes:
-  - Has the '-s' and '-n' switches to specify a particular subject and session if present
+  spinoza_denoising DIR_DATA_HOME DIR_DATA_DERIV
+  spinoza_denoising -s 001 -n 1 DIR_DATA_HOME DIR_DATA_DERIV
+  spinoza_denoising -o DIR_DATA_HOME DIR_DATA_DERIV
 
 ---------------------------------------------------------------------------------------------------
 
@@ -40,6 +40,8 @@ USAGE
 
 # Check for subject & session flags
 OW=0
+job="bash"
+cpu=1
 while getopts os:n: argument
 do
   case ${argument} in
@@ -48,7 +50,11 @@ do
     n)  ses=${OPTARG}
           ;;
     o)  OW=1
-          ;;          
+          ;;         
+    c)  job="qsub -q ${SGE_QUEUE_LONG} -pe smp 10"
+        in_setup="-v ${DIR_SCRIPTS}/shell/spinoza_setup"
+        cpu=10
+          ;;                    
   esac
 done
 
@@ -57,27 +63,18 @@ if [[ $# -lt 2 ]] ; then
   exit 1
 fi
 
-# use master -c to submit call_pybest to cluster
-if [[ "${@}" == *"-c"* ]]; then
-  job="qsub -q ${SGE_QUEUE_LONG} -pe smp 10"
-  in_setup="-v ${DIR_SCRIPTS}/shell/spinoza_setup"
-  cpu=10
-else
-  job="bash"
-  cpu=1
-fi
-
 # fetch positional arguments
 FPREP=${@:$OPTIND:1}
 DENOISE=${@:$OPTIND+1:1}
 
 if [[ -z ${sub} ]]; then
   # loop through subjects
-  search="${FPREP}/${PREFIX}*"
+  search="${INPUT}/${PREFIX}*"
 else
-  # do for 1 subject
-  sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
-  search="${FPREP}/${PREFIX}${sub_nr}"
+  # read specified subjects into array
+  IFS=', ' read -r -a search <<< "${sub}"
+  search=${search[@]}
+  unset IFS
 fi
 
 #-----------------------------------------------------------------------------
@@ -94,22 +91,30 @@ echo "==========================================================================
 
 #-----------------------------------------------------------------------------
 # Run it
+for subID in ${search}; do
 
-for dir in ${search}; do
-
-  # check if we got a session number
-  if [[ -z ${ses} ]]; then
-    nr=""
-    base=$(basename ${dir})/ses-${nr}
+  # collect subject name
+  if [[ ! -z ${sub} ]]; then
+    sub_name=${PREFIX}${subID}
+    sub_id=${subID}
   else
+    sub_name=$(basename ${subID})
+    sub_id=`get_id ${sub_name} ${PREFIX}`
+  fi
+
+  if [[ ! -z ${ses} ]]; then
     nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
-    base=$(basename ${dir})
+    base_path=${sub_name}/ses-${nr}
+    base=${sub_name}_ses-${nr}
+  else
+    base_path=${sub_name}
+    base=${sub_name}
   fi
 
   if [[ ${OW} -eq 1 ]]; then
     # overwrite mode enabled
-    if [[ -d ${DENOISE}/${base} ]]; then
-      rm -r ${DENOISE}/${base}
+    if [[ -d ${DENOISE}/${base_path} ]]; then
+      rm -r ${DENOISE}/${base_path}
     fi
   fi
 
@@ -117,12 +122,12 @@ for dir in ${search}; do
     mkdir -p ${DENOISE}
   fi
 
-  if [[ -d ${FPREP}/${base} ]]; then
+  if [[ -d ${FPREP}/${base_path} ]]; then
 
-    if [[ ! -d ${DENOISE}/${base} ]]; then
+    if [[ ! -d ${DENOISE}/${base_path} ]]; then
 
       echo
-      echo "**************************************** Processing `basename ${dir}` ***************************************"
+      echo "**************************************** Processing ${sub_name} ***************************************"
       echo "Running pybest denoising"
 
       # check if spinoza_setup contains PYBEST_SPACE and PYBEST_NORM
@@ -136,12 +141,12 @@ for dir in ${search}; do
 
       # full path is needed for qsub
       ${job} ${DIR_SCRIPTS}/bin/call_pybest \
-        -r $(basename ${dir} | cut -d'-' -f2) \
+        -s ${sub_id} \
         -n "${nr}" \
         -o ${DENOISE} \
-        -s ${PYBEST_SPACE} \
+        -r ${PYBEST_SPACE} \
         -e ${PYBEST_ENV} \
-        -f ${FPREP} ${in_setup} \
+        -f ${FPREP} \
         -c ${cpu} \
         -z ${PYBEST_NORM}
 
@@ -154,13 +159,13 @@ for dir in ${search}; do
 
     else
 
-      echo "`basename ${dir}`: data already denoised"
+      echo "${sub_name}: data already denoised"
 
     fi
 
   else
 
-    echo "`basename ${dir}`: might want to run fMRIprep first.."
+    echo "${sub_name}: might want to run fMRIprep first.."
     continue
 
   fi

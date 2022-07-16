@@ -3,6 +3,7 @@
 #---------------------------------------------------------------------------------------------------------
 # check if there's is a setup file containing the major paths and source it if it exists
 call_loadsetup
+source call_bashhelper
 
 #---------------------------------------------------------------------------------------------------------
 # Create help text
@@ -107,11 +108,12 @@ ROI=${@:$OPTIND+2:1}
 # check if we should loop through subjects or do it for 1 subject only
 if [[ -z ${sub} ]]; then
   # loop through subjects
-  search="${BASE}/${PREFIX}*"
+  search="${INPUT}/${PREFIX}*"
 else
-  # do for 1 subject
-  sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
-  search="${BASE}/${PREFIX}${sub_nr}"
+  # read specified subjects into array
+  IFS=', ' read -r -a search <<< "${sub}"
+  search=${search[@]}
+  unset IFS
 fi
 
 #-----------------------------------------------------------------------------
@@ -130,22 +132,30 @@ echo "==========================================================================
 #-----------------------------------------------------------------------------
 # Run it
 
-for dir in ${search}; do
+for subID in ${search}; do
 
-  # check if we got a session number. Necessary to extract the correct pRF-parameters should we want to include that
-  if [[ -z ${ses} ]]; then
-    base="$(basename ${dir})"
-    base_dir=${base}
+  # collect subject name
+  if [[ ! -z ${sub} ]]; then
+    sub_name=${PREFIX}${subID}
+    sub_id=${subID}
   else
+    sub_name=$(basename ${subID})
+    sub_id=`get_id ${sub_name} ${PREFIX}`
+  fi
+
+  if [[ ! -z ${ses} ]]; then
     nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
-    base="$(basename ${dir})_ses-${nr}"
-    base_dir=$(basename ${dir})/ses-${nr}
+    base_path=${sub_name}/ses-${nr}
+    base=${sub_name}_ses-${nr}
+  else
+    base_path=${sub_name}
+    base=${sub_name}
   fi
 
   # set the paths
   fs_dir=${DERIV}/freesurfer
   cx_dir=${DERIV}/pycortex
-  prf_dir=${DERIV}/prf/${base_dir}
+  prf_dir=${DERIV}/prf/${base_path}
 
   # make the pycortex directory if it doesn't exists; the others should exists already. If not, it will complain about it below
   if [[ ! -d ${DERIV}/pycortex ]]; then
@@ -155,11 +165,11 @@ for dir in ${search}; do
   # never really delete a line_pycortex file, but rename numerically, so that the highest number is the oldest file.
   # The file without any numbering will be the most recent one and also the one that will be used; unless otherwise
   # specified in the master script
-  line_orientation_file=${DERIV}/pycortex/$(basename ${dir})/line_pycortex.csv
+  line_orientation_file=${DERIV}/pycortex/${sub_name}/line_pycortex.csv
   if [[ ${OW} -eq 1 ]]; then
     if [[ -f ${line_orientation_file} ]]; then
       nr=`find $(dirname ${line_orientation_file}) -type f -name "line_pycortex*" | wc -w`
-      fname=${DERIV}/pycortex/$(basename ${dir})/line_pycortex${nr}.csv
+      fname=${DERIV}/pycortex/${sub_name}/line_pycortex${nr}.csv
       mv ${line_orientation_file} ${fname}
     fi
   fi
@@ -168,12 +178,12 @@ for dir in ${search}; do
   if [[ ! -f ${line_orientation_file} ]]; then
 
     if [[ ! -d ${fs_dir} ]]; then
-      echo "`basename ${dir}`: No FreeSurfer directory found. Make sure to run that first"
+      echo "${sub_name}: No FreeSurfer directory found. Make sure to run that first"
       continue
     fi
 
     echo
-    echo "**************************************** Processing `basename ${dir}` ***************************************"
+    echo "**************************************** Processing ${sub_name} ***************************************"
     echo "Creating line_pycortex.csv file"
     
     # set the call_pycortex2 '-v' flag  if we want manually selected vertices
@@ -199,7 +209,7 @@ for dir in ${search}; do
     else
       use_prfs="--use-prf"
       if [[ ! -d ${prf_dir} ]]; then
-        echo "`basename ${dir}`: No pRF directory found > \"${prf_dir}\""
+        echo "${sub_name}: No pRF directory found > \"${prf_dir}\""
         continue
       fi
     fi
@@ -212,7 +222,7 @@ for dir in ${search}; do
     fi
 
     call_targetvertex ${OPEN_FV} ${man_verts} \
-      -s $(basename ${dir}) \
+      -s ${sub_name} \
       --fs ${fs_dir} \
       --cx ${cx_dir} \
       --prf ${prf_dir} \
@@ -230,7 +240,7 @@ for dir in ${search}; do
 
   else
 
-    echo "`basename ${dir}`: line_pycortex.csv already present"
+    echo "${sub_name}: line_pycortex.csv already present"
 
   fi
 

@@ -3,6 +3,7 @@
 #---------------------------------------------------------------------------------------------------------
 # check if there's is a setup file containing the major paths and source it if it exists
 call_loadsetup
+source call_bashhelper
 
 #---------------------------------------------------------------------------------------------------------
 # Create help text
@@ -27,15 +28,20 @@ variable, the fMRIprep-directory you'll need to specify with the -f flag BEFORE 
 arguments, and the MASK-directory you will already specify.
 
 Usage:
-  spinoza_extractregions <-s sub> <-n ses> <-f fprep> <nighres root> <custom comb> <region to
-                         extract> <ow>
+  spinoza_extractregions <-s sub> <-n ses> <-o> <-f fprep> <nighres root> <custom comb> <region to
+                         extract>
 
+Arguments:
+  -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
+  -n <session>        session ID (e.g., 1, 2, or none)
+  -o                  overwrite existing files
+  <nighres folder>    folder with nighres output
+  <mask folder>       folder containing masks
+  <region>            region to extract with Nighres
 
 Example:
-  spinoza_extractregions $DIR_DATA_DERIV/nighres $DIR_DATA_DERIV/manual_masks cerebrum n
-  spinoza_extractregions -s -001 -n 1 $DIR_DATA_DERIV/nighres $DIR_DATA_DERIV/manual_masks cerebrum n
-  spinoza_extractregions -s -001 -n 1 -f $DIR_DATA_DERIV/fmriprep $DIR_DATA_DERIV/nighres
-                        $DIR_DATA_DERIV/manual_masks cerebrum n
+  spinoza_extractregions DIR_DATA_DERIV/nighres DIR_DATA_DERIV/manual_masks cerebrum
+  spinoza_extractregions -s -001 -n 1 -o DIR_DATA_DERIV/nighres DIR_DATA_DERIV/manual_masks cerebrum
 
 Notes:
   - If you want a custom levelset, specify the '-f' flag pointing to the fMRIprep-directory
@@ -95,9 +101,10 @@ if [[ -z ${sub} ]]; then
   # loop through subjects
   search="${INPUT}/${PREFIX}*"
 else
-  # do for 1 subject
-  sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
-  search="${INPUT}/${PREFIX}${sub_nr}"
+  # read specified subjects into array
+  IFS=', ' read -r -a search <<< "${sub}"
+  search=${search[@]}
+  unset IFS
 fi
 
 #-----------------------------------------------------------------------------
@@ -143,29 +150,39 @@ start_date=`date`
 printf "Started at ${start_date}\n"
 echo "==================================================================================================="
 
+#-----------------------------------------------------------------------------
+# Run it
+for subID in ${search}; do
 
-for dir in ${search}; do
-
-  if [[ -z ${ses} ]]; then
-    base_dir=$(basename ${dir})
-    base="$(basename ${dir})"
+  # collect subject name
+  if [[ ! -z ${sub} ]]; then
+    sub_name=${PREFIX}${subID}
+    sub_id=${subID}
   else
-    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
-    base_dir=$(basename ${dir})/ses-${nr}
-    base="$(basename ${dir})_ses-${nr}"
+    sub_name=$(basename ${subID})
+    sub_id=`get_id ${sub_name} ${PREFIX}`
   fi
 
-  mgdm_dir=${INPUT}/${base_dir}/mgdm
-  fprep_dir=${fprep}/${base_dir}/anat
-  mask_dir=${LEVELSET}/${base_dir}
-  cat12_dir=${DIR_DATA_DERIV}/cat12/${base_dir}
+  if [[ ! -z ${ses} ]]; then
+    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
+    base_path=${sub_name}/ses-${nr}
+    base=${sub_name}_ses-${nr}
+  else
+    base_path=${sub_name}
+    base=${sub_name}
+  fi
+
+  mgdm_dir=${INPUT}/${base_path}/mgdm
+  fprep_dir=${fprep}/${base_path}/anat
+  mask_dir=${LEVELSET}/${base_path}
+  cat12_dir=${DIR_DATA_DERIV}/cat12/${base_path}
   region_dir=$(dirname ${mgdm_dir})/region
 
   # #----------------------------------------------------------------------------------------------------------------------------------------------------------
   # Running region extraction with nighres
 
   if [[ ! -d ${mgdm_dir} ]]; then
-    echo "`basename ${dir}`: Could not find MGDM directory. Make sure you run it with module 20"
+    echo "${sub_name}: Could not find MGDM directory \"${mgdm_dir}\""
     continue
   fi
 
@@ -178,17 +195,17 @@ for dir in ${search}; do
     # check for multiple files..
     j=0; for i in ${file[@]}; do ((j++)); done
     if [[ ${j} -eq 0 ]]; then
-      echo "`basename ${dir}`: Could not find any file for ${r}. DATA-variable is probably set incorrectly: ${DATA}"
+      echo "${sub_name}: Could not find any file for ${r}. DATA-variable is probably set incorrectly: ${DATA}"
       continue 2
     elif [[ ${j} -gt 1 ]]; then
-      echo "`basename ${dir}`: Found more than 1 file for ${r}"
+      echo "${sub_name}: Found more than 1 file for ${r}"
       continue 2
     fi
 
     if [[ -f ${file} ]]; then
       INPUTS+=(${file})
     else
-      echo "`basename ${dir}`: Could not find \"${r}\" image in nighres directory"
+      echo "${sub_name}: Could not find \"${r}\" image in nighres directory"
       continue
     fi
   done
@@ -231,7 +248,7 @@ for dir in ${search}; do
     if [[ ! -f ${output} ]]; then
 
       echo
-      echo "**************************************** Processing `basename ${dir}` ***************************************"
+      echo "**************************************** Processing ${sub_name} ***************************************"
       echo ${INTRO}
 
       if [[ ! -f ${output_root}_xproba-${suff}gm.nii.gz ]]; then
@@ -271,10 +288,10 @@ for dir in ${search}; do
 
       if [[ ${COMB_ONLY} -eq 1 ]]; then
         echo
-        echo "**************************************** Processing `basename ${dir}` ***************************************"
+        echo "**************************************** Processing ${sub_name} ***************************************"
       fi
       
-      fs=${SUBJECTS_DIR}/$(basename ${dir})
+      fs=${SUBJECTS_DIR}/${sub_name}
 
       for i in ${fprep_dir} ${fs} ${mask_dir} ${region_dir}; do
         if [[ ! -d ${i} ]]; then
@@ -304,7 +321,8 @@ for dir in ${search}; do
       fi
 
       ${cmd} \
-        -s $(basename ${dir}) -q ${cat12} \
+        -s ${sub_name} \
+        -q ${cat12} \
         -a ${fprep_dir} \
         -f ${fs} \
         -c ${region_dir} \
@@ -314,15 +332,9 @@ for dir in ${search}; do
 
       if [[ $? != 0 ]]; then
         echo "WARNING: Could not create combined segmentations, continuing.."
-        # echo "---------------------------------------------------------------------------------------------------"
-        # echo "ERROR in `basename ${0}`: call_gdhcombine exited with non-zero status"
-        # exit 1
       fi
-
     fi
-  
   fi
-
 done
 
 #-----------------------------------------------------------------------------

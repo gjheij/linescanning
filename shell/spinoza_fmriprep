@@ -22,13 +22,13 @@ exists, we will copy it to the directory where the T1-weighted is located (<inpu
 that it is included by fMRIprep.
 
 Arguments:
-  <-l>            don't submit to SGE, run locally
-  <-s subject>    subject ID (optional)
-  <-n session>    session ID (optional)
-  <-c config>     configuration file as specified in /misc/fmriprep_config?.json
-  <-f func dir>   directory containing functional data; used after running FreeSurfer outside of
+  -l              don't submit to SGE, run locally
+  -s <subject>    subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
+  -n <session>    session ID (e.g., 1, 2, or none)
+  -c <config>     configuration file as specified in /misc/fmriprep_config?.json
+  -f <func dir>   directory containing functional data; used after running FreeSurfer outside of
                   fMRIprep <optional>
-  <-r level>      remove surface_recon_wf '-r surf' to project functional data to new surface; used 
+  -r <level>      remove surface_recon_wf '-r surf' to project functional data to new surface; used 
                   after repeatedly enhancing the anatomical segmentation before injecting the functio-
                   nal data. Use '-r all' if the entire workflow folder needs to be removed <optional>
   <anat dir>      directory containing the anatomical data. Can also be the regular project root
@@ -46,11 +46,6 @@ Example:
   spinoza_fmriprep <project>/derivatives/masked_mp2rage <project>/derivatives anat
   spinoza_fmriprep -s 001 -n 1 -f <project> <project>/derivatives/masked_mp2rage <project>/deri-
                    vatives anat
-
-Notes:
-  - Has the '-s' and '-n' switches to specify a particular subject and session if present
-  - Has an '-f' flag to spcify a directory containing functional data. If your functional data is
-    stored in the same directory as the anatomical data, you can leave the flag empty
 
 ---------------------------------------------------------------------------------------------------
 
@@ -107,9 +102,10 @@ if [[ -z ${sub} ]]; then
   # loop through subjects
   search="${INPUT}/${PREFIX}*"
 else
-  # do for 1 subject
-  sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
-  search="${INPUT}/${PREFIX}${sub_nr}"
+  # read specified subjects into array
+  IFS=', ' read -r -a search <<< "${sub}"
+  search=${search[@]}
+  unset IFS
 fi
 
 if [[ -z ${mode} ]]; then
@@ -124,7 +120,7 @@ fi
 
 echo
 echo "==================================================================================================="
-printf "NEW PREPROCESSING WITH FMRIPREP\n"
+printf "PREPROCESSING WITH FMRIPREP\n"
 start=`date +%s`
 start_date=`date`
 
@@ -133,33 +129,30 @@ echo "==========================================================================
 
 #-----------------------------------------------------------------------------
 # Run it
+for subID in ${search}; do
 
-for dir in ${search}; do
-
-  if [[ -z ${ses} ]]; then
-    base=$(basename ${dir})
+  # collect subject name
+  if [[ ! -z ${sub} ]]; then
+    sub_name=${PREFIX}${subID}
   else
-    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
-    base=$(basename ${dir})/ses-${nr}
+    sub_name=$(basename ${subID})
   fi
 
-  input_dir=${INPUT}/${base}
+  if [[ ! -z ${ses} ]]; then
+    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
+    base_path=${sub_name}/ses-${nr}
+    base=${sub_name}_ses-${nr}
+  else
+    base_path=${sub_name}
+    base=${sub_name}
+  fi
 
-  # if [[ ! -z ${T2} ]]; then
-  #   t2w=`find "${T2}/${base}/anat" -type f \( -name "*T2w.nii.gz" \) 2>/dev/null`
-  #   if [[ ! -z ${t2w} ]]; then
-  #     # echo "Including `basename ${t2w}` in fMRIprep"
-  #     if [[ ! -f ${input_dir}/anat/$(basename ${t2w}) ]]; then
-  #       cp ${t2w} ${input_dir}/anat
-  #     fi
-  #   fi
-  # fi
-
-  # echo $input_dir
+  # define input
+  input_dir=${INPUT}/${base_path}
   if [[ ${MODE} == "anat" ]]; then
     anat=`find "${input_dir}/anat" -type f \( -name "*T1w*" -and -name "*acq-${DATA^^}*" -and -name "*.nii.gz" \) 2>/dev/null`
     if [[ -z ${anat} ]]; then
-      echo " `basename ${dir}`; missing anatomical data"
+      echo " ${sub_name}; missing anatomical data"
       continue
     fi
     func_txt="Only including anatomical data"
@@ -167,22 +160,22 @@ for dir in ${search}; do
     func_txt="Including functional data"
     if [[ ! -z ${func_dir} ]]; then
       # separate directory with functional data
-      func=`find "${func_dir}/${base}/func" -type f \( -name "*bold.nii.gz" \) 2>/dev/null`
+      func=`find "${func_dir}/${base_path}/func" -type f \( -name "*bold.nii.gz" \) 2>/dev/null`
       INPUT=${func_dir}
 
       # check if there's a T1w in the 'anat' folder; even though you've already ran it, fMRIprep requires T1w-files
-      anat=`find "${func_dir}/${base}/anat" -type f \( -name "*T1w.nii.gz" \) 2>/dev/null`
+      anat=`find "${func_dir}/${base_path}/anat" -type f \( -name "*T1w.nii.gz" \) 2>/dev/null`
       if [[ -z ${anat} ]]; then
         diff_anat=`find "${input_dir}/anat" -type f \( -name "*T1w.nii.gz" \) 2>/dev/null`
         if [ ! -z ${diff_anat} ]; then
-          cp ${diff_anat} ${func_dir}/${base}/anat
+          cp ${diff_anat} ${func_dir}/${base_path}/anat
         else
           # last option: look in pymp2rage-folder
-          diff_anat=`find "${DIR_DATA_DERIV}/pymp2rage/${base}" -type f \( -name "*T1w.nii.gz" \) 2>/dev/null`
+          diff_anat=`find "${DIR_DATA_DERIV}/pymp2rage/${base_path}" -type f \( -name "*T1w.nii.gz" \) 2>/dev/null`
           if [ ! -z ${diff_anat} ]; then
-            cp ${diff_anat} ${func_dir}/${base}/anat
+            cp ${diff_anat} ${func_dir}/${base_path}/anat
           else
-            echo "ERROR in `basename ${0}`: Could not find T1w-file in \"${input_dir}/anat\" and \"${DIR_DATA_DERIV}/pymp2rage/${base}\". Please copy your FreeSurfer input to \"${func_dir}/${base}/anat\" as a T1w-file needs to be present. If you've already ran the anatomical workflows, the file will be ignored. Nevertheless, it's needs to be present for fMRIprep to initiate"
+            echo "ERROR in `basename ${0}`: Could not find T1w-file in \"${input_dir}/anat\" and \"${DIR_DATA_DERIV}/pymp2rage/${base_path}\". Please copy your FreeSurfer input to \"${func_dir}/${base_path}/anat\" as a T1w-file needs to be present. If you've already ran the anatomical workflows, the file will be ignored. Nevertheless, it's needs to be present for fMRIprep to initiate"
             exit 1
           fi
         fi
@@ -194,13 +187,13 @@ for dir in ${search}; do
     fi
 
     if [[ -z ${func} ]]; then
-      echo "`basename ${dir}`; missing functional data"
+      echo "${sub_name}; missing functional data"
       continue
     fi
   fi
 
   echo
-  echo "**************************************** Processing `basename ${dir}` ***************************************"
+  echo "**************************************** Processing ${sub_name} ***************************************"
   echo ${func_txt}
   workdir=${PATH_HOME}/fmriprep/${PROJECT}
 
@@ -212,11 +205,11 @@ for dir in ${search}; do
   # check if we need to delete stuff
   if [[ ! -z ${remove_wf} ]]; then
     if [[ ${remove_wf} == "all" ]]; then
-      txt="Removing single_subject_$(basename ${dir} | cut -d'-' -f2)_wf"
-      rm_dir=${workdir}/fmriprep_wf/single_subject_$(basename ${dir} | cut -d'-' -f2)_wf
+      txt="Removing single_subject_${subID}_wf"
+      rm_dir=${workdir}/fmriprep_wf/single_subject_${subID}_wf
     elif [[ ${remove_wf} == "surf" ]]; then
       txt="Removing surface_recon_wf"
-      rm_dir=${workdir}/fmriprep_wf/single_subject_$(basename ${dir} | cut -d'-' -f2)_wf/anat_preproc_wf/surface_recon_wf
+      rm_dir=${workdir}/fmriprep_wf/single_subject_${subID}_wf/anat_preproc_wf/surface_recon_wf
     else
       echo "ERROR in `basename ${0}`: invalid option \"${remove_wf}\". Must be \"surf\" or \"all\""
       exit 1
@@ -252,7 +245,7 @@ for dir in ${search}; do
       job="call_fmriprep"
       exec_flag="-c SGE"
     else
-      job="qsub -q ${SGE_QUEUE_LONG} -N fprep_$(basename ${dir} | cut -d'-' -f2) -o ${workdir} ${DIR_SCRIPTS}/bin/call_fmriprep"
+      job="qsub -q ${SGE_QUEUE_LONG} -N fprep_${subID} -o ${workdir} ${DIR_SCRIPTS}/bin/call_fmriprep"
       exec_flag="-c SGE"
     fi 
   else
@@ -262,7 +255,7 @@ for dir in ${search}; do
 
   # execute the command
   ${job} \
-    -s $(basename ${dir} | cut -d'-' -f2) \
+    -s ${subID} \
     -m ${MODE} \
     -b ${FPREP_BINDING} \
     -r ${INPUT} \

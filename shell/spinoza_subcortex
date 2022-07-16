@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+# source helper functions
+source call_bashhelper
+
 #---------------------------------------------------------------------------------------------------------
 # Create help text
 function Usage {
@@ -15,13 +18,14 @@ Usage:
   spinoza_subcortex <project root dir> <prob seg dir> <region> <overwrite>
 
 Arguments:
-  <-s sub>    digit subject number following '${PREFIX}'
-  <-n ses>    integer session number following 'ses-'
-  <qsm dir>   parent directory containing the files required for MASSP. Files should end with:
-                - "*_R1.nii.gz"   > 1/T1map file
-                - "*_R2s.nii.gz"  > 1/T2* file
-                - "*_QSM.nii.gz"  > QSM file
-  <output>    root output directory (<subject>/[<ses->] will be appended!)
+  -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
+  -n <session>        session ID (e.g., 1, 2, or none)
+  -o                  overwrite existing files
+  <qsm dir>           parent directory containing the files required for MASSP. Files should end with:
+                        -"*_R1.nii.gz"   > 1/T1map file
+                        -"*_R2s.nii.gz"  > 1/T2* file
+                        -"*_QSM.nii.gz"  > QSM file
+  <output>          root output directory (<subject>/[<ses->] will be appended!)
 
 Example:
   spinoza_subcortex $DIR_DATA_HOME $DIR_DATA_DERIV/nighres
@@ -42,12 +46,12 @@ fi
 # Check for subject & session flags
 while getopts s:n: argument
 do
-    case ${argument} in
-      s)  sub=${OPTARG}
-            ;;
-      n)  ses=${OPTARG}
-            ;;
-    esac
+  case ${argument} in
+    s)  sub=${OPTARG}
+          ;;
+    n)  ses=${OPTARG}
+          ;;
+  esac
 done
 
 if [[ $# -lt 3 ]] ; then
@@ -63,9 +67,10 @@ if [[ -z ${sub} ]]; then
   # loop through subjects
   search="${INPUT}/${PREFIX}*"
 else
-  # do for 1 subject
-  sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
-  search="${INPUT}/${PREFIX}${sub_nr}"
+  # read specified subjects into array
+  IFS=', ' read -r -a search <<< "${sub}"
+  search=${search[@]}
+  unset IFS
 fi
 
 #-----------------------------------------------------------------------------
@@ -83,21 +88,29 @@ echo "==========================================================================
 
 #-----------------------------------------------------------------------------
 # Run it
-for dir in ${search}; do
+for subID in ${search}; do
 
-  if [[ -z ${ses} ]]; then
-    subdir=$(basename ${dir})
-    base="$(basename ${dir})"
-    nr=""
+  # collect subject name
+  if [[ ! -z ${sub} ]]; then
+    sub_name=${PREFIX}${subID}
+    sub_id=${subID}
   else
-    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
-    subdir=$(basename ${dir})/ses-${nr}
-    base="$(basename ${dir})_ses-${nr}"
+    sub_name=$(basename ${subID})
+    sub_id=`get_id ${sub_name} ${PREFIX}`
   fi
 
-  input_dir=${INPUT}/${subdir}
-  skull_dir=${SKULL}/${subdir}
-  output_dir=${OUTPUT}/${subdir}/massp
+  if [[ ! -z ${ses} ]]; then
+    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
+    base_path=${sub_name}/ses-${nr}
+    base=${sub_name}_ses-${nr}
+  else
+    base_path=${sub_name}
+    base=${sub_name}
+  fi
+
+  input_dir=${INPUT}/${base_path}
+  skull_dir=${SKULL}/${base_path}
+  output_dir=${OUTPUT}/${base_path}/massp
 
   #----------------------------------------------------------------------------------------------------------------------------------------------------------
   # Running MASSP with Nighres
@@ -107,18 +120,18 @@ for dir in ${search}; do
   if [[ ! -f ${massp} ]]; then
 
     echo
-    echo "**************************************** Processing `basename ${dir}` ***************************************"
+    echo "**************************************** Processing ${sub_name} ***************************************"
 
     #-----------------------------------------------------------------------------
     # Check if we can mask inputs
-    mask=`find ${DIR_DATA_DERIV}/manual_masks/${subdir} -type f \( -name "*acq-${DATA^^}*" -and -name "*brainmask.nii.gz" \) 2>/dev/null`
+    mask=`find ${DIR_DATA_DERIV}/manual_masks/${base_path} -type f \( -name "*acq-${DATA^^}*" -and -name "*brainmask.nii.gz" \) 2>/dev/null`
     declare -a INPUTS=()
 
     echo "Should we mask inputs?"
     for i in "R1" "R2s" "QSM"; do
       fn=`find ${input_dir} -type f \( -name "*${i}.nii.gz" \) 2>/dev/null`
 
-      j=0; for k in ${fn[@]}; do ((j++)); done; if [[ ${j} -ne 1 ]]; then echo "`basename ${dir}`: Found more than 1 file for ${r}"; continue 2; fi
+      j=0; for k in ${fn[@]}; do ((j++)); done; if [[ ${j} -ne 1 ]]; then echo "${sub_name}: Found more than 1 file for ${r}"; continue 2; fi
 
       if [[ -z ${fn} ]]; then
         echo "Could not find ${i}-file.."
@@ -140,13 +153,13 @@ for dir in ${search}; do
     echo "Create `basename ${massp}`"
 
     if [[ ${PLACE} == "SGE" ]]; then
-      job="qsub -q ${SGE_QUEUE_LONG} -N massp_$(basename ${dir} | cut -d'-' -f2) -wd ${DIR_LOGS} ${DIR_SCRIPTS}/bin/call_nighresmassp"
+      job="qsub -q ${SGE_QUEUE_LONG} -N massp_${sub_id} -wd ${DIR_LOGS} ${DIR_SCRIPTS}/bin/call_nighresmassp"
     else
       job="call_nighresmassp"
     fi
 
     ${job} \
-      -s $(basename ${dir}) \
+      -s ${subID} \
       -n ${nr} \
       -i ${use_dir} \
       -o ${output_dir} \
@@ -161,7 +174,7 @@ for dir in ${search}; do
 
   else
 
-    echo "`basename ${dir}`: MASSP-label image already exists"
+    echo "${sub_name}: MASSP-label image already exists"
 
   fi
 

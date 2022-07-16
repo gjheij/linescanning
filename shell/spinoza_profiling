@@ -20,12 +20,13 @@ Usage:
                     <file>
 
 Arguments:
-  <-s sub>    digit subject number following '${PREFIX}'
-  <-n ses>    integer session number following 'ses-'
-  <nighres>   parent directory containing the output files of Nighres
-                - <nighres>/<subject>/<session>/layering/*boundaries*
-                - <nighres>/<subject>/<session>/profiling/*lps_data.nii.gz
-  <tag>       tag to use to look for to-be-sampled dataset (e.g., T1map)
+  -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
+  -n <session>        session ID (e.g., 1, 2, or none)
+  -o                  overwrite existing files
+  <nighres>           parent directory containing the output files of Nighres
+                        -<nighres>/<subject>/<session>/layering/*boundaries*
+                        -<nighres>/<subject>/<session>/profiling/*lps_data.nii.gz
+  <tag>               tag to use to look for to-be-sampled dataset (e.g., T1map)
 
 Example:
   spinoza_profiling $NIGHRES $DIR_DATA_HOME T1map
@@ -67,11 +68,12 @@ TAG=${@:$OPTIND+2:1}
 
 if [[ -z ${sub} ]]; then
   # loop through subjects
-  search="${NIGHRES}/${PREFIX}*"
+  search="${INPUT}/${PREFIX}*"
 else
-  # do for 1 subject
-  sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
-  search="${NIGHRES}/${PREFIX}${sub_nr}"
+  # read specified subjects into array
+  IFS=', ' read -r -a search <<< "${sub}"
+  search=${search[@]}
+  unset IFS
 fi
 
 #-----------------------------------------------------------------------------
@@ -89,20 +91,26 @@ echo "==========================================================================
 
 #-----------------------------------------------------------------------------
 # Run it
-for dir in ${search}; do
+for subID in ${search}; do
 
-  if [[ -z ${ses} ]]; then
-    subdir=$(basename ${dir})
-    base="$(basename ${dir})"
-    nr=""
+  # collect subject name
+  if [[ ! -z ${sub} ]]; then
+    sub_name=${PREFIX}${subID}
   else
-    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
-    subdir=$(basename ${dir})/ses-${nr}
-    base="$(basename ${dir})_ses-${nr}"
+    sub_name=$(basename ${subID})
   fi
 
-  nighres_dir=${NIGHRES}/${subdir}
-  sampled_dir=${TOBESAMPLED}/${subdir}
+  if [[ ! -z ${ses} ]]; then
+    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
+    base_path=${sub_name}/ses-${nr}
+    base=${sub_name}_ses-${nr}
+  else
+    base_path=${sub_name}
+    base=${sub_name}
+  fi
+
+  nighres_dir=${NIGHRES}/${base_path}
+  sampled_dir=${TOBESAMPLED}/${base_path}
 
   #--------------------------------------------------------------------------------------------------------------------------------------------
   # Running MASSP with Nighres
@@ -111,7 +119,7 @@ for dir in ${search}; do
   if [[ ! -f ${sampled_data} ]]; then
 
     echo
-    echo "**************************************** Processing `basename ${dir}` ***************************************"
+    echo "**************************************** Processing ${sub_name} ***************************************"
 
     echo "Creating `basename ${sampled_data}`"
     
@@ -145,7 +153,7 @@ for dir in ${search}; do
 
   else
 
-    echo "`basename ${dir}`: sampled-data file already exists"
+    echo "${sub_name}: sampled-data file already exists"
 
   fi
 
