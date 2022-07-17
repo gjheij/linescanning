@@ -218,8 +218,13 @@ function get_module_nr() {
     # Function to fetch the module number by reading the 'help' info from the master-script. It
     # accepts a string to look for as argument.
     start=`sed -n '/Available modules/=' ${DIR_SCRIPTS}/shell/master`
-    end=`sed -n '/Notes:/=' ${DIR_SCRIPTS}/shell/master`
-    sed -n "${start},${end}p" ${DIR_SCRIPTS}/shell/master | grep -A0 "${1}" | awk '{print $2}' | cut -d':' -f1
+    end=`sed -n '/--END--/=' ${DIR_SCRIPTS}/shell/master`
+    mods=`sed -n "${start},${end}p" ${DIR_SCRIPTS}/shell/master | grep -A0 "${1}"  | awk '{print $1}' | cut -d"-" -f2 | cut -d':' -f1`
+
+    # store in array and sort
+    IFS=$'\n' mods_sort=($(sort <<<"${mods[*]}"))
+    unset IFS
+    echo ${mods_sort[@]}
   fi
 
 }
