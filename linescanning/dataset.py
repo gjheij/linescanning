@@ -1705,7 +1705,8 @@ for line-scanning data: """
 
                 # don't save figures if report=False
                 if self.report:
-                    save_as = self.save_as
+                    save_as = self.lsprep_figures
+                    print(f"Dataset.py: {save_as}")
                 else:
                     save_as = None
 
