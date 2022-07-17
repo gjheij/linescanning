@@ -25,7 +25,7 @@ Possible inputs for software are:
                tools"
 
 Usage:
-  spinoza_layering <input dir (FS|nighres)> <software>
+  spinoza_layering [options] <input dir> <software>
 
 Arguments:
   -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05

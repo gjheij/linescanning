@@ -22,6 +22,9 @@ By default, it's set to overwrite existing files in order to be able to iterate 
 preprocessing pipeline for optimizing the segmentations. To disable, run this particular module with
 the overwrite switch set to 'n': master -m <module> -o n
 
+Usage:
+  spinoza_mgdm [options] <skullstripped> <mgdm> <masks>
+
 Arguments:
   -s <subject>      subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
   -n <session>      session ID (e.g., 1, 2, or none)
@@ -30,9 +33,6 @@ Arguments:
   <skullstripped>   path to skullstripped data
   <mgdm>            path to output directory
   <masks>           path to masks
-
-Usage:
-  spinoza_mgdm <-s sub> <-n ses> <--gdh> <-o> <skullstripped> <mgdm> <masks>
 
 Example:
   spinoza_mgdm SKULLSTRIP NIGHRES/mgdm MASKS

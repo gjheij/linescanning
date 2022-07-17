@@ -16,18 +16,21 @@ tissue segmentation with FAST using skullstripped inputs created during spinoza_
 important that the range of these images is set correctly, with T1w having a range of 0-4095, and
 the T1map having a range of (0,5050). This should automatically be the case if you have ran the py-
 mp2rage module in combination with the masking module prior to running this. If not, run call_rescale
-on these images
-
-By default, it's set to overwrite existing files in order to be able to iterate over the structural
-preprocessing pipeline for optimizing the segmentations. To disable, run this particular module with
-the overwrite switch set to 'n': master -m <module> -o
+on these images.
 
 Usage:
   spinoza_segmentfast <-s sub> <-n ses> <skullstripped dir> <output dir> <overwrite>
 
+Arguments:
+  -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
+  -n <session>        session ID (e.g., 1, 2, or none)
+  -o                  overwrite existing files
+  <anat folder>       folder containing the files required for FAST. Input must be skullstripped
+  <output>            output folder (<subject>/[<ses->] will be appended!)
+
 Example:
-  spinoza_segmentfast $DIR_DATA_DERIV/skullstripped $DIR_DATA_DERIV/fsl
-  spinoza_segmentfast -s 001 -n 1 $DIR_DATA_DERIV/skullstripped $DIR_DATA_DERIV/fsl
+  spinoza_segmentfast DIR_DATA_DERIV/skullstripped DIR_DATA_DERIV/fsl
+  spinoza_segmentfast -s 001 -n 1 DIR_DATA_DERIV/skullstripped DIR_DATA_DERIV/fsl
 
 ---------------------------------------------------------------------------------------------------
 

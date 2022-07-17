@@ -18,7 +18,7 @@ in MNI-space to the subject space. We then multiply this image with the T1w/T2w 
 cent initial estimate of the sagittal sinus
 
 Usage:
-  spinoza_sinusfrommni <-s sub> <-n ses> <anat> <registration> <mask directory>
+  spinoza_sinusfrommni [options] <anat folder> <registration folder> <mask folder>
 
 Arguments:
   -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
@@ -26,8 +26,8 @@ Arguments:
   -o                  Overwrite existing output
   <anat directory>    directory containing the T1w and T2w files; should generally be pymp2rage-
                       folder
-  <registration>      path to directory where registration file is
-  <mask directory>    path to output mask directory
+  <registration>      path to directory where registration file is (output from spinoza_registration)
+  <mask directory>    path to output mask directory (to put final 'sinus'-mask)
 
 Eample:
   spinoza_sinusfrommni DIR_DATA_DERIV/pymp2rage DIR_DATA_DERIV/ants DIR_DATA_DERIV/manual_masks

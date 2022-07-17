@@ -18,7 +18,7 @@ only run it on the spinoza cluster. It calls upon call_linerecon, which internal
 for the reconstruction with MRecon based on scripts provided by Luisa Raimondo.
 
 Usage:
-  spinoza_linerecon <project root directory> <sourcedata>
+  spinoza_linerecon [options] <project root directory> <sourcedata>
 
 Arguments:
   -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05

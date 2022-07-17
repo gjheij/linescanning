@@ -16,8 +16,7 @@ find the file the we want to sample. The last argument specifies a tag to look f
 file (e.g., T1map)
 
 Usage:
-  spinoza_profiling <nighres output> <head directory of to-be-sampled files> <tag for to-be-sampled
-                    <file>
+  spinoza_profiling [options] <nighres input> <input folder> <extension for to-be-sampled file>
 
 Arguments:
   -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
@@ -29,7 +28,8 @@ Arguments:
   <tag>               tag to use to look for to-be-sampled dataset (e.g., T1map)
 
 Example:
-  spinoza_profiling $NIGHRES $DIR_DATA_HOME T1map
+  spinoza_profiling NIGHRES DIR_DATA_HOME T1map
+  spinoza_profiling -s 01 -n 2 NIGHRES DIR_DATA_HOME T1map
 
 ---------------------------------------------------------------------------------------------------
 

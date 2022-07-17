@@ -26,7 +26,7 @@ If you have MEMP2RAGE-data, then the script will look for the R2*-file in the sp
 If this is somewhere else, just copy it into that directory.
 
 Usage:
-  spinoza_sagittalsinus <-s sub> <-n ses> <dir anat> <dir masks> <itk | fv>
+  spinoza_sagittalsinus [options] <anat folder> <mask folder> <software [itk|fv]>
 
 Arguments:
   -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05

@@ -15,7 +15,7 @@ Subcortex segmentation using Nighres' MASSP-algorithm. Calls on call_nighresmass
 for more information on the required inputs.
 
 Usage:
-  spinoza_subcortex <project root dir> <prob seg dir> <region> <overwrite>
+  spinoza_subcortex [options] <project root dir> <prob seg dir> <region> <overwrite>
 
 Arguments:
   -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
