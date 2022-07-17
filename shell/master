@@ -311,7 +311,7 @@ Available modules:                                     Script                   
   -08:  Bias correction + SANLM denoising              (spinoza_biassanlm)              00:07:00
   -09:  Brain extract (CAT12 || ANTs || FSL)           (spinoza_brainextraction)        00:10:00
   -10:  Noise level estimation                         (spinoza_noiselevelestimation)   00:00:30
-  -11:  Dura estimation and skull estimations          (spinoza_dura)   00:08:00
+  -11:  Dura estimation and skull estimations          (spinoza_dura)                   00:08:00
   -12:  Create mask of sagittal sinus                  (spinoza_sagittalsinus)          00:03:00
   -13:  Combine all masks and apply to average         (spinoza_masking)                00:02:30
   -14:  Surface segmentation with FreeSurfer           (spinoza_freesurfer)             09:30:00
@@ -328,6 +328,7 @@ Available modules:                                     Script                   
   -25:  Project line to surface                        (spinoza_line2surface)           00:02:00
   -26:  Sample a dataset across depth with Nighres     (spinoza_profiling)              00:20:00
 
+--END--
 ---------------------------------------------------------------------------------------------------
 
 USAGE
@@ -349,7 +350,7 @@ fi
 if [[ ! -z ${WHICH_MOD} ]] && [[ "${@}" != *"-m"* ]]; then
   mod_nr=`get_module_nr ${WHICH_MOD}`
   if [[ ! -z ${mod_nr} ]]; then
-    echo "module ${mod_nr} contains \"${WHICH_MOD}\""
+    echo "module ${mod_nr} contain(s) \"${WHICH_MOD}\""
   else
     echo "could not find a module associated with \"${WHICH_MOD}\""
   fi
