@@ -18,7 +18,7 @@ wrapper for call_pybest that does the denoising of fMRI-data based on the confou
 during the preprocessing with fmriprep.
 
 Usage:
-  spinoza_denoising <-s sub> <-n ses> <fmriprep directory> <pybest output directory>
+  spinoza_denoising [options] <fmriprep directory> <pybest output directory>
 
 Arguments:
   -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05

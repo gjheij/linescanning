@@ -18,11 +18,6 @@ this, run fMRIprep, check segmentations, manually edit it as "${PREFIX}xxx_ses-1
 wmseg" or something alike. These 'manualseg' will be taken as 'inside' to boost areas that were not
 counted as brain.
 
-By default it will overwite existing files to avoid that you have to contanstly remove them, but for
-debugging reasons this module also has the option to disable overwrite mode. You can do this by spe-
-cifying 'spinoza_maskaverages <dir subject> <derivatives> n' or with the master script itself: 'mas-
-ter -m 13 -n'. As said, if you specify 'y' or leave it empty, it will overwrite existing files.
-
 Arguments:
   -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
   -n <session>        session ID (e.g., 1, 2, or none)
@@ -42,8 +37,8 @@ Usage:
                   <overwrite mode>
 
 Example:
-spinoza_masking <dir>/pymp2rage <dir>/masked_mp2rage <dir>/manual_masks <dir>/skullstripped
-spinoza_masking -s 01 -n 1 <dir>/pymp2rage <dir>/masked_mp2rage <dir>/manual_masks <dir>/skullstripped
+  spinoza_masking <dir>/pymp2rage <dir>/masked_mp2rage <dir>/manual_masks <dir>/skullstripped
+  spinoza_masking -s 01 -n 1 <dir>/pymp2rage <dir>/masked_mp2rage <dir>/manual_masks <dir>/skullstripped
 
 ---------------------------------------------------------------------------------------------------
 

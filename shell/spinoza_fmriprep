@@ -21,6 +21,9 @@ If you have a T2-weighted image as well, you can specify the root directory to t
 exists, we will copy it to the directory where the T1-weighted is located (<input directory>) so
 that it is included by fMRIprep.
 
+Usage:
+  spinoza_fmriprep [options] <anat dir> <derivatives folder> <mode> <T2 dir>
+
 Arguments:
   -l              don't submit to SGE, run locally
   -s <subject>    subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
@@ -38,9 +41,6 @@ Arguments:
   <T2 dir>        if you have a T2w-file, but that is not in <anat dir> (because you preprocessed
                   the T1w-file, but not the T2w-file), you can specify the directory where it lives
                   here. Generally this will be the same as <func dir>
-
-Usage:
-  spinoza_fmriprep <-s sub> <-n ses> <-f func dir> <anat dir> <derivaties folder> <mode> <T2 dir>
 
 Example:
   spinoza_fmriprep <project>/derivatives/masked_mp2rage <project>/derivatives anat

@@ -15,6 +15,25 @@ spinoza_freesurfer
 Surface parcellation with FreeSurfer. We only need to specify where to look for the T1w-image which
 stage we should run (default is 'all'), and where to look for a T2w-image if there is one.
 
+Usage:
+  spinoza_freesurfer [options] <directory with anats> <stage> <T2-directory>
+
+Arguments:
+  -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
+  -n <session>        session ID (e.g., 1, 2, or n)
+  -o                  overwrite existing files
+  <anat folder>       folder containing the T1w-file. In 'master', we'll look through various fol-
+                      ders. In order of priority:
+                        -'<derivatives>/masked_${DATA,,}'
+                        -'<derivatives>/denoised'
+                        -'<derivatives>/pymp2rage'
+                        -'DIR_DATA_HOME'
+                      this ensures a level of agnosticity about anatomical preprocessing. I.e., you
+                      don't have to run the full pipeline if you don't want to.
+  <freesurfer stage>  stage to run for FreeSurfer. By default 'all'
+  <T2-folder>         if specified, we'll look for a '*T2w.nii.gz' or '*FLAIR.nii.gz' image to add 
+                      to the FreeSurfer reconstruction.
+
 General approach for segmentation:
   - Run autorecon1:   call_freesurfer -s <subj ID> -t <T1> -p <T2> -r 1)      ~an hour
   - Fix skullstrip:   call_freesurfer -s <subj ID> -o gcut                    ~10 minutes
@@ -35,12 +54,9 @@ You can also specify a directory where the T2-weighted image is located. Do this
 scribed above. To you path, ${PREFIX}xxx/ses-x will be appended if the input path is not equal to DIR_DATA
 _HOME. Again, if it is, ${PREFIX}xxx/ses-x/anat will be appended as well.
 
-Usage:
-  spinoza_freesurfer <-s sub> <-n ses> <directory with anats> <stage> <T2-directory>
-
 Example:
-  spinoza_freesurfer $DIR_DATA_DERIV/masked_mp2rage all $DIR_DATA_HOME
-  spinoza_freesurfer -s 001 -n 1 $DIR_DATA_ANAT all $DIR_DATA_HOME
+  spinoza_freesurfer DIR_DATA_DERIV/masked_mp2rage all DIR_DATA_HOME
+  spinoza_freesurfer -s 001 -n 1 DIR_DATA_ANAT all DIR_DATA_HOME
 
 ---------------------------------------------------------------------------------------------------
 

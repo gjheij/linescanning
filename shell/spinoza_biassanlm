@@ -14,9 +14,13 @@ field correction with SPM. The subsequent "spinoza_brainextraction" should be ru
 flag as to turn off bias correction and denoising with CAT12. The input image is expected to reside 
 in the input directory and to contain "acq-${DATA}" and end with *T1w.nii.gz.
 
+Usage:
+  spinoza_biassanlm [options] <anat folder> <output folder>
+
 Arguments:
   -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
   -n <session>        session ID (e.g., 1, 2, or none)
+  -o                  overwrite existing files
   -b                  skip bias correction with SPM
   <anat dir>          parent directory containing the sub-xxx folders for anatomies. Can be e.g., 
                       DIR_DATA_HOME or DIR_DATA_HOME/derivatives/pymp2rage

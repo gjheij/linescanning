@@ -21,18 +21,15 @@ files have been named ""xxx_acq-MP2RAGE_T1w or something alike. This should have
 cally if you have run spinoza_scanner2bids prior.
 
 Usage:
-  spinoza_biascorrection <-s sub> <-n ses> <dir_to_input_file> <output dir> <T1w|inv-2>
+  spinoza_biascorrection [options] <anat folder> <output folder> <T1w|inv-2>
 
 Outputs:
   <output dir>/<subject>/ses-1/<subject>${SES}_acq-${DATA}_desc-bfc_<T1w|inv-2>.nii.gz
 
 Example:
-  spinoza_biascorrection $DIR_DATA_HOME $DIR_DATA_DERIV/ants "T1w"
-  spinoza_biascorrection $DIR_DATA_HOME $DIR_DATA_DERIV/ants "inv-2"
-  spinoza_biascorrection -s 001 -n 1 $DIR_DATA_HOME $DIR_DATA_DERIV/ants "inv-2"
-
-Notes:
-  Has the '-s' and '-n' switches to specify a particular subject and session if present
+  spinoza_biascorrection DIR_DATA_HOME DIR_DATA_DERIV/ants "T1w"
+  spinoza_biascorrection DIR_DATA_HOME DIR_DATA_DERIV/ants "inv-2"
+  spinoza_biascorrection -s 001 -n 1 DIR_DATA_HOME DIR_DATA_DERIV/ants "inv-2"
 
 ---------------------------------------------------------------------------------------------------
 

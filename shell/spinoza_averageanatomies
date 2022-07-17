@@ -19,20 +19,18 @@ of the MEMP2RAGE sequence. This will only happen if you have two elements in the
 variable is set to "AVERAGE"
 
 Usage:
-  spinoza_averagesanatomies <-s sub> <-n ses> <anats> <outputs>
+  spinoza_averagesanatomies [options] <anat folder> <output folder>
 
 Arguments:
   -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
   -n <session>        session ID (e.g., 1, 2, or none)
+  -o                  overwrite existing files
   <anat directory>    directory containing the files to be registered
   <output>            path to directory where registration file/outputs should be stored
 
 Example:
   spinoza_averagesanatomies DIR_DATA_DERIV DIR_DATA_DERIV
   spinoza_averagesanatomies -s 001 -n 1 DIR_DATA_DERIV DIR_DATA_DERIV
-
-Notes:
-  - Has the '-s' and '-n' switches to specify a particular subject and session if present
 
 ---------------------------------------------------------------------------------------------------------
 

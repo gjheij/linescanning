@@ -54,10 +54,6 @@ Example:
   spinoza_bestvertex -s 001 $DIR_DATA_HOME $DIR_DATA_DERIV V1_exvivo.thresh
   spinoza_bestvertex -s 001 -v "1957,8753" $DIR_DATA_HOME $DIR_DATA_DERIV V1_exvivo.thresh
 
-Notes:
-  - Has a '-v' switch to specify your own vertices; mind the format!! "lh,rh"
-  - Both these switches are optional and can be controlled with the master-script
-
 ---------------------------------------------------------------------------------------------------
 
 USAGE

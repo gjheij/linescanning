@@ -17,7 +17,7 @@ T1w-images (e.g., pymp2rage), the input INV2 image (e.g., the bias field correct
 folder, the nighres output folder, and the folder to store the masks.
 
 Usage:
-  spinoza_dura <-s sub> <-n ses> <input anat> <input inv2> <nighres output> <mask output>
+  spinoza_dura [options] <anat folder> <INV2 folder> <nighres output> <mask output>
 
 Arguments:
   -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05

@@ -30,10 +30,8 @@ Arguments:
   <mask directory>    path to output mask directory
 
 Eample:
-  spinoza_sinusfrommni ${DIR_DATA_DERIV}/pymp2rage ${DIR_DATA_DERIV}/ants ${DIR_DATA_DERIV}/manual_
-                       maskss
-  spinoza_sinusfrommni -s 001 -n 1 ${DIR_DATA_DERIV}/pymp2rage ${DIR_DATA_DERIV}/ants 
-                        ${DIR_DATA_DERIV}/manual_masks
+  spinoza_sinusfrommni DIR_DATA_DERIV/pymp2rage DIR_DATA_DERIV/ants DIR_DATA_DERIV/manual_masks
+  spinoza_sinusfrommni -s 001 -n 1 DIR_DATA_DERIV/pymp2rage DIR_DATA_DERIV/ants DIR_DATA_DERIV/manual_masks
 
 ---------------------------------------------------------------------------------------------------
 

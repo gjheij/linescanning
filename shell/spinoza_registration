@@ -14,25 +14,46 @@ function Usage {
 ---------------------------------------------------------------------------------------------------
 spinoza_registration
 
-wrapper for registration with ANTs. This script should be preceded by spinoza_memp2rage & spinoza-
-mp2rage to create the UNI T1w images that we're registering here. It utilizes the variable ACQ in
-the setup script to derive what should be registered to what. In theory, the first element of ACQ
-is taken as reference, and the second element will be registered to that. If ACQ has only one ele-
-ment and 'MNI' is specified, this first element is registered to the MNI template. This step is
-relatively obsolete given that we don't really need it in MNI space + we can do that step with fMRI-
-prep.
+Wrapper for registration with ANTs. This script should be preceded by spinoza_qmri maps. It utili-
+zes the variable ACQ in the setup script to derive what should be registered to what. In theory, 
+the first element of ACQ is taken as reference, and the second element will be registered to that. 
+If ACQ has only one element and 'MNI' is specified, this first element is registered to the MNI tem-
+plate. This step is relatively obsolete given that we don't really need it in MNI space + we can do 
+that step with fMRIprep, but can be useful if you need the registration file mapping T1w-to-MNI, 
+without warping the actual 4D file to MNI-space (saves disk space).
 
 Usage:
-  spinoza_registration <-s sub> <-n ses> <root input> <root output> <session> <data type>
+  spinoza_registration [options] <anat folder> <output folder> <registration type>
+
+Arguments:
+  -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
+  -n <session>        session ID (e.g., 1, 2, or none)
+  -o                  overwrite existing files
+  --affine            use affine-registration (12 parameters)
+  --rigid             use rigid-body registration (6 parameters). Default if <registration type> 
+                      != 'mni' and no registration method is specified
+  --syn               use SyN-diffeomorphic registration. Default if <registration type> == 'mni'
+                      and no registration method is specified
+  <anat folder>       folder containing images for registration. If DATA == "AVERAGE", we'll look
+                      for T1w-images containing 'acq-MP2RAGE_' and 'acq-MP2RAGEME_', create a warp
+                      file, and apply this file to MP2RAGEME-files with ('T1w' 'T1map' 'R2starmap
+                      Files ending with something other than 'T1w' or 'T1map' will also be copied 
+                      to have 'acq-AVERAGE' in the filename, rather than 'space-MP2RAGE'. This en-
+                      sures compatibility with 'spinoza_sagittalsinus' when DATA == AVERAGE. Regis-
+                      tered files will end up in the <anat folder>, the warp file itself in <output
+                      folder>
+  <output folder>     folder where warp files are stored. Registered files are stored in <anat fol-
+                      der>
+  <registration type> which registration should be carried out. If empty, we'll default to a regis-
+                      tration between MP2RAGEME and MP2RAGE (assumes that DATA == AVERAGE). This 
+                      version is called as 'master -m 05a'. If 'mni', we'll register the T1w-file
+                      in <anat folder> with FSL's 1mm template (MNI152NLin6Asym). This version is 
+                      called as 'master -m 05b'. If type == 'mni', we'll default to the first ele-
+                      ment in ${ACQ[@]} to register to MNI. Generally, this will/should be MP2RAGE     
 
 Example:
-  spinoza_registration <project>/derivatives/pymp2rage <project>/derivatives/ants <session> 
-                       mp2rage
-  spinoza_registration -s 001 -n 1 <project>/derivatives/pymp2rage <project>/derivatives/ants <ses-
-                       sion> 
-
-Notes:
-  Has the '-s' and '-n' switches to specify a particular subject and session if present
+  spinoza_registration <project>/derivatives/pymp2rage <project>/derivatives/ants mp2rage
+  spinoza_registration -s 001 -n 1 <project>/derivatives/pymp2rage <project>/derivatives/ants
 
 ---------------------------------------------------------------------------------------------------
 
@@ -161,7 +182,7 @@ for subID in ${search}; do
     txt="Registering ${ACQ[0]^^}-T1w to MNI152 template"
     suffix=MNI152NLin6Asym
     fixed=${FSLDIR}/data/standard/MNI152_T1_1mm.nii.gz
-    moving=`find "${input_dir}" -type f \( -iname "*${DATA}*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
+    moving=`find "${input_dir}" -type f \( -iname "*acw_${DATA}_*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
     ext="from-${suffix}_to-T1w"
     output=$(dirname ${moving})/$(basename ${moving} _T1w.nii.gz)_space-${suffix}_T1w.nii.gz
     write_output=0

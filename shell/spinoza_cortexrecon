@@ -13,7 +13,7 @@ on the required inputs. This script is by default in overwrite mode, meaning tha
 earlier will be overwritten when re-ran. To disable, run this module as master -m <module> -o n
 
 Usage:
-  spinoza_cortexrecon <project root dir> <prob seg dir> <region> <overwrite>
+  spinoza_cortexrecon [options] <project root dir> <prob seg dir> <region>
 
 Arguments:
   -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05

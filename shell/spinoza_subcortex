@@ -21,15 +21,15 @@ Arguments:
   -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
   -n <session>        session ID (e.g., 1, 2, or none)
   -o                  overwrite existing files
-  <qsm dir>           parent directory containing the files required for MASSP. Files should end with:
+  <anat folder>       folder containing the files required for MASSP. Files should end with:
                         -"*_R1.nii.gz"   > 1/T1map file
                         -"*_R2s.nii.gz"  > 1/T2* file
                         -"*_QSM.nii.gz"  > QSM file
-  <output>          root output directory (<subject>/[<ses->] will be appended!)
+  <output>            output folder (<subject>/[<ses->] will be appended!)
 
 Example:
-  spinoza_subcortex $DIR_DATA_HOME $DIR_DATA_DERIV/nighres
-  spinoza_subcortex -s ${PREFIX}001 -n 1 $DIR_DATA_HOME $DIR_DATA_DERIV/nighres
+  spinoza_subcortex DIR_DATA_HOME DIR_DATA_DERIV/nighres
+  spinoza_subcortex -s 001 -n 1 DIR_DATA_HOME DIR_DATA_DERIV/nighres
 
 ---------------------------------------------------------------------------------------------------
 
@@ -159,7 +159,7 @@ for subID in ${search}; do
     fi
 
     ${job} \
-      -s ${subID} \
+      -s ${sub_id} \
       -n ${nr} \
       -i ${use_dir} \
       -o ${output_dir} \

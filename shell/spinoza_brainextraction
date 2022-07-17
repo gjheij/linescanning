@@ -17,7 +17,7 @@ you added the location of antsBrainExtraction.sh to your path e.g., in your ~/.b
 \"export PATH=PATH:/directory/with/antsBrainExtraction.sh\"
 
 Usage:
-  spinoza_brainextraction <input dir> <skullstrip output> <mask output> <ants/FSL/cat12>
+  spinoza_brainextraction [options] <input dir> <skullstrip output> <mask output> <ants/FSL/cat12>
 
 Arguments:
   -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05

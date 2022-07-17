@@ -28,15 +28,14 @@ variable, the fMRIprep-directory you'll need to specify with the -f flag BEFORE 
 arguments, and the MASK-directory you will already specify.
 
 Usage:
-  spinoza_extractregions <-s sub> <-n ses> <-o> <-f fprep> <nighres root> <custom comb> <region to
-                         extract>
+  spinoza_extractregions [options] <nighres folder> <probability folder> <ROI>
 
 Arguments:
   -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
   -n <session>        session ID (e.g., 1, 2, or none)
   -o                  overwrite existing files
   <nighres folder>    folder with nighres output
-  <mask folder>       folder containing masks
+  <prob folder>       folder containing masks
   <region>            region to extract with Nighres
 
 Example:
