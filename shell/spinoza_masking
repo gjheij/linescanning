@@ -148,7 +148,6 @@ for subID in ${search}; do
     else
       echo
       echo "**************************************** Processing ${sub_name} ***************************************"
-      echo ${txt}
 
       if [[ ! -f ${MASKED} ]]; then
         
