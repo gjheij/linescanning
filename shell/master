@@ -299,45 +299,35 @@ Additional options:
   - Specify processing type fMRIprep (anat|func)      master -m <module> -t anat
 
 Available modules:                                     Script                           Time (pp)
-  - 00: Register anat ses-1 to ms ses-1 for planning   (spinoza_lineplanning)
-  - 01: Make new session for subject                   (spinoza_bidssession)
-  - 02: Convert raw files to nifti                     (spinoza_scanner2bids)
-  - 03: Reconstruction of line data                    (spinoza_linerecon)
-  - 04: Estimate T1's from mp2rage and memp2rage       (spinoza_qmrimaps)               00:01:30
-  - 05: Register T1 from memp2rage to T1 from mp2rage  (spinoza_registration)           00:03:00
-  - 06: Register T1 from mp2rage to MNI152             (spinoza_registration)             -
-  - 07: Make sinus mask from T1w/T2w ratio             (spinoza_sinusfrommni)           00:03:00
-  - 08: Bias correction + SANLM denoising              (spinoza_biassanlm)              00:07:00
-  - 09: Brain extract (CAT12 || ANTs || FSL)           (spinoza_brainextraction)        00:10:00
-  - 10: Noise level estimation                         (spinoza_noiselevelestimation)   00:00:30
-  - 11: Dura estimation and skull estimations          (spinoza_dura)   00:08:00
-  - 12: Create mask of sagittal sinus                  (spinoza_sagittalsinus)          00:03:00
-  - 13: Combine all masks and apply to average         (spinoza_masking)                00:02:30
-  - 14: Surface segmentation with FreeSurfer           (spinoza_freesurfer)             09:30:00
-  - 15: Preprocessing with fMRIprep                    (spinoza_fmriprep)               14:00:00
-  - 16: Data denoising with pybest                     (spinoza_denoising)              00:05:00
-  - 17: pRF-fitting with pRFpy                         (spinoza_fitprfs)                00:07:00
-  - 18: Determine best vertex with pycortex            (spinoza_bestvertex)             00:01:30
-  - 19: Tissue segmentation with FAST                  (spinoza_segmentfast)            00:17:00
-  - 20: Tissue segmentation with MGDM                  (spinoza_mgdm)                   00:11:45
-  - 21: Region extraction with nighres                 (spinoza_extractregions)         00:02:00
-  - 22: Cortex reconstruction with nighres             (spinoza_cortexrecon)            00:05:30
-  - 23: Layering with nighres/surface_tools            (spinoza_layering)               00:07:30
-  - 24: Subcortex parcellation with nighres            (spinoza_segmentsubcortex)       00:10:00
-  - 25: Project line to surface                        (spinoza_line2surface)           00:02:00
-  - 26: Sample a dataset across depth with Nighres     (spinoza_profiling)              00:20:00
+  -00:  Register anat ses-1 to ms ses-1 for planning   (spinoza_lineplanning)
+  -01:  Make new session for subject                   (spinoza_bidssession)
+  -02:  Convert raw files to nifti                     (spinoza_scanner2bids)
+  -03:  Reconstruction of line data                    (spinoza_linerecon)
+  -04:  Estimate T1's from mp2rage and memp2rage       (spinoza_qmrimaps)               00:01:30
+  -05a: Register T1 from memp2rage to T1 from mp2rage  (spinoza_registration)           00:03:00
+  -05b: Register T1 from mp2rage to MNI152             (spinoza_registration)           01:05:00
+  -06:  Average T1w/T1map from MP2RAGE & MP2RAGEME     (spinoza_averageanatomies)       00:02:00
+  -07:  Make sinus mask from T1w/T2w ratio             (spinoza_sinusfrommni)           00:03:00
+  -08:  Bias correction + SANLM denoising              (spinoza_biassanlm)              00:07:00
+  -09:  Brain extract (CAT12 || ANTs || FSL)           (spinoza_brainextraction)        00:10:00
+  -10:  Noise level estimation                         (spinoza_noiselevelestimation)   00:00:30
+  -11:  Dura estimation and skull estimations          (spinoza_dura)   00:08:00
+  -12:  Create mask of sagittal sinus                  (spinoza_sagittalsinus)          00:03:00
+  -13:  Combine all masks and apply to average         (spinoza_masking)                00:02:30
+  -14:  Surface segmentation with FreeSurfer           (spinoza_freesurfer)             09:30:00
+  -15:  Preprocessing with fMRIprep                    (spinoza_fmriprep)               14:00:00
+  -16:  Data denoising with pybest                     (spinoza_denoising)              00:05:00
+  -17:  pRF-fitting with pRFpy                         (spinoza_fitprfs)                00:07:00
+  -18:  Determine best vertex with pycortex            (spinoza_bestvertex)             00:01:30
+  -19:  Tissue segmentation with FAST                  (spinoza_segmentfast)            00:17:00
+  -20:  Tissue segmentation with MGDM                  (spinoza_mgdm)                   00:11:45
+  -21:  Region extraction with nighres                 (spinoza_extractregions)         00:02:00
+  -22:  Cortex reconstruction with nighres             (spinoza_cortexrecon)            00:05:30
+  -23:  Layering with nighres/surface_tools            (spinoza_layering)               00:07:30
+  -24:  Subcortex parcellation with nighres            (spinoza_segmentsubcortex)       00:10:00
+  -25:  Project line to surface                        (spinoza_line2surface)           00:02:00
+  -26:  Sample a dataset across depth with Nighres     (spinoza_profiling)              00:20:00
 
-Notes:
-  - Module 5 (register T1 to MNI152) and 13 (brain extract T1 with ANTs) are relatively obsolete
-    These commands are therefore commented out.
-  - Time = approximate run time per subject > Run time of total pipeline is about 1hr30 on SGE
-  - There are two modes we can run this pipeline in, to be specified in the setup:
-    a session where we have both MP2RAGE and MP2RAGEME data, and a solo MP2RAGE mode. This can be
-    specified by setting the "DATA" variable in the setup script.
-    You can see if it was the MP2RAGEME-mode with the "space-AVERAGE" flag, while the MP2RAGE-mode
-    is annotated by "space-MP3RAGE".
-  - To know which mode we're running, type from your programs directory "call_whichmode"
-  
 ---------------------------------------------------------------------------------------------------
 
 USAGE
@@ -1275,16 +1265,18 @@ if [[ $? -eq 0 ]]; then
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Equivolumetric layering"
 
-  if [[ -z ${LAYER_FLAG} || ${LAYER_FLAG} == "surface" ]]; then
-    INPUT_DIR=${FS}
-  elif [[ ${LAYER_FLAG} == "nighres" ]]; then
+  if [[ -z ${LAYER_FLAG} || ${LAYER_FLAG} == "nighres" ]]; then
     INPUT_DIR=${DIR_DATA_DERIV}/nighres
+    SOFTWARE="nighres"
+  elif [[ ${LAYER_FLAG} == "surface" ]]; then
+    SOFTWARE="surface"
+    INPUT_DIR=${FS}
   else
     echo "ERROR in `basename ${0}`: Unknown flag \"${LAYER_FLAG}\". Must be \"nighres\" or \"surface\""
     exit 1
   fi
 
-  ${job} spinoza_layering ${SUBJECT} ${SESSION} ${INPUT_DIR} ${LAYER_FLAG}
+  ${job} spinoza_layering ${SUBJECT} ${SESSION} ${INPUT_DIR} ${SOFTWARE}
   
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_layering exited with non-zero status"
