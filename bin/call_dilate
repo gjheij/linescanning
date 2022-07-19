@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 import os
-from numpy.lib.arraysetops import isin
 from scipy import ndimage
 import nibabel as nb
 import sys
@@ -17,10 +16,10 @@ Dilate a binary mask with ndimage
 
 Args:
     <input img>     path to input image
-    <output img>    path to output image (if left empty, <input img> will be overwritten)
+    <output img>    path to output image
     <iterations>    number of iterations
     <mask>          If a mask is given, only those elements with a True value at the corresponding 
-                    mask element are modified at each iteration.
+                    mask element are modified at each iteration [optional]
 
 Example:
     call_dilate  input.nii.gz output.nii.gz
@@ -52,12 +51,12 @@ Example:
 
     if mask:
         mask = nb.load(mask).get_fdata()
-        dilated = ndimage.binary_dilation(img.get_fdata(), iterations=nr_iter, mask=mask)
-    else:
-        dilated = ndimage.binary_dilation(img.get_fdata(), iterations=nr_iter)
-        
-    nb.Nifti1Image(dilated, affine=img.affine, header=img.header).to_filename(output)
 
+    # cmd
+    dilated = ndimage.binary_dilation(img.get_fdata(), iterations=nr_iter, mask=mask)
+    
+    # write to file
+    nb.Nifti1Image(dilated, affine=img.affine, header=img.header).to_filename(output)
 
 if __name__ == "__main__":
     main(sys.argv[1:])
