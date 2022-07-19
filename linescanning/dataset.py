@@ -826,6 +826,13 @@ class ParseExpToolsFile(ParseEyetrackerFile):
                 self.fa = len(self.false_alarms)/len(self.id_no_target)
                 self.cr = len(self.correct_rejection)/len(self.id_no_target)
 
+                # set FA to something if 0 to avoid d' = inf
+                if self.fa == float(0):
+                    self.fa = 0.5*(1/len(self.trimmed['trial_nr'].values))
+                    add_fa_txt = f"[added {round(self.fa,2)} to avoid d' = inf]"
+                else:
+                    add_fa_txt = ""
+                
                 # calculate d-prime
                 self.hitZ = stats.norm.ppf(self.hits)
                 self.faZ = stats.norm.ppf(self.fa)
@@ -839,10 +846,10 @@ class ParseExpToolsFile(ParseEyetrackerFile):
 
             if self.verbose:
                 if hasattr(self, 'dPrime'):
-                    print(f" Hits:\t{self.hits}\t({len(self.rts)}/{len(self.id_target)})")
-                    print(f" Miss:\t{self.miss}\t({(len(self.id_target)-len(self.rts))}/{len(self.id_target)})")
-                    print(f" FA:\t{self.fa}\t({len(self.false_alarms)}/{len(self.id_no_target)})")
-                    print(f" CR:\t{self.cr}\t({len(self.correct_rejection)}/{len(self.id_no_target)})")
+                    print(f" Hits:\t{round(self.hits,2)}\t({len(self.rts)}/{len(self.id_target)})")
+                    print(f" Miss:\t{round(self.miss,2)}\t({(len(self.id_target)-len(self.rts))}/{len(self.id_target)})")
+                    print(f" FA:\t{round(self.fa,2)}\t({len(self.false_alarms)}/{len(self.id_no_target)})\t{add_fa_txt}")
+                    print(f" CR:\t{round(self.cr,2)}\t({len(self.correct_rejection)}/{len(self.id_no_target)})")
                     print(f" D':\t{round(self.dPrime,2)}\t(0=guessing;1=good;2=awesome)")
                 
                 print(f" Average reaction time (RT) = {round(self.rts.mean(),2)}s (relative to '{self.RT_relative_to}').")
