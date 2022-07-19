@@ -344,11 +344,12 @@ if [[ ! -z ${xfms} ]]; then
     # check ses-flag
     if [[ ${wf_name} == *"ses-"* ]]; then
       ses_id=`echo ${wf_name} | cut -d'_' -f2`
+      base_dir=${pref}${subj_ID}/ses-${ses_id}
     else
-      ses_id=""
+      base_dir=${pref}${subj_ID}
     fi
 
-    out_xfm=${output_dir}/${pref}${subj_ID}/${ses_id}/func/${wf_name}_from-bold_to-T1w_mode-image_xfm.txt
+    out_xfm=${output_dir}/${base_dir}/func/${wf_name}_from-bold_to-T1w_mode-image_xfm.txt
     cp ${xfm} ${out_xfm}
 
   done
