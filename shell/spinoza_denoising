@@ -93,80 +93,84 @@ echo "==========================================================================
 # Run it
 for subID in ${search}; do
 
-  # collect subject name
-  if [[ ! -z ${sub} ]]; then
-    sub_name=${PREFIX}${subID}
-    sub_id=${subID}
-  else
-    sub_name=$(basename ${subID})
-    sub_id=`get_id ${sub_name} ${PREFIX}`
-  fi
+  if [[ ${subID} != *"html"* ]]; then
 
-  if [[ ! -z ${ses} ]]; then
-    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
-    base_path=${sub_name}/ses-${nr}
-    base=${sub_name}_ses-${nr}
-  else
-    base_path=${sub_name}
-    base=${sub_name}
-  fi
-
-  if [[ ${OW} -eq 1 ]]; then
-    # overwrite mode enabled
-    if [[ -d ${DENOISE}/${base_path} ]]; then
-      rm -r ${DENOISE}/${base_path}
+    # collect subject name
+    if [[ ! -z ${sub} ]]; then
+      sub_name=${PREFIX}${subID}
+      sub_id=${subID}
+    else
+      sub_name=$(basename ${subID})
+      sub_id=`get_id ${sub_name} ${PREFIX}`
     fi
-  fi
 
-  if [[ ! -d ${DENOISE} ]]; then
-    mkdir -p ${DENOISE}
-  fi
+    if [[ ! -z ${ses} ]]; then
+      nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
+      base_path=${sub_name}/ses-${nr}
+      base=${sub_name}_ses-${nr}
+    else
+      base_path=${sub_name}
+      base=${sub_name}
+    fi
 
-  if [[ -d ${FPREP}/${base_path} ]]; then
-
-    if [[ ! -d ${DENOISE}/${base_path} ]]; then
-
-      echo
-      echo "**************************************** Processing ${sub_name} ***************************************"
-      echo "Running pybest denoising"
-
-      # check if spinoza_setup contains PYBEST_SPACE and PYBEST_NORM
-      if [[ -z ${PYBEST_SPACE} ]]; then
-        PYBEST_SPACE="fsnative"
+    if [[ ${OW} -eq 1 ]]; then
+      # overwrite mode enabled
+      if [[ -d ${DENOISE}/${base_path} ]]; then
+        rm -r ${DENOISE}/${base_path}
       fi
+    fi
 
-      if [[ -z ${PYBEST_SPACE} ]]; then
-        PYBEST_NORM="zscore"
-      fi
+    if [[ ! -d ${DENOISE} ]]; then
+      mkdir -p ${DENOISE}
+    fi
 
-      # full path is needed for qsub
-      ${job} ${DIR_SCRIPTS}/bin/call_pybest \
-        -s ${sub_id} \
-        -n "${nr}" \
-        -o ${DENOISE} \
-        -r ${PYBEST_SPACE} \
-        -e ${PYBEST_ENV} \
-        -f ${FPREP} \
-        -c ${cpu} \
-        -z ${PYBEST_NORM}
+    if [[ -d ${FPREP}/${base_path} ]]; then
 
-      if [[ $? != 0 ]]; then
+      if [[ ! -d ${DENOISE}/${base_path} ]]; then
+
         echo
-        echo "---------------------------------------------------------------------------------------------------"
-        echo "ERROR in `basename ${0}`: call_pybest exited with non-zero status"
-        exit 1
-      fi        
+        echo "**************************************** Processing ${sub_name} ***************************************"
+        echo "Running pybest denoising"
+
+        # check if spinoza_setup contains PYBEST_SPACE and PYBEST_NORM
+        if [[ -z ${PYBEST_SPACE} ]]; then
+          PYBEST_SPACE="fsnative"
+        fi
+
+        if [[ -z ${PYBEST_SPACE} ]]; then
+          PYBEST_NORM="zscore"
+        fi
+
+        # full path is needed for qsub
+        ${job} ${DIR_SCRIPTS}/bin/call_pybest \
+          -s ${sub_id} \
+          -n "${nr}" \
+          -o ${DENOISE} \
+          -r ${PYBEST_SPACE} \
+          -e ${PYBEST_ENV} \
+          -f ${FPREP} \
+          -c ${cpu} \
+          -z ${PYBEST_NORM}
+
+        if [[ $? != 0 ]]; then
+          echo
+          echo "---------------------------------------------------------------------------------------------------"
+          echo "ERROR in `basename ${0}`: call_pybest exited with non-zero status"
+          exit 1
+        fi        
+
+      else
+
+        echo "${sub_name}: data already denoised"
+
+      fi
 
     else
 
-      echo "${sub_name}: data already denoised"
+      echo "${sub_name}: might want to run fMRIprep first.."
+      continue
 
     fi
-
-  else
-
-    echo "${sub_name}: might want to run fMRIprep first.."
-    continue
 
   fi
 
