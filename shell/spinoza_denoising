@@ -69,7 +69,7 @@ DENOISE=${@:$OPTIND+1:1}
 
 if [[ -z ${sub} ]]; then
   # loop through subjects
-  search="${INPUT}/${PREFIX}*"
+  search="${FPREP}/${PREFIX}*"
 else
   # read specified subjects into array
   IFS=', ' read -r -a search <<< "${sub}"
