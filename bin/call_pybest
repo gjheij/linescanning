@@ -60,7 +60,7 @@ USAGE
     exit 1
 }
 
-while getopts s:n:o:s:f:c:e:z:v: arg; do
+while getopts s:n:o:s:f:c:e:z:v:r: arg; do
   case $arg in
     s)  sub=${OPTARG}
           ;;
