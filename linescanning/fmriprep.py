@@ -8,15 +8,6 @@ from nipype.interfaces.fsl import Split as FSLSplit
 from nipype.pipeline import engine as pe
 from nipype.interfaces import utility as niu
 from niworkflows.utils.connections import pop_file, listify
-from niworkflows.viz.utils import (
-    robust_set_limits,
-    rotation2canonical,
-    rotate_affine,
-    extract_svg,
-    cuts_from_bbox,
-    compose_view,
-)
-from nipype.interfaces.mixins import reporting
 from fmriprep.interfaces import DerivativesDataSink
 from fmriprep.interfaces.reports import FunctionalSummary
 
@@ -33,7 +24,6 @@ from bids import BIDSLayout
 import numpy as np
 from fmriprep.config import DEFAULT_MEMORY_MIN_GB
 import os
-from uuid import uuid4
 
 class init_single_subject_wf():
 
@@ -1618,145 +1608,3 @@ def init_func_derivatives_wf(
         ])
 
     return workflow
-
-def plot_registration(
-    anat_nii,
-    div_id,
-    plot_params=None,
-    order=("z", "x", "y"),
-    cuts=None,
-    estimate_brightness=False,
-    label=None,
-    contour=None,
-    compress="auto",
-    dismiss_affine=False,
-):
-    """
-    Plots the foreground and background views
-    Default order is: axial, coronal, sagittal
-    """
-    from svgutils.transform import fromstring
-    from nilearn.plotting import plot_anat
-    from nilearn import image as nlimage
-
-    plot_params = {} if plot_params is None else plot_params
-
-    # Use default MNI cuts if none defined
-    if cuts is None:
-        raise NotImplementedError  # TODO
-
-    out_files = []
-    if estimate_brightness:
-        plot_params = robust_set_limits(anat_nii.get_fdata().reshape(-1), plot_params)
-
-    # FreeSurfer ribbon.mgz
-    ribbon = contour is not None and np.array_equal(
-        np.unique(contour.get_fdata()), [0, 2, 3, 41, 42]
-    )
-
-    if ribbon:
-        contour_data = contour.get_fdata() % 39
-        white = nlimage.new_img_like(contour, contour_data == 2)
-        pial = nlimage.new_img_like(contour, contour_data >= 2)
-
-    if dismiss_affine:
-        canonical_r = rotation2canonical(anat_nii)
-        anat_nii = rotate_affine(anat_nii, rot=canonical_r)
-        if ribbon:
-            white = rotate_affine(white, rot=canonical_r)
-            pial = rotate_affine(pial, rot=canonical_r)
-        if contour:
-            contour = rotate_affine(contour, rot=canonical_r)
-
-    # Plot each cut axis
-    for i, mode in enumerate(list(order)):
-        plot_params["display_mode"] = mode
-        plot_params["cut_coords"] = cuts[mode]
-        if i == 0:
-            plot_params["title"] = label
-        else:
-            plot_params["title"] = None
-
-        # Generate nilearn figure
-        display = plot_anat(anat_nii, **plot_params)
-        if ribbon:
-            kwargs = {"levels": [0.5], "linewidths": 0.5}
-            display.add_contours(white, colors="b", **kwargs)
-            display.add_contours(pial, colors="r", **kwargs)
-        elif contour is not None:
-            display.add_contours(contour, colors="r", levels=[0.5], linewidths=0.5)
-
-        svg = extract_svg(display, compress=compress)
-        display.close()
-
-        # Find and replace the figure_1 id.
-        svg = svg.replace("figure_1", "%s-%s-%s" % (div_id, mode, uuid4()), 1)
-        out_files.append(fromstring(svg))
-
-    return out_files
-
-class RegistrationRC(reporting.ReportCapableInterface):
-    """An abstract mixin to registration nipype interfaces."""
-
-    _fixed_image = None
-    _moving_image = None
-    _fixed_image_mask = None
-    _fixed_image_label = "fixed"
-    _moving_image_label = "moving"
-    _contour = None
-    _dismiss_affine = False
-    _n_cuts = None
-
-    def _generate_report(self):
-        """Generate the visual report."""
-        from nilearn.image import threshold_img, load_img
-        from nilearn.masking import apply_mask, unmask
-
-        fixed_image_nii = load_img(self._fixed_image)
-        moving_image_nii = load_img(self._moving_image)
-        contour_nii = load_img(self._contour) if self._contour is not None else None
-
-        if self._fixed_image_mask:
-            fixed_image_nii = unmask(
-                apply_mask(fixed_image_nii, self._fixed_image_mask),
-                self._fixed_image_mask,
-            )
-            # since the moving image is already in the fixed image space we
-            # should apply the same mask
-            moving_image_nii = unmask(
-                apply_mask(moving_image_nii, self._fixed_image_mask),
-                self._fixed_image_mask,
-            )
-            mask_nii = load_img(self._fixed_image_mask)
-        else:
-            mask_nii = threshold_img(fixed_image_nii, 1e-3)
-
-        if not self._fixed_image_mask and contour_nii:
-            cuts = cuts_from_bbox(contour_nii, cuts=self._n_cuts)
-        else:
-            cuts = cuts_from_bbox(mask_nii, cuts=self._n_cuts)
-
-        # Call composer
-        compose_view(
-            plot_registration(
-                fixed_image_nii,
-                "fixed-image",
-                estimate_brightness=True,
-                cuts={'z': [0]},
-                order=('z'),
-                label=self._fixed_image_label,
-                contour=contour_nii,
-                dismiss_affine=self._dismiss_affine,
-            ),
-            plot_registration(
-                moving_image_nii,
-                "moving-image",
-                order=('z'),
-                estimate_brightness=True,
-                cuts={'z': [0]},
-                label=self._moving_image_label,
-                contour=contour_nii,
-                dismiss_affine=self._dismiss_affine,
-            ),
-            out_file=self._out_report,
-        )        
