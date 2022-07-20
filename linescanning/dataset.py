@@ -1575,6 +1575,10 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                 self.ts_complex     = self.ts_wcsmtSNR
                 self.ts_magnitude   = np.abs(self.ts_wcsmtSNR)
 
+            elif func_file.endswith('gii'):
+                self.gif_obj = ParseGiftiFile(func_file)
+                self.ts_magnitude = self.gif_obj.data.T
+
             elif func_file.endswith("npy"):
                 self.ts_magnitude   = np.load(func_file)
 
