@@ -446,7 +446,7 @@ def select_stims(settings_dict, stim_library, frames=225, baseline_frames=15, ra
         boolean whether you want to completely randomize your experiment or not. Generally you'll want to set this to false, to create a regular intervals between stimuli (default = False).
     shuffle: bool 
         if randomize is turned off, we can still shuffle the order of the stimulus presentations. This you can do by setting shuffle to True (default = True)
-    verbose: bool 
+    verbose: bool, optional
         Set to True if you want some messages along the way (default = False)
 
     Returns
@@ -1168,8 +1168,8 @@ class pRFmodelFitting():
         fit the HRF with the pRF-parameters as implemented in `prfpy`
     nr_jobs: int, optional
         Set the number of jobs. By default 1.
-    verbose: bool
-        print messages to the terminal
+    verbose: bool, optional
+        Set to True if you want some messages along the way (default = False)
 
     Returns
     ----------
@@ -1507,6 +1507,7 @@ class pRFmodelFitting():
                     
                 params = data['pars']
                 self.settings = data['settings']
+                setattr(self, f'{model}_{stage}_predictions', data['predictions'])
                 
                 if self.verbose:
                     print("Reading settings from pickle-file (safest option; overwrites other settings)")
@@ -1537,22 +1538,25 @@ class pRFmodelFitting():
 
         setattr(self, f'{model}_{stage}', params)
 
-        if acq != None:
-            search_list = [model, stage, acq, "predictions.npy"]
-        else:
-            search_list = [model, stage, "predictions.npy"]
+        # try to find predictions if not embedded in pickle file
+        if isinstance(params_file, str):
+            if not params_file.endswith('pkl'):
+                if acq != None:
+                    search_list = [model, stage, acq, "predictions.npy"]
+                else:
+                    search_list = [model, stage, "predictions.npy"]
 
-        if run != None:
-            search_list.extend(f"run-{run}")          
+                if run != None:
+                    search_list.extend(f"run-{run}")          
 
-        preds = utils.get_file_from_substring(search_list, os.path.dirname(params_file), return_msg=None)
-        if preds != None:
-            if isinstance(preds, list):
-                raise ValueError(f"Found multiple instances for {search_list}: {preds}")
-            else:
-                print(f"Predictions: {preds}")
+                preds = utils.get_file_from_substring(search_list, os.path.dirname(params_file), return_msg=None)
+                if preds != None:
+                    if isinstance(preds, list):
+                        raise ValueError(f"Found multiple instances for {search_list}: {preds}")
+                    else:
+                        print(f"Predictions: {preds}")
 
-            setattr(self, f'{model}_{stage}_predictions', np.load(preds))
+                    setattr(self, f'{model}_{stage}_predictions', np.load(preds))
 
     def make_predictions(self, vox_nr=None, model='gauss', stage='iter'):
         
@@ -1768,8 +1772,8 @@ def find_most_similar_prf(reference_prf, look_in_params, verbose=False, return_n
         pRF-parameters from the reference pRF, where `reference_prf[0]` = **x**, `reference_prf[1]` = **y**, and `reference_prf[2]` = **size**
     look_in_params: numpy.ndarray
         array of pRF-parameters in which we will be looking for `reference_prf`
-    verbose: bool
-        turn on/off verbose
+    verbose: bool, optional
+        Set to True if you want some messages along the way (default = False)
     return_nr: str, int
         same parameter as in :func:`linescanning.utils.find_nearest`, where we can specify how many matches we want to have returned (default = "all") 
     r2_thresh: float
@@ -2095,6 +2099,10 @@ class CollectSubject:
         Fetch most recent settings file rather than `analysis_yaml`, by default None. 
     model: str, optional
         This flag can be set to read in a specific 'best_vertex' file as the location parameters sometimes differ between a Gaussian and DN-fit.
+    correct_screen: bool, optional
+        Mid-way our experiments, the boldscreen was moved closer to the bore, meaning the field-of-view changed with a factor of 1.08. For most of our normalization parameters, this correction is applied already to the x,y, and size parameters. Therefore the default is False.
+    verbose: bool, optional
+        Set to True if you want some messages along the way (default = True)
 
     Example
     ----------
@@ -2102,7 +2110,7 @@ class CollectSubject:
     >>> subject_info = utils.CollectSubject(subject, derivatives=<path_to_derivatives>, settings='recent', hemi="lh")
     """
 
-    def __init__(self, subject, derivatives=None, cx_dir=None, prf_dir=None, ses=1, analysis_yaml=None, hemi="lh", settings=None, model="gauss", correct_screen=True, verbose=True):
+    def __init__(self, subject, derivatives=None, cx_dir=None, prf_dir=None, ses=1, analysis_yaml=None, hemi="lh", settings=None, model="gauss", correct_screen=False, verbose=True):
 
         self.subject        = subject
         self.derivatives    = derivatives
@@ -2127,6 +2135,7 @@ class CollectSubject:
             if derivatives != None:
                 self.prf_dir = opj(self.derivatives, 'prf', self.subject, f'ses-{self.prf_ses}')
 
+                
         # get design matrix, vertex info, and analysis file
         if self.prf_dir != None:
             self.design_fn      = utils.get_file_from_substring("vis_design.mat", self.prf_dir)
@@ -2134,6 +2143,7 @@ class CollectSubject:
             self.func_data_lr   = np.load(utils.get_file_from_substring("avg_bold_hemi-LR.npy", self.prf_dir))
             self.func_data_l    = np.load(utils.get_file_from_substring("avg_bold_hemi-L.npy", self.prf_dir))
             self.func_data_r    = np.load(utils.get_file_from_substring("avg_bold_hemi-R.npy", self.prf_dir))
+
         # load specific analysis file
         if self.analysis_yaml != None:
             self.settings = yaml.safe_load(self.analysis_yaml)
@@ -2152,6 +2162,11 @@ class CollectSubject:
         
             with open(self.analysis_yaml) as file:
                 self.settings = yaml.safe_load(file)
+
+        # set pycortex directory
+        if self.cx_dir == None:
+            if derivatives != None:
+                self.cx_dir = opj(self.derivatives, 'pycortex', self.subject)
 
         if self.cx_dir != None:
             self.vert_fn        = utils.get_file_from_substring([self.model, "best_vertices.csv"], self.cx_dir)
@@ -2202,7 +2217,7 @@ class CollectSubject:
         """return the vertex ID of target vertex"""
         return self.vert_info.get('index', hemi=hemi)
 
-    def target_prediction_prf(self, xkcd=False, line_width=1, freq_spectrum=None, save_as=None, **kwargs):
+    def target_prediction_prf(self, xkcd=False, freq_spectrum=None, save_as=None, **kwargs):
         _, self.prediction, _ = self.modelling.plot_vox(vox_nr=self.target_vertex, 
                                                         model=self.model, 
                                                         stage='iter', 
@@ -2210,7 +2225,6 @@ class CollectSubject:
                                                         xkcd=xkcd,
                                                         title='pars',
                                                         transpose=True, 
-                                                        line_width=line_width,
                                                         freq_spectrum=freq_spectrum, 
                                                         freq_type="fft",
                                                         save_as=save_as,
