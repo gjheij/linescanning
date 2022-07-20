@@ -23,6 +23,8 @@ Usage:
 Arguments:
   -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
   -n <session>        session ID (e.g., 1, 2, or none)
+  -t <task ID>        limit pybest processing to a specific task. Default is all tasks in TASK_SES1
+                      in the spinoza_setup-file
   -o                  overwrite existing files
   <project root>      base directory containing the derivatives and the subject's folders.
   <derivatives>       path to the derivatives folder
@@ -42,7 +44,8 @@ USAGE
 OW=0
 job="bash"
 cpu=1
-while getopts os:n: argument
+task_flag=""
+while getopts os:n:t: argument
 do
   case ${argument} in
     s)  sub=${OPTARG}
@@ -53,7 +56,9 @@ do
           ;;         
     c)  job="qsub -q ${SGE_QUEUE_LONG} -pe smp 10"
         cpu=10
-          ;;                    
+          ;;
+    t)  task_flag="-t ${OPTARG}" 
+          ;;
   esac
 done
 
@@ -129,7 +134,6 @@ for subID in ${search}; do
 
         echo
         echo "**************************************** Processing ${sub_name} ***************************************"
-        echo "Running pybest denoising"
 
         # check if spinoza_setup contains PYBEST_SPACE and PYBEST_NORM
         if [[ -z ${PYBEST_SPACE} ]]; then
@@ -149,7 +153,8 @@ for subID in ${search}; do
           -e ${PYBEST_ENV} \
           -f ${FPREP} \
           -c ${cpu} \
-          -z ${PYBEST_NORM}
+          -z ${PYBEST_NORM} \
+          ${task_flag}
 
         if [[ $? != 0 ]]; then
           echo

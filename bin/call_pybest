@@ -60,7 +60,8 @@ USAGE
     exit 1
 }
 
-while getopts s:n:o:s:f:c:e:z:v:r: arg; do
+task_ids=${TASK_SES1[@]}
+while getopts s:n:o:s:f:c:e:z:v:r:t: arg; do
   case $arg in
     s)  sub=${OPTARG}
           ;;
@@ -78,6 +79,8 @@ while getopts s:n:o:s:f:c:e:z:v:r: arg; do
           ;;
     z)  normalization=${OPTARG}
           ;;
+    t)  task_ids=(${OPTARG})
+          ;;          
   esac
 done
 
@@ -120,14 +123,6 @@ else
   base_dir="sub-${sub}"
 fi
 
-# Make sure we run the specified session or all sessions pybest can find will be
-# processed
-if [[ ! -z ${task} ]]; then
-  task_input="--task ${task}"
-else
-  task_input=""
-fi
-
 # Set output directory if specified, otherwise default to /derivatives/pybest
 if [[ ! -z ${outputdir} ]]; then
   output_dir=${outputdir}
@@ -162,17 +157,14 @@ if [ ! -d ${input_dir}/${base_dir}/func ]; then
   exit 1
 fi
 
-if [[ ${in_space} == "fsnative" ]]; then
-
-  # running left hemisphere
-  # echo "pybest ${sub_input} ${ses_input} ${task_input} --space ${in_space} --hemi L ${cpu_input} --verbose ERROR ${input_dir}"
-  pybest ${sub_input} ${ses_input} ${task_input} --space ${in_space} --hemi L ${cpu_input} --verbose ERROR --save-all ${input_dir}
-
-  # running left hemisphere
-  pybest ${sub_input} ${ses_input} ${task_input} --space ${in_space} --hemi R ${cpu_input} --verbose ERROR --save-all ${input_dir}
-
-else
-
-  pybest ${sub_input} ${ses_input} ${task_input} --space ${in_space} --verbose ERROR --save-all ${input_dir}
-
-fi
+# loop through tasks; I know pybest can do ALL tasks at once, but it's nice to have a limiter in here
+for task_id in ${task_ids[@]}; do
+  echo "Running pybest on task: \"${task_id}\""
+  if [[ ${in_space} == "fsnative" || ${in_space} == "fsaverage" ]]; then
+    for hemi in "L" "R"; do
+      pybest ${sub_input} ${ses_input} --task ${task_id} --space ${in_space} --hemi ${hemi} ${cpu_input} --verbose ERROR --save-all ${input_dir}
+    done
+  else
+    pybest ${sub_input} ${ses_input} --task ${task_id} --space ${in_space} --verbose ERROR --save-all ${input_dir}
+  fi
+done

@@ -1014,7 +1014,13 @@ if [[ $? -eq 0 ]]; then
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Data denoising with pybest"
 
-  ${job} spinoza_denoising ${SUBJECT} ${SESSION} ${SGE} ${OW} ${DIR_DATA_DERIV}/fmriprep ${DIR_DATA_DERIV}/pybest
+  if [[ ! -z ${TYPE} ]]; then
+    TASK_ID="-t ${TYPE}"
+  else
+    TASK_ID=""
+  fi   
+
+  ${job} spinoza_denoising ${SUBJECT} ${SESSION} ${SGE} ${OW} ${TASK_ID} ${DIR_DATA_DERIV}/fmriprep ${DIR_DATA_DERIV}/pybest
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_denoising exited with non-zero status"
