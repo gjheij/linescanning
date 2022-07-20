@@ -85,10 +85,16 @@ fi
 fwd=`find $workdir -type f -name "out_fwd.tfm" 2>/dev/null`
 inv=`find $workdir -type f -name "out_inv.tfm" 2>/dev/null`
 
-if [ ! -z ${fwd} ] && [ ! -z ${inv} ]; then
+if [ ! -z ${fwd} ]; then
     cp ${fwd} ${outputdir}_from-bold_to-T1w_mode-image_xfm.txt 2>/dev/null
-    cp ${fwd} ${outputdir}_from-T1w_to-bold_mode-image_xfm.txt 2>/dev/null
 else
-    echo "ERROR in `basename ${0}`: missing files. Check if workflow was executed correctly"
+    echo "ERROR in `basename ${0}`: missing bold-to-T1w file. Check if workflow was executed correctly"
+    exit 1
+fi
+
+if [ ! -z ${inv} ]; then
+    cp ${inv} ${outputdir}_from-T1w_to-bold_mode-image_xfm.txt 2>/dev/null
+else
+    echo "ERROR in `basename ${0}`: missing bold-to-T1w file. Check if workflow was executed correctly"
     exit 1
 fi
