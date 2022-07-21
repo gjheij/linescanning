@@ -1240,11 +1240,11 @@ class pRFmodelFitting():
         #----------------------------------------------------------------------------------------------------------------------------------------------------------
         # Fetch the settings
         self.settings, self.settings_file, self.prf_stim_ = generate_model_params(model=self.model, 
-                                                                                dm=self.design_matrix, 
-                                                                                outputdir=self.output_dir, 
-                                                                                TR=self.TR,
-                                                                                settings=self.settings_fn,
-                                                                                fit_hrf=self.fit_hrf)
+                                                                                  dm=self.design_matrix, 
+                                                                                  outputdir=self.output_dir, 
+                                                                                  TR=self.TR,
+                                                                                  settings=self.settings_fn,
+                                                                                  fit_hrf=self.fit_hrf)
 
         # overwrite rsq-threshold from settings file
         if self.rsq_threshold != None:
@@ -1284,19 +1284,25 @@ class pRFmodelFitting():
         elif isinstance(self.hrf, list):
             if self.verbose:
                 print(f"Instantiate HRF with: {self.hrf}")
-            self.hrf = HRF(hrf_params=self.hrf, TR=self.TR)
+            self.hrf = HRF()
+            self.hrf.create_spm_hrf(hrf_params=self.hrf, TR=self.TR, force=True)
 
         else:
             # try to read HRF parameters from settings
             try:
                 hrf_pars = self.settings['hrf']
             except:
-                hrf_pars = [1,4.6,0]
+                hrf_pars = [1,1,0]
 
             if self.verbose:
                 print(f"Instantiate HRF with: {hrf_pars}")
                 
-            self.hrf = HRF(hrf_params=hrf_pars, TR=self.TR)
+            self.hrf = HRF()
+            self.hrf.create_spm_hrf(hrf_params=hrf_pars, TR=self.TR, force=True)
+
+
+        if self.verbose:
+            print(f"HRF: {self.hrf}")
         
         #----------------------------------------------------------------------------------------------------------------------------------------------------------
         # whichever model you run, run the Gaussian first
