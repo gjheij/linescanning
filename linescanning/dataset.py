@@ -1534,10 +1534,10 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
             
             if self.report:
                 self.report_obj = core.Report(os.path.dirname(self.lsprep_dir),
-                                            self.run_uuid,
-                                            subject_id=self.sub,
-                                            packagename="lsprep",
-                                            config=self.config)
+                                              self.run_uuid,
+                                              subject_id=self.sub,
+                                              packagename="lsprep",
+                                              config=self.config)
 
                 # generate report
                 self.report_obj.generate_report()
@@ -1717,7 +1717,6 @@ for line-scanning data: """
                 # don't save figures if report=False
                 if self.report:
                     save_as = self.lsprep_figures
-                    print(f"Dataset.py: {save_as}")
                 else:
                     save_as = None
 
