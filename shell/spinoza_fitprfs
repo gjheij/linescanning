@@ -289,7 +289,7 @@ for subID in ${search}; do
             job="python"
           else
             if [[ ${run_locally} -eq 0 ]]; then
-              job="qsub -q ${SGE_QUEUE_LONG} -pe smp 5 -wd ${prf_dir} -N ${sub_id}_${task}"
+              job="qsub -q ${SGE_QUEUE_LONG} -pe smp 5 -wd ${prf_dir} -N s${sub_id}_${task}"
             elif [[ ${run_locally} -eq 1 ]]; then
               job="python"
             else
