@@ -174,8 +174,8 @@ Example:
         else:
             raise ValueError(f"Unknown input directory '{inputdir}'. Expecting output from pybest ('*desc-denoised_bold.npy') or fMRIPrep ('*bold.func.gii')")
 
-    # search for space-/task-/ and file ending
-    search_for = [f"task-{task}", file_ending]
+    # search for space-/task-/ and file ending; add run as well to avoid the concatenated version being included
+    search_for = ["run-", f"task-{task}", file_ending]
     if space != None:
         search_for += [f"space-{space}"]
 
@@ -234,6 +234,7 @@ Example:
             raise ValueError(f"Mismatch between number of vertices in pRF-analysis ({n_verts}) and FreeSurfer ({n_verts_fs})..?\nYou're probably using an older surface reconstruction. Check if you've re-ran fMRIprep again with new FreeSurfer-segment")
     
     # save files
+    print("Saving averaged data")
     np.save(opj(outputdir, f'{out}_hemi-LR_desc-avg_bold.npy'), m_prf_tc_data)
     np.save(opj(outputdir, f'{out}_hemi-L_desc-avg_bold.npy'), m_prf_tc_data[:,:n_verts[0]])
     np.save(opj(outputdir, f'{out}_hemi-R_desc-avg_bold.npy'), m_prf_tc_data[:,n_verts[0]:])
