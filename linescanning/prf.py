@@ -11,7 +11,7 @@ import pandas as pd
 from past.utils import old_div
 from prfpy import rf,stimulus
 from prfpy.fit import Iso2DGaussianFitter, Norm_Iso2DGaussianFitter
-from prfpy.model import Iso2DGaussianModel, Norm_Iso2DGaussianModel
+from prfpy.model import Iso2DGaussianModel, Norm_Iso2DGaussianModel, HRF
 import random
 from scipy.ndimage import rotate
 from scipy import signal, io
@@ -1272,6 +1272,32 @@ class pRFmodelFitting():
         if self.model.lower() != "gauss" and self.model.lower() != "norm":
             raise ValueError(f"Model specification needs to be either 'gauss' or 'norm'; got {model}.")
 
+        # make compatible with prfpy's HRF-class?
+        if isinstance(self.hrf, np.ndarray):
+            if self.hrf.ndim < 2:
+                self.hrf = self.hrf[np.newaxis,...]
+            
+            if self.verbose:
+                print(f"Instantiate HRF with: '{type(self.hrf)}'")
+
+            self.hrf = HRF(self.hrf)
+        elif isinstance(self.hrf, list):
+            if self.verbose:
+                print(f"Instantiate HRF with: {self.hrf}")
+            self.hrf = HRF(hrf_params=self.hrf, TR=self.TR)
+
+        else:
+            # try to read HRF parameters from settings
+            try:
+                hrf_pars = self.settings['hrf']
+            except:
+                hrf_pars = [1,4.6,0]
+
+            if self.verbose:
+                print(f"Instantiate HRF with: {hrf_pars}")
+                
+            self.hrf = HRF(hrf_params=hrf_pars, TR=self.TR)
+        
         #----------------------------------------------------------------------------------------------------------------------------------------------------------
         # whichever model you run, run the Gaussian first
 
@@ -1335,7 +1361,7 @@ class pRFmodelFitting():
             self.gaussian_fitter.grid_fit(ecc_grid=self.settings['grids']['eccs'],
                                           polar_grid=self.settings['grids']['polars'],
                                           size_grid=self.settings['grids']['sizes'],
-                                          pos_prfs_only=self.settings['pos_prfs_only'])
+                                          grid_bounds=[tuple(self.settings['bounds']['prf_ampl'])])
             
             elapsed = (time.time() - start)
 
@@ -1432,7 +1458,9 @@ class pRFmodelFitting():
                                       gaussian_params=self.old_params_filt,
                                       n_batches=self.nr_jobs,
                                       verbose=self.verbose,
-                                      rsq_threshold=self.rsq)
+                                      rsq_threshold=self.rsq,
+                                      grid_bounds=[tuple(self.settings['bounds']['prf_ampl']),
+                                                   tuple(self.settings['bounds']['neur_bsl'])])
 
             elapsed = (time.time() - start)
 
