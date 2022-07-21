@@ -1252,8 +1252,6 @@ class pRFmodelFitting():
                 print(f"Setting rsq-threshold to user-defined value: {self.rsq_threshold}")
             self.rsq = self.rsq_threshold
         else:
-            if self.verbose:
-                print(f"Setting rsq-threshold to default value: {self.settings['rsq_threshold']}")
             self.rsq = self.settings['rsq_threshold']
 
         # check if we got a pRF-stim object
@@ -1528,7 +1526,7 @@ class pRFmodelFitting():
 
         return bounds
 
-    def load_params(self, params_file, model='gauss', stage='iter', acq=None, run=None):
+    def load_params(self, params_file, model='gauss', stage='iter', acq=None, run=None, hrf=None):
 
         """Load in a numpy array into the class; allows for quick plotting of voxel timecourses"""
 
@@ -1575,13 +1573,21 @@ class pRFmodelFitting():
         # try to find predictions if not embedded in pickle file
         if isinstance(params_file, str):
             if not params_file.endswith('pkl'):
-                if acq != None:
-                    search_list = [model, stage, acq, "predictions.npy"]
-                else:
-                    search_list = [model, stage, "predictions.npy"]
+                
+                # refine search parameters
+                search_list = [model, stage, "predictions.npy"]
 
+                # acq flag
+                if acq != None:
+                    search_list += [f"acq-{acq}"]
+
+                # hrf flag
+                if hrf:
+                    search_list += ["hrf-true"]
+                
+                # run flag
                 if run != None:
-                    search_list.extend(f"run-{run}")          
+                    search_list += [f"run-{run}"]        
 
                 preds = utils.get_file_from_substring(search_list, os.path.dirname(params_file), return_msg=None)
                 if preds != None:
@@ -1926,7 +1932,7 @@ class SizeResponse():
         self.subject_info = subject_info
 
         # define visual field in degree of visual angle
-        self.ss_deg = 3.0 * np.degrees(np.arctan(self.prf_stim.screen_size_cm /(2.0*self.prf_stim.screen_distance_cm)))
+        self.ss_deg = 2*np.degrees(np.arctan(self.prf_stim.screen_size_cm /(2.0*self.prf_stim.screen_distance_cm)))
         self.x = np.linspace(-self.ss_deg/2, self.ss_deg/2, self.n_pix)
 
 
@@ -2252,14 +2258,14 @@ class CollectSubject:
         return self.vert_info.get('index', hemi=hemi)
 
     def target_prediction_prf(self, xkcd=False, freq_spectrum=None, save_as=None, **kwargs):
-        _, self.prediction, _ = self.modelling.plot_vox(vox_nr=self.target_vertex, 
-                                                        model=self.model, 
-                                                        stage='iter', 
-                                                        make_figure=True, 
-                                                        xkcd=xkcd,
-                                                        title='pars',
-                                                        transpose=True, 
-                                                        freq_spectrum=freq_spectrum, 
-                                                        freq_type="fft",
-                                                        save_as=save_as,
-                                                        **kwargs)        
+        self.targ_pars, self.targ_prf, self.targ_pred = self.modelling.plot_vox(vox_nr=self.target_vertex, 
+                                                                                model=self.model, 
+                                                                                stage='iter', 
+                                                                                make_figure=True, 
+                                                                                xkcd=xkcd,
+                                                                                title='pars',
+                                                                                transpose=True, 
+                                                                                freq_spectrum=freq_spectrum, 
+                                                                                freq_type="fft",
+                                                                                save_as=save_as,
+                                                                                **kwargs)        
