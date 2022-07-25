@@ -36,10 +36,12 @@ REG_TYPE=""           # spinoza_registration
 SES_TYPE=""           # spinoza_scanner2bids
 GDH_FLAG=""           # spinoza_mgdm
 LAYER_FLAG=""         # spinoza_layering
+WARP_ONLY=""          # spinoza_fmriprep
+psc_flag=""           # spinoza_denoising
 
 # use long options in bash:
 # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options
-declare -a opts=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface")
+declare -a opts=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only")
 while getopts :-:wcjqom:s:h:n:t:l:v:p:x:u:r:e:i: arg
 do
   case ${arg} in
@@ -110,7 +112,13 @@ do
           ;;
         surface)
           LAYER_FLAG="surface"
-          ;;              
+          ;;       
+        warp_only)
+          WARP_ONLY="--warp_only"
+          ;;                    
+        psc)
+          psc_flag="--psc"
+          ;;               
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}, possible options are:"
@@ -283,6 +291,8 @@ Args:
   --sge             maps to '-c' in spinoza_linerecon & spinoza_denoising; submits jobs to cluster
   --surface         use Wagstyl's equivolumetric layering function
   --syn             use 'syn'-registration (spinoza_registration)
+  --warp_only       spinoza_fmriprep; skip full processing, but make new 'boldref'-images and copy bold-
+                    to-T1w registration files
 
 Usage:
   master -m <MODULES TO RUN>
@@ -986,7 +996,7 @@ if [[ $? -eq 0 ]]; then
     ANAT_DIR=${DIR_DATA_HOME}
   fi
 
-  ${job} spinoza_fmriprep ${use_bbr} ${run_local} ${SUBJECT} ${SESSION} ${confFile} ${REMOVE_WF} -f ${DIR_DATA_HOME} -m ${TYPE} ${ANAT_DIR} ${DIR_DATA_DERIV} ${DIR_DATA_HOME}
+  ${job} spinoza_fmriprep ${WARP_ONLY} ${use_bbr} ${run_local} ${SUBJECT} ${SESSION} ${confFile} ${REMOVE_WF} -f ${DIR_DATA_HOME} -m ${TYPE} ${ANAT_DIR} ${DIR_DATA_DERIV} ${DIR_DATA_HOME}
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_fmriprep exited with non-zero status"
@@ -1020,7 +1030,7 @@ if [[ $? -eq 0 ]]; then
     TASK_ID=""
   fi   
 
-  ${job} spinoza_denoising ${SUBJECT} ${SESSION} ${SGE} ${OW} ${TASK_ID} ${DIR_DATA_DERIV}/fmriprep ${DIR_DATA_DERIV}/pybest
+  ${job} spinoza_denoising ${psc_flag} ${SUBJECT} ${SESSION} ${SGE} ${OW} ${TASK_ID} ${DIR_DATA_DERIV}/fmriprep ${DIR_DATA_DERIV}/pybest
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_denoising exited with non-zero status"
