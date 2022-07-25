@@ -3,6 +3,7 @@
 #---------------------------------------------------------------------------------------------------------
 # check if there's is a setup file containing the major paths and source it if it exists
 call_loadsetup
+source ${DIR_SCRIPTS}/shell/spinoza_setup
 
 #---------------------------------------------------------------------------------------------------------
 # Create help text
@@ -60,6 +61,8 @@ fi
 
 # Check for subject & session flags
 bbr_flag=""
+warp_only=""
+run_local=0
 while getopts :-:ls:r:n:f:m:c: argument
 do
 case ${argument} in
@@ -68,6 +71,9 @@ case ${argument} in
         no_bbr)
           bbr_flag="--no_bbr"
           ;;          
+        warp_only)
+          warp_only="--warp_only"
+          ;;                
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}" >&2
@@ -85,6 +91,8 @@ case ${argument} in
     c)  conf=${OPTARG}
           ;;
     r)  remove_wf=${OPTARG}
+          ;;
+    l)  run_local=1
           ;;          
   esac
 done
@@ -134,8 +142,10 @@ for subID in ${search}; do
   # collect subject name
   if [[ ! -z ${sub} ]]; then
     sub_name=${PREFIX}${subID}
+    sub_id=${subID}
   else
     sub_name=$(basename ${subID})
+    sub_id=`get_id ${sub_name} ${PREFIX}`
   fi
 
   if [[ ! -z ${ses} ]]; then
@@ -241,30 +251,27 @@ for subID in ${search}; do
 
   # decide the job type (depending on SGE, can be either qsub or call_fmriprep; for anything else it's call_fmriprep)
   if [[ ${PLACE} == "SGE" ]]; then
-    if [[ "${@}" == *"-l"* ]]; then
+    if [[ ${run_local} -eq 1 ]]; then
       job="call_fmriprep"
-      exec_flag="-c SGE"
     else
-      job="qsub -q ${SGE_QUEUE_LONG} -N fprep_${subID} -o ${workdir} ${DIR_SCRIPTS}/bin/call_fmriprep"
-      exec_flag="-c SGE"
+      job="qsub -q ${SGE_QUEUE_LONG} -N fprep_${sub_id} -o ${workdir} ${DIR_SCRIPTS}/bin/call_fmriprep"
     fi 
   else
     job="call_fmriprep"
-    exec_flag="-c local"
   fi
 
   # execute the command
   ${job} \
-    -s ${subID} \
+    -s ${sub_id} \
     -m ${MODE} \
     -b ${FPREP_BINDING} \
     -r ${INPUT} \
     -d ${OUTPUT} \
     -w ${workdir} \
-    ${exec_flag} \
     ${confFile} \
     ${task_id} \
-    ${bbr_flag}
+    ${bbr_flag} \
+    ${warp_only}
 
   if [[ $? != 0 ]]; then
     echo "ERROR in `basename ${0}`: call_fmriprep did not execute cleanly"
