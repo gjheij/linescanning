@@ -32,8 +32,6 @@ Arguments:
                     'anat' to get the segmentations right
   -r <root>         project root directory from which to run fmriprep. Default is DIR_DATA_HOME
   -d <derivatives>  derivatives directory. Default is DIR_DATA_DERIV
-  -c <SGE|local>    if 'SGE', the script is submitted, while if 'local' is specified, the script is
-                    run locally. Takes ages, therefore 'SGE' is default
   -i <simg>         singularity image that can be specified if -c flag is set to SGE
   -b <binding>      binding point that can be specified if -c flag is set to SGE
   -w <work>         working directory to store intermediate files. Default is PATH_HOME/programs/
@@ -43,7 +41,10 @@ Arguments:
   -x <config>       specify config file to guide fMRIprep
   -t <task ID>      limit the preprocessing to a certain task; instead of this flag you can also 
                     use a configuration file to make the criteria more explicit                
-  -u                skip fMRIPrep, but re-do the 'boldref'-images and copy the bold-to-T1w warps
+  --warp_only       skip fMRIPrep, but re-do the 'boldref'-images and copy the bold-to-T1w warps
+  --sge             run fMRIPrep with singularity-configuration. Default singularity image should 
+                    be specified in the setup file (if can with 'spinoza_fmriprep'). Otherwise,
+                    use the '-i' flag to point to a singularity image.
 
 Example:
   call_fmriprep -s 001 (simplest form, runs the entire pipeline)
@@ -59,6 +60,16 @@ USAGE
 # Deal with arguments
 WARP_ONLY=0
 bbr_flag=""
+mode="anat"
+anat_only_flag="--anat-only"
+derivatives=${DIR_DATA_DERIV}
+license=${DIR_SCRIPTS}/misc/license.txt
+cifti_flag=""
+config_flag=""
+task_flag=""
+syn_flag=""
+init_flag=""
+fprep_container=${FPREP_SIMG}
 while getopts :-:us:m:r:d:c:i:b:w:l:x:t: arg
 do
   case ${arg} in
@@ -69,6 +80,9 @@ do
           # cannot use no-bbr and header registration so make init variable empty
           BOLD_T1W_INIT=""
           ;;
+        warp_only)
+          WARP_ONLY=1
+          ;;                 
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}" >&2
@@ -83,8 +97,6 @@ do
           ;;
     d)  DERIV=${OPTARG}
           ;;
-    c)  SGE=${OPTARG}
-          ;;
     i)  IMG=${OPTARG}
           ;;
     b)  BIND=${OPTARG}
@@ -96,9 +108,7 @@ do
     x)  CONFIG=${OPTARG}
           ;;
     t)  TASK_ID=${OPTARG}
-          ;;
-    u)  WARP_ONLY=1
-          ;;            
+          ;;        
   esac
 done
 
@@ -119,9 +129,7 @@ fi
 
 #-----------------------------------------------------------------------------
 # Set default mode if none specified
-if [[ -z ${MODE} ]]; then
-  mode="anat"
-else
+if [[ ! -z ${MODE} ]]; then
   mode=${MODE}
 fi
 
@@ -139,9 +147,7 @@ fi
 
 #-----------------------------------------------------------------------------
 # Set default derivatives directory if none specified
-if [[ -z ${DERIV} ]]; then
-  derivatives=${DIR_DATA_DERIV}
-else
+if [[ ! -z ${DERIV} ]]; then
   derivatives=${DERIV}
 fi
 
@@ -163,33 +169,19 @@ fi
 
 #-----------------------------------------------------------------------------
 # Set default FS-license if none specified
-if [[ -z ${LIC} ]]; then
-  license=${DIR_SCRIPTS}/misc/license.txt
-else
+if [[ ! -z ${LIC} ]]; then
   license=${LIC}
 fi
 
 #-----------------------------------------------------------------------------
-# Set default system if none specified
-if [[ -z ${SGE} ]]; then
-  system="SGE"
-else
-  system=${SGE}
-fi
-
-#-----------------------------------------------------------------------------
 # Check if we need to output CIFTIs
-if [[ -z ${CIFTI} ]]; then
-  cifti_flag=""
-else
+if [[ ! -z ${CIFTI} ]]; then
   cifti_flag="--cifti-output ${CIFTI}"
 fi
 
 #-----------------------------------------------------------------------------
 # Check if we received configuration file
-if [[ -z ${CONFIG} ]]; then
-  config_flag=""
-else
+if [[ ! -z ${CONFIG} ]]; then
   config_flag="--bids-filter-file ${CONFIG}"
 fi
 
@@ -197,87 +189,69 @@ fi
 # Check if we received task ID
 if [[ ! -z ${TASK_ID} ]]; then
   task_flag="--task-id ${TASK_ID}"
-else
-  task_flag=""
 fi
 
 #-----------------------------------------------------------------------------
 # Check if we need to output CIFTIs
-if [[ -z ${DO_SYN} ]]; then
+if [[ ${DO_SYN} -eq 1 ]]; then
   syn_flag="--use-syn-sdc"
-else
-  if [[ ${DO_SYN} -eq 1 ]]; then
-    syn_flag="--use-syn-sdc"
-  else
-    syn_flag=""
-  fi
 fi
 
 #-----------------------------------------------------------------------------
 # Check how to initialize bold-to-T1w registration
-if [[ -z ${BOLD_T1W_INIT} ]]; then
-  init_flag=""
-else
-  if [[ ${BOLD_T1W_INIT} == "register" ]] || [[ ${BOLD_T1W_INIT} == "header" ]]; then
-    init_flag="--bold2t1w-init ${BOLD_T1W_INIT}"
-  else
-    init_flag=""
-  fi
+if [[ ${BOLD_T1W_INIT} == "register" ]] || [[ ${BOLD_T1W_INIT} == "header" ]]; then
+  init_flag="--bold2t1w-init ${BOLD_T1W_INIT}"
 fi
 
+#-----------------------------------------------------------------------------
+# Set default container if none specified
+if [[ ! -z ${IMG} ]]; then
+  fprep_container=${IMG}
+fi
+
+# Define command line
+if [[ ! -z ${fprep_container} && -f ${fprep_container} ]]; then
+
+  #-----------------------------------------------------------------------------
+  # Set default binding point if none specified
+  if [[ -z ${BIND} ]]; then
+    binding=${PATH_HOME}
+  else
+    binding=${BIND}
+  fi
+
+
+  if [[ ! -f ${fprep_container} ]]; then
+    echo "Could not find singularity image \"${fprep_container}\" for fmriprep.."
+    exit 1
+  fi
+
+  # define SGE command
+  run_cmd="singularity run --cleanenv -B ${binding}:${binding} ${fprep_container}"
+  
+else
+  run_cmd="fmriprep"
+fi
+
+# overwrite anat only if 'func' is specified
+if [[ ${mode} != "anat" ]]; then
+  anat_only_flag="" 
+fi
+
+# set nthreads
+nthreads=15
+nthread_flag="--nthreads ${nthreads}"
+
+# output directory structure has changed after v21: https://github.com/nipreps/fmriprep/releases/tag/21.0.0
+VERSION=`${run_cmd} --version | cut -d" " -f2 | cut -d"." -f1`
+if [[ `echo "${VERSION//[!0-9]/}"` -lt "21" ]]; then
+  output_dir=${derivatives}
+else
+  output_dir=${derivatives}/fmriprep
+fi
+
+# run cmd if warp_only=0
 if [[ ${WARP_ONLY} -eq 0 ]]; then
-
-  # Define command line
-  if [ ${system} == "SGE" ]; then
-
-
-    #-----------------------------------------------------------------------------
-    # Set default binding point if none specified
-    if [[ -z ${BIND} ]]; then
-      binding=${PATH_HOME}
-    else
-      binding=${BIND}
-    fi
-
-    #-----------------------------------------------------------------------------
-    # Set default container if none specified
-    if [[ -z ${IMG} ]]; then
-      fprep_container=${FPREP_SIMG}
-    else
-      fprep_container=${IMG}
-    fi
-
-    if [[ ! -f ${fprep_container} ]]; then
-      echo "Could not find singularity image \"${fprep_container}\" for fmriprep.."
-      exit 1
-    fi
-
-    # define SGE command
-    run_cmd="singularity run --cleanenv -B ${binding}:${binding} ${fprep_container}"
-    
-  elif [[ ${system} == "local" ]]; then
-    run_cmd="fmriprep"
-  else
-    echo "ERROR in `basename ${0}`: Unknown option ${system}. Please specify \"local\", or \"SGE\""
-  fi
-
-  if [[ ${mode} == "anat" ]]; then
-    anat_only_flag="--anat-only"
-  else
-    anat_only_flag="" 
-  fi
-
-  # set nthreads
-  nthreads=15
-  nthread_flag="--nthreads ${nthreads}"
-
-  # output directory structure has changed after v21: https://github.com/nipreps/fmriprep/releases/tag/21.0.0
-  VERSION=`${run_cmd} --version | cut -d" " -f2 | cut -d"." -f1`
-  if [[ `echo "${VERSION//[!0-9]/}"` -lt "21" ]]; then
-    output_dir=${derivatives}
-  else
-    output_dir=${derivatives}/fmriprep
-  fi
 
   # execute the fMRIPrep command
   ${run_cmd} \
@@ -344,7 +318,7 @@ if [[ ! -z ${xfms} ]]; then
     # check ses-flag
     if [[ ${wf_name} == *"ses-"* ]]; then
       ses_id=`echo ${wf_name} | cut -d'_' -f2`
-      base_dir=${pref}${subj_ID}/ses-${ses_id}
+      base_dir=${pref}${subj_ID}/${ses_id}
     else
       base_dir=${pref}${subj_ID}
     fi
@@ -353,5 +327,4 @@ if [[ ! -z ${xfms} ]]; then
     cp ${xfm} ${out_xfm}
 
   done
-
 fi
