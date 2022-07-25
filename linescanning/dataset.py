@@ -2,7 +2,7 @@ import hedfpy
 from . import glm, plotting, preproc, utils
 import matplotlib.pyplot as plt
 import nibabel as nb
-from nilearn.signal import clean
+from nilearn.signal import _standardize
 from niworkflows.reports import *
 from niworkflows.reports import core
 import numpy as np
@@ -1624,7 +1624,7 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                                            set_index=True)
 
         # dataframe of unfiltered PSC-data
-        self.data_psc = utils.percent_change(self.data_raw, -1)
+        self.data_psc = _standardize(self.data_raw.T, standardize='psc').T
         self.data_psc_df = self.index_func(self.data_psc,
                                            columns=self.vox_cols, 
                                            subject=self.sub,
@@ -1633,7 +1633,7 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                                            set_index=True)
 
         # dataframe of unfiltered z-scored data
-        self.data_zscore = clean(self.data_raw.T, standardize=True).T
+        self.data_zscore = _standardize(self.data_raw.T, standardize='zscore').T
         self.data_zscore_df = self.index_func(self.data_zscore,
                                               columns=self.vox_cols, 
                                               subject=self.sub, 
@@ -1660,7 +1660,7 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                                              set_index=True)
 
             # dataframe of high-passed PSC-data (set NaN to 0)
-            self.hp_psc = np.nan_to_num(utils.percent_change(self.hp_raw, -1))
+            self.hp_psc = np.nan_to_num(_standardize(self.hp_raw.T, standardize='psc').T)
             self.hp_psc_df = self.index_func(self.hp_psc,
                                              columns=self.vox_cols, 
                                              subject=self.sub,
@@ -1669,7 +1669,7 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                                              set_index=True)
 
             # dataframe of high-passed z-scored data
-            self.hp_zscore = clean(self.hp_raw.T, standardize=True).T
+            self.hp_zscore = _standardize(self.hp_raw.T, standardize='zscore').T
             self.hp_zscore_df = self.index_func(self.hp_zscore,
                                                 columns=self.vox_cols, 
                                                 subject=self.sub, 
@@ -1755,7 +1755,7 @@ for line-scanning data: """
                                                     set_index=True)
 
                 # make percent signal
-                self.hp_acomp_psc = np.nan_to_num(utils.percent_change(self.hp_acomp_raw, -1))
+                self.hp_acomp_psc = np.nan_to_num(_standardize(self.hp_acomp_raw.T, standardize='psc').T)
                 self.hp_acomp_psc_df = self.index_func(self.hp_acomp_psc,
                                                     columns=self.vox_cols, 
                                                     subject=self.sub, 
