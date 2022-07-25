@@ -2,15 +2,9 @@
 
 #---------------------------------------------------------------------------------------------------------
 # check if there's is a setup file containing the major paths and source it if it exists
-call_loadsetup
-
-if [[ ! -f ${DIR_SCRIPTS}/misc/acq.txt ]]; then
-  echo "WARNING: Could not find acq.txt file"
-  exit 1
-fi
-
+source ${DIR_SCRIPTS}/shell/spinoza_setup
 echo "Project         : ${PROJECT}"
-echo "Nr acquisitions : `wc -l ${DIR_SCRIPTS}/misc/acq.txt | awk '{print $1}'`"
+echo "Nr acquisitions : ${#ACQ[@]}"
 echo "Output type     : ${DATA}"
 echo "Task ID ses-1   : ${TASK_SES1}"
 echo "Subject prefix  : ${PREFIX}"
