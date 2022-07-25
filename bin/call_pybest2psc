@@ -1,0 +1,181 @@
+#!/usr/bin/env python
+from linescanning import utils, dataset
+import os
+import pickle
+import sys
+import getopt
+import numpy as np
+from nilearn.signal import _standardize
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_pybest2psc
+
+Hook that allows you to convert pybest output to percent signal change; this should be called twice:
+First, *before* calling pybest in order to calculate the standard deviation and average for each in-
+put file that is going to be found (based on the given filters). Then, *after* calling pybest to un-
+do the z-scoring from pybest.
+
+Args:
+    -s|--sub <subject>  subject ID (e.g., "008")
+    -n|--ses <session>  session ID   
+    -f|--fprep <path>   path to fMRIPrep root folder (e.g., derivatives/fmriprep). Default is the
+                        environmental variable `DIR_DATA_DERIV/fmriprep`
+    -o|--out <path>     path to pybest output. Default is the environmental variable `DIR_DATA_DERIV/pybest`
+    -t|--task <task>    task ID
+    -p|--space <space>  space ID. Default is `fsnative`
+    -h|--hemi <hemi>    hemi ID
+    -q|--help           print help text
+    --pre               use this *before* pybest; calculates the standard deviation and average and 
+                        stores it in <out>/<subject>/<ses>/tmp
+    --post              use this *after* pybest; undo the z-scoring using the output from `--tmp`
+
+Example:
+    call_pybest2psc -s 999 -n 1 -f $DIR_DATA_DERIV/fmriprep -f $DIR_DATA_DERIV/pybest --pre
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    # set defaults
+    fprep_dir   = opj(os.environ.get("DIR_DATA_DERIV"), 'fmriprep')
+    out_dir     = opj(os.environ.get("DIR_DATA_DERIV"), 'pybest')
+    subject     = None
+    session     = None
+    task        = None
+    space       = "fsnative"
+    hemi        = None
+    pre         = True
+
+    try:
+        opts = getopt.getopt(argv,"qf:o:s:n:t:h:p:",["fprep=", "out=", "sub=", "ses=", "task=", "space=", "hemi=", "post", "pre", "help"])[0]
+    except getopt.GetoptError:
+        print(main.__doc__)
+        sys.exit(2)
+
+    for opt, arg in opts:
+        if opt in ('-q', 'help'):
+            print(main.__doc__)
+            sys.exit()
+        elif opt in ("-f", "--fprep"):
+            fprep_dir = arg
+        elif opt in ("-o", "--out"):
+            out_dir = arg
+        elif opt in ("-s", "--sub"):
+            subject = arg
+        elif opt in ("-n", "--ses"):
+            session = arg
+        elif opt in ("-t", "--task"):
+            task = arg
+        elif opt in ("-p", "--space"):
+            space = arg
+        elif opt in ("-h", "--hemi"):
+            hemi = arg                                          
+        elif opt in ('--pre'):
+            pre = True
+        elif opt in ('--post'):
+            pre = False
+
+    if len(argv) < 4:
+        print("NOT ENOUGH ARGUMENTS SPECIFIED")
+        print(main.__doc__)
+        sys.exit(1)
+
+    # initiate search parameters
+    base_dir = f'sub-{subject}'
+    search_for = [f'sub-{subject}']
+    out_string = f'sub-{subject}'
+
+    if session != None:
+        search_for += [f'ses-{session}']
+        base_dir = opj(base_dir, f'ses-{session}')
+        out_string += f"_ses-{session}"
+
+    if task != None:
+        search_for += [f'task-{task}']
+
+    if space != None:
+        search_for += [f'space-{space}']    
+
+    if hemi != None:
+        search_for += [f'hemi-{hemi}']    
+
+    if pre:
+        # final func_dir
+        ffunc_dir = opj(fprep_dir, base_dir, 'func')
+        output_dir = opj(out_dir, base_dir, 'tmp')
+
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir, exist_ok=True)
+
+        # load data
+        funcs = utils.get_file_from_substring(search_for, ffunc_dir, exclude="json")
+
+        for func in funcs:
+
+            # split into bids components to get run ID
+            comps = utils.split_bids_components(func)
+
+            for id in ['task', 'run', 'space', 'hemi']:
+                if id in list(comps.keys()):
+                    out_string += f"_{id}-{comps[id]}"
+            
+            # read in file
+            obj = dataset.Dataset(func, use_bids=True, filter_strategy='raw', standardization='raw')
+
+            # get raw data
+            raw = obj.fetch_fmri(dtype='raw')
+
+            # get standard deviation and mean
+            stdev = raw.values.std(axis=0, keepdims=True)
+            avg = raw.values.mean(axis=0, keepdims=True)
+
+            # save in pickle
+            tmp_data = {'std': stdev,
+                        'avg': avg}
+
+            pkl_file = opj(output_dir, out_string+'_desc-avgstd.pkl')
+            f = open(pkl_file, "wb")
+            pickle.dump(tmp_data, f)
+            f.close()
+    else:
+        # final func_dir
+        denoised_dir = opj(out_dir, base_dir, 'denoising')
+        avg_dir = opj(out_dir, base_dir, 'tmp')
+
+        # load data
+        full_search = search_for + ['run-', 'denoised_bold']
+        funcs = utils.get_file_from_substring(full_search, denoised_dir)
+        if isinstance(funcs, str):
+            funcs = [funcs]
+
+        if len(funcs) == 0:
+            raise ValueError(f"No files with {full_search} in '{denoised_dir}'")
+
+        for func in funcs:
+
+            # read in file
+            obj = dataset.Dataset(func, use_bids=True, filter_strategy='raw', standardization='raw')
+
+            # get raw data
+            raw = obj.fetch_fmri(dtype='raw')
+
+            # get standard deviation and mean
+            match = utils.get_file_from_substring(search_for, avg_dir)
+            if isinstance(match, list):
+                raise ValueError(f"Found {len(match)} matches: {match}")
+
+            with open(match, 'rb') as input:
+                data = pickle.load(input)
+
+        unzscored = raw*data['std'].T+data['avg'].T
+        percent_changed = _standardize(unzscored.T.values, standardize='psc')
+
+        fname = opj(denoised_dir, func)
+        # print(f"Saving {fname}")
+        np.save(fname, percent_changed)
+            
+if __name__ == "__main__":
+    main(sys.argv[1:])

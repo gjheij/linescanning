@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
 #$ -S /bin/bash
-#$ -N pybest
-#$ -e $HOME/logs
-#$ -o $HOME/logs
 #$ -j Y
 #$ -cwd
 #$ -V
@@ -46,7 +43,7 @@ Arguments:
   -e <environment>    string containing the name of the conda environment. We will check with conda
                       info --envs if the environment exists. By default we will look for something
                       containing fmriprep_denoising if left blank
-  -z <standardizing>  method for signal standardization; 'zscore' or 'psc'
+  --psc               convert data to percent signal change. Default of pybest is zscore.
 
 Example:
   call_pybest -s "001" -n "1" -o /derivatives/pybest -r "fsnative" -f /derivatives/fmriprep -c 10
@@ -60,9 +57,29 @@ USAGE
     exit 1
 }
 
+# set defaults that will be overwritten if flags are given
 task_ids=${TASK_SES1[@]}
-while getopts s:n:o:s:f:c:e:z:v:r:t: arg; do
+sub_input=""
+cpu_input=""
+check_env="base"
+ses_input=""
+output_dir=${DIR_DATA_DERIV}/pybest
+input_dir=${DIR_DATA_DERIV}/fmriprep
+psc=0
+while getopts :-:s:n:o:s:f:c:e:z:v:r:t: arg; do
   case $arg in
+    -)
+      case "${OPTARG}" in
+        psc)
+          psc=1
+          ;;                                               
+        *)
+          if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
+            echo "Unknown option --${OPTARG}"
+            exit 1
+          fi
+          ;;
+      esac;;   
     s)  sub=${OPTARG}
           ;;
     n)  ses=${OPTARG}
@@ -94,8 +111,6 @@ fi
 # Check if specified environment exists, otherwise check for default
 if [[ ! -z $env ]]; then
   check_env=${env}
-else
-  check_env="base"
 fi
 
 conda_env=`conda info --envs | grep -A0 "${check_env}" | cut -d' ' -f1  `
@@ -109,8 +124,6 @@ fi
 # processed
 if [[ ! -z ${sub} ]]; then
   sub_input="--subject ${sub}"
-else
-  sub_input=""
 fi
 
 # Make sure we run the specified session or all sessions pybest can find will be
@@ -119,29 +132,22 @@ if [[ ! -z ${ses} ]]; then
   ses_input="--session ${ses}"
   base_dir="sub-${sub}/ses-${ses}"
 else
-  ses_input=""
   base_dir="sub-${sub}"
 fi
 
 # Set output directory if specified, otherwise default to /derivatives/pybest
 if [[ ! -z ${outputdir} ]]; then
   output_dir=${outputdir}
-else
-  output_dir=${DIR_DATA_DERIV}/pybest
 fi
 
 # Set input directory if specified, otherwise default to /derivatives/pybest
 if [[ ! -z ${fprepdir} ]]; then
   input_dir=${fprepdir}
-else
-  input_dir=${DIR_DATA_DERIV}/fmriprep
 fi
 
 # Make sure we run with the specified amount of slots
 if [[ ! -z ${n_slots} ]]; then
   cpu_input="--n-cpus ${n_slots}"
-else
-  cpu_input=""
 fi
 
 #
@@ -149,11 +155,10 @@ fi
 source activate ${conda_env}
 if [[ ! -d ${output_dir}/sub-${sub} ]]; then
   mkdir -p ${output_dir}/sub-${sub}
-fi
+fi 
 
 if [ ! -d ${input_dir}/${base_dir}/func ]; then
-  echo "ERROR: no func in \"${input_dir}/${base_dir}\""
-  echo "       make sure to run \"master -m 15 -s ${sub} -t func\" to fMRIprep with FS-surfaces"
+  echo "ERROR in `basename ${0}`: input \"${input_dir}/${base_dir}/func\" does not exist. Run e.g., \"master -m 15 -s ${sub} -t func\" for preprocessing with fMRIPrep"
   exit 1
 fi
 
@@ -162,7 +167,35 @@ for task_id in ${task_ids[@]}; do
   echo "Running pybest on task: \"${task_id}\""
   if [[ ${in_space} == "fsnative" || ${in_space} == "fsaverage" ]]; then
     for hemi in "L" "R"; do
+
+      if [ ${psc} -eq 1 ]; then
+        echo "Saving average/standard deviation"
+        call_pybest2psc \
+          -s ${sub} \
+          -n ${ses} \
+          -o ${DIR_DATA_DERIV}/pybest \
+          -f ${input_dir} \
+          -t ${task_id} \
+          -p ${in_space} \
+          -h ${hemi} \
+          --pre
+      fi
+
       pybest ${sub_input} ${ses_input} --task ${task_id} --space ${in_space} --hemi ${hemi} ${cpu_input} --verbose ERROR --save-all ${input_dir}
+
+      if [ ${psc} -eq 1 ]; then
+        echo "Un-zcoring output from pybest"
+        call_pybest2psc \
+          -s ${sub} \
+          -n ${ses} \
+          -o ${DIR_DATA_DERIV}/pybest \
+          -f ${input_dir} \
+          -t ${task_id} \
+          -p ${in_space} \
+          -h ${hemi} \
+          --post
+      fi
+
     done
   else
     pybest ${sub_input} ${ses_input} --task ${task_id} --space ${in_space} --verbose ERROR --save-all ${input_dir}
