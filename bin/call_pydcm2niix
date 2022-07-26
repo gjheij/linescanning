@@ -194,8 +194,6 @@ for filename in os.listdir(nifti_output_folder):
 
     #handling topups
     if "epi" in filename.lower():
-        if "dir" not in split_name[2]:
-            split_name[2] = split_name[2].replace("task", "dir")
         new_filename = "_".join(split_name)
         copyfile(opj(nifti_output_folder,filename), opj(bids_fmap,new_filename))
 
