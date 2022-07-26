@@ -29,6 +29,22 @@ class LazyPRF():
         When the background of the image is white, we create a black border around the Circle patch. If this is equal to `vf_extent`, the border is cut off at some points. This factor shrinks the radius of the Circle, so that we can have a nice border. When set to 0.9, it becomes sort of like a target. This is relevant for **all** non-`magma` color maps that you insert, specifically a :func:`linescanning.utils.make_binary_cm` object
     xkcd: bool, optional
         Plot in cartoon-format
+    label_size: int, optional
+        Set the font size of the labels (i.e., axes). Default = 10
+    tick_width: float, optional
+        Set the thickness of the ticks. Larger value means thicker tick. Default = 0.5 (thin'ish)
+    tick_length: int, optional
+        Set the length of the ticks. Larger values mean longer ticks. Default = 7 (long'ish)
+    axis_width: float, optional
+        Set the thickness of the spines of the plot. Larger values mean thicker spines. Default = 0.5 (thin'ish)
+    full_axis: bool, optional
+        If `True`, the entire axis of `vf_extent` will be used for the ticks (more detailed). If `False`, a truncated/trimmed version will be returned (looks cleaner). Default = False
+    axis_off: bool, optional
+        If `True` the x/y axis will be maintained, and the `vf_extent` will be given as ticks. If `False`, axis will be turned off. If `axis_off=True`, then `full_axis` and other label/axis parameters are ignored. Default = True
+    sns_trim: bool, optional
+        If `True`, limit spines to the smallest and largest major tick on each non-despined axis. Maps to `sns.despine(trim=sns_trim)`
+    sns_offset: int, optional
+        Offset in the origin of the plot. Maps to `sns.despine(offset=sns_offset)`. Default is 10
 
     Returns
     ----------
@@ -46,7 +62,17 @@ class LazyPRF():
                  shrink_factor=1, 
                  xkcd=False,
                  font_size=None,
-                 title=None):
+                 title=None,
+                 axis_off=True,
+                 figsize=(8,8),
+                 label_size=10,
+                 tick_width=0.5,
+                 tick_length=7,
+                 axis_width=0.5,
+                 full_axis=False,
+                 sns_trim=True,
+                 sns_offset=10,
+                 **kwargs):
         
         self.prf            = prf
         self.vf_extent      = vf_extent
@@ -59,6 +85,16 @@ class LazyPRF():
         self.shrink_factor  = shrink_factor
         self.title          = title
         self.font_size      = font_size
+        self.axis_off       = axis_off
+        self.figsize        = figsize
+        self.label_size     = label_size
+        self.tick_width     = tick_width
+        self.tick_length    = tick_length
+        self.axis_width     = axis_width 
+        self.full_axis      = full_axis
+        self.sns_trim       = sns_trim
+        self.sns_offset     = sns_offset
+        self.__dict__.update(kwargs)      
 
         if self.xkcd:
             with plt.xkcd():
@@ -78,7 +114,7 @@ class LazyPRF():
     def plot(self):
 
         if self.ax == None:
-            self.ax = plt.gca()
+            _,self.ax = plt.subplots(figsize=self.figsize)
 
         if self.prf.ndim >= 3:
             self.prf = np.squeeze(self.prf, axis=0)
@@ -108,7 +144,24 @@ class LazyPRF():
 
         self.ax.add_patch(self.patch)
         im.set_clip_path(self.patch)
-        self.ax.axis('off')
+
+        if self.axis_off:
+            self.ax.axis('off')
+        else:
+            self.ax.tick_params(width=self.tick_width, 
+                                length=self.tick_length,
+                                labelsize=self.label_size)
+
+            for axis in ['top', 'bottom', 'left', 'right']:
+                self.ax.spines[axis].set_linewidth(self.axis_width)
+            
+            if self.full_axis:
+                new_ticks = np.arange(self.vf_extent[0],self.vf_extent[1]+1, 1)
+                self.ax.set_xticks(new_ticks)
+                self.ax.set_yticks(new_ticks)
+
+            if self.sns_trim:
+                sns.despine(offset=self.sns_offset, trim=self.sns_trim)
 
 class LazyPlot():
     """LazyPlot
@@ -161,8 +214,26 @@ class LazyPlot():
         Matplotlib axis to store the figure on
     y_lim: list, optional
         List for `axs.set_ylim`
+    x_lim: list, optional
+        List for `axs.set_xlim`
     set_xlim_zero: bool, optional
         Reduces the space between y-axis and start of the plot. Is set before sns.despine. Default = False
+    label_size: int, optional
+        Set the font size of the labels (i.e., axes). Default = 10
+    tick_width: float, optional
+        Set the thickness of the ticks. Larger value means thicker tick. Default = 0.5 (thin'ish)
+    tick_length: int, optional
+        Set the length of the ticks. Larger values mean longer ticks. Default = 7 (long'ish)
+    axis_width: float, optional
+        Set the thickness of the spines of the plot. Larger values mean thicker spines. Default = 0.5 (thin'ish)
+    sns_trim: bool, optional
+        If `True`, limit spines to the smallest and largest major tick on each non-despined axis. Maps to `sns.despine(trim=sns_trim)`
+    sns_offset: int, optional
+        Offset in the origin of the plot. Maps to `sns.despine(offset=sns_offset)`. Default is 10
+    sns_rm_bottom: bool, optional
+        Also remove the bottom (x) spine of the plot
+    markers: str, list, optional
+        Use markers during plotting. If `ts` is a list, a list of similar length should be specified. If one array in `ts` should not have markers, use `None`. E.g., if `len(ts) == 3`, and we want only the first timecourse to have markers use: `markers=['.',None,None]
 
     Example
     ----------
@@ -360,7 +431,7 @@ class LazyPlot():
 
         # axis labels and titles
         if self.labels:
-            axs.legend(frameon=False)
+            axs.legend(frameon=False, fontsize=self.label_size)
 
         if self.x_label:
             axs.set_xlabel(self.x_label, fontname=self.fontname, fontsize=self.font_size)
@@ -371,7 +442,8 @@ class LazyPlot():
         if self.title:
             axs.set_title(self.title, fontname=self.fontname, fontsize=self.font_size)
 
-        axs.tick_params(width=self.tick_width, length=self.tick_length,
+        axs.tick_params(width=self.tick_width, 
+                        length=self.tick_length,
                         labelsize=self.label_size)
 
         for axis in ['top', 'bottom', 'left', 'right']:
