@@ -1682,7 +1682,11 @@ class pRFmodelFitting():
 
             # make plot 
             ax1 = fig.add_subplot(gs00[0])
-            plotting.LazyPRF(prf_array, vf_extent=self.settings['vf_extent'], ax=ax1, xkcd=xkcd)
+            plotting.LazyPRF(prf_array, 
+                             vf_extent=self.settings['vf_extent'], 
+                             ax=ax1, 
+                             xkcd=xkcd,
+                             **kwargs)
 
             # make plot 
             ax2 = fig.add_subplot(gs00[1])
@@ -1744,7 +1748,7 @@ class pRFmodelFitting():
                 print(f"Writing {save_as}")
                 fig.savefig(save_as)
 
-            return params, prf_array, tc
+            return params, prf_array, tc, self.prediction
         else:
             return params, self.prediction
 
@@ -2192,7 +2196,7 @@ class CollectSubject:
                 self.settings = yaml.safe_load(file)      
 
         try:
-            self.gauss_iter_pars = np.load(utils.get_file_from_substring(["model-gauss", "stage-iter", "params"], self.prf_dir))
+            self.gauss_iter_pars = np.load(utils.get_file_from_substring(["model-gauss", "stage-iter", "params.npy"], self.prf_dir))
         except:
             pass
         
@@ -2257,15 +2261,25 @@ class CollectSubject:
         """return the vertex ID of target vertex"""
         return self.vert_info.get('index', hemi=hemi)
 
-    def target_prediction_prf(self, xkcd=False, freq_spectrum=None, save_as=None, **kwargs):
-        self.targ_pars, self.targ_prf, self.targ_pred = self.modelling.plot_vox(vox_nr=self.target_vertex, 
-                                                                                model=self.model, 
-                                                                                stage='iter', 
-                                                                                make_figure=True, 
-                                                                                xkcd=xkcd,
-                                                                                title='pars',
-                                                                                transpose=True, 
-                                                                                freq_spectrum=freq_spectrum, 
-                                                                                freq_type="fft",
-                                                                                save_as=save_as,
-                                                                                **kwargs)        
+    def target_prediction_prf(self, xkcd=False, freq_spectrum=None, save_as=None, make_figure=True, **kwargs):
+
+        if make_figure:
+            self.targ_pars, self.targ_prf, self.targ_tc, self.targ_pred = self.modelling.plot_vox(vox_nr=self.target_vertex, 
+                                                                                    model=self.model, 
+                                                                                    stage='iter', 
+                                                                                    make_figure=make_figure, 
+                                                                                    xkcd=xkcd,
+                                                                                    title='pars',
+                                                                                    transpose=True, 
+                                                                                    freq_spectrum=freq_spectrum, 
+                                                                                    freq_type="fft",
+                                                                                    save_as=save_as,
+                                                                                    **kwargs)     
+        else:
+            self.targ_pars, self.targ_pred = self.modelling.plot_vox(vox_nr=self.target_vertex, 
+                                                                     model=self.model, 
+                                                                     stage='iter', 
+                                                                     make_figure=make_figure, 
+                                                                     xkcd=xkcd,
+                                                                     transpose=True, 
+                                                                     **kwargs)                                                                                         
