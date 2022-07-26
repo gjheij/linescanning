@@ -57,7 +57,7 @@ version = sys.argv[4]
 if not os.path.isdir(input_folder):
     raise IOError("Input data path does not exist.")
 
-split_input = [elem for elem in input_folder.split("/") if elem != ""]
+split_input = [elem for elem in input_folder.split(os.sep) if elem != ""]
 
 # if split_input[-1] != "rawdata" or "ses-" not in split_input[-2] or "sub-" not in split_input[-3] or not split_input[-4].endswith("-Raw"):
 #     raise IOError("Unsuitable input data path. Make sure that the folder structure is: .../Projectname-Raw/sub-xxx/ses-x/rawdata/")
@@ -69,8 +69,8 @@ split_input = [elem for elem in input_folder.split("/") if elem != ""]
 # output_folder = opj(os.sep, *split_input[:-4], project_string) + "-BIDS"
 
 # Find projects base index, but exlucde the "projects" directory from the spinoza cluster
-idx_proj = split_input.index('projects', 2,-1)
-project_string = split_input[idx_proj+1]
+idx_proj = split_input.index(os.environ.get("PROJECT"), 2,-1)
+project_string = split_input[idx_proj]
 
 idx_subj = [(i, split_input.index('sub-')) for i, split_input in enumerate(split_input) if 'sub-' in split_input][0][0]
 subj_string = split_input[idx_subj]# do we have sessions?
