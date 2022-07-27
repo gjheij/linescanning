@@ -35,6 +35,10 @@ Arguments:
   -r <level>      remove surface_recon_wf '-r surf' to project functional data to new surface; used 
                   after repeatedly enhancing the anatomical segmentation before injecting the functio-
                   nal data. Use '-r all' if the entire workflow folder needs to be removed <optional>
+  -t <task>       By default, the pipeline is setup to run fMRIPrep with '--anat-only'. You can in-
+                  ject functional data with the '-t' flag; if you want ALL your tasks to be included,
+                  use '-t func'. If you have a specific task that needs to be processed (in case ano-
+                  ther task is already done), use '-t <task_id>'
   <anat dir>      directory containing the anatomical data. Can also be the regular project root
                   folder if you want fMRIprep do the surface reconstruction
   <derivatives>   output folder for fMRIprep; generally this will be <project>/derivatives
