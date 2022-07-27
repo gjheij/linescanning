@@ -182,7 +182,7 @@ for subID in ${search}; do
     txt="Registering ${ACQ[0]^^}-T1w to MNI152 template"
     suffix=MNI152NLin6Asym
     fixed=${FSLDIR}/data/standard/MNI152_T1_1mm.nii.gz
-    moving=`find "${input_dir}" -type f \( -iname "*acw_${DATA}_*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
+    moving=`find "${input_dir}" -type f \( -iname "*acq-${DATA}_*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
     ext="from-${suffix}_to-T1w"
     output=$(dirname ${moving})/$(basename ${moving} _T1w.nii.gz)_space-${suffix}_T1w.nii.gz
     write_output=0
