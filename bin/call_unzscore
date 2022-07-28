@@ -14,10 +14,14 @@ def main(argv):
 ---------------------------------------------------------------------------------------------------
 call_unzscore
 
-Hook that allows you to convert pybest output to percent signal change; this should be called twice:
-First, *before* calling pybest in order to calculate the standard deviation and average for each in-
-put file that is going to be found (based on the given filters). Then, *after* calling pybest to un-
-do the z-scoring from pybest.
+Hook that allows you to undo the zscoring of pybest output; this should be called twice: First, 
+with the '--pre' flag in order to calculate the standard deviation and average for each input file 
+that is going to be found (based on the given filters) and processed by pybest. Then, with the '--
+post' flag, but keeping the other inputs the same, we'll undo the zscoring by placing files with
+exactly the same name as the pybest output in pybest/<subject>/<session>/unzscored. To utilize this 
+as input for 'spinoza_fitprfs', use '--psc'. This will redirect the file searcher to the 'unzscored'
+folder, and convert the inputs to percent signal change following M. Aqil's strategy. See 'call_prf'
+docs for more information.
 
 Args:
     -s|--sub <subject>  subject ID (e.g., "008")

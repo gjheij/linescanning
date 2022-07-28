@@ -69,7 +69,10 @@ Options:
                     If you want to provide cifti's or nifti's, we assume everything's been prepro-
                     cessed appropriately. There's no filtering, percent-signal changing or other
                     stuff.
-    --psc           Convert the data to percent signal change. Assumes you've can call_unzscore              
+    --psc           Convert the data to percent signal change. Assumes you've ran call_unzscore.
+                    PSC will be calculated following M. Aqil's strategy:
+                        psc = signals*100/(mean(signals)) - median(signals_without_stimulus)
+                    This will ensure the baseline of periods without stimulus are set to zero.
 
 Example:
   call_prf -s 001 -n 1 -t 2R -o /path/derivatives/prf -i /path/to/pybest/sub-001 -p /path/png
