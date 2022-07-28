@@ -19,29 +19,31 @@ job="bash"
 
 # Allocate input arguments to variables
 #
-use_bbr=""            # spinoza_fmriprep
-run_local=""          # spinoza_fmriprep/spinoza_fitprfs
-UPs=""                # spinoza_qmrimaps
-NO_BIAS=""            # spinoza_qmrimaps
-REMOVE_WF=""          # spinoza_fmriprep
-SGE=""                # spinoza_denoising
 OW=""                 # multiple (overwrite mode)
+verb_flag=""          # multiple (turn on verboses)
 FREEVIEW=""           # spinoza_bestvertex
+raw_flag=""           # spinoza_denoising
+SGE=""                # spinoza_denoising/spinoza_nordic/spinoza_linerecon/spinoza_registration
 COMB_ONLY=""          # spinoza_extractregions
 GRID=""               # spinoza_fitprfs
-DRAW_SAG="itk"        # spinzoa_sagittalsinus
 MULTIPLE_DESIGNS=""   # spinoza_fitprfs
 FIT_HRF=""            # spinoza_fitprfs
-REG_TYPE=""           # spinoza_registration
-SES_TYPE=""           # spinoza_scanner2bids
-GDH_FLAG=""           # spinoza_mgdm
-LAYER_FLAG=""         # spinoza_layering
+psc_flag=""           # spinoza_fitprfs
+use_bbr=""            # spinoza_fmriprep
 WARP_ONLY=""          # spinoza_fmriprep
-psc_flag=""           # spinoza_denoising
+REMOVE_WF=""          # spinoza_fmriprep
+run_local=""          # spinoza_fmriprep/spinoza_fitprfs
+LAYER_FLAG=""         # spinoza_layering
+GDH_FLAG=""           # spinoza_mgdm
+REG_TYPE=""           # spinoza_registration
+DRAW_SAG="itk"        # spinzoa_sagittalsinus
+SES_TYPE=""           # spinoza_scanner2bids
+UPs=""                # spinoza_qmrimaps
+NO_BIAS=""            # spinoza_qmrimaps
 
 # use long options in bash:
 # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options
-declare -a opts=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only")
+declare -a opts=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--raw" "--verbose")
 while getopts :-:wcjqom:s:h:n:t:l:v:p:x:u:r:e:i: arg
 do
   case ${arg} in
@@ -66,7 +68,7 @@ do
           REMOVE_WF="-r surf"
           ;;    
         sge)
-          SGE="-c"
+          SGE="--sge"
           ;;       
         no_freeview)
           FREEVIEW="--no_freeview"
@@ -118,7 +120,13 @@ do
           ;;                    
         psc)
           psc_flag="--psc"
-          ;;               
+          ;;           
+        raw)
+          raw_flag="--raw"
+          ;;        
+        verbose)
+          verb_flag="--verbose"
+          ;;                           
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}, possible options are:"
@@ -288,9 +296,15 @@ Args:
   --remove_surf_wf  Remove surface reconstruction workflow folder; refreshes the surfaces used for regi-
                     stration and transformation
   --rigid           use 'rigid-body' registration (spinoza_registration)
-  --sge             maps to '-c' in spinoza_linerecon & spinoza_denoising; submits jobs to cluster
+  --sge             passes '--sge' on to:
+                      -spinoza_linerecon
+                      -spinoza_denoising
+                      -spinoza_nordic
+                      -spinoza_registration
+                    submits jobs to cluster
   --surface         use Wagstyl's equivolumetric layering function
   --syn             use 'syn'-registration (spinoza_registration)
+  --verbose         turn on verbose
   --warp_only       spinoza_fmriprep; skip full processing, but make new 'boldref'-images and copy bold-
                     to-T1w registration files
 
@@ -320,7 +334,7 @@ Available modules:                                     Script                   
   -07:  Make sinus mask from T1w/T2w ratio             (spinoza_sinusfrommni)           00:03:00
   -08:  Bias correction + SANLM denoising              (spinoza_biassanlm)              00:07:00
   -09:  Brain extract (CAT12 || ANTs || FSL)           (spinoza_brainextraction)        00:10:00
-  -10:  Noise level estimation                         (spinoza_noiselevelestimation)   00:00:30
+  -10:  NORDIC denoising of whole-brain data           (spinoza_nordic)                 00:05:00
   -11:  Dura estimation and skull estimations          (spinoza_dura)                   00:08:00
   -12:  Create mask of sagittal sinus                  (spinoza_sagittalsinus)          00:03:00
   -13:  Combine all masks and apply to average         (spinoza_masking)                00:02:30
@@ -800,6 +814,7 @@ fi
 #---------------------------------------------------------------------------------------------------
 # STEP 10: Do noise level estimation with AFNI's automask function
 module=10
+module_name="spinoza_nordic"
 
 # Check whether the module should be executed
 echo ${FLAG_executeModule} | grep -q ${module}
@@ -807,19 +822,18 @@ echo ${FLAG_executeModule} | grep -q ${module}
 if [[ $? -eq 0 ]]; then
 
   if [[ "${@}" == *"-q"* ]]; then
-    ${job} spinoza_noiselevelestimation
+    ${job} ${module_name}
     exit 1
   fi
 
   echo "---------------------------------------------------------------------------------------------------"
-  echo "[${module}] Noise level estimation with AFNI's automask function"
+  echo "[${module}] NORDIC denoising"
 
-  # spinoza_noiselevelestimation ${SUBJECT} ${SESSION} ${DIR_DATA_HOME} ${DIR_DATA_DERIV} 0.5
-  # if [[ $? -ne 0 ]]; then
-  #   echo "ERROR in master: spinoza_noiselevelestimation exited with non-zero status"
-  #   exit 1
-  # fi
-  echo "DEPRECATED"
+  ${job} ${module_name} ${SGE} ${SUBJECT} ${SESSION} ${DIR_DATA_HOME}
+  if [[ $? -ne 0 ]]; then
+    echo "ERROR in master: ${module_name} exited with non-zero status"
+    exit 1
+  fi
 
   echo "[${module}] DONE" && echo
 
@@ -1030,7 +1044,7 @@ if [[ $? -eq 0 ]]; then
     TASK_ID=""
   fi   
 
-  ${job} spinoza_denoising ${psc_flag} ${SUBJECT} ${SESSION} ${SGE} ${OW} ${TASK_ID} ${DIR_DATA_DERIV}/fmriprep ${DIR_DATA_DERIV}/pybest
+  ${job} spinoza_denoising ${raw_flag} ${SUBJECT} ${SESSION} ${SGE} ${OW} ${TASK_ID} ${DIR_DATA_DERIV}/fmriprep ${DIR_DATA_DERIV}/pybest
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_denoising exited with non-zero status"
@@ -1082,7 +1096,7 @@ if [[ $? -eq 0 ]]; then
     TASK_ID=""
   fi  
 
-  ${job} spinoza_fitprfs ${TASK_ID} ${FIT_HRF} ${run_local} ${grid} ${MULTIPLE_DESIGNS} ${SUBJECT} ${SESSION} ${OW} ${MODEL} ${PRF_INPUT} ${DIR_DATA_DERIV}/prf ${PNG_DIR}
+  ${job} spinoza_fitprfs ${verb_flag} ${psc_flag} ${TASK_ID} ${FIT_HRF} ${run_local} ${grid} ${MULTIPLE_DESIGNS} ${SUBJECT} ${SESSION} ${OW} ${MODEL} ${PRF_INPUT} ${DIR_DATA_DERIV}/prf ${PNG_DIR}
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_fitprfs exited with non-zero status"

@@ -38,10 +38,10 @@ USAGE
 # Deal with arguments
 mag_only=0
 while getopts hmv: arg; do
-    case ${arg} in
-        m)  mag_only=1
-            ;;         
-    esac
+  case ${arg} in
+    m)  mag_only=1
+        ;;         
+  esac
 done
 
 if [[ $# -lt 3 ]] ; then
