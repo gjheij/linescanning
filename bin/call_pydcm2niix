@@ -91,6 +91,7 @@ for bids_folder in ["anat", "fmap", "func"]:
 bids_anat = opj(output_folder, subj_string, ses_string, "anat")
 bids_func = opj(output_folder, subj_string, ses_string, "func")
 bids_fmap = opj(output_folder, subj_string, ses_string, "fmap")
+bids_phase = opj(output_folder, subj_string, ses_string, "phase")
 
 # print("\n Initiating procedure. If there is an h5py warning above, please ignore it \n")
 
@@ -188,12 +189,18 @@ for filename in os.listdir(nifti_output_folder):
         copyfile(opj(nifti_output_folder,filename), opj(bids_anat,new_filename))
 
     #handling functional data
-    if "bold" in filename.lower():
+    if "bold" in filename.lower() and not "bold_ph" in filename.lower():
         new_filename = "_".join(split_name)
         copyfile(opj(nifti_output_folder,filename), opj(bids_func, new_filename))
+    elif "bold_ph" in filename.lower():
+        if not os.path.exists(bids_phase):
+            os.makedirs(bids_phase, exist_ok=True)
+
+        new_filename = "_".join(split_name)
+        copyfile(opj(nifti_output_folder,filename), opj(bids_phase, new_filename))
 
     #handling topups
-    if "epi" in filename.lower():
+    if "epi" in filename.lower() and not "epi_ph" in filename.lower():
         new_filename = "_".join(split_name)
         copyfile(opj(nifti_output_folder,filename), opj(bids_fmap,new_filename))
 
@@ -221,10 +228,7 @@ if events == "True":
         print("Warning: no event files found.")
     else:
         for event_file in event_files:
-            copyfile(event_file, opj(bids_func, event_file.split("/")[-1]))
-
-
-
+            copyfile(event_file, opj(bids_func, event_file.split(os.sep)[-1]))
 
 #simple masking of t1w using thresholded t1map, to avoid non-zero values outside brain
 #the original t1w, t1map, phase and inversions can still be found in raw data folder if needed
@@ -358,4 +362,4 @@ if not os.path.isfile(opj(output_folder, 'dataset_description.json')):
 
         print("IMPORTANT: Remember to edit the author names in "+opj(output_folder, 'dataset_description.json'))
 
-print("Done! Run BIDS validator (https://bids-standard.github.io/bids-validator/) to make sure everything worked correctly.\n")
+print("Done! Run BIDS validator (https://bids-standard.github.io/bids-validator/) to make sure everything worked correctly.")

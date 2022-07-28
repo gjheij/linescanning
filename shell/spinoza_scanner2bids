@@ -167,7 +167,6 @@ for subID in ${search}; do
 
       echo
       echo "**************************************** Processing ${sub_name} ***************************************"
-      echo ${txt}
       
       # We're dealing with session-1, the anatomical and pRF-mapping part, so we'll use FromScannerToBIDS.py/call_dcm2niix.py
       echo "Regular scan session (whole-brain data); using call_pydcm2niix"
