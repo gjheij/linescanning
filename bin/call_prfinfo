@@ -4,6 +4,7 @@ from linescanning.utils import get_file_from_substring
 import sys, getopt
 import os
 import numpy as np
+from prfpy import model
 np.set_printoptions(precision=3, suppress=True)
 opj = os.path.join
 
@@ -16,27 +17,25 @@ call_prfinfo
 Fetch pRF-information about a given vertex. Fetches the information from *desc-prf_params.npy in 
 the derivatives/prf/<subject> folder
 
-Args:
-    -s <subj name>      str:
-                        name of the directory as specified in the pycortex filestore directory
+Parameters
+----------
+    -s|--subject <subj name>    subject ID (e.g., sub-001)
+    -v|--vertex  <vertex>       vertex to extract information from
+    -h|--hemi <hemi>            'lh' or 'rh', as numpy array is stacked left hemi first, then right 
+                                hemi (default = lh)
+    -d|--prfdir <prf dir>       path to pRF-directory; will default to derivatives/prf/<subject>
+    -p|--prf <prf_file>         if left empty, will default to derivatives/prf/<subject>/<ses-1>/
+                                model-norm_*desc-prf_params.npy
+    --gauss                     Look for gaussian parameters instead of DN-parameters
+    --grid                      Look for grid fit parameters, rather than iterative fit
+                                parameters                     
 
-    -v <vertex>         int:
-                        vertex to extract information from
-
-    -h <hemi>           str:   
-                        'lh' or 'rh', as numpy array is stacked left hemi first, then right hemi
-                        (default = lh)
-
-    -d <prf dir>        str:
-                        path to pRF-directory; will default to derivatives/prf/<subject>
-
-    -p <prf_file>       str:
-                        if left empty, will default to derivatives/prf/<subject>/<ses-1>/*desc-prf_params.npy
-
-Outputs
+Returns
+----------
     array of pRF-parameters of requested vertex
 
-Example:
+Example
+----------
     call_prfinfo -s sub-001 -v 3386 -h lh
 
 ---------------------------------------------------------------------------------------------------
@@ -47,9 +46,11 @@ Example:
     prf_info    = None
     prf_dir     = None
     hemi        = 'lh'
+    model       = "norm"
+    stage       = "iter"
 
     try:
-        opts = getopt.getopt(argv,"qs:v:p:h:d:",["subject=", "prfdir=", "vertex=", "prf=", "hemi="])[0]
+        opts = getopt.getopt(argv,"qs:v:p:h:d:",["subject=", "prfdir=", "vertex=", "prf=", "hemi=", "gauss", "grid"])[0]
     except getopt.GetoptError:
         print(main.__doc__)
         sys.exit(2)
@@ -68,6 +69,10 @@ Example:
             prf_info = arg  
         elif opt in ("-h", "--hemi"):
             hemi = arg
+        elif opt in ("--gauss"):
+            model = "gauss"     
+        elif opt in ("--grid"):
+            stage = "grid"            
 
     if len(argv) < 1:
         print("\nNEED AT LEAST A SUBJECT ID")
@@ -78,17 +83,13 @@ Example:
         prf_dir = opj(os.environ['PRF'], subject, 'ses-1')
 
     if not prf_info:
-        try:
-            prf_info = get_file_from_substring('iter_desc-prf_params', prf_dir)
-        except:
-            try:
-                prf_info = get_file_from_substring('gauss_desc-prf_params', prf_dir)
-            except:
-                raise ValueError("Could not find prf-parameter file containing 'iter_desc-prf_params' or 'gauss_desc-prf_params'")
+        search_for = [f'model-{model}', stage, "desc-prf_params.npy"]
+        prf_info = get_file_from_substring(search_for, prf_dir)
     
     if isinstance(prf_info, list):
         raise ValueError(f"A list of files was specified.. {prf_info}")
-        
+    
+    print(f"Reading from '{prf_info}'")
     info = np.load(prf_info)
 
     if hemi == "rh":
