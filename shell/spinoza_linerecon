@@ -24,7 +24,7 @@ Arguments:
   -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
   -n <session>        session ID (e.g., 1, 2, or n)
   -m <n_echoes>       number of echoes in the acquisition (e.g., 5)
-  -c                  submit job to cluster (SGE)
+  -c|--sge            submit job to cluster (SGE)
   -o                  overwrite existing files
   <project root>      base directory containing the derivatives and the subject's folders.
   <sourcedata>        base directory containing the raw data for reconstruction
@@ -57,9 +57,21 @@ fi
 # Check for subject & session flags
 OW=0
 SGE=0
-while getopts ocs:n:m: argument
+while getopts :-:ocs:n:m: argument
 do
   case ${argument} in
+    -)
+      case "${OPTARG}" in
+        sge)
+          SGE=1
+          ;;                                                                   
+        *)
+          if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
+            echo "Unknown option --${OPTARG}"
+            exit 1
+          fi
+          ;;
+      esac;;    
     s)  sub=${OPTARG}
           ;;
     n)  ses=${OPTARG}

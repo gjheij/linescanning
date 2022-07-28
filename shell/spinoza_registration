@@ -34,6 +34,9 @@ Arguments:
                       != 'mni' and no registration method is specified
   --syn               use SyN-diffeomorphic registration. Default if <registration type> == 'mni'
                       and no registration method is specified
+  -c|--sge            submit job to cluster (SGE); given that we have to rename files after regi-
+                      stration, we'll wait for the job to finish if submitted. This can still help
+                      with memory issues (e.g., if your local machine does not have enough RAM).
   <anat folder>       folder containing images for registration. If DATA == "AVERAGE", we'll look
                       for T1w-images containing 'acq-MP2RAGE_' and 'acq-MP2RAGEME_', create a warp
                       file, and apply this file to MP2RAGEME-files with ('T1w' 'T1map' 'R2starmap
@@ -84,6 +87,9 @@ do
         affine)
           reg_type="affine"
           ;;  
+        sge)
+          SGE=1
+          ;;            
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}"

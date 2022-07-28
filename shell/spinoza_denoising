@@ -26,7 +26,8 @@ Arguments:
   -t <task ID>        limit pybest processing to a specific task. Default is all tasks in TASK_SES1
                       in the spinoza_setup-file
   -o                  overwrite existing files
-  -c                  submit job to cluster (called with 'master -m <module> --sge')
+  -c|--sge            submit job to cluster (called with 'master -m <module> --sge')
+  --raw               unzscore the output from pybest
   <project root>      base directory containing the derivatives and the subject's folders.
   <derivatives>       path to the derivatives folder
 
@@ -46,15 +47,20 @@ OW=0
 job="bash"
 cpu=1
 task_flag=""
-psc_flag=""
+raw_flag=""
+smp=1
+SGE=0
 while getopts :-:os:n:t::c argument
 do
   case ${argument} in
     -)
       case "${OPTARG}" in
         psc)
-          psc_flag="--psc"
+          raw_flag="--raw"
           ;;
+        sge)
+          SGE=1
+          ;;          
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}"
@@ -68,11 +74,7 @@ do
           ;;
     o)  OW=1
           ;;         
-    c)  job="qsub -q ${SGE_QUEUE_LONG} -wd ${DIR_LOGS} -pe smp 5"
-        cpu=10
-        if [ ! -d ${DIR_LOGS} ]; then
-          mkdir -p ${DIR_LOGS}
-        fi
+    c)  SGE=1
           ;;
     t)  task_flag="-t ${OPTARG}" 
           ;;
@@ -82,6 +84,14 @@ done
 if [[ $# -lt 2 ]] ; then
   Usage >&2
   exit 1
+fi
+
+if [[ ${SGE} -eq 1 ]]; then
+  job="qsub -q ${SGE_QUEUE_LONG} -wd ${DIR_LOGS} -pe smp ${smp}"
+  cpu=10
+  if [ ! -d ${DIR_LOGS} ]; then
+    mkdir -p ${DIR_LOGS}
+  fi
 fi
 
 # fetch positional arguments
@@ -177,7 +187,7 @@ for subID in ${search}; do
           -c ${cpu} \
           -z ${PYBEST_NORM} \
           ${task_flag} \
-          ${psc_flag}
+          ${raw_flag}
 
         if [[ $? != 0 ]]; then
           echo
