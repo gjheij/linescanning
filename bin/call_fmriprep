@@ -3,7 +3,6 @@
 #$ -cwd
 #$ -j Y
 #$ -V
-#$ -pe smp 5
 #Template provided by Daniel Levitas of Indiana University
 #Edits by Andrew Jahn, University of Michigan, 07.22.2020
 

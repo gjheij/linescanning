@@ -258,7 +258,7 @@ for subID in ${search}; do
     if [[ ${run_local} -eq 1 ]]; then
       job="call_fmriprep"
     else
-      job="qsub -q ${SGE_QUEUE_LONG} -N fprep_${sub_id} -o ${workdir} ${DIR_SCRIPTS}/bin/call_fmriprep"
+      job="qsub -q ${SGE_QUEUE_LONG} -pe smp 1 -N fprep_${sub_id} -o ${workdir} ${DIR_SCRIPTS}/bin/call_fmriprep"
     fi 
   else
     job="call_fmriprep"
