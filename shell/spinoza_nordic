@@ -123,25 +123,25 @@ for subID in ${search}; do
     exit 1
   else
     echo "Make backup of \"func\" in \"no_nordic\""
-    if [ -d ${tmp_folder} ]; then
-      rm -r ${tmp_folder}
-    fi
-    cp -r ${func_folder} ${tmp_folder} 2>/dev/null
+    # if [ -d ${tmp_folder} ]; then
+    #   rm -r ${tmp_folder}
+    # fi
+    # cp -r ${func_folder} ${tmp_folder} 2>/dev/null
+    # rm -r ${func_folder}/*.nii.gz 2>/dev/null
   fi
 
   # check BOLD files
-  IMGS=`find "${func_folder}" -type f \( -name "*bold.nii.gz" \) 2>/dev/null`
+  IMGS=`find "${tmp_folder}" -type f \( -name "*bold.nii.gz" \) 2>/dev/null`
   IFS=$'\n' mag_imgs=($(sort <<<"${IMGS[*]}"))
   unset IFS
 
   if [[ -z ${mag_imgs} ]]; then
-    echo "${sub_name}: could not find \"bold.nii.gz\"-images in ${func_folder}?"
+    echo "${sub_name}: could not find \"bold.nii.gz\"-images in \"${tmp_folder}\"?"
     exit 1
   fi
 
   # check if there's a phase directory
   if [[ -d ${phase_folder} ]]; then
-
 
     IMGS=`find "${phase_folder}" -type f \( -name "*bold_ph.nii.gz" \) 2>/dev/null`
     IFS=$'\n' phase_imgs=($(sort <<<"${IMGS[*]}"))
@@ -150,6 +150,10 @@ for subID in ${search}; do
     ct=0
     for ph_img in ${phase_imgs[@]}; do
 
+      # get corresponding magnitude image
+      mag_img=${mag_imgs[ct]}
+
+      # decide on job execution
       if [[ ${SGE} -eq 1 ]]; then
         run_id=`run_id ${ph_img}`
         if [[ -z ${run_id} || ${run_id} -eq 0 ]]; then
@@ -164,12 +168,15 @@ for subID in ${search}; do
         echo "Running NORDIC on \"${mag_img}\" [phase]"
       fi
 
-      mag_img=${mag_imgs[ct]}
+      # run if basenames of phase and magnitude match
       if [[ $(basename ${ph_img} _ph.nii.gz) == $(basename ${mag_img} .nii.gz) ]]; then
-        ${job} ${DIR_SCRIPTS}/bin/call_nordic ${mag_img} ${ph_img} ${mag_img}
+        out=${func_folder}/$(basename ${mag_img})
+        ${job} ${DIR_SCRIPTS}/bin/call_nordic ${mag_img} ${ph_img} ${out}
       else
         echo "ERROR in `basename ${0}`: mismatch between \"$(basename ${ph_img} _ph.nii.gz)\" & \"$(basename ${mag_img} .nii.gz)\""
       fi
+
+      # increment indexer
       ((ct++))
     done
 
@@ -189,8 +196,9 @@ for subID in ${search}; do
         fi
       else
         echo "Running NORDIC on \"${img}\" [mag-only]"
-      fi    
-      ${job} ${DIR_SCRIPTS}/bin/call_nordic -m ${img} ${img} ${img}
+      fi
+      out=${func_folder}/$(basename ${mag_img})
+      ${job} ${DIR_SCRIPTS}/bin/call_nordic -m ${img} ${img} ${out}
     done
   fi
 

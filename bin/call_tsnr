@@ -42,7 +42,7 @@ Example:
     if os.path.exists(in_file):
         mean_tsnr = tsnr(in_file, file_name=fname)
 
-        print(" tSNR of {} is {}".format(os.path.basename(in_file), round(mean_tsnr,2)))    
+        print("tSNR of {} is {}".format(os.path.basename(in_file), round(mean_tsnr,2)))    
 
 if __name__ == "__main__":
     main(sys.argv[1:])
