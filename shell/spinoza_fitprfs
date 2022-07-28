@@ -35,6 +35,9 @@ Options:
                   tories. This requires that the directory names you saved must match your naming 
                   scheme of functional files as we'll match on run-/task-ID
   --hrf           fit the HRF during pRF-fitting. See 'call_prf' for more information
+  --psc           use percent signal changed data from pybest. Assumes you've ran 'call_unzscore' before.
+                  Will use the following method for percent signal change: 
+                    psc = signals*100/(mean(signals)) - median(signals_without_stimulus)
   -s <subject>    subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
   -n <session>    session ID (e.g., 1, 2, or none)
   -m <model>      'gauss' or 'norm' for the type of model to use for the fitting
@@ -73,6 +76,8 @@ run_locally=0
 grid_flag=""
 multi_design=0
 fit_hrf=""
+psc_flag=""
+verb_flag=""
 while getopts :-:lgos:n:m:t: argument
 do
   case ${argument} in
@@ -83,7 +88,13 @@ do
           ;;           
         hrf)
           fit_hrf="--hrf"
-          ;;                                                        
+          ;;           
+        psc)
+          psc_flag="--psc"
+          ;;  
+        verbose)
+          verb_flag="--verbose"
+          ;;                                                                       
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}"
@@ -192,7 +203,12 @@ for subID in ${search}; do
 
   # check if input is pybest or fmriprep
   if [[ $(basename ${INPUT}) == "pybest" ]]; then
-    full_input=${input_dir}/denoising
+    if [[ ! -z ${psc_flag} ]]; then
+      use_dir="unzscored" # we requested percent signal change; use output from call_unzscore
+    else
+      use_dir="denoising" # directly use pybest output (= zscored)
+    fi
+    full_input=${input_dir}/${use_dir}
   elif [[ $(basename ${INPUT}) == "fmriprep" ]]; then
     full_input=${input_dir}/func
   else
@@ -253,7 +269,9 @@ for subID in ${search}; do
             if [[ -f ${DIR_DATA_HOME}/code/design_task-${task}.mat ]]; then
               echo "Creating symlink to ${PROJECT}/code/design_task-${task}.mat"
               ln -s ${DIR_DATA_HOME}/code/design_task-${task}.mat ${prf_dir}/design_task-${task}.mat
-              use_pngdir=""
+              use_pngdir=${DIR_DATA_HOME}/code/design_task-${task}.mat
+            elif [[ -f ${prf_dir}/design_task-${task}.mat ]]; then
+              use_pngdir=${prf_dir}/design_task-${task}.mat
             else
               use_pngdir=${PNGS_DIR[0]}
 
@@ -308,7 +326,9 @@ for subID in ${search}; do
             -i ${full_input} \
             -p ${use_pngdir} \
             -m ${use_model} \
-            -u ${PYBEST_SPACE}
+            -u ${PYBEST_SPACE} \
+            ${psc_flag} \
+            ${verb_flag}
           
           if [[ $? -ne 0 ]]; then
             echo "ERROR in `basename ${0}`: call_prf did not execute cleanly"
