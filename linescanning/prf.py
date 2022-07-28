@@ -1069,21 +1069,21 @@ def generate_model_params(model='gauss', dm=None, TR=1.5, outputdir=None, settin
             gauss_bounds = [(-1.5*data['max_ecc_size'], 1.5*data['max_ecc_size']),  # x
                             (-1.5*data['max_ecc_size'], 1.5*data['max_ecc_size']),  # y
                             (data['eps'], 1.5*ss),                                  # prf size
-                            (-80, 80),                                              # prf amplitude
-                            (-60, 60)]                                              # bold baseline
+                            data['prf_ampl'],                                       # prf amplitude
+                            data['bold_bsl']]                                       # bold baseline
 
             bounds = {'bounds': {'x': list(gauss_bounds[0]), 
                                  'y': list(gauss_bounds[1]), 
                                  'size': [float(item) for item in gauss_bounds[2]], 
-                                 'prf_ampl': list(gauss_bounds[3]), 
-                                 'bold_bsl': list(gauss_bounds[4])}}
+                                 'prf_ampl': gauss_bounds[3], 
+                                 'bold_bsl': gauss_bounds[4]}}
 
         else:
             norm_bounds = [(-1.5*data['max_ecc_size'], 1.5*data['max_ecc_size']),   # x
                            (-1.5*data['max_ecc_size'], 1.5*data['max_ecc_size']),   # y
                            (data['eps'], 1.5*ss),                                   # prf size
-                           (-80, 80),                                               # prf amplitude
-                           (-60, 60),                                               # bold baseline
+                           data['prf_ampl'],                                        # prf amplitude
+                           data['bold_bsl'],                                        # bold baseline
                            (0, 1000),                                               # surround amplitude
                            (data['eps'], 3*ss),                                     # surround size
                            (0, 1000),                                               # neural baseline
@@ -1092,8 +1092,8 @@ def generate_model_params(model='gauss', dm=None, TR=1.5, outputdir=None, settin
             bounds = {'bounds': {'x': list(norm_bounds[0]), 
                                  'y': list(norm_bounds[1]), 
                                  'size': [float(item) for item in norm_bounds[2]], 
-                                 'prf_ampl': list(norm_bounds[3]), 
-                                 'bold_bsl': list(norm_bounds[4]),
+                                 'prf_ampl': norm_bounds[3], 
+                                 'bold_bsl': norm_bounds[4],
                                  'surr_ampl': list(norm_bounds[5]),
                                  'surr_size': [float(item) for item in norm_bounds[6]],
                                  'neur_bsl': list(norm_bounds[7]),
@@ -1215,26 +1215,28 @@ class pRFmodelFitting():
                  rsq_threshold=None,
                  prf_stim=None,
                  model_obj=None,
+                 fix_bold_baseline=False,
                  **kwargs):
     
 
-        self.data           = data
-        self.design_matrix  = design_matrix
-        self.TR             = TR
-        self.model          = model
-        self.stage          = stage
-        self.output_dir     = output_dir
-        self.output_base    = output_base
-        self.write_files    = write_files
-        self.settings_fn    = settings
-        self.verbose        = verbose
-        self.hrf            = hrf
-        self.old_params     = old_params
-        self.nr_jobs        = nr_jobs
-        self.prf_stim       = prf_stim
-        self.model_obj      = model_obj
-        self.rsq_threshold  = rsq_threshold
-        self.fit_hrf        = fit_hrf
+        self.data               = data
+        self.design_matrix      = design_matrix
+        self.TR                 = TR
+        self.model              = model
+        self.stage              = stage
+        self.output_dir         = output_dir
+        self.output_base        = output_base
+        self.write_files        = write_files
+        self.settings_fn        = settings
+        self.verbose            = verbose
+        self.hrf                = hrf
+        self.old_params         = old_params
+        self.nr_jobs            = nr_jobs
+        self.prf_stim           = prf_stim
+        self.model_obj          = model_obj
+        self.rsq_threshold      = rsq_threshold
+        self.fit_hrf            = fit_hrf
+        self.fix_bold_baseline  = fix_bold_baseline
         self.__dict__.update(kwargs)
 
         #----------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -1246,6 +1248,13 @@ class pRFmodelFitting():
                                                                                   settings=self.settings_fn,
                                                                                   fit_hrf=self.fit_hrf)
 
+        # overwrite bold baseline tuple if bold baseline should be fixed
+        if self.fix_bold_baseline:
+            self.settings['bounds']['bold_bsl'] = [0,0]
+
+        print(f"Baseline bounds = {self.settings['bounds']['bold_bsl']}")
+        import sys
+        sys.exit(1)
         # overwrite rsq-threshold from settings file
         if self.rsq_threshold != None:
             if self.verbose:
@@ -2282,4 +2291,9 @@ class CollectSubject:
                                                                      make_figure=make_figure, 
                                                                      xkcd=xkcd,
                                                                      transpose=True, 
-                                                                     **kwargs)                                                                                         
+                                                                     **kwargs)
+
+def baseline_from_dm(dm, n_trs=7):
+    shifted_dm = np.zeros_like(dm)
+    shifted_dm[..., n_trs:] = dm[..., :-n_trs]
+    return np.where((np.sum(dm, axis=(0, 1)) == 0) & (np.sum(shifted_dm, axis=(0, 1)) == 0))[0]

@@ -13,8 +13,8 @@ param_bounds: True
 
 filter_predictions: False
 # screen settings
-screen_size_cm: 70
-screen_distance_cm: 196
+screen_size_cm: 39.3
+screen_distance_cm: 210
 
 #set bold baseline to 100 for all models, norm to value below
 fix_bold_baseline: True
@@ -37,6 +37,10 @@ hrf: [1,1,0]
 n_pix: 100
 eps: 1e-1
 
+# set prf amplitude
+bold_bsl: [-60,60]
+prf_ampl: [-80,80]
+
 # grids for normalization model (not used if model != norm)
 norm:
   surround_amplitude_grid: [0.01, 0.1, 1, 10]
@@ -47,6 +51,6 @@ norm:
 grid_nr: 20
 max_ecc_size: 15
 rsq_threshold: 0.1
-TR: 1.111508
+TR: 1.5
 filter_window_length: 300
 filter_polyorder: 1

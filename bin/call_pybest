@@ -43,7 +43,7 @@ Arguments:
   -e <environment>    string containing the name of the conda environment. We will check with conda
                       info --envs if the environment exists. By default we will look for something
                       containing fmriprep_denoising if left blank
-  --psc               convert data to percent signal change. Default of pybest is zscore.
+  --raw               undo the z-scoring done by pybest (call_unzscore)
 
 Example:
   call_pybest -s "001" -n "1" -o /derivatives/pybest -r "fsnative" -f /derivatives/fmriprep -c 10
@@ -65,13 +65,13 @@ check_env="base"
 ses_input=""
 output_dir=${DIR_DATA_DERIV}/pybest
 input_dir=${DIR_DATA_DERIV}/fmriprep
-psc=0
+raw=0
 while getopts :-:s:n:o:s:f:c:e:z:v:r:t: arg; do
   case $arg in
     -)
       case "${OPTARG}" in
-        psc)
-          psc=1
+        raw)
+          raw=1
           ;;                                               
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
@@ -168,9 +168,9 @@ for task_id in ${task_ids[@]}; do
   if [[ ${in_space} == "fsnative" || ${in_space} == "fsaverage" ]]; then
     for hemi in "L" "R"; do
 
-      if [ ${psc} -eq 1 ]; then
+      if [ ${raw} -eq 1 ]; then
         echo "Saving average/standard deviation"
-        call_pybest2psc \
+        call_unzscore \
           -s ${sub} \
           -n ${ses} \
           -o ${DIR_DATA_DERIV}/pybest \
@@ -183,9 +183,9 @@ for task_id in ${task_ids[@]}; do
 
       pybest ${sub_input} ${ses_input} --task ${task_id} --space ${in_space} --hemi ${hemi} ${cpu_input} --verbose ERROR --save-all ${input_dir}
 
-      if [ ${psc} -eq 1 ]; then
+      if [ ${raw} -eq 1 ]; then
         echo "Un-zcoring output from pybest"
-        call_pybest2psc \
+        call_unzscore \
           -s ${sub} \
           -n ${ses} \
           -o ${DIR_DATA_DERIV}/pybest \

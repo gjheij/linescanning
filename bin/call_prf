@@ -69,6 +69,7 @@ Options:
                     If you want to provide cifti's or nifti's, we assume everything's been prepro-
                     cessed appropriately. There's no filtering, percent-signal changing or other
                     stuff.
+    --psc           Convert the data to percent signal change. Assumes you've can call_unzscore              
 
 Example:
   call_prf -s 001 -n 1 -t 2R -o /path/derivatives/prf -i /path/to/pybest/sub-001 -p /path/png
@@ -88,13 +89,14 @@ Example:
     space       = None
     giftis      = False
     fit_hrf     = False
-    verbose     = True
+    verbose     = False
     n_pix       = 100
     clip_dm     = [0,0,0,0]
     file_ending = None
+    psc         = False
 
     try:
-        opts = getopt.getopt(argv,"ghs:n:t:o:i:p:m:x:u:",["sub=", "model=", "ses=", "task=", "out=", "in=", "png=", "params=", "grid=", "space=", "hrf=", "n_pix=", "clip=", "verbose=", "file_ending="])[0]
+        opts = getopt.getopt(argv,"ghs:n:t:o:i:p:m:x:u:",["sub=", "model=", "ses=", "task=", "out=", "in=", "png=", "params=", "grid", "space=", "hrf", "n_pix=", "clip=", "verbose", "file_ending=", "psc"])[0]
     except getopt.GetoptError:
         print(main.__doc__)
         sys.exit(2)
@@ -131,6 +133,8 @@ Example:
             clip_dm = list(ast.literal_eval(arg))
         elif opt in ("--file_ending"):
             file_ending = arg
+        elif opt in ("--psc"):
+            psc = True      
 
     if len(argv) < 2:
         print("\nNOT ENOUGH ARGUMENTS SPECIFIED")
@@ -147,7 +151,8 @@ Example:
     # Create design matrix if it doesn't exists
     design_file = opj(outputdir, f'design_task-{task}.mat')
     if os.path.isfile(design_file):
-        print(f"Design matrix: {design_file}")
+        if verbose:
+            print(f"Design matrix: {design_file}")
         design_matrix = io.loadmat(design_file)
     else:
         print("Creating new design matrix")
@@ -172,7 +177,7 @@ Example:
             file_ending = "bold.func.gii"
             giftis = True
         else:
-            raise ValueError(f"Unknown input directory '{inputdir}'. Expecting output from pybest ('*desc-denoised_bold.npy') or fMRIPrep ('*bold.func.gii')")
+            raise ValueError(f"Unknown input directory '{inputdir}'. Expecting output from pybest ('*{file_ending}') or fMRIPrep ('*bold.func.gii')")
 
     # search for space-/task-/ and file ending; add run as well to avoid the concatenated version being included
     search_for = ["run-", f"task-{task}", file_ending]
@@ -182,10 +187,12 @@ Example:
     # no space means native BOLD
     files = utils.get_file_from_substring(search_for, inputdir)
     
-    print("Loading in data")
+    if verbose:
+        print("Loading in data")
+        
     for ff in files:
         print(f" {ff}")
-
+    
     if not files[0].endswith(".nii.gz") and not files[0].endswith(".nii"):
         # chunk into L/R pairs
         hemi_pairs = [[i, j] for i, j in zip(files[:-1], files[1:])]
@@ -233,8 +240,27 @@ Example:
         if n_verts_fs != n_verts:
             raise ValueError(f"Mismatch between number of vertices in pRF-analysis ({n_verts}) and FreeSurfer ({n_verts_fs})..?\nYou're probably using an older surface reconstruction. Check if you've re-ran fMRIprep again with new FreeSurfer-segment")
     
+    # shift timeseries so they have the same average value in proper baseline periods across conditions
+    if psc:
+        if verbose:
+            print("Converting to percent signal change and fix baseline")
+
+        # first step of PSC
+        m_prf_tc_data *= (100/np.mean(m_prf_tc_data, axis=0))
+
+        # get timepoints without stimulus
+        timepoints_no_stim = prf.baseline_from_dm(design_matrix[list(design_matrix.keys())[-1]])
+
+        # get median
+        median_baseline = np.median(m_prf_tc_data[timepoints_no_stim,:], axis=0)
+
+        # subtract
+        m_prf_tc_data -= median_baseline
+
     # save files
-    print("Saving averaged data")
+    if verbose:
+        print("Saving averaged data")
+        
     np.save(opj(outputdir, f'{out}_hemi-LR_desc-avg_bold.npy'), m_prf_tc_data)
     np.save(opj(outputdir, f'{out}_hemi-L_desc-avg_bold.npy'), m_prf_tc_data[:,:n_verts[0]])
     np.save(opj(outputdir, f'{out}_hemi-R_desc-avg_bold.npy'), m_prf_tc_data[:,n_verts[0]:])
@@ -242,9 +268,11 @@ Example:
     # assume TR (read from gifti if possible)
     if giftis:
         tr = dataset.ParseGiftiFile(pair[0]).TR_sec
-        print(f"Setting TR to {tr}")
+        if verbose:
+            print(f"Setting TR to {tr}")
     else:
-        print("Could not find func-file, setting TR to 1.5; CHECK THIS!")
+        if verbose:
+            print("Could not find func-file, setting TR to 1.5; CHECK THIS!")
         tr = 1.5
 
     # plop everything if pRFmodelFitting object
@@ -255,7 +283,7 @@ Example:
 
     # stage 1 - no HRF
     stage1 = prf.pRFmodelFitting(m_prf_tc_data.T, 
-                                 design_matrix=design_matrix['stim'], 
+                                 design_matrix=design_matrix[list(design_matrix.keys())[-1]], 
                                  TR=tr, 
                                  model=model, 
                                  stage=stage, 
@@ -263,7 +291,9 @@ Example:
                                  output_dir=outputdir,
                                  output_base=out,
                                  write_files=True,
-                                 fit_hrf=False)
+                                 fit_hrf=False,
+                                 fix_bold_baseline=psc)
+
     stage1.fit()
 
     # stage2 - fit HRF after initial iterative fit
@@ -287,7 +317,8 @@ Example:
                                      output_dir=stage1.output_dir,
                                      output_base=out,
                                      write_files=True,                                
-                                     previous_gaussian_fitter=stage1.previous_fitter)
+                                     previous_gaussian_fitter=stage1.previous_fitter,
+                                     fix_bold_baseline=psc)
         stage2.fit()    
 
 if __name__ == "__main__":
