@@ -12,7 +12,7 @@ def main(argv):
 
     """
 ---------------------------------------------------------------------------------------------------
-call_pybest2psc
+call_unzscore
 
 Hook that allows you to convert pybest output to percent signal change; this should be called twice:
 First, *before* calling pybest in order to calculate the standard deviation and average for each in-
@@ -24,7 +24,8 @@ Args:
     -n|--ses <session>  session ID   
     -f|--fprep <path>   path to fMRIPrep root folder (e.g., derivatives/fmriprep). Default is the
                         environmental variable `DIR_DATA_DERIV/fmriprep`
-    -o|--out <path>     path to pybest output. Default is the environmental variable `DIR_DATA_DERIV/pybest`
+    -o|--out <path>     path to pybest output. Default is the environmental variable `DIR_DATA_DERIV
+                        /pybest`
     -t|--task <task>    task ID
     -p|--space <space>  space ID. Default is `fsnative`
     -h|--hemi <hemi>    hemi ID
@@ -34,7 +35,7 @@ Args:
     --post              use this *after* pybest; undo the z-scoring using the output from `--tmp`
 
 Example:
-    call_pybest2psc -s 999 -n 1 -f $DIR_DATA_DERIV/fmriprep -f $DIR_DATA_DERIV/pybest --pre
+    call_unzscore -s 999 -n 1 -f $DIR_DATA_DERIV/fmriprep -f $DIR_DATA_DERIV/pybest --pre
 
 ---------------------------------------------------------------------------------------------------
     """
@@ -115,12 +116,14 @@ Example:
 
         for func in funcs:
 
+            final_output = out_string
+
             # split into bids components to get run ID
             comps = utils.split_bids_components(func)
 
             for id in ['task', 'run', 'space', 'hemi']:
                 if id in list(comps.keys()):
-                    out_string += f"_{id}-{comps[id]}"
+                    final_output = final_output+f"_{id}-{comps[id]}"
             
             # read in file
             obj = dataset.Dataset(func, use_bids=True, filter_strategy='raw', standardization='raw')
@@ -136,7 +139,8 @@ Example:
             tmp_data = {'std': stdev,
                         'avg': avg}
 
-            pkl_file = opj(output_dir, out_string+'_desc-avgstd.pkl')
+            pkl_file = opj(output_dir, final_output+'_desc-avgstd.pkl')
+            # print(f"Writing {pkl_file}")
             f = open(pkl_file, "wb")
             pickle.dump(tmp_data, f)
             f.close()
@@ -144,10 +148,14 @@ Example:
         # final func_dir
         denoised_dir = opj(out_dir, base_dir, 'denoising')
         avg_dir = opj(out_dir, base_dir, 'tmp')
+        output_dir = opj(out_dir, base_dir, 'unzscored')
+
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir, exist_ok=True)
 
         # load data
-        full_search = search_for + ['run-', 'denoised_bold']
-        funcs = utils.get_file_from_substring(full_search, denoised_dir)
+        full_search = search_for + ['run', 'denoised_bold']
+        funcs = utils.get_file_from_substring(full_search, denoised_dir, exclude="raw")
         if isinstance(funcs, str):
             funcs = [funcs]
 
@@ -162,20 +170,25 @@ Example:
             # get raw data
             raw = obj.fetch_fmri(dtype='raw')
 
+            # split into bids components to get run ID
+            comps = utils.split_bids_components(func)
+            if "run" in list(comps.keys()):
+                run_search = search_for+[f"run-{comps['run']}_"]
+            else:
+                run_search = search_for
+
             # get standard deviation and mean
-            match = utils.get_file_from_substring(search_for, avg_dir)
+            match = utils.get_file_from_substring(run_search, avg_dir)
             if isinstance(match, list):
-                raise ValueError(f"Found {len(match)} matches: {match}")
+                raise ValueError(f"Found {len(match)} matches with filters {full_search}: {match}")
 
             with open(match, 'rb') as input:
                 data = pickle.load(input)
 
-        unzscored = raw*data['std'].T+data['avg'].T
-        percent_changed = _standardize(unzscored.T.values, standardize='psc')
-
-        fname = opj(denoised_dir, func)
-        # print(f"Saving {fname}")
-        np.save(fname, percent_changed)
+            unzscored = raw*data['std'].T+data['avg'].T
+            fname = opj(output_dir, os.path.basename(func))
+            # print(f"Writing {fname}")
+            np.save(fname, unzscored.T)
             
 if __name__ == "__main__":
     main(sys.argv[1:])
