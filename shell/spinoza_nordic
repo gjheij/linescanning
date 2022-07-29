@@ -27,8 +27,8 @@ sub-<subject>
 │   ├── sub-<subject>_ses-<session>_task-<task_id>_run-<run_id>_bold.nii.gz
 └── phase
     ├── sub-<subject>_ses-<session>_task-<task_id>_run-<run_id>_bold_ph.json
-    ├── sub-<subject>_ses-<session>_task-<task_id>_run-<run_id>_bold_ph.nii.gz
-    
+    └── sub-<subject>_ses-<session>_task-<task_id>_run-<run_id>_bold_ph.nii.gz
+
 Usage:
   spinoza_nordic [options] <bids folder>
 
