@@ -31,10 +31,14 @@ Options:
   -g              only run grid fit, skip iterative fit
   -l              run locally even though we have SGE available.
   -o              delete existing file and re-run analysis (y=yes|n=no)
+  -c              list of values used for clipping of design matrix. Format must be 
+                  [<top>,<bottom>,<left>,<right>]  
   --multi_design  specifies that for all runs in the dataset have run-/task-specific screenshot direc-
                   tories. This requires that the directory names you saved must match your naming 
                   scheme of functional files as we'll match on run-/task-ID
   --hrf           fit the HRF during pRF-fitting. See 'call_prf' for more information
+  --no_clip       ensures that the design matrix is NOT clipped, despite the possible presence of screen 
+                  delimiter files    
   --psc           use percent signal changed data from pybest. Assumes you've ran 'call_unzscore' before.
                   Will use the following method for percent signal change: 
                     psc = signals*100/(mean(signals)) - median(signals_without_stimulus)
@@ -78,6 +82,8 @@ multi_design=0
 fit_hrf=""
 zscore_flag=""
 verb_flag=""
+clip_flag=""
+clip=1
 while getopts :-:lgos:n:m:t: argument
 do
   case ${argument} in
@@ -94,7 +100,10 @@ do
           ;;  
         verbose)
           verb_flag="--verbose"
-          ;;                                                                       
+          ;;
+        no_clip)
+          clip=0
+          ;;           
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}"
@@ -302,6 +311,22 @@ for subID in ${search}; do
 
           echo "Using \"${use_pngdir}\" for design matrix"
 
+          # check if we have screen delimiter file (should be json file) if clip=1 (can be set to 0 by --no_clip)
+          if [[ ${clip} -eq 1 ]]; then
+            if [[ -z ${clipper} ]]; then
+              if [[ -d ${use_pngdir} ]]; then
+                screen_json=`find $(dirname ${use_pngdir}) -type f \( -name "*.json" \) 2>/dev/null`
+                if [[ -f ${screen_json} ]]; then
+                  clip_flag="--clip ${screen_json}"
+                else
+                  clip_flag=""
+                fi
+              fi
+            else
+              clip_flag="--clip ${clipper}"
+            fi
+          fi          
+
           # decide how to execute the process
           if [[ ${PLACE} != "SGE" ]]; then
             job="python"
@@ -318,7 +343,7 @@ for subID in ${search}; do
   
           # define call to call_prf
           export DISPLAY=:0
-          ${job} ${DIR_SCRIPTS}/bin/call_prf ${grid_flag} ${fit_hrf} \
+          ${job} ${DIR_SCRIPTS}/bin/call_prf ${grid_flag} ${fit_hrf} ${clip_flag} \
             -s ${sub_id} \
             -n ${nr} \
             -t ${task} \
