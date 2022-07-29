@@ -69,7 +69,8 @@ Options:
                     If you want to provide cifti's or nifti's, we assume everything's been prepro-
                     cessed appropriately. There's no filtering, percent-signal changing or other
                     stuff.
-    --psc           Convert the data to percent signal change. Assumes you've ran call_unzscore.
+    --zscore        Do NOT convert the data to percent signal change. If you do want percent signal
+                    change, the input directory needs to be unzscored data.
                     PSC will be calculated following M. Aqil's strategy:
                         psc = signals*100/(mean(signals)) - median(signals_without_stimulus)
                     This will ensure the baseline of periods without stimulus are set to zero.
@@ -96,10 +97,10 @@ Example:
     n_pix       = 100
     clip_dm     = [0,0,0,0]
     file_ending = None
-    psc         = False
+    psc         = True
 
     try:
-        opts = getopt.getopt(argv,"ghs:n:t:o:i:p:m:x:u:",["sub=", "model=", "ses=", "task=", "out=", "in=", "png=", "params=", "grid", "space=", "hrf", "n_pix=", "clip=", "verbose", "file_ending=", "psc"])[0]
+        opts = getopt.getopt(argv,"ghs:n:t:o:i:p:m:x:u:",["sub=", "model=", "ses=", "task=", "out=", "in=", "png=", "params=", "grid", "space=", "hrf", "n_pix=", "clip=", "verbose", "file_ending=", "zscore"])[0]
     except getopt.GetoptError:
         print(main.__doc__)
         sys.exit(2)
@@ -136,8 +137,8 @@ Example:
             clip_dm = list(ast.literal_eval(arg))
         elif opt in ("--file_ending"):
             file_ending = arg
-        elif opt in ("--psc"):
-            psc = True      
+        elif opt in ("--zscore"):
+            psc = False
 
     if len(argv) < 2:
         print("\nNOT ENOUGH ARGUMENTS SPECIFIED")

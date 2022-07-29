@@ -27,7 +27,7 @@ Arguments:
                       in the spinoza_setup-file
   -o                  overwrite existing files
   -c|--sge            submit job to cluster (called with 'master -m <module> --sge')
-  --raw               unzscore the output from pybest
+  --no_raw            do NOT unzscore the output from pybest (default is to do so)
   <project root>      base directory containing the derivatives and the subject's folders.
   <derivatives>       path to the derivatives folder
 
@@ -55,8 +55,8 @@ do
   case ${argument} in
     -)
       case "${OPTARG}" in
-        psc)
-          raw_flag="--raw"
+        no_raw)
+          raw_flag="--no_raw"
           ;;
         sge)
           SGE=1

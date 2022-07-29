@@ -76,7 +76,7 @@ run_locally=0
 grid_flag=""
 multi_design=0
 fit_hrf=""
-psc_flag=""
+zscore_flag=""
 verb_flag=""
 while getopts :-:lgos:n:m:t: argument
 do
@@ -89,8 +89,8 @@ do
         hrf)
           fit_hrf="--hrf"
           ;;           
-        psc)
-          psc_flag="--psc"
+        zscore)
+          zscore_flag="--zscore"
           ;;  
         verbose)
           verb_flag="--verbose"
@@ -203,10 +203,10 @@ for subID in ${search}; do
 
   # check if input is pybest or fmriprep
   if [[ $(basename ${INPUT}) == "pybest" ]]; then
-    if [[ ! -z ${psc_flag} ]]; then
-      use_dir="unzscored" # we requested percent signal change; use output from call_unzscore
-    else
+    if [[ ! -z ${zscore_flag} ]]; then
       use_dir="denoising" # directly use pybest output (= zscored)
+    else
+      use_dir="unzscored" # we requested percent signal change; use output from call_unzscore
     fi
     full_input=${input_dir}/${use_dir}
   elif [[ $(basename ${INPUT}) == "fmriprep" ]]; then
@@ -327,7 +327,7 @@ for subID in ${search}; do
             -p ${use_pngdir} \
             -m ${use_model} \
             -u ${PYBEST_SPACE} \
-            ${psc_flag} \
+            ${zscore_flag} \
             ${verb_flag}
           
           if [[ $? -ne 0 ]]; then

@@ -29,6 +29,7 @@ GRID=""               # spinoza_fitprfs
 MULTIPLE_DESIGNS=""   # spinoza_fitprfs
 FIT_HRF=""            # spinoza_fitprfs
 psc_flag=""           # spinoza_fitprfs
+zscore_flag=""        # spinoza_fitprfs
 use_bbr=""            # spinoza_fmriprep
 WARP_ONLY=""          # spinoza_fmriprep
 REMOVE_WF=""          # spinoza_fmriprep
@@ -43,7 +44,7 @@ NO_BIAS=""            # spinoza_qmrimaps
 
 # use long options in bash:
 # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options
-declare -a opts=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--raw" "--verbose")
+declare -a opts=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore")
 while getopts :-:wcjqom:s:h:n:t:l:v:p:x:u:r:e:i: arg
 do
   case ${arg} in
@@ -121,12 +122,15 @@ do
         psc)
           psc_flag="--psc"
           ;;           
-        raw)
-          raw_flag="--raw"
+        no_raw)
+          raw_flag="--no_raw"
           ;;        
         verbose)
           verb_flag="--verbose"
-          ;;                           
+          ;;         
+        zscore)
+          zscore_flag="--zscore"
+          ;;                               
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}, possible options are:"
@@ -1096,7 +1100,7 @@ if [[ $? -eq 0 ]]; then
     TASK_ID=""
   fi  
 
-  ${job} spinoza_fitprfs ${verb_flag} ${psc_flag} ${TASK_ID} ${FIT_HRF} ${run_local} ${grid} ${MULTIPLE_DESIGNS} ${SUBJECT} ${SESSION} ${OW} ${MODEL} ${PRF_INPUT} ${DIR_DATA_DERIV}/prf ${PNG_DIR}
+  ${job} spinoza_fitprfs ${verb_flag} ${zscore_flag} ${TASK_ID} ${FIT_HRF} ${run_local} ${grid} ${MULTIPLE_DESIGNS} ${SUBJECT} ${SESSION} ${OW} ${MODEL} ${PRF_INPUT} ${DIR_DATA_DERIV}/prf ${PNG_DIR}
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_fitprfs exited with non-zero status"

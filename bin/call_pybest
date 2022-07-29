@@ -65,13 +65,13 @@ check_env="base"
 ses_input=""
 output_dir=${DIR_DATA_DERIV}/pybest
 input_dir=${DIR_DATA_DERIV}/fmriprep
-raw=0
+raw=1
 while getopts :-:s:n:o:s:f:c:e:z:v:r:t: arg; do
   case $arg in
     -)
       case "${OPTARG}" in
-        raw)
-          raw=1
+        no_raw)
+          raw=0
           ;;                                               
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
@@ -93,8 +93,6 @@ while getopts :-:s:n:o:s:f:c:e:z:v:r:t: arg; do
     c)  n_slots=${OPTARG}
           ;;
     e)  env=${OPTARG}
-          ;;
-    z)  normalization=${OPTARG}
           ;;
     t)  task_ids=(${OPTARG})
           ;;          
