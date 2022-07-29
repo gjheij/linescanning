@@ -27,6 +27,9 @@ raw_flag=""           # spinoza_denoising
 SGE=""                # spinoza_denoising/spinoza_nordic/spinoza_linerecon/spinoza_registration
 COMB_ONLY=""          # spinoza_extractregions
 CLIP=""               # spinoza_fitprfs
+CLIP_FLAG=""          # spinoza_fitprfs
+TASK_ID=""            # spinoza_fitprfs
+MODEL=""              # spinoza_fitprfs
 GRID=""               # spinoza_fitprfs
 MULTIPLE_DESIGNS=""   # spinoza_fitprfs
 FIT_HRF=""            # spinoza_fitprfs
@@ -56,7 +59,7 @@ do
           use_bbr="--no_bbr"
           ;;
         local)
-          run_local="-l"
+          run_local="--local"
           ;;
         ups)
           UPs="-u"
@@ -1081,8 +1084,6 @@ if [[ $? -eq 0 ]]; then
   echo "[${module}] pRF-fitting with pRFpy"
 
   if [[ -z ${PRF_MODEL} ]]; then
-    MODEL=""
-  else
     MODEL="-m ${PRF_MODEL}"
   fi
 
@@ -1100,14 +1101,10 @@ if [[ $? -eq 0 ]]; then
 
   if [[ ! -z ${TYPE} ]]; then
     TASK_ID="-t ${TYPE}"
-  else
-    TASK_ID=""
   fi  
 
   if [[ ! -z ${C_FLAG} ]]; then
     CLIP_FLAG="-c ${C_FLAG}"
-  else
-    CLIP_FLAG=""
   fi  
 
   ${job} spinoza_fitprfs ${CLIP} ${CLIP_FLAG} ${verb_flag} ${zscore_flag} ${TASK_ID} ${FIT_HRF} ${run_local} ${grid} ${MULTIPLE_DESIGNS} ${SUBJECT} ${SESSION} ${OW} ${MODEL} ${PRF_INPUT} ${DIR_DATA_DERIV}/prf ${PNG_DIR}
