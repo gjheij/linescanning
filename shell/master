@@ -22,9 +22,11 @@ job="bash"
 OW=""                 # multiple (overwrite mode)
 verb_flag=""          # multiple (turn on verboses)
 FREEVIEW=""           # spinoza_bestvertex
+PROC=""               # spinoza_brainextraction
 raw_flag=""           # spinoza_denoising
 SGE=""                # spinoza_denoising/spinoza_nordic/spinoza_linerecon/spinoza_registration
 COMB_ONLY=""          # spinoza_extractregions
+CLIP=""               # spinoza_fitprfs
 GRID=""               # spinoza_fitprfs
 MULTIPLE_DESIGNS=""   # spinoza_fitprfs
 FIT_HRF=""            # spinoza_fitprfs
@@ -44,7 +46,7 @@ NO_BIAS=""            # spinoza_qmrimaps
 
 # use long options in bash:
 # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options
-declare -a opts=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore")
+declare -a opts=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip")
 while getopts :-:wcjqom:s:h:n:t:l:v:p:x:u:r:e:i: arg
 do
   case ${arg} in
@@ -130,7 +132,13 @@ do
           ;;         
         zscore)
           zscore_flag="--zscore"
-          ;;                               
+          ;;     
+        full)
+          PROC="--full"
+          ;;         
+        no_clip)
+          CLIP="--no_clip"
+          ;;         
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}, possible options are:"
@@ -158,7 +166,7 @@ do
           ;;
     p)  PRF_MODEL=${OPTARG}
           ;;
-    c)  CAT_RUN=${OPTARG}
+    c)  C_FLAG=${OPTARG}
           ;;
     x)  KWARGS=${OPTARG}
           ;;
@@ -220,14 +228,12 @@ it's default settings are and what you'd need to do to get it running for you.
 Have fun!
 
 Args:
-  -c                Do full processing with CAT12, assuming module 8 was skipped. This does itera-
-                    tive SANLM-filtering, bias correction, and intensity normalization. Can some-
-                    times be overkill, so generally we use CAT12 for the additional segmentations
-                    and brain extraction
+  -c                List used for clipping of design matrix. Format must be:
+                    [<top>,<bottom>,<left>,<right>]
   -e <n_echoes>     Specify the amount of echoes of the acquisition
   -h <hemisphere>   used for lineplanning, denotes which hemisphere to process
-  -i <image path>   specify custom path to PNG's for pRF-fitting. This allows deviation from the stan-
-                    dard path that 'spinoza_fitprfs' will be looking for
+  -i <image path>   specify custom path to PNG's for pRF-fitting. This allows deviation from the 
+                    standard path that 'spinoza_fitprfs' will be looking for
   -l <which mod>    look for a module number given a string to search for (e.g., master -l layer); can
                     also be used with:
                     - spinoza_bestvertex to use a particular label-file (default = V1_exvivo.thresh).
@@ -272,6 +278,10 @@ Args:
                       - spinoza_profiling; specify the type of file to use
   --affine          use 'affine'-registration (spinoza_registration)
   --comb_only       skip nighres, only do combination of segmentations. Works with '-o' flag. 
+  --full            Do full processing with CAT12, assuming module 8 was skipped. This does itera-
+                    tive SANLM-filtering, bias correction, and intensity normalization. Can some-
+                    times be overkill, so generally we use CAT12 for the additional segmentations
+                    and brain extraction
   --fv              use FreeView to draw sinus mask (spinoza_sagittalsinus) 
   --fsl             use FSLeyes to draw sinus mask (spinoza_sagittalsinus) 
   --gdh             use custom implementation of MGDM (via call_gdhmgdm) that also considers extra
@@ -291,6 +301,8 @@ Args:
                     metric layering (spinoza_layering)
   --no_bbr          maps to '--force-no-bbr' in call_fmriprep
   --no_biascorr     maps to '-b' in spinoza_biassanlm; don't perform bias correction after denoising
+  --no_clip         spinoza_fitprfs; ensures that the design matrix is NOT clipped, despite the possible
+                    presence of screen delimiter files  
   --no_freeview     disable FreeView during vertex selection (spinoza_bestvertex)
   --ups             maps to '-u' in spinoza_qmrimaps; turn on Universal Pulses
   --remove_wf       maps to '-r all' in spinoza_fmriprep; removes full fmriprep_wf folder. Be careful
@@ -795,15 +807,7 @@ if [[ $? -eq 0 ]]; then
   if [[ ${DO_STUFF} ==  "inv2" ]]; then
     ${job} spinoza_brainextraction ${SUBJECT} ${SESSION} ${DIR_DATA_DERIV}/ants ${DIR_DATA_DERIV}/skullstripped ${DIR_DATA_DERIV}/manual_masks FSL
   elif [[ ${DO_STUFF} == "cat12" ]]; then
-
-    if [[ "${@}" == *"-c"* ]]; then
-      CAT_RUN="-m full"
-    else
-      CAT_RUN=""
-    fi
-
-    ${job} spinoza_brainextraction ${SUBJECT} ${SESSION} ${OW} ${CAT_RUN} ${DIR_DATA_DERIV}/denoised ${DIR_DATA_DERIV}/cat12 ${DIR_DATA_DERIV}/manual_masks cat12
-
+    ${job} spinoza_brainextraction ${SUBJECT} ${SESSION} ${OW} ${PROC} ${DIR_DATA_DERIV}/denoised ${DIR_DATA_DERIV}/cat12 ${DIR_DATA_DERIV}/manual_masks cat12
   fi
 
   if [[ $? -ne 0 ]]; then
@@ -1100,7 +1104,13 @@ if [[ $? -eq 0 ]]; then
     TASK_ID=""
   fi  
 
-  ${job} spinoza_fitprfs ${verb_flag} ${zscore_flag} ${TASK_ID} ${FIT_HRF} ${run_local} ${grid} ${MULTIPLE_DESIGNS} ${SUBJECT} ${SESSION} ${OW} ${MODEL} ${PRF_INPUT} ${DIR_DATA_DERIV}/prf ${PNG_DIR}
+  if [[ ! -z ${C_FLAG} ]]; then
+    CLIP_FLAG="-c ${C_FLAG}"
+  else
+    CLIP_FLAG=""
+  fi  
+
+  ${job} spinoza_fitprfs ${CLIP} ${CLIP_FLAG} ${verb_flag} ${zscore_flag} ${TASK_ID} ${FIT_HRF} ${run_local} ${grid} ${MULTIPLE_DESIGNS} ${SUBJECT} ${SESSION} ${OW} ${MODEL} ${PRF_INPUT} ${DIR_DATA_DERIV}/prf ${PNG_DIR}
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_fitprfs exited with non-zero status"

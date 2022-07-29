@@ -23,6 +23,8 @@ Arguments:
   -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
   -n <session>        session ID (e.g., 1, 2, or n)
   -o                  overwrite existing files
+  --full              do full processing with CAT12 including iterative SANLM filtering and bias
+                      correction. Default is just tissue segmentation.  
   <input directory>   directory for inputs
   <skullstrip>        directory for skull-stripped outputs
   <mask>              directory for masks
@@ -41,15 +43,26 @@ USAGE
 
 # Check for subject & session flags
 OW=0
-while getopts os:n:m: argument
+mode=""
+while getopts :-:os:n:m: argument
 do
   case ${argument} in
+    -)
+      case "${OPTARG}" in
+        full)
+          mode="--full"
+          ;;
+    *)
+      if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
+        echo "Unknown option --${OPTARG}. Did you mean \"--full\"?"
+        exit 1
+      fi
+      ;;
+      esac;;            
     s)  sub=${OPTARG}
           ;;
     n)  ses=${OPTARG}
-          ;;
-    m)  mode=${OPTARG}
-          ;;   
+          ;; 
     o)  OW=1
           ;;                      
   esac
@@ -273,18 +286,6 @@ for subID in ${search}; do
     fi
 
   elif [[ ${SOFTWARE,,} == "cat12" ]]; then
-
-    #-----------------------------------------------------------------------------
-    # Define default processing MODE
-    if [[ -z ${mode} ]]; then
-      mode='brain'
-    else
-      if [[ ${mode} != 'full' && ${mode} != 'brain' ]]; then
-        echo "ERROR in `basename ${0}`: MODE must be \"full\" or \"brain\", got \"${mode}\""
-        exit 1
-      fi
-      mode=${mode}
-    fi
 
     input=`find "${INPUTDIR}" -type f \( -name "*T1w*" -and -name "*${DATA^^}*" -and -name "*.nii.gz" \) 2>/dev/null`
     brainmask=${MASKS}/${base}_acq-${DATA^^}_desc-cat_mask.nii.gz

@@ -37,17 +37,17 @@ Usage:
   call_prf [arguments] [options]
 
 Arguments:
-    -s|--sub)    <sub number>       number of subject's FreeSurfer directory from which you can 
+    -s|--sub    <sub number>        number of subject's FreeSurfer directory from which you can 
                                     omit "sub-" (e.g.,for "sub-001", enter "001").
-    -n|--ses)    <session number>   session number (e.g., "1")
-    -t|--task)   <task name>        name of the experiment performed (e.g., "2R")
-    -o|--out)    <prf dir>          output directory containing pRF-stuff (/derivatives/prf)
-    -i|--in)     <input dir>        input directory (e.g., output of pybest/fMRIPrep)
-    -p|--png)    <path to pngs>     path to png's if you ran M. Aqil's experiment
-    -m|--model)  <model type>       standard Gaussian model or Normalization model (for now)
-    -x|--params) <gaussian params>  path to numpy array containing old parameters of Gaussian model
+    -n|--ses    <session number>    session number (e.g., "1")
+    -t|--task   <task name>         name of the experiment performed (e.g., "2R")
+    -o|--out    <prf dir>           output directory containing pRF-stuff (/derivatives/prf)
+    -i|--in     <input dir>         input directory (e.g., output of pybest/fMRIPrep)
+    -p|--png    <path to pngs>      path to png's if you ran M. Aqil's experiment
+    -m|--model  <model type>        standard Gaussian model or Normalization model (for now)
+    -x|--params <gaussian params>   path to numpy array containing old parameters of Gaussian model
                                     to use for the Normalization model
-    -u|--space)  <fit space>        default is set as PYBEST_SPACE in spinoza_setup
+    -u|--space  <fit space>         default is set as PYBEST_SPACE in spinoza_setup
 
 Options:                                  
     --hrf           Fit the HRF during pRF-fitting. If `True`, the fitting will consist of two 
@@ -144,6 +144,20 @@ Example:
         print("\nNOT ENOUGH ARGUMENTS SPECIFIED")
         print(main.__doc__)
         sys.exit()
+
+    # check clip input:
+    if isinstance(clip_dm, str):
+        if clip_dm.endswith("json"):
+            ff = open(clip_dm)
+            clip_dm = json.load(ff)
+            ff.close()
+        elif clip_dm.endswith("txt"):
+            clip_dm = np.loadtxt(clip_dm)
+            if len(clip_dm) != 4:
+                raise ValueError(f"Length of given list for clipping must be 4, not '{len(clip_dm)}': {clip_dm}")
+            else:
+                # make integer
+                clip_dm = clip_dm.astype(int)        
 
     out = f"sub-{sub}"
     if ses != None:
@@ -248,8 +262,8 @@ Example:
         if verbose:
             print("Converting to percent signal change and fix baseline")
 
-        # first step of PSC
-        m_prf_tc_data *= (100/np.mean(m_prf_tc_data, axis=0))
+        # first step of PSC; set NaNs to zero if dividing by 0 (in case of crappy timecourses)
+        m_prf_tc_data *= np.nan_to_num((100/np.mean(m_prf_tc_data, axis=0)))
 
         # get timepoints without stimulus
         timepoints_no_stim = prf.baseline_from_dm(design_matrix[list(design_matrix.keys())[-1]])
