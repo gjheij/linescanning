@@ -238,7 +238,9 @@ for subID in ${search}; do
 
   # remove any left over unzipped files
   nii_files=`find ${func_folder} -type f -name "*.nii" 2>/dev/null`
-  rm -r ${nii_files} 2>/dev/null
+  if [[ ! -z ${nii_files} ]]; then
+    rm -r ${nii_files} 2>/dev/null
+  fi
 
 done
 
