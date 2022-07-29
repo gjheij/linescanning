@@ -1251,10 +1251,9 @@ class pRFmodelFitting():
         # overwrite bold baseline tuple if bold baseline should be fixed
         if self.fix_bold_baseline:
             self.settings['bounds']['bold_bsl'] = [0,0]
+            if self.verbose:
+                print(f"Fixing baseline at {self.settings['bounds']['bold_bsl']}")
 
-        print(f"Baseline bounds = {self.settings['bounds']['bold_bsl']}")
-        import sys
-        sys.exit(1)
         # overwrite rsq-threshold from settings file
         if self.rsq_threshold != None:
             if self.verbose:

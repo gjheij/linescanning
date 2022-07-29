@@ -193,9 +193,8 @@ Example:
     
     if verbose:
         print("Loading in data")
-        
-    for ff in files:
-        print(f" {ff}")
+        for ff in files:
+            print(f" {ff}")
     
     if not files[0].endswith(".nii.gz") and not files[0].endswith(".nii"):
         # chunk into L/R pairs
