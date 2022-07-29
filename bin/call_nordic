@@ -13,7 +13,9 @@ function Usage {
 call_nordic
 
 Applies the NORDIC algorithm to whole-brain data. Requires the magnitude image, the phase image, and 
-an output name
+an output name. We'll try to read the run-ID from the input file to create a template script. This
+can be useful when you want to submit multiple NORDIC processes to a cluster as it avoids that the 
+template script is overwritten before another has initiated.
 
 Args:
   -m        use magnitude only
@@ -77,9 +79,12 @@ else
   exit 1
 fi
 
+# try to get run-ID from input file
+run_id=`run_id ${fn_nordic}`
+
 #-----------------------------------------------------------------------------
 # Create new script
-new_script=$(dirname ${fn_mag})/nordic.m
+new_script=$(dirname ${fn_mag})/nordic${run_id}.m
 if [[ -f ${new_script} ]]; then
   rm -r ${new_script}
 fi

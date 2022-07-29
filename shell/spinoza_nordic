@@ -13,21 +13,40 @@ Run NORDIC denoising on whole-brain functional data. Expects a BIDS-like folder 
 magnitude data in 'func' and the phase data in 'phase'. If phase data is not present, we'll attempt
 a magnitude-only NORDIC process. If NORDIC is being run, we'll copy the 'func'-folder as 'no_nordic' 
 folder to denote that not preprocessing has taken place, while keeping the data close. The NORDIC'ed 
-data will be placed in 'func', without any special tags to avoid that fMRIPrep gets confused.
+data will be placed in 'func', without any special tags to avoid that fMRIPrep gets confused. How-
+ever, it's likely you've produced the phase output with 'spinoza_scanner2bids', in which case the 
+files will be named properly. Thus, the folder structure is expected to be like:
 
+sub-<subject>
+├── ses-<session>
+├── fmap
+│   ├── sub-<subject>_ses-<session>_task-<task_id>_run-<run_id>_epi.json
+│   ├── sub-<subject>_ses-<session>_task-<task_id>_run-<run_id>_epi.nii.gz
+├── func
+│   ├── sub-<subject>_ses-<session>_task-<task_id>_run-<run_id>_bold.json
+│   ├── sub-<subject>_ses-<session>_task-<task_id>_run-<run_id>_bold.nii.gz
+└── phase
+    ├── sub-<subject>_ses-<session>_task-<task_id>_run-<run_id>_bold_ph.json
+    ├── sub-<subject>_ses-<session>_task-<task_id>_run-<run_id>_bold_ph.nii.gz
+    
 Usage:
   spinoza_nordic [options] <bids folder>
 
 Arguments:
   -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
-  -n <session>        session ID (e.g., 1, 2, or none)
+  -n <session>        session ID (e.g., 1, 2, or none
+  --sge               submit individual NORDIC processes to the cluster for parallellization. If 
+                      you do this, it's advised to have identifiable 'run-' flags in your filenames
+                      so that the template file is not overwritten; this can cause problems. If you
+                      do not have run identifiers in your filenames, please run serially. This flag
+                      is inherited from 'master', so calling it there will pass on the flag here.
   <bids folder>       parent directory containing the sub-xxx folders for functional data. Can be 
                       e.g., DIR_DATA_HOME or DIR_DATA_HOME/derivatives/pymp2rage
 
 Example:
-  spinoza_nordic DIR_DATA_HOME
-  spinoza_nordic -s 001 -n 1 DIR_DATA_HOME
-  spinoza_nordic -s 001 -n 1 DIR_DATA_HOME
+  spinoza_nordic DIR_DATA_HOME                          # run for all subjects
+  spinoza_nordic -s 001 -n 1 DIR_DATA_HOME              # run for specific subject/session
+  spinoza_nordic --sge DIR_DATA_HOME                    # submit to cluster
 
 ---------------------------------------------------------------------------------------------------
 
@@ -123,11 +142,11 @@ for subID in ${search}; do
     exit 1
   else
     echo "Make backup of \"func\" in \"no_nordic\""
-    # if [ -d ${tmp_folder} ]; then
-    #   rm -r ${tmp_folder}
-    # fi
-    # cp -r ${func_folder} ${tmp_folder} 2>/dev/null
-    # rm -r ${func_folder}/*.nii.gz 2>/dev/null
+    if [ -d ${tmp_folder} ]; then
+      rm -r ${tmp_folder}
+    fi
+    cp -r ${func_folder} ${tmp_folder} 2>/dev/null
+    rm -r ${func_folder}/*.nii.gz 2>/dev/null
   fi
 
   # check BOLD files
@@ -142,6 +161,8 @@ for subID in ${search}; do
 
   # check if there's a phase directory
   if [[ -d ${phase_folder} ]]; then
+
+    json_msg="Magnitude+phase"
 
     IMGS=`find "${phase_folder}" -type f \( -name "*bold_ph.nii.gz" \) 2>/dev/null`
     IFS=$'\n' phase_imgs=($(sort <<<"${IMGS[*]}"))
@@ -182,6 +203,7 @@ for subID in ${search}; do
 
   else
     # magnitude only
+    json_msg="Magnitude only"
     for img in ${mag_imgs[@]}; do
 
       if [[ ${SGE} -eq 1 ]]; then
@@ -201,6 +223,22 @@ for subID in ${search}; do
       ${job} ${DIR_SCRIPTS}/bin/call_nordic -m ${img} ${img} ${out}
     done
   fi
+  
+  # add message to json files
+  echo "Adding {\"Nordic\": \"${json_msg}\"} to json-files"
+  for file in ${func_folder}/*.json; do
+    call_json ${file} "Nordic" "${json_msg}"
+  done
+
+  # add message to json files
+  echo "Adding {\"Nordic\": \"off\"} to original json-files"
+  for file in ${tmp_folder}/*.json; do
+    call_json ${file} "Nordic" "off"
+  done
+
+  # remove any left over unzipped files
+  nii_files=`find ${func_folder} -type f -name "*.nii" 2>/dev/null`
+  rm -r ${nii_files} 2>/dev/null
 
 done
 

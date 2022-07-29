@@ -1,0 +1,93 @@
+#!/usr/bin/env python
+
+import json
+import os
+import sys
+import ast
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_json
+
+Add a key an description to a given json file. 
+
+Parameters
+----------
+    <json file>     path representing a valid json-file
+    <key>           string of the key that should be added; use double+single quotes (see example) 
+                    for list-like input
+    <messsage>      message that is linked to the key; use double+single quotes (see example) 
+                    for list-like input. Order must match list-like input from <key>
+
+Usage
+----------
+    call_json <file> <key> <message>
+
+Example
+----------
+    call_json sub-001_epi.json PhaseEncodingDirection j
+    call_json sub-001_epi.json Nordic True
+    call_json sub-001_epi.json "'Nordic','PhaseEncodingDirection'" "'True','j'"
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    if len(argv) < 3:
+        print("NOT ENOUGH ARGUMENTS SPECIFIED")
+        print(main.__doc__)
+        sys.exit(1)
+        
+    json_file   = argv[0]
+    add_key     = argv[1]
+    add_msg     = argv[2]
+
+    # force into list whatever the input may be
+    if isinstance(add_key, str):
+        add_key = [add_key]
+    else:
+        try:
+            add_key = list(ast.literal_eval(add_key))
+        except:
+            raise Exception(f"Could not read {add_key} into list")
+    
+    if isinstance(add_msg, str):
+        add_msg = [add_msg]
+    else:
+        try:
+            add_msg = list(ast.literal_eval(add_msg))
+        except:
+            raise Exception(f"Could not read {add_msg} into list")
+
+    # check if length of lists match
+    if len(add_msg) != len(add_key):
+        raise ValueError(f"Length ({len(add_key)}) of key list does not match length of message list ({len(add_msg)})")          
+
+    # check if file exists
+    if not os.path.exists(json_file):
+        raise FileNotFoundError(f"Could not find file {json_file}")
+
+    # open json
+    with open(json_file) as f:
+        data = json.load(f)
+
+    # create dictionary of new key
+    add_dict = {}
+    for ix,key in enumerate(add_key):
+        # check if message is a number
+        if add_msg[ix].isdigit():
+            add_msg[ix] = int(add_msg[ix])
+        elif add_msg[ix].replace('.','',1).isdigit() and add_msg[ix].count('.') < 2:
+            add_msg[ix] = float(add_msg[ix])
+        add_dict[key] = add_msg[ix]
+
+    data.update(add_dict)
+
+    # write
+    with open(json_file, 'w') as f:
+        json.dump(data, f, indent=4)    
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
+
