@@ -622,12 +622,12 @@ class ParseExpToolsFile(ParseEyetrackerFile):
             timings = pd.read_csv(f, delimiter='\t')
             data_onsets.append(pd.DataFrame(timings))
 
+        # trim onsets to first 't'
         delete_time         = delete_vols*self.TR
         self.data           = data_onsets[0]
-        self.start_time     = float(timings.loc[(timings['event_type'] == "pulse") & (timings['response'] == "t")].loc[(timings['trial_nr'] == 1) & (timings['phase'] == 0)]['onset'].values)
-
-        self.trimmed = timings.loc[(timings['event_type'] == "stim") & (timings['phase'] == phase_onset)].iloc[1:,:]
-        self.onset_times = self.trimmed['onset'].values[...,np.newaxis]
+        self.start_time     = float(timings.loc[(timings['event_type'] == "pulse") & (timings['phase'] == 0)]['onset'].values[0])
+        self.trimmed        = timings.loc[(timings['event_type'] == "stim") & (timings['phase'] == phase_onset)].iloc[1:,:]
+        self.onset_times    = self.trimmed['onset'].values[...,np.newaxis]
 
         skip_duration = False
         if isinstance(self.stim_duration, float) or isinstance(self.stim_duration, int):
