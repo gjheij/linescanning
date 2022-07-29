@@ -18,10 +18,8 @@ uses a tempate script to run CAT12 in SPM.
 Args:
  -s <SPM_PATH>  path to SPM; should contain CAT12 in toolbox directory
  -l <LOG_PATH>	path to working directory, defaults to DIR_LOGS
- -m <MODE>'full'|'brain'; full refers to a full processing with CAT12, which is sometimes 
-                overkill (makes the brain too smooth). 'brain' refers to the fact that you're 
-                mainly interested in the brain extraction and turns off the denoising/bias cor-
-                rection in CAT12.
+ --full         refers to a full processing with CAT12, which is sometimes overkill (makes the brain 
+                too smooth). Default is just tissue segmentation.
  <input image>  input image. Can either be *.nii.gz or *.nii image. In the case of the former,
                 new *.nii-file will be created alongside of the *.nii.gz file, as SPM does
                 not like *.nii.gz files.
@@ -47,9 +45,22 @@ if [[ $# -lt 2 ]] ; then
 fi
 
 # Check for subject & session flags
-while getopts l:s:m: argument
+MODE="brain"
+while getopts :-:l:s:m: argument
 do
   case ${argument} in
+    -)
+      case "${OPTARG}" in
+        full)
+          MODE="full"
+          ;;
+    *)
+      if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
+        echo "Unknown option --${OPTARG}. Did you mean \"--full\"?"
+        exit 1
+      fi
+      ;;
+      esac;;    
     l)  LOG=${OPTARG}
             ;;
     s)  SPM=${OPTARG}
