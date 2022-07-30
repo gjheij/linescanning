@@ -14,6 +14,8 @@ import sys
 import warnings
 import json
 
+from sqlalchemy import over
+
 warnings.filterwarnings('ignore')
 opj = os.path.join
 
@@ -75,6 +77,9 @@ Options:
                     PSC will be calculated following M. Aqil's strategy:
                         psc = signals*100/(mean(signals)) - median(signals_without_stimulus)
                     This will ensure the baseline of periods without stimulus are set to zero.
+    --overwrite     If specified, we'll overwrite existing Gaussian parameters. If not, we'll look
+                    for a file with ['model-gauss', 'stage-iter', 'params.npy'] in *outputdir* and,
+                    if it exists, inject it in the normalization model (if `model=norm`)                    
 
 Example:
   call_prf -s 001 -n 1 -t 2R -o /path/derivatives/prf -i /path/to/pybest/sub-001 -p /path/png
@@ -99,9 +104,10 @@ Example:
     clip_dm     = [0,0,0,0]
     file_ending = None
     psc         = True
+    overwrite   = False
 
     try:
-        opts = getopt.getopt(argv,"ghs:n:t:o:i:p:m:x:u:",["sub=", "model=", "ses=", "task=", "out=", "in=", "png=", "params=", "grid", "space=", "hrf", "n_pix=", "clip=", "verbose", "file_ending=", "zscore"])[0]
+        opts = getopt.getopt(argv,"ghs:n:t:o:i:p:m:x:u:",["sub=", "model=", "ses=", "task=", "out=", "in=", "png=", "params=", "grid", "space=", "hrf", "n_pix=", "clip=", "verbose", "file_ending=", "zscore", "overwrite"])[0]
     except getopt.GetoptError:
         print(main.__doc__)
         sys.exit(2)
@@ -140,6 +146,8 @@ Example:
             file_ending = arg
         elif opt in ("--zscore"):
             psc = False
+        elif opt in ("--overwrite"):
+            overwrite = True
 
     if len(argv) < 2:
         print("\nNOT ENOUGH ARGUMENTS SPECIFIED")
@@ -196,7 +204,7 @@ Example:
             file_ending = "bold.func.gii"
             giftis = True
         else:
-            raise ValueError(f"Unknown input directory '{inputdir}'. Expecting output from pybest ('*{file_ending}') or fMRIPrep ('*bold.func.gii')")
+            raise ValueError(f"Unknown input directory '{inputdir}'. Expecting output from pybest ('*desc-denoised_bold.npy') or fMRIPrep ('*bold.func.gii')")
 
     # search for space-/task-/ and file ending; add run as well to avoid the concatenated version being included
     search_for = ["run-", f"task-{task}", file_ending]
@@ -299,6 +307,15 @@ Example:
     else:
         stage = "grid+iter"
 
+    if not overwrite:
+        # check if we have existing Gaussian pRFs that we should insert in DN-model
+        old_params = utils.get_file_from_substring(['model-gauss', 'stage-iter', 'params.npy'], outputdir, return_msg=None)
+        if verbose:
+            if old_params != None:
+                print(f"Injecting '{old_params}' into DN-model")
+    else:
+        old_params = None
+
     # stage 1 - no HRF
     stage1 = prf.pRFmodelFitting(m_prf_tc_data.T, 
                                  design_matrix=design_matrix[list(design_matrix.keys())[-1]], 
@@ -310,7 +327,8 @@ Example:
                                  output_base=out,
                                  write_files=True,
                                  fit_hrf=False,
-                                 fix_bold_baseline=psc)
+                                 fix_bold_baseline=psc,
+                                 old_params=old_params)
 
     stage1.fit()
 

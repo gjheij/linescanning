@@ -29,7 +29,9 @@ Usage:
 
 Options:
   -g              only run grid fit, skip iterative fit
-  -o              delete existing file and re-run analysis (y=yes|n=no)
+  -o              delete existing file and re-run analysis fully. Even if 'model=norm', we'll overwrite the
+                  Gaussian parameters. If not specified, and 'model=norm' while Gaussian parameters already
+                  exist, we'll inject them into the DN-model.
   -c              list of values used for clipping of design matrix. Format must be 
                   [<top>,<bottom>,<left>,<right>]  
   --multi_design  specifies that for all runs in the dataset have run-/task-specific screenshot direc-
@@ -76,6 +78,7 @@ USAGE
 
 # Check for subject & session flags
 OW=0
+OW_flag=""
 run_locally=0
 grid_flag=""
 multi_design=0
@@ -123,6 +126,7 @@ do
     t)  task_ID=${OPTARG}
           ;;                                       
     o)  OW=1
+        OW_flag="--overwrite"
           ;;
     g)  grid_flag="-g"
           ;;
@@ -355,7 +359,8 @@ for subID in ${search}; do
             -m ${use_model} \
             -u ${PYBEST_SPACE} \
             ${zscore_flag} \
-            ${verb_flag}
+            ${verb_flag} \
+            ${OW_flag}
           
           if [[ $? -ne 0 ]]; then
             echo "ERROR in `basename ${0}`: call_prf did not execute cleanly"
