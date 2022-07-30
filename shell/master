@@ -1083,7 +1083,7 @@ if [[ $? -eq 0 ]]; then
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] pRF-fitting with pRFpy"
 
-  if [[ -z ${PRF_MODEL} ]]; then
+  if [[ ! -z ${PRF_MODEL} ]]; then
     MODEL="-m ${PRF_MODEL}"
   fi
 
