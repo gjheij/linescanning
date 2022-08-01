@@ -40,6 +40,7 @@ eps: 1e-1
 # set prf amplitude
 bold_bsl: [-60,60]
 prf_ampl: [-80,80]
+css_exponent: [0.01,3]
 
 # grids for normalization model (not used if model != norm)
 norm:
@@ -47,6 +48,13 @@ norm:
   surround_size_grid: [5,8,12,18]
   neural_baseline_grid: [0,1,10,100]
   surround_baseline_grid: [0.1,1.0,10.0,100.0]
+
+css:
+  css_exponent_grid: [0.05,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,1.1]
+
+dog:
+  dog_surround_amplitude_grid: [0.05,0.1,0.25,0.5,0.75,1,2]
+  dog_surround_size_grid: [3,5,8,11,14,17,20,23,26]
 
 grid_nr: 20
 max_ecc_size: 15

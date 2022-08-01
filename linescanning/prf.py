@@ -10,8 +10,8 @@ import os
 import pandas as pd
 from past.utils import old_div
 from prfpy import rf,stimulus
-from prfpy.fit import Iso2DGaussianFitter, Norm_Iso2DGaussianFitter
-from prfpy.model import Iso2DGaussianModel, Norm_Iso2DGaussianModel, HRF
+from prfpy.fit import *
+from prfpy.model import *
 import random
 from scipy.ndimage import rotate
 from scipy import signal, io
@@ -1044,7 +1044,11 @@ def generate_model_params(model='gauss', dm=None, TR=1.5, outputdir=None, settin
     if settings != None:
         yml_file = settings
     else:
-        yml_file = utils.get_file_from_substring("prf_analysis.yml", opj(os.path.dirname(os.path.dirname(utils.__file__)), 'misc'))
+        # check if we have project-specific template; otherwise take linescanning-repo template
+        # yml_file = utils.get_file_from_substring("prf_analysis.yml", opj(os.environ.get("DIR_DATA_HOME"), 'code'), return_msg=None)
+        yml_file = None
+        if yml_file == None:
+            yml_file = utils.get_file_from_substring("prf_analysis.yml", opj(os.path.dirname(os.path.dirname(utils.__file__)), 'misc'))
 
     with open(yml_file) as file:
         
@@ -1062,8 +1066,15 @@ def generate_model_params(model='gauss', dm=None, TR=1.5, outputdir=None, settin
                               data['max_ecc_size'] * np.linspace(0.05,1,data['grid_nr'])**2, \
                               np.linspace(0, 2*np.pi, data['grid_nr'], endpoint=False)
 
-        grids = {'screensize_degrees': float(ss), 'grids': {'sizes': [float(item) for item in sizes], 'eccs': [float(item) for item in eccs], 'polars': [float(item) for item in polars]}}
+        grids = {'screensize_degrees': float(ss), 
+                 'grids': {'sizes': [float(item) for item in sizes], 
+                           'eccs': [float(item) for item in eccs], 
+                           'polars': [float(item) for item in polars]}}
         
+        allowed_models = ['gauss', 'css', 'dog', 'norm']
+        if model not in allowed_models:
+            raise ValueError(f"Model must be one of {allowed_models}. Not '{model}'")
+
         # define bounds
         if model == "gauss":
             gauss_bounds = [(-1.5*data['max_ecc_size'], 1.5*data['max_ecc_size']),  # x
@@ -1078,7 +1089,41 @@ def generate_model_params(model='gauss', dm=None, TR=1.5, outputdir=None, settin
                                  'prf_ampl': gauss_bounds[3], 
                                  'bold_bsl': gauss_bounds[4]}}
 
-        else:
+        elif model == "css":
+
+            css_bounds = [(-1.5*data['max_ecc_size'], 1.5*data['max_ecc_size']),    # x
+                          (-1.5*data['max_ecc_size'], 1.5*data['max_ecc_size']),    # y
+                          (data['eps'], 1.5*ss),                                    # prf size
+                          data['prf_ampl'],                                         # prf amplitude
+                          data['bold_bsl'],                                         # bold baseline
+                          data['css_exponent']]                                     # CSS exponent
+
+            bounds = {'bounds': {'x': list(css_bounds[0]),
+                                 'y': list(css_bounds[1]),
+                                 'size': [float(item) for item in css_bounds[2]],
+                                 'prf_ampl': css_bounds[3],
+                                 'bold_bsl': css_bounds[4],
+                                 'css_exponent': css_bounds[5]}}
+
+        elif model == "dog":
+
+            dog_bounds = [(-1.5*data['max_ecc_size'], 1.5*data['max_ecc_size']),    # x
+                          (-1.5*data['max_ecc_size'], 1.5*data['max_ecc_size']),    # y
+                          (data['eps'], 1.5*ss),                                    # prf size
+                          data['prf_ampl'],                                         # prf amplitude
+                          data['bold_bsl'],                                         # bold baseline
+                          (0, 1000),                                                # surround amplitude
+                          (data['eps'], 3*ss)]                                      # surround size
+
+            bounds = {'bounds': {'x': list(dog_bounds[0]),
+                                 'y': list(dog_bounds[1]),
+                                 'size': [float(item) for item in dog_bounds[2]],
+                                 'prf_ampl': dog_bounds[3],
+                                 'bold_bsl': dog_bounds[4],
+                                 'surr_ampl': list(dog_bounds[5]),
+                                 'surr_size': [float(item) for item in dog_bounds[6]]}}
+
+        elif model == "norm":
             norm_bounds = [(-1.5*data['max_ecc_size'], 1.5*data['max_ecc_size']),   # x
                            (-1.5*data['max_ecc_size'], 1.5*data['max_ecc_size']),   # y
                            (data['eps'], 1.5*ss),                                   # prf size
@@ -1127,8 +1172,184 @@ def generate_model_params(model='gauss', dm=None, TR=1.5, outputdir=None, settin
     else:
         return data, settings, prf_stim
 
+class GaussianModel():
 
-class pRFmodelFitting(): 
+    def __init__(self):
+
+        self.gaussian_fitter = Iso2DGaussianFitter(data=self.data,
+                                                   model=self.gaussian_model,
+                                                   fit_css=False,
+                                                   fit_hrf=self.fit_hrf)
+
+        if isinstance(self.old_params, np.ndarray) or isinstance(self.old_params, str):
+            if isinstance(self.old_params, np.ndarray):
+                pass
+            elif isinstance(self.old_params, str):
+                self.old_params = np.load(self.old_params)
+            else:
+                raise ValueError(f"old_params must be a string pointing to a npy-file or a np.ndarray, not '{type(self.old_params)}'")
+
+            # set inserted params as gridsearch_params and iterative_search_params
+            # needed for the rsq-mask
+            self.gaussian_fitter.gridsearch_params = self.old_params.copy()
+            self.gaussian_fitter.iterative_search_params = self.old_params.copy()   # actual parameters
+
+            # set gaussian_fitter as previous_gaussian_fitter
+            self.previous_gaussian_fitter = self.gaussian_fitter
+
+    def gridfit(self):
+        if self.verbose:
+            print("Starting gauss grid fit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S'))
+
+        ## start grid fit
+        start = time.time()
+        self.gaussian_fitter.grid_fit(ecc_grid=self.settings['grids']['eccs'],
+                                        polar_grid=self.settings['grids']['polars'],
+                                        size_grid=self.settings['grids']['sizes'],
+                                        grid_bounds=[tuple(self.settings['bounds']['prf_ampl'])])
+        
+        elapsed = (time.time() - start)
+
+        self.gauss_grid = utils.filter_for_nans(self.gaussian_fitter.gridsearch_params)
+        if self.verbose:
+            print("Gaussian gridfit completed at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+
+                    ". voxels/vertices above "+str(self.rsq)+": "+str(np.sum(self.gauss_grid[:, -1]>self.rsq))+" out of "+
+                    str(self.gaussian_fitter.data.shape[0]))
+            print(f"Gridfit took {str(timedelta(seconds=elapsed))}")
+            print("Mean rsq>"+str(self.rsq)+": "+str(round(np.nanmean(self.gauss_grid[self.gauss_grid[:, -1]>self.rsq, -1]),2)))
+        
+        if self.write_files:
+            self.save_params(model="gauss", stage="grid", predictions=False) 
+
+    def iterfit(self):
+        start = time.time()
+        if self.verbose:
+            print("Starting gauss iterfit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S'))
+
+        # fetch bounds
+        self.gauss_bounds = self.fetch_bounds(model='gauss') 
+
+        # fit
+        self.gaussian_fitter.iterative_fit(rsq_threshold=self.rsq, bounds=self.gauss_bounds)
+
+        # print summary
+        elapsed = (time.time() - start)              
+        self.gauss_iter = utils.filter_for_nans(self.gaussian_fitter.iterative_search_params)
+        if self.verbose:
+            print("Gaussian iterfit completed at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+". Mean rsq>"+str(self.rsq)+": "+str(round(np.nanmean(self.gauss_iter[self.gaussian_fitter.rsq_mask, -1]),2)))
+            print(f"Iterfit took {str(timedelta(seconds=elapsed))}")
+
+        # save intermediate files
+        if self.write_files:
+            self.save_params(model="gauss", stage="iter", predictions=True)  
+            
+class ExtendedModel():
+
+    def __init__(self):
+
+        if self.model == "dog":
+            self.active_fitter = DoG_Iso2DGaussianFitter
+        elif self.model == "css":
+            self.active_fitter = CSS_Iso2DGaussianFitter
+        elif self.model == "norm":
+            self.active_fitter = Norm_Iso2DGaussianFitter
+
+        self.active_model = getattr(self, f"{self.model}_model")
+
+        # define fitter; previous_gaussian_fitter can be specified in kwargs
+        if not hasattr(self, "previous_gaussian_fitter"):
+            # check if we have gaussian fit
+            if hasattr(self, "gaussian_fitter"):
+                self.tmp_fitter = self.active_fitter(self.active_model,
+                                                     self.data, 
+                                                     fit_hrf=self.fit_hrf, 
+                                                     previous_gaussian_fitter=self.gaussian_fitter)
+            else:
+                # we might have manually injected parameters
+                self.tmp_fitter = self.active_fitter(self.active_model, self.data)
+        else:
+            # inject existing-model object > advised when fitting the HRF
+            self.tmp_fitter = self.active_fitter(self.active_model, 
+                                                 self.data, 
+                                                 fit_hrf=self.fit_hrf, 
+                                                 previous_gaussian_fitter=self.previous_gaussian_fitter)
+
+    def gridfit(self):
+
+        # fetch bounds from settings > HRF bounds are automatically appended if fit_hrf=True
+        self.tmp_bounds = self.fetch_bounds(model=self.model)
+        setattr(self, f"{self.model}_bounds", self.tmp_bounds)
+        #----------------------------------------------------------------------------------------------------------------------------------------------------------
+        ## Start grid fit
+        start = time.time()
+        if self.verbose:
+            print(f"Starting {self.model} grid fit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S'))
+
+        # let the fitter find the parameters; easier when fitting the HRF as indexing gets complicated
+        if not hasattr(self, "old_params_filt"):
+            self.old_params_filt = None
+
+        # define grids into lists so we can call gridfit ones
+        if self.model == "css":
+            self.grid_list      = [np.array(self.settings['css']['css_exponent_grid'], dtype='float32')]
+            self.grid_bounds    = [tuple(self.settings['bounds']['prf_ampl'])]
+        elif self.model == "dog":
+            self.grid_list      = [np.array(self.settings['dog']['dog_surround_amplitude_grid'], dtype='float32'),
+                                   np.array(self.settings['dog']['dog_surround_size_grid'], dtype='float32')]
+            self.grid_bounds    = [tuple(self.settings['prf_ampl']),
+                                   tuple(self.settings['bounds']['surr_ampl'])]
+        elif self.model == "norm":
+            self.grid_list      = [np.array(self.settings['norm']['surround_amplitude_grid'], dtype='float32'),
+                                   np.array(self.settings['norm']['surround_size_grid'], fdtype='float32'),
+                                   np.array(self.settings['norm']['neural_baseline_grid'], dtype='float32'),
+                                   np.array(self.settings['norm']['surround_baseline_grid'], dtype='float32')]
+            self.grid_bounds    = [tuple(self.settings['bounds']['prf_ampl']),
+                                   tuple(self.settings['bounds']['neur_bsl'])]
+    
+        # grid fit
+        self.tmp_fitter.grid_fit(*self.grid_list,
+                                 gaussian_params=self.old_params_filt,
+                                 n_batches=self.nr_jobs,
+                                 verbose=self.verbose,
+                                 rsq_threshold=self.rsq,
+                                 grid_bounds=self.grid_bounds)
+
+        elapsed = (time.time() - start)
+
+        ### save grid parameters
+        setattr(self, f"{self.model}_grid", utils.filter_for_nans(self.tmp_fitter.gridsearch_params))
+        if self.verbose:
+            print(f"{self.model} gridfit completed at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+". Mean rsq>"+str(self.rsq)+": "+str(round(np.nanmean(self.tmp_fitter.gridsearch_params[self.tmp_fitter.gridsearch_rsq_mask, -1]),2)))
+            print(f"Gridfit took {str(timedelta(seconds=elapsed))}")
+
+        if self.write_files:
+            self.save_params(model=self.model, stage="grid")
+
+        setattr(self, f"{self.model}_fitter", self.tmp_fitter)
+
+    def iterfit(self):
+
+        start = time.time()
+        if self.verbose:
+            print(f"Starting {self.model} iterfit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S'))
+
+        self.tmp_fitter.iterative_fit(rsq_threshold=self.settings['rsq_threshold'], bounds=self.tmp_bounds)
+        
+        elapsed = (time.time() - start)  
+
+        ### save iterative parameters
+        setattr(self, f"{self.model}_iter", utils.filter_for_nans(self.tmp_fitter.iterative_search_params))
+
+        if self.verbose:
+            print(f"{self.model} iterfit completed at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+". Mean rsq>"+str(self.rsq)+": "+str(round(np.mean(self.tmp_fitter.iterative_search_params[self.tmp_fitter.rsq_mask, -1]),2)))
+            print(f"Iterfit took {str(timedelta(seconds=elapsed))}")
+
+        if self.write_files:
+            self.save_params(model=self.model, stage="iter", predictions=True)   
+
+        setattr(self, f"{self.model}_fitter", self.tmp_fitter)
+
+class pRFmodelFitting(GaussianModel, ExtendedModel):
     """pRFmodelFitting
 
     Main class to perform all the pRF-fitting. As of now, the Gaussian and Divisive Normalization models are implemented. For each model, an analysis-file is produced an stored in <output_dir> for later reference.
@@ -1142,7 +1363,7 @@ class pRFmodelFitting():
     TR: float
         repetition time of acquisition; required for the analysis file. If you're using gifti-input, you can fetch the TR from that file with `gifti = linescanning.utils.ParseGiftiFile(gii_file).TR_sec`. If you're file have been created with fMRIprep or call_vol2fsaverage, this should work.
     model: str
-        as of now, either 'gauss', or 'norm' is accepted
+        as of now, one of ['gauss','dog','css','norm'] is accepted
     stage: str
         can either be 'grid' or 'grid+iter', in combination with the <model> flag
     output_dir: str
@@ -1217,7 +1438,6 @@ class pRFmodelFitting():
                  model_obj=None,
                  fix_bold_baseline=False,
                  **kwargs):
-    
 
         self.data               = data
         self.design_matrix      = design_matrix
@@ -1274,9 +1494,10 @@ class pRFmodelFitting():
         if isinstance(self.settings_fn, str):
             if self.verbose:
                 print(f"Using settings file: {self.settings_fn}")
-    
-        if self.model.lower() != "gauss" and self.model.lower() != "norm":
-            raise ValueError(f"Model specification needs to be either 'gauss' or 'norm'; got {model}.")
+
+        self.allowed_models = ["gauss", "css", "dog", "norm"]
+        if self.model.lower() not in self.allowed_models:
+            raise ValueError(f"Model specification needs to be one of {self.allowed_models}; got {model}.")
 
         # make compatible with prfpy's HRF-class?
         if isinstance(self.hrf, np.ndarray):
@@ -1306,7 +1527,6 @@ class pRFmodelFitting():
             self.hrf = HRF()
             self.hrf.create_spm_hrf(hrf_params=hrf_pars, TR=self.TR, force=True)
 
-
         if self.verbose:
             print(f"HRF: {self.hrf}")
         
@@ -1314,12 +1534,26 @@ class pRFmodelFitting():
         # whichever model you run, run the Gaussian first
 
         ## Define model
-        self.gaussian_model = Iso2DGaussianModel(stimulus=self.prf_stim,
-                                                 filter_predictions=self.settings['filter_predictions'],
-                                                 filter_type='sg',
-                                                 hrf=self.hrf,
-                                                 filter_params={'window_length': self.settings['filter_window_length'],
-                                                                'polyorder': self.settings['filter_polyorder']})
+        self.gauss_model = Iso2DGaussianModel(stimulus=self.prf_stim,
+                                              filter_predictions=self.settings['filter_predictions'],
+                                              filter_type='sg',
+                                              hrf=self.hrf,
+                                              filter_params={'window_length': self.settings['filter_window_length'],
+                                                             'polyorder': self.settings['filter_polyorder']})
+
+        self.css_model = CSS_Iso2DGaussianModel(stimulus=self.prf_stim,
+                                                filter_predictions=self.settings['filter_predictions'],
+                                                filter_type='sg',
+                                                hrf=self.hrf,
+                                                filter_params={'window_length': self.settings['filter_window_length'],
+                                                               'polyorder': self.settings['filter_polyorder']})
+
+        self.dog_model = DoG_Iso2DGaussianModel(stimulus=self.prf_stim,
+                                                filter_predictions=self.settings['filter_predictions'],
+                                                filter_type='sg',
+                                                hrf=self.hrf,
+                                                filter_params={'window_length': self.settings['filter_window_length'],
+                                                               'polyorder': self.settings['filter_polyorder']})
 
         self.norm_model = Norm_Iso2DGaussianModel(stimulus=self.prf_stim,
                                                   filter_predictions=self.settings['filter_predictions'],
@@ -1335,7 +1569,6 @@ class pRFmodelFitting():
 
     def fit(self):
 
-        ## Initiate fitter
         # check whether we got old parameters so we can skip Gaussian fit:
         if isinstance(self.old_params, np.ndarray) or isinstance(self.old_params, str):
             if isinstance(self.old_params, np.ndarray):
@@ -1345,166 +1578,38 @@ class pRFmodelFitting():
             else:
                 raise ValueError(f"old_params must be a string pointing to a npy-file or a np.ndarray, not '{type(self.old_params)}'")
 
-            self.gaussian_fitter = Iso2DGaussianFitter(data=self.data, 
-                                                       model=self.gaussian_model, 
-                                                       fit_css=False,
-                                                       fit_hrf=self.fit_hrf)
-
-            # set inserted params as gridsearch_params and iterative_search_params 
-            self.gaussian_fitter.gridsearch_params = self.old_params.copy()         # needed for the rsq-mask
-            self.gaussian_fitter.iterative_search_params = self.old_params.copy()   # actual parameters
-            
-            # set gaussian_fitter as previous_gaussian_fitter
-            self.previous_gaussian_fitter = self.gaussian_fitter
+            # initiate Gaussian model
+            GaussianModel.__init__(self)
 
         if not hasattr(self, "previous_gaussian_fitter"):
 
-            ### add check whether we need to transpose data
-            self.gaussian_fitter = Iso2DGaussianFitter(data=self.data, 
-                                                       model=self.gaussian_model, 
-                                                       fit_css=False,
-                                                       fit_hrf=self.fit_hrf)
-            
-            if self.verbose:
-                print("Starting gauss grid fit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S'))
-
-            ## start grid fit
-            start = time.time()
-            self.gaussian_fitter.grid_fit(ecc_grid=self.settings['grids']['eccs'],
-                                          polar_grid=self.settings['grids']['polars'],
-                                          size_grid=self.settings['grids']['sizes'],
-                                          grid_bounds=[tuple(self.settings['bounds']['prf_ampl'])])
-            
-            elapsed = (time.time() - start)
-
-            self.gauss_grid = utils.filter_for_nans(self.gaussian_fitter.gridsearch_params)
-            if self.verbose:
-                print("Gaussian gridfit completed at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+
-                        ". voxels/vertices above "+str(self.rsq)+": "+str(np.sum(self.gauss_grid[:, -1]>self.rsq))+" out of "+
-                        str(self.gaussian_fitter.data.shape[0]))
-                print(f"Gridfit took {str(timedelta(seconds=elapsed))}")
-                print("Mean rsq>"+str(self.rsq)+": "+str(round(np.nanmean(self.gauss_grid[self.gauss_grid[:, -1]>self.rsq, -1]),2)))
-            
-            if self.write_files:
-                self.save_params(model="gauss", stage="grid", predictions=False)
+            GaussianModel.__init__(self)
+            GaussianModel.gridfit(self)
 
             #----------------------------------------------------------------------------------------------------------------------------------------------------------
             # Check if we should do Gaussian iterfit        
-            ## Run iterative fit with Gaussian model
-            if self.stage == "grid+iter":
-
-                start = time.time()
-                if self.verbose:
-                    print("Starting gauss iterfit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S'))
-
-                # fetch bounds
-                self.gauss_bounds = self.fetch_bounds(model='gauss') 
-
-                # fit
-                self.gaussian_fitter.iterative_fit(rsq_threshold=self.rsq, bounds=self.gauss_bounds)
-
-                # print summary
-                elapsed = (time.time() - start)              
-                self.gauss_iter = utils.filter_for_nans(self.gaussian_fitter.iterative_search_params)
-                if self.verbose:
-                    print("Gaussian iterfit completed at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+". Mean rsq>"+str(self.rsq)+": "+str(round(np.nanmean(self.gauss_iter[self.gaussian_fitter.rsq_mask, -1]),2)))
-                    print(f"Iterfit took {str(timedelta(seconds=elapsed))}")
-
-                # save intermediate files
-                if self.write_files:
-                    self.save_params(model="gauss", stage="iter", predictions=True)
-
-
+            if 'iter' in self.stage:
+                GaussianModel.iterfit(self)
         #----------------------------------------------------------------------------------------------------------------------------------------------------------
         # Check if we should do DN-model
-        if self.model.lower() == "norm":            
+        if self.model.lower() != "gauss":            
             
             ## Define settings/grids/fitter/bounds etcs
-            settings, settings_file, self.prf_stim = generate_model_params(model='norm', dm=self.design_matrix, outputdir=self.output_dir, fit_hrf=self.fit_hrf)
-            
-            if self.verbose:
-                print(f"Using settings file: {settings_file}")
+            self.settings, self.settings_file, self.prf_stim = generate_model_params(
+                model=self.model, dm=self.design_matrix, outputdir=self.output_dir, fit_hrf=self.fit_hrf)
 
             # overwrite rsq-threshold from settings file
             if self.rsq_threshold != None:
                 self.rsq = self.rsq_threshold
             else:
-                self.rsq = self.settings['rsq_threshold']                
+                self.rsq = self.settings['rsq_threshold']
 
-            
-            # define fitter; previous_gaussian_fitter can be specified in kwargs
-            if not hasattr(self, "previous_gaussian_fitter"):
-                # check if we have gaussian fit
-                if hasattr(self, "gaussian_fitter"):
-                    self.norm_fitter = Norm_Iso2DGaussianFitter(self.norm_model, self.data, fit_hrf=self.fit_hrf, previous_gaussian_fitter=self.gaussian_fitter)
-                else:
-                    # we might have manually injected parameters
-                    self.norm_fitter = Norm_Iso2DGaussianFitter(self.norm_model, self.data)
-            else:
-                # inject existing-model object > advised when fitting the HRF
-                self.norm_fitter = Norm_Iso2DGaussianFitter(self.norm_model, self.data, fit_hrf=self.fit_hrf, previous_gaussian_fitter=self.previous_gaussian_fitter)
+            # initiate and do grid fit
+            ExtendedModel.__init__(self)
+            ExtendedModel.gridfit(self)
 
-            # read grid from settings file
-            self.surround_amplitude_grid = np.array(self.settings['norm']['surround_amplitude_grid'], dtype='float32')
-            self.surround_size_grid      = np.array(self.settings['norm']['surround_size_grid'], dtype='float32')
-            self.neural_baseline_grid    = np.array(self.settings['norm']['neural_baseline_grid'], dtype='float32')
-            self.surround_baseline_grid  = np.array(self.settings['norm']['surround_baseline_grid'], dtype='float32')
-
-            # fetch bounds from settings > HRF bounds are automatically appended if fit_hrf=True
-            self.norm_bounds = self.fetch_bounds(model='norm')
-
-            #----------------------------------------------------------------------------------------------------------------------------------------------------------
-            ## Start grid fit
-            start = time.time()
-            if self.verbose:
-                print("Starting norm grid fit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S'))
-
-            # let the fitter find the parameters; easier when fitting the HRF as indexing gets complicated
-            if not hasattr(self, "old_params_filt"):
-                self.old_params_filt = None
-
-            self.norm_fitter.grid_fit(self.surround_amplitude_grid, 
-                                      self.surround_size_grid, 
-                                      self.neural_baseline_grid,
-                                      self.surround_baseline_grid, 
-                                      gaussian_params=self.old_params_filt,
-                                      n_batches=self.nr_jobs,
-                                      verbose=self.verbose,
-                                      rsq_threshold=self.rsq,
-                                      grid_bounds=[tuple(self.settings['bounds']['prf_ampl']),
-                                                   tuple(self.settings['bounds']['neur_bsl'])])
-
-            elapsed = (time.time() - start)
-
-            ### save grid parameters
-            self.norm_grid = utils.filter_for_nans(self.norm_fitter.gridsearch_params)
-            if self.verbose:
-                print("Norm gridfit completed at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+". Mean rsq>"+str(self.rsq)+": "+str(round(np.nanmean(self.norm_grid[self.norm_fitter.gridsearch_rsq_mask, -1]),2)))
-                print(f"Gridfit took {str(timedelta(seconds=elapsed))}")
-
-            if self.write_files:
-                self.save_params(model="norm", stage="grid")
-
-            #----------------------------------------------------------------------------------------------------------------------------------------------------------
-            # Check if we should do iterative fitting with DN model
-            if self.stage == "grid+iter":
-                start = time.time()
-                if self.verbose:
-                    print("Starting norm iterfit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S'))
-
-                self.norm_fitter.iterative_fit(rsq_threshold=settings['rsq_threshold'], bounds=self.norm_bounds)
-                
-                elapsed = (time.time() - start)  
-
-                ### save iterative parameters
-                self.norm_iter = utils.filter_for_nans(self.norm_fitter.iterative_search_params)
-
-                if self.verbose:
-                    print("Norm iterfit completed at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+". Mean rsq>"+str(self.rsq)+": "+str(round(np.mean(self.norm_iter[self.norm_fitter.rsq_mask, -1]),2)))
-                    print(f"Iterfit took {str(timedelta(seconds=elapsed))}")
-
-                if self.write_files:
-                    self.save_params(model="norm", stage="iter", predictions=True)
+            if "iter" in self.stage:
+                ExtendedModel.iterfit(self)
 
     def fetch_bounds(self, model=None):
         if model == "norm":
@@ -1524,6 +1629,25 @@ class pRFmodelFitting():
                       tuple(self.settings['bounds']['size']),               # prf size
                       tuple(self.settings['bounds']['prf_ampl']),           # prf amplitude
                       tuple(self.settings['bounds']['bold_bsl'])]           # bold baseline   
+
+        elif model == "css":
+
+            bounds = [tuple(self.settings['bounds']['x']),                  # x
+                      tuple(self.settings['bounds']['y']),                  # y
+                      tuple(self.settings['bounds']['size']),               # prf size
+                      tuple(self.settings['bounds']['prf_ampl']),           # prf amplitude
+                      tuple(self.settings['bounds']['bold_bsl']),           # bold baseline
+                      tuple(self.settings['bounds']['css_exponent'])]       # CSS exponent
+
+        elif model == "dog":
+
+            bounds = [tuple(self.settings['bounds']['x']),                  # x
+                      tuple(self.settings['bounds']['y']),                  # y
+                      tuple(self.settings['bounds']['size']),               # prf size
+                      tuple(self.settings['bounds']['prf_ampl']),           # prf amplitude
+                      tuple(self.settings['bounds']['bold_bsl']),           # bold baseline
+                      tuple(self.settings['bounds']['surr_ampl']),          # surround amplitude
+                      tuple(self.settings['bounds']['surr_size'])]          # surround size
 
         else:
             raise ValueError(f"Unrecognized model '{model}'")               
@@ -1608,10 +1732,10 @@ class pRFmodelFitting():
 
     def make_predictions(self, vox_nr=None, model='gauss', stage='iter'):
         
-        if model == "gauss":
-            use_model = self.gaussian_model
-        elif model == "norm":
-            use_model = self.norm_model
+        try:
+            use_model = getattr(self, f"{self.model}_model")
+        except:
+            raise ValueError(f"{self}-object does not have attribute '{self.model}_model'")
 
         if hasattr(self, f"{model}_{stage}"):
             params = getattr(self, f"{model}_{stage}")
@@ -1761,7 +1885,7 @@ class pRFmodelFitting():
             return params, self.prediction
 
     def save_params(self, model="gauss", stage="grid", predictions=False):
-
+        
         if hasattr(self, f"{model}_{stage}"):
             # write simple numpy files
             params = getattr(self, f"{model}_{stage}")

@@ -46,7 +46,7 @@ Options:
                     psc = signals*100/(mean(signals)) - median(signals_without_stimulus)
   -s <subject>    subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
   -n <session>    session ID (e.g., 1, 2, or none)
-  -m <model>      'gauss' or 'norm' for the type of model to use for the fitting
+  -m <model>      one of ['gauss','dog','css','norm'] is accepted, default = "gauss"
   -t <task ID>    If you have mutiple tasks specified in TASK_SES1 or you just have multiple tasks and 
                   you want to run only one, specify the task name here ('task-rest' is ignored by default!).
                   You can also specify multiple tasks if you want to bypass the setup file completely. In

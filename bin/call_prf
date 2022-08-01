@@ -44,7 +44,7 @@ Arguments:
     -o|--out    <prf dir>           output directory containing pRF-stuff (/derivatives/prf)
     -i|--in     <input dir>         input directory (e.g., output of pybest/fMRIPrep)
     -p|--png    <path to pngs>      path to png's if you ran M. Aqil's experiment
-    -m|--model  <model type>        standard Gaussian model or Normalization model (for now)
+    -m|--model  <model type>        one of ['gauss','dog','css','norm'], default = 'gauss'
     -x|--params <gaussian params>   path to numpy array containing old parameters of Gaussian model
                                     to use for the Normalization model
     -u|--space  <fit space>         default is set as PYBEST_SPACE in spinoza_setup
