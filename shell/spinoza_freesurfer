@@ -89,11 +89,12 @@ T2=${@:$OPTIND+2:1}
 
 if [[ -z ${sub} ]]; then
   # loop through subjects
-  search="${T1}/${PREFIX}*"
+  search="${INPUT}/${PREFIX}*"
 else
-  # do for 1 subject
-  sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
-  search="${T1}/${PREFIX}${sub_nr}"
+  # read specified subjects into array
+  IFS=', ' read -r -a search <<< "${sub}"
+  search=${search[@]}
+  unset IFS
 fi
 
 #-----------------------------------------------------------------------------
@@ -116,8 +117,10 @@ for subID in ${search}; do
   # collect subject name
   if [[ ! -z ${sub} ]]; then
     sub_name=${PREFIX}${subID}
+    sub_id=${subID}
   else
     sub_name=$(basename ${subID})
+    sub_id=`get_id ${sub_name} ${PREFIX}`
   fi
 
   if [[ ! -z ${ses} ]]; then
