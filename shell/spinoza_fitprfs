@@ -87,7 +87,7 @@ zscore_flag=""
 verb_flag=""
 clip_flag=""
 clip=1
-while getopts :-:lgos:n:m:t: argument
+while getopts :-:los:n:m:t: argument
 do
   case ${argument} in
     -)
@@ -109,7 +109,10 @@ do
           ;;    
         local)
           run_locally=1
-          ;;             
+          ;;       
+        grid)
+          grid_flag="--grid"
+          ;;                    
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}"
@@ -127,8 +130,6 @@ do
           ;;                                       
     o)  OW=1
         OW_flag="--overwrite"
-          ;;
-    g)  grid_flag="-g"
           ;;
     c)  clipper=${OPTARG}
           ;;                 
