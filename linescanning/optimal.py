@@ -75,7 +75,7 @@ def target_vertex(subject,
                   prf_dir=None,
                   cx_dir=None,
                   fs_dir=None,
-                  task="2R_model-gauss_stage-iter",
+                  search_prf=["task-2R", "model-gauss", "stage-iter"],
                   webshow=True,
                   out=None,
                   roi="V1_exvivo.thresh",
@@ -104,8 +104,8 @@ def target_vertex(subject,
         `FreeSurfer` directory (default = SUBJECTS_DIR)
     prf_dir: str, optional
         `prf` directory in derivatives folder
-    task: str, optional
-        This tag is used to fetch the `prf_params` file created with `spinoza_fitprfs`. Because we write out both the `gridfit` and the `iterative fit`, we have a slightly more complex tag by default. Can be any set of pRF-parameters that you want, as long as it has the same dimensions as the surfaces created with `FreeSurfer`/`Pycortex`
+    search_prf: list, optional
+        This list is used to find a `prf_params` file created with `spinoza_fitprfs`. Because we write out both the `gridfit` and the `iterative fit`, we have a slightly more complex tag by default. Can be any set of pRF-parameters that you want, as long as it has the same dimensions as the surfaces created with `FreeSurfer`/`Pycortex`
     webshow: bool
         Start `FreeView` for visual verification. During debugging this is rather cumbersome, so you can turn it off by specifying `webshow=False`
     roi: str, optional
@@ -126,7 +126,7 @@ def target_vertex(subject,
     Example
     ----------
     >>> # use Gaussian iterative parameters to find target vertex for sub-001 in V1_exvivo.thresh by using the default derivatives folders
-    >>> optimal.target_vertex("sub-001", task="2R_model-gauss_stage-iter", use_prf=True, out="line_pycortex.csv", roi="V1_exvivo.thresh", webshow=True)
+    >>> optimal.target_vertex("sub-001", search_prf=['model-gauss', 'stage-iter'], use_prf=True, out="line_pycortex.csv", roi="V1_exvivo.thresh", webshow=True)
     """
 
     if deriv:
@@ -165,17 +165,16 @@ def target_vertex(subject,
         return utils.VertexInfo(out, subject=subject, hemi="both")
     else:
         if use_prf == True:
-            print(f"Selecting pRF-parameters from: {task}")
-            prf_params = utils.get_file_from_substring(f"task-{task}_desc-prf_params.npy", prf_dir)
-            if "gauss" in prf_params:
-                model = "gauss"
-            elif "norm" in prf_params:
-                model = "norm"
+            print(f"Searching for pRF-parameters with: {search_prf}")
+            prf_params = utils.get_file_from_substring(search_prf, prf_dir)
+            for mod in ["gauss", "dog", "css", "norm"]:
+                if f"model-{mod}" in prf_params:
+                    model = mod                                
         else:
             prf_params = None
-            model = "none"
+            model = None
         
-        print(f"prf file = {prf_params}")
+        print(f"prf file = {prf_params} [{model}]")
         print(f"roi      = {roi}")
 
         # This thing mainly does everything. See the linescanning/optimal.py file for more information
@@ -244,22 +243,22 @@ def target_vertex(subject,
             # Calculate normal using the standard method. Other options are "cross" and "Newell"
             GetBestVertex.fetch_normal()
 
-            # Print some stuff to show what's going on
-            print("Found following vertex in left hemisphere:")
-            print(" coord  = {coord}".format(coord=GetBestVertex.lh_best_vertex_coord))
-            print(" normal = {norm}".format(norm=GetBestVertex.surface.lh_surf_normals[GetBestVertex.lh_best_vertex]))
-            print(" vertex = {vert}".format(vert=GetBestVertex.lh_best_vertex))
-            
-            if use_prf == True:
-                os.system(f"call_prfinfo -s {subject} -v {GetBestVertex.lh_best_vertex}")
+            for hemi in ['left', 'right']:
+                if hemi == "left":
+                    tag = "lh"
+                else:
+                    tag = "rh"
 
-            print("Found following vertex in right hemisphere:")
-            print(" coord  = {coord}".format(coord=GetBestVertex.rh_best_vertex_coord))
-            print(" normal = {norm}".format(norm=GetBestVertex.surface.lh_surf_normals[GetBestVertex.rh_best_vertex]))
-            print(" vertex = {vert}".format(vert=GetBestVertex.rh_best_vertex))
+                coord = getattr(GetBestVertex, f"{tag}_best_vertex_coord")
+                vertex = getattr(GetBestVertex, f"{tag}_best_vertex")
+                normal = getattr(GetBestVertex.surface, f"{tag}_surf_normals")[vertex]
+                print(f"Found following vertex in {hemi} hemisphere:")
+                print(f" coord  = {coord}")
+                print(f" vertex = {vertex}")
+                print(f" normal = {normal}")
 
-            if use_prf == True:
-                os.system(f"call_prfinfo -s {subject} -v {GetBestVertex.rh_best_vertex} -h rh")
+                if use_prf == True:
+                    os.system(f"call_prfinfo -s {subject} -v {vertex} -h {tag} --{model}")
 
             # # Smooth vertex maps
             # print("Smooth vertex maps for visual verification")
@@ -277,13 +276,10 @@ def target_vertex(subject,
             if webshow:
                 orig = opj(fs_dir, subject, 'mri', 'orig.mgz')
                 tkr = transform.ctx2tkr(subject, coord=[GetBestVertex.lh_best_vertex_coord,GetBestVertex.rh_best_vertex_coord])
-                tkr_coords = {'lh': tkr[0], 'rh': tkr[1]}
-                os.system("freeview -v {orig} -f {lh_fid}:edgecolor=green {rh_fid}:edgecolor=green  --ras {x} {y} {z} tkreg 2>/dev/null".format(orig=orig,
-                                                                                                                                                lh_fid=opj(fs_dir, subject, 'surf', "lh.fiducial"),
-                                                                                                                                                rh_fid=opj(fs_dir, subject, 'surf', "rh.fiducial"),
-                                                                                                                                                x=round(tkr_coords['lh'][0],2),
-                                                                                                                                                y=round(tkr_coords['lh'][1],2),
-                                                                                                                                                z=round(tkr_coords['lh'][2],2)))
+                tkr_ = {'lh': tkr[0], 'rh': tkr[1]}
+                lh_fid=opj(fs_dir, subject, 'surf', "lh.fiducial")
+                rh_fid=opj(fs_dir, subject, 'surf', "rh.fiducial")
+                os.system(f"freeview -v {orig} -f {lh_fid}:edgecolor=green {rh_fid}:edgecolor=green  --ras {round(tkr_['lh'][0],2)} {round(tkr_['lh'][1],2)} {round(tkr_['lh'][2],2)} tkreg 2>/dev/null")
             else:
                 print("Verification with FreeView disabled")
 
@@ -321,7 +317,13 @@ def target_vertex(subject,
 
         if prf_params and os.path.exists(prf_params):
             prf_data = np.load(prf_params)
-            prf_bestvertex = opj(cx_dir, subject, f'{subject}_model-{model}_desc-best_vertices.csv')
+
+            if model != None:
+                fbase = f'{subject}_model-{model}'
+            else:
+                fbase = subject
+
+            prf_bestvertex = opj(cx_dir, subject, f'{fbase}_desc-best_vertices.csv')
 
             prf_right = prf_data[GetBestVertex.surface.lh_surf_data[0].shape[0]:][GetBestVertex.rh_best_vertex]
             prf_left = prf_data[0:GetBestVertex.surface.lh_surf_data[0].shape[0]][GetBestVertex.lh_best_vertex]
@@ -352,7 +354,7 @@ def target_vertex(subject,
                     hemi_tag = "hemi-R"
 
                 # fetch subject's pRF-stuff
-                subject_info = utils.CollectSubject(subject, cx_dir=opj(cx_dir, subject), prf_dir=prf_dir, settings='recent', hemi=hemi, verbose=False)
+                subject_info = utils.CollectSubject(subject, cx_dir=opj(cx_dir, subject), prf_dir=prf_dir, settings='recent', hemi=hemi, verbose=False, model=model)
 
                 # initiate figure
                 fig = plt.figure(constrained_layout=True, figsize=(20,5))
@@ -729,12 +731,13 @@ class CalcBestVertex(object):
         else:
             self.cx_dir = cx_dir
 
-        self.subject = subject
-        self.surface = SurfaceCalc(subject=self.subject, fs_dir=self.fs_dir, fs_label=fs_label)
-        self.session = ses_nr
-        self.task_id = task
-        self.prffile = prffile
-        self.fname   = f"{self.subject}_ses-{self.session}_task-{self.task_id}"
+        self.subject    = subject
+        self.surface    = SurfaceCalc(subject=self.subject, fs_dir=self.fs_dir, fs_label=fs_label)
+        self.session    = ses_nr
+        self.task_id    = task
+        self.prffile    = prffile
+        self.fname      = f"{self.subject}_ses-{self.session}_task-{self.task_id}"
+        self.fs_label   = fs_label
 
         if self.prffile != None:
             self.prf = pRFCalc(subject=self.subject, prf_dir=self.prf_dir, prffile=self.prffile)

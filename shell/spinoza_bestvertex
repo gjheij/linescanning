@@ -2,8 +2,8 @@
 
 #---------------------------------------------------------------------------------------------------------
 # check if there's is a setup file containing the major paths and source it if it exists
-call_loadsetup
 source call_bashhelper
+source ${DIR_SCRIPTS}/shell/spinoza_setup
 
 #---------------------------------------------------------------------------------------------------------
 # Create help text
@@ -27,11 +27,14 @@ Args:
                   tex1.csv) so that a new line_pycortex.csv-file is created. Given that the original
                   file is NOT deleted, I consider this a soft-overwrite mode. You can always manual-
                   ly delete unwanted/unused files.
-  -f              prevent FreeView from opening while verifying the location. ONLY do this if you
+  --no_freeview   prevent FreeView from opening while verifying the location. ONLY do this if you
                   already know the position. Generally only used for debugging purposes.
+  --grid          use pRF-estimates from grid search; default is 'iter'
   -s <subject>    subject ID as used throughout the pipeline without prefix (e.g., 001 > 001)
   -n <session>    session ID used to extract the correct pRF-parameters. Will combined with <deriva-
                   tives>/prf/ses-<session>
+  -t <task>       select pRF estimates from a particular task; by default the first element of TASK_
+                  SES1 in spinoza_setup
   -v <vertices>   manually specify two vertices to use instead of having the program look for it. 
                   The format is important here and should always be: "<vertex in lh>,<vertex in rh>".
                   Always try to specify two vertices; doesn't matter too much if one is not relevant
@@ -64,7 +67,13 @@ USAGE
 # Deal with arguments
 OW=0
 FREEVIEW=1
-while getopts :-:fos:v:n: argument
+task="${TASK_SES1[0]}"
+model="gauss"
+stage_flag=""
+man_verts=""
+roi="V1_exvivo.thresh"
+OPEN_FV=""
+while getopts :-:fos:v:n:m:t: argument
 do
   case ${argument} in
     -)
@@ -72,7 +81,10 @@ do
         no_freeview)
           FREEVIEW=0
           echo "Disabling Freeview (debug)"
-          ;;                                
+          ;;     
+        grid)
+          stage_flag="--grid"
+          ;;                                     
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}, did you mean \"--no_freeview\"?"
@@ -87,7 +99,11 @@ do
     v)  vert=${OPTARG}
           ;;         
     o)  OW=1
-          ;;                  
+          ;;
+    m)  model=${OPTARG}
+          ;;           
+    t)  task=${OPTARG}
+          ;;               
   esac
 done
 
@@ -185,19 +201,12 @@ for subID in ${search}; do
     # set the call_pycortex2 '-v' flag  if we want manually selected vertices
     if [[ ! -z ${vert} ]]; then
       man_verts="-v [${vert}]"
-    else
-      man_verts=""
     fi
 
     # set default ROI if not specified
     if [[ -z ${ROI} ]]; then
-      roi="V1_exvivo.thresh"
-    else
       roi=${ROI}
     fi
-    
-    # set the default task for pRF parameters
-    task="${TASK_SES1}_model-gauss_stage-iter"
     
     # use the --use-prf flag if the roi = V1. Otherwise exclude pRFs in the selecting of the vertex
     if [[ ${roi} != "V1_exvivo.thresh" ]]; then
@@ -213,17 +222,16 @@ for subID in ${search}; do
     # set the call_pycortex2 flag for skipping FreeView
     if [[ ${FREEVIEW} -eq 0 ]]; then
       OPEN_FV="--no-freeview"
-    else
-      OPEN_FV=""
     fi
 
-    call_targetvertex ${OPEN_FV} ${man_verts} \
+    call_targetvertex ${OPEN_FV} ${man_verts} ${stage_flag} \
       -s ${sub_name} \
       --fs ${fs_dir} \
       --cx ${cx_dir} \
       --prf ${prf_dir} \
       -r ${roi} \
       -t ${task} \
+      -m ${model} \
       ${use_prfs} \
       -o ${line_orientation_file}
 
