@@ -27,6 +27,8 @@ Parameters
     -p|--prf <prf_file>         if left empty, will default to derivatives/prf/<subject>/<ses-1>/
                                 model-norm_*desc-prf_params.npy
     --gauss                     Look for gaussian parameters instead of DN-parameters
+    --css                       Look for CSS parameters instead of DN-parameters
+    --dog                       Look for DoG parameters instead of DN-parameters
     --grid                      Look for grid fit parameters, rather than iterative fit
                                 parameters                     
 
@@ -50,7 +52,7 @@ Example
     stage       = "iter"
 
     try:
-        opts = getopt.getopt(argv,"qs:v:p:h:d:",["subject=", "prfdir=", "vertex=", "prf=", "hemi=", "gauss", "grid"])[0]
+        opts = getopt.getopt(argv,"qs:v:p:h:d:",["subject=", "prfdir=", "vertex=", "prf=", "hemi=", "gauss", "grid", "css", "dog", "norm"])[0]
     except getopt.GetoptError:
         print(main.__doc__)
         sys.exit(2)
@@ -71,6 +73,12 @@ Example
             hemi = arg
         elif opt in ("--gauss"):
             model = "gauss"     
+        elif opt in ("--norm"):
+            model = "norm"   
+        elif opt in ("--css"):
+            model = "css"   
+        elif opt in ("--dog"):
+            model = "dog"                                       
         elif opt in ("--grid"):
             stage = "grid"            
 
