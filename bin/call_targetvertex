@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 
+import ast
 import os
 import numpy as np
 import sys, getopt
-import ast
 from linescanning import optimal, pycortex
 import warnings
 warnings.filterwarnings('ignore')
@@ -77,7 +77,9 @@ Notes:
     """
 
     subject     = None
-    task        = f"{os.environ['TASK_SES1']}_model-gauss_stage-iter"
+    model       = "gauss"
+    stage       = "iter"
+    task        = "2R"
     out         = None
     roi         = "V1_exvivo.thresh"
     use_prf     = False
@@ -87,20 +89,24 @@ Notes:
     fs_dir      = None
     cx_dir      = None
     prf_dir     = None
+    search_prf  = None
+    session     = None
 
     try:
-        opts = getopt.getopt(argv,"fuhd:s:t:r:o:b:v:",["help", "deriv=", "task=", "sub=", "roi=", "out=", "fs=", "cx=", "prf=", "vert=", "use-prf", "no-freeview"])[0]
+        opts = getopt.getopt(argv,"fuhd:s:t:r:o:b:v:m:n:",["help", "deriv=", "ses=", "task=", "sub=", "roi=", "out=", "fs=", "cx=", "prf=", "vert=", "use-prf", "no-freeview", "grid", "--model="])[0]
     except getopt.GetoptError:
         print("ERROR IN ARGUMENT HANDLING!")
         print(main.__doc__)
         sys.exit(2)
 
     for opt, arg in opts:
-        if opt == '-h':
+        if opt in ('-h', '--help'):
             print(main.__doc__)
             sys.exit()
         elif opt in ("-s", "--sub"):
             subject = arg
+        elif opt in ("-n", "--ses"):
+            subject = arg            
         elif opt in ("-r", "--roi"):
             roi = arg
         elif opt in ("-o", "--out"):
@@ -117,6 +123,10 @@ Notes:
             use_prf = True
         elif opt in ("-t", "--task"):
             task = arg
+        elif opt in ("-m", "--model"):
+            model = arg
+        elif opt in ("--grid"):
+            stage = "grid"                        
         elif opt in ("-f", "--no-freeview"):
             open_fv = False
         elif opt in ("--vert"):
@@ -135,19 +145,35 @@ Notes:
         except:
             raise ValueError(f"You used '{verts}'. Make sure to use '[x,y,z]' (comma-separated and no spaces)")
     
-    # set output file
-    if out == None:
-        out = opj(os.environ['CTX'], subject, 'line_pycortex.csv')
         
     # when including pRF-parameters, use individual directories as pRF-directory has an additional 'ses-' directory that's unaccounted for when looking for defaults
     if not fs_dir:
         fs_dir = os.environ.get('SUBJECTS_DIR')
 
-    if not cx_dir:
-        raise ValueError("Pycortex directory not specified. Use '--cx <path to pycortex directory>'")
+    if not deriv:
+        if not cx_dir:
+            raise ValueError("Pycortex directory not specified. Use '--cx <path to pycortex directory>'")
 
-    if not prf_dir:
-        raise ValueError("pRF-directory not specified. Use '--prf <path to pycortex directory>'")
+        if not prf_dir:
+            raise ValueError("pRF-directory not specified. Use '--prf <path to pycortex directory>'")
+    else:
+        if session:
+            base_path = f'{subject}_ses-{session}'
+        else:
+            base_path = subject
+
+        if not cx_dir:
+            cx_dir = opj(os.environ.get("CTX"), subject)
+
+        if not prf_dir:
+            prf_dir = opj(os.environ.get("PRF"), base_path)
+
+    # set output file
+    if out == None:
+        out = opj(cx_dir, subject, 'line_pycortex.csv')
+
+    if use_prf:
+        search_prf = [f'model-{model}', f'task-{task}', f'stage-{stage}']
 
     # update the filestore
     pycortex.set_ctx_path(p=cx_dir)
@@ -155,7 +181,7 @@ Notes:
                           fs_dir=fs_dir,
                           cx_dir=cx_dir,
                           prf_dir=prf_dir,
-                          task=task, 
+                          search_prf=search_prf, 
                           vert=verts,
                           use_prf=use_prf,
                           out=out,
