@@ -36,7 +36,7 @@ def get_prfdesign(screenshot_path,
         string describing the path to the directory with png-files
     n_pix: int
         size of the design matrix (basically resolution). The larger the number, the more demanding for the CPU. It's best to have some value which can be divided with 1080, as this is easier to downsample. Default is 40, but 270 seems to be a good trade-off between resolution and CPU-demands
-    dm_edges_clipping: list
+    dm_edges_clipping: list, dict, optional
         people don't always see the entirety of the screen so it's important to check what the subject can actually see by showing them the cross of for instance the BOLD-screen (the matlab one, not the linux one) and clip the image accordingly
 
     Returns
@@ -78,19 +78,20 @@ def get_prfdesign(screenshot_path,
         design_matrix[...,img_number][np.where(((img[...,0] == img[...,1]) & (
             img[...,1] == img[...,2]) & (img[...,0] != 127)))] = 1
 
+    #clipping edges; top, bottom, left, right
+    if isinstance(dm_edges_clipping, dict):
+        dm_edges_clipping = [dm_edges_clipping['top'],
+                             dm_edges_clipping['bottom'],
+                             dm_edges_clipping['left'],
+                             dm_edges_clipping['right']]
+
+    design_matrix[:dm_edges_clipping[0], :, :] = 0
+    design_matrix[(design_matrix.shape[0]-dm_edges_clipping[1]):, :, :] = 0
+    design_matrix[:, :dm_edges_clipping[2], :] = 0
+    design_matrix[:, (design_matrix.shape[0]-dm_edges_clipping[3]):, :] = 0
+
     # downsample with scipy.interpolate.interp2d
-    dm_resampled = np.zeros((n_pix, n_pix, design_matrix.shape[-1]))
-    
-    for img in range(design_matrix.shape[-1]):
-        dm_resampled[...,img] = utils.resample2d(design_matrix[...,img], n_pix)
-    
-    #clipping edges
-    #top, bottom, left, right
-    dm_resampled[:dm_edges_clipping[0], :, :] = 0
-    dm_resampled[(dm_resampled.shape[0]-dm_edges_clipping[1]):, :, :] = 0
-    dm_resampled[:, :dm_edges_clipping[2], :] = 0
-    dm_resampled[:, (dm_resampled.shape[0]-dm_edges_clipping[3]):, :] = 0
-    # print("  Design matrix completed")
+    dm_resampled = utils.resample2d(design_matrix, n_pix)
 
     return dm_resampled
 
@@ -797,7 +798,7 @@ def create_line_prf_matrix(log_dir,
         length of stimulus presentation (in seconds; default = 1s)
     skip_first_img: boolean 
         depending on how you coded the screenshot capturing, the first empty screen is something also captured. With this flag we can skip that image (default = True).
-    dm_edges_clipping: list
+    dm_edges_clipping: list, dict, optional
         people don't always see the entirety of the screen so it's important to check what the subject can actually see by showing them the cross of for instance the BOLD-screen (the matlab one, not the linux one) and clip the image accordingly
         
     Returns
@@ -810,6 +811,13 @@ def create_line_prf_matrix(log_dir,
     image_list = os.listdir(screenshot_path)
     image_list.sort()
     tr_in_duration = int(stim_duration/TR)
+
+    #clipping edges; top, bottom, left, right
+    if isinstance(dm_edges_clipping, dict):
+        dm_edges_clipping = [dm_edges_clipping['top'],
+                             dm_edges_clipping['bottom'],
+                             dm_edges_clipping['left'],
+                             dm_edges_clipping['right']]    
     
     # whether the stimulus duration is modulo the repetition time or not differs. In case it is, 
     # we can use the loop below. If not, we need to loop through the TRs, find the onset time 
@@ -838,15 +846,14 @@ def create_line_prf_matrix(log_dir,
 
             point += tr_in_duration
 
+        #top, bottom, left, right
+        design_matrix[:dm_edges_clipping[0], :, :] = 0
+        design_matrix[(design_matrix.shape[0]-dm_edges_clipping[1]):, :, :] = 0
+        design_matrix[:, :dm_edges_clipping[2], :] = 0
+        design_matrix[:, (design_matrix.shape[0]-dm_edges_clipping[3]):, :] = 0
+
         # downsample (resample2d can also deal with 3D input)
         dm_resampled = utils.resample2d(design_matrix, n_pix)
-
-        #clipping edges
-        #top, bottom, left, right
-        dm_resampled[:dm_edges_clipping[0], :, :] = 0
-        dm_resampled[(dm_resampled.shape[0]-dm_edges_clipping[1]):, :, :] = 0
-        dm_resampled[:, :dm_edges_clipping[2], :] = 0
-        dm_resampled[:, (dm_resampled.shape[0]-dm_edges_clipping[3]):, :] = 0
 
         # deal with baseline and deleted volumes
         baseline_before = np.zeros((n_pix,n_pix,int(baseline_before/TR)))
@@ -879,54 +886,67 @@ def create_line_prf_matrix(log_dir,
                                            use_bids=False,
                                            verbose=verbose,
                                            phase_onset=0)
-    
+        trial_df = onsets.get_onset_df()
+
+        settings_fn = utils.get_file_from_substring(['yml'], log_dir)
+        with open(settings_fn) as f:
+            settings = yaml.safe_load(f)
+            
+        # check baseline first
+        baseline_start = settings['design'].get('start_duration')
+
+        # find blank onsets; parse ranges into list of tuples and check if tr_in_sec falls in that range or not
+        # https://stackoverflow.com/a/6054040
+        blank_periods = trial_df.loc[(trial_df['event_type'] == 'blank')]['onset'].values
+        blank_duration = settings['design'].get('inter_sweep_blank')
+        blank_ranges = [(i,i+blank_duration) for i in blank_periods]
+
         if verbose:
             print("Creating design matrix (can take a few minutes with thousands of TRs)")
         
-        trial_df = onsets.df_onsets.copy()
         for tr in range(nr_trs):
-    
+            
             # find time at the middle of TR
             if stim_at_half_TR:
                 tr_in_sec = (tr * onsets.TR)+0.5*onsets.TR
             else:
                 tr_in_sec = (tr * onsets.TR)
 
-            # ix now represents the trial ID in the onset dataframe, which starts at the first 't'
-            ix,_ = utils.find_nearest(trial_df['onset'].values, tr_in_sec)
-            
-            # zero-pad number https://stackoverflow.com/questions/2189800/how-to-find-length-of-digits-in-an-integer
-            zfilling = len(str(len(os.listdir(screenshot_path))))
-            img_number = str(ix).zfill(zfilling)
-            try:
-                image_file = utils.get_file_from_substring(f"{img_number}.png", screenshot_path)
-            except:
-                image_file = None
-            
-            if image_file != None:
+            # start doing stuff if tr_in_sec is greater than baseline
+            if tr_in_sec > baseline_start:
                 
-                img = (255*mpimg.imread(image_file)).astype('int')
+                # check blank area
+                if not any(lower <= tr_in_sec <= upper for (lower, upper) in blank_ranges):
 
-                if img.shape[0] != img.shape[1]:
-                    offset = int((img.shape[1]-img.shape[0])/2)
-                    img = img[:, offset:(offset+img.shape[0])]
+                    # ix now represents the trial ID in the onset dataframe, which starts at the first 't'
+                    ix,_ = utils.find_nearest(trial_df['onset'].values, tr_in_sec)
+                    image_file = utils.get_file_from_substring(f"Screenshots{ix}.png", screenshot_path, return_msg=None)
+                    
+                    if image_file != None:
+                        
+                        img = (255*mpimg.imread(image_file)).astype('int')
 
-                # binarize image into dm matrix
-                # assumes: standard RGB255 format; only colors present in image are black, white, grey, red, green.
-                design_matrix[:, :, tr][np.where(((img[:, :, 0] == 0) & (
-                    img[:, :, 1] == 0)) | ((img[:, :, 0] == 255) & (img[:, :, 1] == 255)))] = 1
+                        if img.shape[0] != img.shape[1]:
+                            offset = int((img.shape[1]-img.shape[0])/2)
+                            img = img[:, offset:(offset+img.shape[0])]
+
+                        # binarize image into dm matrix; i use ranges because I have another cue in the screenshots
+                        design_matrix[..., tr][np.where(((img[..., 0] < 40) & (img[..., 1] < 40)) |
+                                                        ((img[..., 0] > 200) & (img[..., 1] > 200)))] = 1
         
-        # downsample
-        dm_resampled = utils.resample2d(design_matrix, n_pix)
-
-        #clipping edges
         #top, bottom, left, right
-        dm_resampled[:dm_edges_clipping[0], :, :] = 0
-        dm_resampled[(dm_resampled.shape[0]-dm_edges_clipping[1]):, :, :] = 0
-        dm_resampled[:, :dm_edges_clipping[2], :] = 0
-        dm_resampled[:, (dm_resampled.shape[0]-dm_edges_clipping[3]):, :] = 0
+        design_matrix[:dm_edges_clipping[0], :, :] = 0
+        design_matrix[(design_matrix.shape[0]-dm_edges_clipping[1]):, :, :] = 0
+        design_matrix[:, :dm_edges_clipping[2], :] = 0
+        design_matrix[:, (design_matrix.shape[0]-dm_edges_clipping[3]):, :] = 0
 
-        return dm_resampled
+        # downsample (resample2d can also deal with 3D input)
+        if n_pix != design_matrix.shape[0]:
+            dm_resampled = utils.resample2d(design_matrix, n_pix)
+            dm_resampled[dm_resampled<0.9] = 0
+            return dm_resampled
+        else:
+            return design_matrix
 
 def create_stim_library(n_pix, prf_stim, range_around_center=[40,40], concentricity=0.5, stim_factor=4, beam_size=26):
 
