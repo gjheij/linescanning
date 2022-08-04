@@ -371,17 +371,19 @@ Below the help information for each module, which can also be called with:
     ever, it's likely you've produced the phase output with 'spinoza_scanner2bids', in which case the 
     files will be named properly. Thus, the folder structure is expected to be like:
 
-    sub-<subject>
-    ├── ses-<session>
-    ├── fmap
-    │   ├── sub-<subject>_ses-<session>_task-<task_id>_run-<run_id>_epi.json
-    │   ├── sub-<subject>_ses-<session>_task-<task_id>_run-<run_id>_epi.nii.gz
-    ├── func
-    │   ├── sub-<subject>_ses-<session>_task-<task_id>_run-<run_id>_bold.json
-    │   ├── sub-<subject>_ses-<session>_task-<task_id>_run-<run_id>_bold.nii.gz
-    └── phase
-        ├── sub-<subject>_ses-<session>_task-<task_id>_run-<run_id>_bold_ph.json
-        └── sub-<subject>_ses-<session>_task-<task_id>_run-<run_id>_bold_ph.nii.gz
+    <dir_projects>
+    └── <project>
+        └── sub-<subject>
+            └── ses-<session>
+                ├── fmap
+                │   ├── sub-<subject>_ses-<session>_task-<task_id>_run-<run_id>_epi.json
+                │   └── sub-<subject>_ses-<session>_task-<task_id>_run-<run_id>_epi.nii.gz
+                ├── func
+                │   ├── sub-<subject>_ses-<session>_task-<task_id>_run-<run_id>_bold.json
+                │   └── sub-<subject>_ses-<session>_task-<task_id>_run-<run_id>_bold.nii.gz
+                └── phase
+                    ├── sub-<subject>_ses-<session>_task-<task_id>_run-<run_id>_bold_ph.json
+                    └── sub-<subject>_ses-<session>_task-<task_id>_run-<run_id>_bold_ph.nii.gz
 
     Usage:
       spinoza_nordic [options] <bids folder>

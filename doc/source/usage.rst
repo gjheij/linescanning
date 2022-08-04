@@ -466,7 +466,7 @@ Once you've put the files there, you can run ``module 02``. This will convert yo
 
     $ master -m 02 -n 1 # spinoza_scanner2bids
 
-After converting our data to nifti, we need to create our T1w/T1map images from the first and second inversion images. We can do this quite easily with Pymp2rage_. If you do not combine **INV1** and **INV2** yourself, - you already have a ``T1w``-/``T1map``-file in ``DIR_DATA_HOME`` - you can skip the part below:
+After converting our data to nifti, we need to create our T1w/T1map images from the first and second inversion images. We can do this quite easily with Pymp2rage_. If you do not combine **INV1** and **INV2** yourself, - you already have a ``T1w``-/ ``T1map``-file in ``DIR_DATA_HOME`` - you can skip the part below:
 
 .. code:: bash
 
