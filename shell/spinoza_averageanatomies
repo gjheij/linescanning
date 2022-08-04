@@ -15,8 +15,8 @@ spinoza_averagesanatomies
 
 This script takes the MP2RAGE and MEMP2RAGE-derived T1-weighted images to calculate the average. This re-
 sults in an image that takes advantage of the better WM/GM contrast of the MP2RAGE and the QSM-properties
-of the MEMP2RAGE sequence. This will only happen if you have two elements in the ACQ variable of the setup script and if the DATA-
-variable is set to "AVERAGE"
+of the MEMP2RAGE sequence. This will only happen if you have two elements in the ACQ variable of the setup 
+script and if the DATA-variable is set to "AVERAGE"
 
 Usage:
   spinoza_averagesanatomies [options] <anat folder> <output folder>

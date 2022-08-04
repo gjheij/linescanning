@@ -11,7 +11,7 @@ Welcome to the linescanning repository
 
 .. image:: ../imgs/overview.png
 
-This repository contains all of the tools used during the acquisition and postprocessing of line scanning data at the Spinoza Centre for Neuroimaging in Amsterdam. The main goal of the package is to create the most accurate segmentations (both volumetric and surface) by combining various software packages such as Nighres_, fMRIprep_, FreeSurfer_, CAT12_, and SPM_. 
+This repository contains all of the tools used during the acquisition and postprocessing of line scanning data at the Spinoza Centre for Neuroimaging in Amsterdam. The main goal of the package is to create the most accurate segmentations (both volumetric and surface) by combining various software packages such as Nighres_, fMRIprep_, FreeSurfer_, CAT12_, and SPM_, and analyze line-scanning data (mainly including GLMs and deconvolutions with Nideconv_). Also has the capability to read in any type of input file (`npy`, `gii`, `nii`, `nii.gz`, `np.ndarray`), and return a dataframe index on subject, run, and voxels so it's compatible with Nideconv_.
 
 Contents
 --------

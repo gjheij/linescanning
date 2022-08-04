@@ -3,22 +3,22 @@
 ------------
 Installation
 ------------
-You can install *LineScanning* within a `Manually Prepared Environment (Python 3.7+)`_. The workflow to install *LineScanning* is as follows. 
+You can install *linescanning* within a `Manually Prepared Environment (Python 3.7+)`_. The workflow to install *linescanning* is as follows. 
 
 Download the repository from ``github`` (see **TIP** below on what ``<some directory>`` could be!):
 
 .. code:: bash
-
    $ cd <some directory>
    $ git clone https://github.com/gjheij/linescanning.git
+
+The repository comes with an `environment.txt` file with all dependencies install with `conda`. It's advised to use this environment so you don't interfere with existing environments. To speed up the installation from the file faster, install mamba
 
 Edit the ``ACTIVATE_CONDA`` variable in the ``spinoza_setup``-file to your liking: by default, we'll activate and install several packages into that environment. Set to ``0`` if you wish to use the currently active python installation. Also adjust ``PATH_HOME`` if you want (See **TIP** below), as we'll be putting the installed packages here. By default this is in the same directory as where you ``git clone``'d this repository. Then enter:
 
 .. code:: bash
-
    $ bash <some directory>/linescanning/shell/spinoza_setup setup
 
-This makes sure the setup file is loaded in your ``.bash_profile`` each time you start a new a new terminal and makes the scripts inside the repository executable similar to how *FSL* works. The file then looks for an installation of ITK-Snap_, and install it in ``PATH_HOME`` if it can't find an installation. It will also attempt to install Nighres_, Pymp2rage_, Pybest_, pRFpy_, Pycortex_, and Nideconv_ if no installations are found.
+This makes sure the setup file is loaded in your ``.bash_profile`` each time you start a new a new terminal and makes the scripts inside the repository executable similar to how *FSL* works. The file then looks for an installation of ITK-Snap_, and install it in ``PATH_HOME`` if it can't find an installation. It will also attempt to install Pymp2rage_, Pybest_, pRFpy_, Pycortex_, and Nideconv_ if no installations are found. Nighres_ is skipped because it involves added steps due to the java-interface. Please follow the instructions [here](https://nighres.readthedocs.io/en/latest/installation.html). `jcc` should come with the environment, so setting the `JCC_JDK`-variable will be most important.
 
 Test the installation with:
 
@@ -41,7 +41,7 @@ This should give the help menu of the master script. If not, something went wron
 
 Manually Prepared Environment (Python 3.7+)
 ===========================================
-Make sure all of *LineScanning*'s `External Dependencies`_ are installed. These tools must be installed and their binaries available in the system's ``$PATH``.
+Make sure all of *linescanning*'s `External Dependencies`_ are installed. These tools must be installed and their binaries available in the system's ``$PATH``.
 As an additional installation setting, FreeSurfer requires a license file (see `<https://surfer.nmr.mgh.harvard.edu/fswiki/License>`_).
 
 External Dependencies
@@ -80,21 +80,21 @@ You can either choose to activate the accompanying ``environment.yml``-file (``A
    2) For the packages pRFpy_, Nideconv_, Nighres_, Pycortex_, Pybest_, but also the *linescanning* repo, run ``git clone + pip install -e .`` in **THAT** directory
    3) Let this package organize your fMRIprep_ output for you
 
-   **This is done by default by ``spinoza_setup``**
+   **This is done by default by spinoza_setup**
 
-- FSL_ (version 5.0.9) > should be present/user install
-- ANTs_ (version 2.3.1) > should be present/user install
-- ITK-Snap_ (version 3.8.0) > installed by ``spinoza_setup``
-- `C3D <https://sourceforge.net/projects/c3d/>`_ (version 1.0.0) > will be on your PATH by default upon installation/user install
-- Nideconv_ (dev version) > installed by ``spinoza_setup``
-- pRFpy_ (dev version) > installed by ``spinoza_setup``
-- fMRIprep_ (version 20.2.6) > should be present/user install
-- CAT12_ (version r1113) > should be present/user install
-- SPM_ (spm12) > should be present/user install
-- Nighres_ > installed by ``spinoza_setup`` (Java-modules might have to be installed by user!)
-- Pybest_ (dev version) > installed by ``spinoza_setup``
-- Pycortex_ (dev version) > installed by ``spinoza_setup``
-- FreeSurfer_ (version 7.2.0) > should be present/user install, make sure the following is presnt in your ``~/.bash_profile``:
+- Nideconv_     (dev version)       > installed by ``spinoza_setup``
+- pRFpy_        (dev version)       > installed by ``spinoza_setup``
+- Pybest_       (dev version)       > installed by ``spinoza_setup``
+- Pycortex_     (dev version)       > installed by ``spinoza_setup``
+- Nighres_                          > should be present/user install
+- FSL_          (version 5.0.9)     > should be present/user install
+- ANTs_         (version 2.3.1)     > should be present/user install
+- ITK-Snap_     (version 3.8.0)     > should be present/user install
+- fMRIprep_     (version 20.2.6)    > should be present/user install
+- CAT12_        (version r1113)     > should be present/user install
+- SPM_          (spm12)             > should be present/user install
+- C3D_          (version 1.0.0)     > will be on your PATH by default upon installation/user install
+- FreeSurfer_   (version 7.2.0)     > should be present/user install, make sure the following is presnt in your ``~/.bash_profile``:
   
 .. code:: bash
    

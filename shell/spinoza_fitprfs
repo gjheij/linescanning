@@ -28,7 +28,7 @@ Usage:
   spinoza_fitprfs [options] <input dir> <output dir> <png dir>
 
 Options:
-  -g              only run grid fit, skip iterative fit
+  --grid          only run grid fit, skip iterative fit
   -o              delete existing file and re-run analysis fully. Even if 'model=norm', we'll overwrite the
                   Gaussian parameters. If not specified, and 'model=norm' while Gaussian parameters already
                   exist, we'll inject them into the DN-model.
@@ -41,8 +41,8 @@ Options:
   --local         run locally even though we have SGE available.
   --no_clip       ensures that the design matrix is NOT clipped, despite the possible presence of screen 
                   delimiter files    
-  --psc           use percent signal changed data from pybest. Assumes you've ran 'call_unzscore' before.
-                  Will use the following method for percent signal change: 
+  --zscore        use the zscore'd output from pybest, rather than percent signal change. If not specified, 
+                  percent signal change is implemented as follows:
                     psc = signals*100/(mean(signals)) - median(signals_without_stimulus)
   -s <subject>    subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
   -n <session>    session ID (e.g., 1, 2, or none)

@@ -33,21 +33,22 @@ Example:
   spinoza_scanner2bids --lines -n 2 DIR_DATA_HOME DIR_DATA_SOURCE                 # lines|ses-2
 
 Notes:
-  Assumes that you ran spinoza_newBIDSsession with the following data structure:
-  > PROJECT
-    > sourcedata
-      > ${PREFIX}001
-        > ses-1
-          > .PAR
-          > .REC
-
+  Assumes the following data structure:
+  PROJECT
+  └── sourcedata
+      └── sub-001
+          └── ses-1
+              ├── task
+              └── DICOMs/PARRECs
+              
   Converts to:
-  > PROJECT
-    > ${PREFIX}001
-      > ses-x
-        > anat
-        > func
-        > fmap
+  PROJECT
+  └── sub-001
+      └── ses-1
+          ├── anat
+          ├── func
+          ├── fmap
+          └── phase
 
 ---------------------------------------------------------------------------------------------------------
 

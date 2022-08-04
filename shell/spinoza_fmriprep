@@ -27,6 +27,9 @@ Usage:
 
 Arguments:
   --local         don't submit to SGE, run locally
+  --no_bbr        maps to '--force-no-bbr' in call_fmriprep
+  --warp_only     skips fMRIPrep, but creates new boldref images and copies the bold-to-T1w warps
+                  to the subject's output folder
   -s <subject>    subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
   -n <session>    session ID (e.g., 1, 2, or none)
   -c <config>     configuration file as specified in /misc/fmriprep_config?.json

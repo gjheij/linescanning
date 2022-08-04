@@ -1,6 +1,7 @@
 
 .. _Installation: installation.html
 .. _FSL: https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/
+.. _C3D: https://sourceforge.net/projects/c3d/
 .. _ANTs: https://stnava.github.io/ANTs/
 .. _FreeSurfer: https://surfer.nmr.mgh.harvard.edu/
 .. _Singularity: https://github.com/singularityware/singularity
@@ -12,6 +13,6 @@
 .. _Nighres: https://github.com/nighres/nighres
 .. _Pymp2rage: https://github.com/gjheij/pymp2rage
 .. _fMRIprep: https://fmriprep.org/en/stable/usage.html
-.. _Pybest: https://github.com/lukassnoek/pybest/tree/master/pybest
+.. _Pybest: https://github.com/gjheij/pybest
 .. _Pycortex: https://github.com/gallantlab/pycortex
 .. _Hedfpy: https://github.com/gjheij/hedfpy
