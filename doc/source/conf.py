@@ -200,7 +200,8 @@ MOCK_MODULES = ['pycortex',
                 'yaml', 
                 'hedfpy', 
                 'nideconv',
-                'niworkflows']
+                'niworkflows',
+                'niworkflows.reports']
                 
 for mod_name in MOCK_MODULES:
     sys.modules[mod_name] = mock.Mock()

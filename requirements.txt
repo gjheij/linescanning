@@ -9,3 +9,4 @@ kneed
 statsmodels
 nipype
 pybids
+niworkflows
