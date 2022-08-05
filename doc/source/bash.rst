@@ -16,7 +16,7 @@ Below the help information for each module, which can also be called with:
 
     $ master -m <module> -q
 
-00: spinoza_lineplanning
+00: spinoza_lineplanning_
 ===========================================
 
 ::
@@ -57,7 +57,7 @@ Below the help information for each module, which can also be called with:
       master -m 00 -s 001 -h left -n 1                    # use session 1 (uses identity matrix)
     ---------------------------------------------------------------------------------------------------
 
-02: spinoza_scanner2bids
+02: spinoza_scanner2bids_
 ===========================================
  
 ::
@@ -105,7 +105,7 @@ Below the help information for each module, which can also be called with:
 
     ---------------------------------------------------------------------------------------------------------
 
-03: spinoza_linereconstruction
+03: spinoza_linerecon_
 ===========================================
 
 ::
@@ -145,7 +145,7 @@ Below the help information for each module, which can also be called with:
     Runs by default NORDIC denoising!
     -----------------------------------------------------------------------------------------------------
 
-04: spinoza_qmrimaps
+04: spinoza_qmrimaps_
 ===========================================
 
 ::
@@ -226,7 +226,7 @@ Below the help information for each module, which can also be called with:
       spinoza_registration -s 001 -n 1 <project>/derivatives/pymp2rage <project>/derivatives/ants
     ---------------------------------------------------------------------------------------------------
 
-06: spinoza_averagesanatomies
+06: spinoza_averagesanatomies_
 ===========================================
 
 ::
@@ -255,7 +255,7 @@ Below the help information for each module, which can also be called with:
 
     ---------------------------------------------------------------------------------------------------------
 
-07: spinoza_sinusfrommni
+07: spinoza_sinusfrommni_
 ===========================================
 
 ::
@@ -285,7 +285,7 @@ Below the help information for each module, which can also be called with:
 
     ---------------------------------------------------------------------------------------------------
 
-08: spinoza_biassanlm
+08: spinoza_biassanlm_
 ===========================================
 
 ::
@@ -318,7 +318,7 @@ Below the help information for each module, which can also be called with:
 
     ---------------------------------------------------------------------------------------------------
 
-09: spinoza_brainextraction
+09: spinoza_brainextraction_
 ===========================================
 
 ::
@@ -355,7 +355,7 @@ Below the help information for each module, which can also be called with:
 
     ---------------------------------------------------------------------------------------------------
 
-10: spinoza_nordic
+10: spinoza_nordic_
 ===========================================
 
 ::
@@ -406,7 +406,7 @@ Below the help information for each module, which can also be called with:
 
     ---------------------------------------------------------------------------------------------------
 
-11: spinoza_dura
+11: spinoza_dura_
 ===========================================
 
 ::
@@ -436,7 +436,7 @@ Below the help information for each module, which can also be called with:
 
     ---------------------------------------------------------------------------------------------------
 
-12: spinoza_sagittalsinus
+12: spinoza_sagittalsinus_
 ===========================================
 
 ::
@@ -475,7 +475,7 @@ Below the help information for each module, which can also be called with:
 
     ---------------------------------------------------------------------------------------------------
 
-13: spinoza_masking
+13: spinoza_masking_
 ===========================================
 
 ::
@@ -512,7 +512,7 @@ Below the help information for each module, which can also be called with:
 
     ---------------------------------------------------------------------------------------------------
 
-14: spinoza_freesurfer
+14: spinoza_freesurfer_
 ===========================================
 
 ::
@@ -568,7 +568,7 @@ Below the help information for each module, which can also be called with:
 
     ---------------------------------------------------------------------------------------------------
 
-15: spinoza_fmriprep
+15: spinoza_fmriprep_
 ===========================================
 
 ::
@@ -617,7 +617,7 @@ Below the help information for each module, which can also be called with:
 
     ---------------------------------------------------------------------------------------------------
 
-16: spinoza_denoising
+16: spinoza_denoising_
 ===========================================
 
 ::
@@ -649,7 +649,7 @@ Below the help information for each module, which can also be called with:
 
     ---------------------------------------------------------------------------------------------------
 
-17: spinoza_fitprfs
+17: spinoza_fitprfs_
 ===========================================
 
 ::
@@ -715,7 +715,7 @@ Below the help information for each module, which can also be called with:
 
     ---------------------------------------------------------------------------------------------------
 
-18: spinoza_bestvertex
+18: spinoza_bestvertex_
 ===========================================
 
 ::
@@ -769,7 +769,7 @@ Below the help information for each module, which can also be called with:
 
     ---------------------------------------------------------------------------------------------------
 
-19: spinoza_segmentfast
+19: spinoza_segmentfast_
 ===========================================
 
 ::
@@ -799,7 +799,7 @@ Below the help information for each module, which can also be called with:
 
     ---------------------------------------------------------------------------------------------------
 
-20: spinoza_mgdm
+20: spinoza_mgdm_
 ===========================================
 
 ::
@@ -835,7 +835,7 @@ Below the help information for each module, which can also be called with:
 
     ---------------------------------------------------------------------------------------------------
 
-21: spinoza_extractregions
+21: spinoza_extractregions_
 ===========================================
 
 ::
@@ -888,7 +888,7 @@ Below the help information for each module, which can also be called with:
 
     ---------------------------------------------------------------------------------------------------
 
-22: spinoza_cortexrecon
+22: spinoza_cortexrecon_
 ===========================================
 
 ::
@@ -919,7 +919,7 @@ Below the help information for each module, which can also be called with:
 
     ---------------------------------------------------------------------------------------------------
 
-23: spinoza_layering
+23: spinoza_layering_
 ===========================================
 
 ::
@@ -966,7 +966,7 @@ Below the help information for each module, which can also be called with:
 
     ---------------------------------------------------------------------------------------------------
 
-24: spinoza_subcortex
+24: spinoza_subcortex_
 ===========================================
 
 ::
@@ -996,7 +996,7 @@ Below the help information for each module, which can also be called with:
 
     ---------------------------------------------------------------------------------------------------
 
-25: spinoza_line2surface
+25: spinoza_line2surface_
 ===========================================
 
 ::
@@ -1039,7 +1039,7 @@ Below the help information for each module, which can also be called with:
 
     ---------------------------------------------------------------------------------------------------
 
-26: spinoza_profiling
+26: spinoza_profiling_
 ===========================================
 
 ::
