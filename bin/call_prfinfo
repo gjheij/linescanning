@@ -101,7 +101,7 @@ Example
     info = np.load(prf_info)
 
     if hemi == "rh":
-        tmp = get_file_from_substring("desc-avg_bold_hemi-L.npy", prf_dir)
+        tmp = get_file_from_substring(["hemi-L_", "avg_bold", ".npy"], prf_dir)
         vertex = np.load(tmp).shape[-1]+vertex
 
     vert_info = info[vertex,:]

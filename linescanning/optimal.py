@@ -7,7 +7,8 @@ from linescanning import (
     dataset, 
     pycortex, 
     transform, 
-    utils
+    utils,
+    prf
     )
 import matplotlib.pyplot as plt
 import nibabel as nb
@@ -167,14 +168,18 @@ def target_vertex(subject,
         if use_prf == True:
             print(f"Searching for pRF-parameters with: {search_prf}")
             prf_params = utils.get_file_from_substring(search_prf, prf_dir)
-            for mod in ["gauss", "dog", "css", "norm"]:
-                if f"model-{mod}" in prf_params:
-                    model = mod                                
+            if isinstance(prf_params, list):
+                raise ValueError(f"Found multiple files with {search_prf} in '{prf_dir}': \n{prf_params}")
+
+            try:
+                model = utils.split_bids_components(prf_params)['model']
+            except:
+                model = "gauss"
         else:
             prf_params = None
             model = None
         
-        print(f"prf file = {prf_params} [{model}]")
+        print(f"prf file = {prf_params}")
         print(f"roi      = {roi}")
 
         # This thing mainly does everything. See the linescanning/optimal.py file for more information
@@ -253,8 +258,8 @@ def target_vertex(subject,
                 vertex = getattr(GetBestVertex, f"{tag}_best_vertex")
                 normal = getattr(GetBestVertex.surface, f"{tag}_surf_normals")[vertex]
                 print(f"Found following vertex in {hemi} hemisphere:")
-                print(f" coord  = {coord}")
                 print(f" vertex = {vertex}")
+                print(f" coord  = {coord}")
                 print(f" normal = {normal}")
 
                 if use_prf == True:
@@ -354,7 +359,7 @@ def target_vertex(subject,
                     hemi_tag = "hemi-R"
 
                 # fetch subject's pRF-stuff
-                subject_info = utils.CollectSubject(subject, cx_dir=opj(cx_dir, subject), prf_dir=prf_dir, settings='recent', hemi=hemi, verbose=False, model=model)
+                subject_info = prf.CollectSubject(subject, cx_dir=opj(cx_dir, subject), prf_dir=prf_dir, settings='recent', hemi=hemi, verbose=False, model=model, resize_pix=270)
 
                 # initiate figure
                 fig = plt.figure(constrained_layout=True, figsize=(20,5))
@@ -366,12 +371,13 @@ def target_vertex(subject,
                 
                 # create timecourse plot
                 ax2 = fig.add_subplot(gs00[1])
-                bold = np.load(utils.get_file_from_substring(f"avg_bold_{hemi_tag}.npy", os.path.dirname(prf_params)))
+                bold = np.load(utils.get_file_from_substring([f"{hemi_tag}_", "avg_bold", ".npy"], os.path.dirname(prf_params)))
                 vert = getattr(GetBestVertex, f"{hemi}_best_vertex")
                 plotting.LazyPlot(bold[:,vert], 
                                   x_label="volumes", 
-                                  y_label="amplitude (z-score)", 
-                                  font_size=14,
+                                  y_label="amplitude (percent signal)", 
+                                  font_size=18,
+                                  label_size=14,
                                   line_width=2,
                                   color="#53107B",
                                   add_hline='default',

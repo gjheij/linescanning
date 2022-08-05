@@ -326,7 +326,7 @@ def plot_stims(stims, n_rows=3, n_cols=11, figsize=(60,10)):
 
     plt.tight_layout()
 
-def make_prf(prf_object, mu_x=0, mu_y=0, size=None, resize_pix=None):
+def make_prf(prf_object, mu_x=0, mu_y=0, size=None, resize_pix=None, **kwargs):
     """make_prf
 
     Create an instantiation of a pRF using the parameters obtained during fitting.
@@ -2299,6 +2299,8 @@ class CollectSubject:
         Mid-way our experiments, the boldscreen was moved closer to the bore, meaning the field-of-view changed with a factor of 1.08. For most of our normalization parameters, this correction is applied already to the x,y, and size parameters. Therefore the default is False.
     verbose: bool, optional
         Set to True if you want some messages along the way (default = True)
+    resize_pix: int
+        resolution of pRF to resample to. For instance, if you've used a low-resolution design matrix, but you'd like a prettier image, you can set `resize` to something higher than the original (54 >> 270, for example). By default not used.
 
     Example
     ----------
@@ -2306,7 +2308,7 @@ class CollectSubject:
     >>> subject_info = utils.CollectSubject(subject, derivatives=<path_to_derivatives>, settings='recent', hemi="lh")
     """
 
-    def __init__(self, subject, derivatives=None, cx_dir=None, prf_dir=None, ses=1, analysis_yaml=None, hemi="lh", settings=None, model="gauss", correct_screen=False, verbose=True):
+    def __init__(self, subject, derivatives=None, cx_dir=None, prf_dir=None, ses=1, analysis_yaml=None, hemi="lh", settings=None, model="gauss", correct_screen=False, verbose=True, **kwargs):
 
         self.subject        = subject
         self.derivatives    = derivatives
@@ -2318,6 +2320,7 @@ class CollectSubject:
         self.analysis_yaml  = analysis_yaml
         self.correct_screen = correct_screen
         self.verbose        = verbose
+        self.__dict__.update(kwargs)
 
         if self.hemi == "lh" or self.hemi.lower() == "l" or self.hemi.lower() == "left":
             self.hemi_tag = "L"
@@ -2334,11 +2337,11 @@ class CollectSubject:
                 
         # get design matrix, vertex info, and analysis file
         if self.prf_dir != None:
-            self.design_fn      = utils.get_file_from_substring("vis_design.mat", self.prf_dir)
+            self.design_fn      = utils.get_file_from_substring(["design", ".mat"], self.prf_dir)
             self.design_matrix  = io.loadmat(self.design_fn)['stim']
-            self.func_data_lr   = np.load(utils.get_file_from_substring("avg_bold_hemi-LR.npy", self.prf_dir))
-            self.func_data_l    = np.load(utils.get_file_from_substring("avg_bold_hemi-L.npy", self.prf_dir))
-            self.func_data_r    = np.load(utils.get_file_from_substring("avg_bold_hemi-R.npy", self.prf_dir))
+            self.func_data_lr   = np.load(utils.get_file_from_substring(["hemi-LR_", "avg_bold", ".npy"], self.prf_dir))
+            self.func_data_l    = np.load(utils.get_file_from_substring(["hemi-L_", "avg_bold", ".npy"], self.prf_dir))
+            self.func_data_r    = np.load(utils.get_file_from_substring(["hemi-R_", "avg_bold", ".npy"], self.prf_dir))
 
         # load specific analysis file
         if self.analysis_yaml != None:
@@ -2375,8 +2378,14 @@ class CollectSubject:
 
         # create pRF if settings were specified
         if hasattr(self, "settings"):
-            self.prf_stim = stimulus.PRFStimulus2D(screen_size_cm=self.settings['screen_size_cm'], screen_distance_cm=self.settings['screen_distance_cm'], design_matrix=self.design_matrix,TR=self.settings['TR'])
-            self.prf_array = make_prf(self.prf_stim, size=self.target_params[2], mu_x=self.target_params[0], mu_y=self.target_params[1])
+            self.prf_stim = stimulus.PRFStimulus2D(screen_size_cm=self.settings['screen_size_cm'], 
+                                                   screen_distance_cm=self.settings['screen_distance_cm'], 
+                                                   design_matrix=self.design_matrix,TR=self.settings['TR'])
+            self.prf_array = make_prf(self.prf_stim, 
+                                      size=self.target_params[2], 
+                                      mu_x=self.target_params[0], 
+                                      mu_y=self.target_params[1],
+                                      **kwargs)
 
         try:
             self.normalization_params_df    = pd.read_csv(utils.get_file_from_substring([f"hemi-{self.hemi_tag}", "normalization", "csv"], self.cx_dir), index_col=0)
@@ -2390,10 +2399,10 @@ class CollectSubject:
             self.normalization_params       = None
 
         if self.prf_dir != None:
-            self.modelling      = pRFmodelFitting(self.func_data_lr,
-                                                  design_matrix=self.design_matrix,
-                                                  settings=self.analysis_yaml,
-                                                  verbose=self.verbose)
+            self.modelling = pRFmodelFitting(self.func_data_lr,
+                                             design_matrix=self.design_matrix,
+                                             settings=self.analysis_yaml,
+                                             verbose=self.verbose)
 
             if self.model == "gauss":
                 if hasattr(self, "gauss_iter_pars"):

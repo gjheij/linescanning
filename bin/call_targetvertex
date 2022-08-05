@@ -173,7 +173,7 @@ Notes:
         out = opj(cx_dir, subject, 'line_pycortex.csv')
 
     if use_prf:
-        search_prf = [f'model-{model}', f'task-{task}', f'stage-{stage}']
+        search_prf = [f'model-{model}', f'task-{task}', f'stage-{stage}', "params.npy"]
 
     # update the filestore
     pycortex.set_ctx_path(p=cx_dir)
