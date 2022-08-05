@@ -21,8 +21,7 @@ Parameters
 ----------
     -s|--subject <subj name>    subject ID (e.g., sub-001)
     -v|--vertex  <vertex>       vertex to extract information from
-    -h|--hemi <hemi>            'lh' or 'rh', as numpy array is stacked left hemi first, then right 
-                                hemi (default = lh)
+    --lh|--rh                   find estimates for a given hemisphere; default = 'lh'
     -d|--prfdir <prf dir>       path to pRF-directory; will default to derivatives/prf/<subject>
     -p|--prf <prf_file>         if left empty, will default to derivatives/prf/<subject>/<ses-1>/
                                 model-norm_*desc-prf_params.npy
@@ -52,7 +51,7 @@ Example
     stage       = "iter"
 
     try:
-        opts = getopt.getopt(argv,"qs:v:p:h:d:",["subject=", "prfdir=", "vertex=", "prf=", "hemi=", "gauss", "grid", "css", "dog", "norm"])[0]
+        opts = getopt.getopt(argv,"qs:v:p:h:d:",["subject=", "prfdir=", "vertex=", "prf=", "lh", "rh", "gauss", "grid", "css", "dog", "norm"])[0]
     except getopt.GetoptError:
         print(main.__doc__)
         sys.exit(2)
@@ -69,8 +68,10 @@ Example
             prf_dir = int(arg)
         elif opt in ("-p", "--prf"):
             prf_info = arg  
-        elif opt in ("-h", "--hemi"):
-            hemi = arg
+        elif opt in ("--lh"):
+            hemi = "lh"
+        elif opt in ("--rh"):
+            hemi = "rh"
         elif opt in ("--gauss"):
             model = "gauss"     
         elif opt in ("--norm"):
