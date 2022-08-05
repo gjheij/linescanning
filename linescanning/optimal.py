@@ -232,12 +232,9 @@ def target_vertex(subject,
                                                depth_thresh=depth_val,
                                                thick_thresh=thick_val)
 
-                # # Look for minimal curvature within that mask
-                # GetBestVertex.mask_curv_with_prf()
-
                 # Pick out best vertex
                 GetBestVertex.best_vertex()
-                # check = True
+                
             else:
             
                 for i,r in enumerate(['lh', 'rh']):
@@ -263,18 +260,13 @@ def target_vertex(subject,
                 print(f" normal = {normal}")
 
                 if use_prf == True:
-                    os.system(f"call_prfinfo -s {subject} -v {vertex} -h {tag} --{model}")
+                    os.system(f"call_prfinfo -s {subject} -v {vertex} --{tag} --{model}")
 
             # # Smooth vertex maps
             # print("Smooth vertex maps for visual verification")
             # GetBestVertex.vertex_to_map()
             # GetBestVertex.smooth_vertexmap()
 
-            # visually check if parameters should be adjusted
-            # print(f"  Webshow is set to {webshow}")
-            port = random.randint(1024, 65536)
-
-            # place = get_base_dir()[1]
             if isinstance(vert,np.ndarray):
                 webshow = False
         
@@ -848,7 +840,7 @@ class CalcBestVertex(object):
                 # print(f"lowest curvature value = {low}")
                 # sys.exit(1)
                 # look which vertex has this curvature
-                for idx,cv in curv_dict.items():                                                                                     
+                for idx,cv in curv_dict.items():
                     if cv == low[-1]:             
                         min_index = idx; setattr(self, f'{i}_best_vertex', min_index)
                 
@@ -862,7 +854,7 @@ class CalcBestVertex(object):
                 # setattr(self, f'{i}_best_vert_mask', (surf[1] == getattr(self, f'{i}_best_vertex_coord')).sum(0))
 
             else:
-                raise TypeError(f'Attribute {i}_prf does not exist')    
+                raise TypeError(f'Attribute {i}_prf does not exist')
 
     def fetch_normal(self, method="ctx"):
         """fetch_normal
