@@ -3,20 +3,50 @@
 ------------
 Installation
 ------------
-You can install *linescanning* within a `Manually Prepared Environment (Python 3.7+)`_. The workflow to install *linescanning* is as follows. 
-
-Download the repository from ``github`` (see **TIP** below on what ``<some directory>`` could be!):
+You can install *linescanning* within a `Manually Prepared Environment (Python 3.7+)`_. It is, however, advised you install everyting in a separate conda environment for which the `environment.yml` is provided. Because `conda` can be quite slow, I recommend to install `mamba` in your currently active environment:
 
 .. code:: bash
-   $ cd <some directory>
+
+   $ conda install -c conda-forge mamba -y # accept defaults
+
+I futher recommend a folder structure where `programs` and `projects` are separated. In the former, we store all the custom installed packages (i.e., `git clone`), fMRIprep_'s workflow folders, and other stuff that we might need for multiple projects. Inside the `projects` folder, you then store your project data according to the BIDS-format (as much as possible). That would look something like this  (see **TIP** below on what ``<some directory>`` for more information):
+
+.. code:: bash
+
+    <your directory>
+    ├── programs
+    │   ├── pycortex
+    │   ├── fmriprep                # created automatically when running fMRIPrep
+    │   │   ├── name_1              # matches project name in 'projects' folder
+    │   │   │   ├── fmriprep_wf
+    │   │   └── name_2              # matches project name in 'projects' folder
+    │   │       └── fmriprep_wf    
+    │   └── linescanning            # this repository
+    └── projects
+        ├── name_1
+        │   ├── derivatives
+        │   ├── sourcedata
+        │   ├── sub-01
+        │   └── dataset_description.json
+        └── name_2
+            ├── derivatives
+            ├── sourcedata
+            ├── sub-01
+            └── dataset_description.json        
+
+Download the repository from ``github``:
+
+.. code:: bash
+
+   $ your_directory=<replace with some path>
+   $ cd ${your_directory}
    $ git clone https://github.com/gjheij/linescanning.git
 
-The repository comes with an `environment.txt` file with all dependencies install with `conda`. It's advised to use this environment so you don't interfere with existing environments. To speed up the installation from the file faster, install mamba
-
-Edit the ``ACTIVATE_CONDA`` variable in the ``spinoza_setup``-file to your liking: by default, we'll activate and install several packages into that environment. Set to ``0`` if you wish to use the currently active python installation. Also adjust ``PATH_HOME`` if you want (See **TIP** below), as we'll be putting the installed packages here. By default this is in the same directory as where you ``git clone``'d this repository. Then enter:
+Set the ``ACTIVATE_CONDA`` variable in the ``spinoza_setup``-file to ``1`` if you wish to install the environment that comes with the repository. By default, we'll activate and install several packages into your currently active environment. Also adjust ``PATH_HOME`` if you want (See **TIP** below) if you want, as we'll be putting the installed packages here. By default this is in the same directory as where you ``git clone``'d this repository. Then enter:
 
 .. code:: bash
-   $ bash <some directory>/linescanning/shell/spinoza_setup setup
+
+   $ bash ${your_directory}/linescanning/shell/spinoza_setup setup
 
 This makes sure the setup file is loaded in your ``.bash_profile`` each time you start a new a new terminal and makes the scripts inside the repository executable similar to how *FSL* works. The file then looks for an installation of ITK-Snap_, and install it in ``PATH_HOME`` if it can't find an installation. It will also attempt to install Pymp2rage_, Pybest_, pRFpy_, Pycortex_, and Nideconv_ if no installations are found. Nighres_ is skipped because it involves added steps due to the java-interface. Please follow the instructions [here](https://nighres.readthedocs.io/en/latest/installation.html). `jcc` should come with the environment, so setting the `JCC_JDK`-variable will be most important.
 
