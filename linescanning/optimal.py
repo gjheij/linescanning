@@ -342,6 +342,7 @@ def target_vertex(subject,
 
             best_vertex.to_csv(prf_bestvertex)
             print(" writing {file}".format(file=prf_bestvertex))
+            print(f"Now run 'call_sizeresponse -s {subject} --verbose' to obtain DN-parameters (don't forget to use '--adjust' where applicable!")
 
         print("Done")
         return GetBestVertex
