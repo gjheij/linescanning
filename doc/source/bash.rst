@@ -174,7 +174,7 @@ Below the help information for each module, which can also be called with:
       spinoza_qmrimaps -s 999 -n 1 DIR_DATA_HOME DIR_DATA_DERIV/pymp2rage
     ---------------------------------------------------------------------------------------------------
 
-05a/05b: spinoza_registration
+05a/05b: spinoza_registration_
 ===========================================
 
 ::

@@ -16,3 +16,4 @@
 .. _Pybest: https://github.com/gjheij/pybest
 .. _Pycortex: https://github.com/gallantlab/pycortex
 .. _Hedfpy: https://github.com/gjheij/hedfpy
+.. _spinoza_registration: https://github.com/gjheij/linescanning/blob/main/shell/spinoza_registration
