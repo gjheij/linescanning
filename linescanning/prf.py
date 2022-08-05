@@ -1197,7 +1197,7 @@ class GaussianModel():
     def __init__(self):
 
         self.gaussian_fitter = Iso2DGaussianFitter(data=self.data,
-                                                   model=self.gaussian_model,
+                                                   model=self.gauss_model,
                                                    fit_css=False,
                                                    fit_hrf=self.fit_hrf)
 
@@ -1320,7 +1320,7 @@ class ExtendedModel():
                                    tuple(self.settings['bounds']['surr_ampl'])]
         elif self.model == "norm":
             self.grid_list      = [np.array(self.settings['norm']['surround_amplitude_grid'], dtype='float32'),
-                                   np.array(self.settings['norm']['surround_size_grid'], fdtype='float32'),
+                                   np.array(self.settings['norm']['surround_size_grid'], dtype='float32'),
                                    np.array(self.settings['norm']['neural_baseline_grid'], dtype='float32'),
                                    np.array(self.settings['norm']['surround_baseline_grid'], dtype='float32')]
             self.grid_bounds    = [tuple(self.settings['bounds']['prf_ampl']),
@@ -2209,9 +2209,13 @@ class SizeResponse():
             use_stim_sizes.append(self.stims_fill_sizes[size_index])
 
         # find intersection of curves
-        x_size, y_size = utils.find_intersection(self.stims_fill_sizes, curve1, curve2)
+        _,y_size = utils.find_intersection(self.stims_fill_sizes, curve1, curve2)
         use_stim_sizes.append(y_size)
         use_stim_sizes.sort()
+
+        # append a stimulus of size 3dva if len(use_stim_sizes) == 4
+        if len(use_stim_sizes) == 4:
+            use_stim_sizes.append(3)
 
         return use_stim_sizes
 
@@ -2233,7 +2237,7 @@ class SizeResponse():
         im.set_clip_path(patch)
 
 
-    def save_target_params(self, fname=None, hemi="L"):
+    def save_target_params(self, fname=None, hemi="L", stim_sizes=None, factor=1.08):
         """Write best_vertices-type file for normalization parameters + full normalization parameters in numpy-file"""
             
         ecc = np.sqrt(self.params_df['x'][0]**2+self.params_df['y'][0]**2)
@@ -2250,25 +2254,57 @@ class SizeResponse():
             else:
                 prf_bestvertex = fname
 
+            if self.subject_info.correct_screen:
+                print(f"Correcting for closer BOLD-screen [factor={factor}]")
+            else:
+                factor = 1
+
             vert_info = self.subject_info.vert_info.data.copy()
-            best_vertex = pd.DataFrame({"hemi":     [hemi],
-                                        "x":        [self.params_df['x'][0]],
-                                        "y":        [self.params_df['y'][0]],
-                                        "size":     [self.params_df['prf_size'][0]],
-                                        "beta":     [self.params_df['prf_ampl'][0]],
-                                        "baseline": [self.params_df['bold_bsl'][0]],
-                                        "r2":       [self.params_df['r2'][0]],
-                                        "ecc":      [ecc],
-                                        "polar":    [polar],
-                                        "index":    [vert_info['index'][hemi]],
-                                        "position": [vert_info['position'][hemi]],
-                                        "normal":   [vert_info['normal'][hemi]]})
+            data_dict = {"hemi":     [hemi],
+                         "x":        [self.params_df['x'][0]*factor],
+                         "y":        [self.params_df['y'][0]*factor],
+                         "size":     [self.params_df['prf_size'][0]*factor],
+                         "beta":     [self.params_df['prf_ampl'][0]],
+                         "baseline": [self.params_df['bold_bsl'][0]],
+                         "r2":       [self.params_df['r2'][0]],
+                         "ecc":      [ecc],
+                         "polar":    [polar],
+                         "index":    [vert_info['index'][hemi]],
+                         "position": [vert_info['position'][hemi]],
+                         "normal":   [vert_info['normal'][hemi]]}
+
+            # add stim sizes
+            if isinstance(stim_sizes, list):
+                stim_sizes = np.array(stim_sizes)
+
+            if isinstance(stim_sizes, np.ndarray):
+                data_dict['stim_sizes'] = [stim_sizes*factor]
+                
+            best_vertex = pd.DataFrame(data_dict)
             
-            best_vertex = best_vertex.set_index(['hemi'])
-            best_vertex.to_csv(prf_bestvertex)
-            
-        self.params_df.to_csv(opj(self.subject_info.cx_dir, f'{self.subject_info.subject}_hemi-{hemi}_desc-normalization_parameters.csv'))
-        np.save(opj(self.subject_info.cx_dir, f'{self.subject_info.subject}_hemi-{hemi}_desc-normalization_parameters.npy'), self.params)
+            # append to existing file
+            if os.path.exists(prf_bestvertex):
+                tmp = pd.read_csv(prf_bestvertex, index_col=0).reset_index()
+
+                if hemi in tmp['hemi'].values:
+                    tmp = tmp[tmp.hemi != hemi]
+
+                best_vertex = pd.concat((best_vertex, tmp))
+
+            best_vertex.set_index('hemi').to_csv(prf_bestvertex)
+        
+        # save full parameters as well
+        pars_file = opj(self.subject_info.cx_dir, f'{self.subject_info.subject}_model-norm_desc-params.csv') 
+        self.params_df['hemi'] = hemi
+        if os.path.exists(pars_file):
+            tmp = pd.read_csv(pars_file, index_col=0).reset_index()
+
+            if hemi in tmp['hemi'].values:
+                tmp = tmp[tmp.hemi != hemi]
+
+            self.params_df = pd.concat((self.params_df, tmp))
+
+        self.params_df.set_index('hemi').to_csv(pars_file)
 
 class CollectSubject:
     """CollectSubject

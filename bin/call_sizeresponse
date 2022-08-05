@@ -29,15 +29,17 @@ sizes where the differences between these to curves are largest.
 
 
 Args:
-    -s (--sub)      Subject name as defined in FreeSurfer directory
-    -n (--ses)      Session to use pRF-parameters from
-    -l (--stage)    Stage to fit DN-model with. Can be 'grid', 'grid+iter', or 'iter' (which is 
-                    equivalent to 'grid+iter'). Default = 'iter'
-    -h (--hemi)     Process a single hemisphere instead of both. Must be one of 'rh' or 'lh'
-    --ctx           Path to pycortex directory up to subject specific directories (defaults to <de-
-                    rivatives>/pycortex/<subject>
-    --prf           Path to pRF directory up to subject specific directories (defaults to <deriva-
-                    tives/<prf>/<subject>/ses-<session>)
+    -s|--sub)   Subject name as defined in FreeSurfer directory
+    -n|--ses)   Session to use pRF-parameters from
+    --lh|--rh   Process a single hemisphere, default is to loop through both
+    --grid      Do not proceed to iterative fit after grid stage
+    --ctx       Path to pycortex directory up to subject specific directories (defaults to <de-
+                rivatives>/pycortex/<subject>
+    --prf       Path to pRF directory up to subject specific directories (defaults to <deriva-
+                tives/<prf>/<subject>/ses-<session>)
+    --adjust    The pRFs of some subjects are fitted before the BOLD screen was moved closer into
+                the bore. With this flag, we can correct for the closer screen. This factor is 1.08
+                and is applied to the x/y coordinates as well  as the size.
 
 Outputs:
     a *npy-file containing stimulus sizes
@@ -58,32 +60,37 @@ Examples:
     prf_dir     = None
     stage       = "iter"
     verbose     = False
+    adjust      = False
 
     try:
-        opts = getopt.getopt(argv,"vqs:n:h:m:l:",["help", "sub=", "hemi=", "ses=", "cx=", "prf=", "stage="])[0]
+        opts = getopt.getopt(argv,"vqs:n:h:m:l:",["help", "sub=", "lh", "rh", "ses=", "cx=", "prf=", "grid", "verbose", "adjust"])[0]
     except getopt.GetoptError:
         print("ERROR IN ARGUMENT HANDLING!")
         print(main.__doc__)
         sys.exit(2)
 
     for opt, arg in opts:
-        if opt == '-q':
+        if opt in ('-q', "--help"):
             print(main.__doc__)
             sys.exit()
-        elif opt == '-v':
+        elif opt in ('-v', "--verbose"):
             verbose=True
         elif opt in ("-s", "--sub"):
             subject = arg
         elif opt in ("-n", "--ses"):
             session = arg
-        elif opt in ("-l", "--stage"):
-            stage = arg
-        elif opt in ("-h", "--hemi"):
-            hemi_list = [arg]
+        elif opt in ("--grid"):
+            stage = "grid"
+        elif opt in ("--lh"):
+            hemi_list = ["lh"]
+        elif opt in ("--rh"):
+            hemi_list = ["rh"]
         elif opt in ("--cx"):
             cx_dir = arg
         elif opt in ("--prf"):
             prf_dir = arg
+        elif opt in ("--adjust"):
+            adjust = True       
 
     if len(argv) < 1:
         print("\nNEED AT LEAST A SUBJECT ID")
@@ -117,31 +124,37 @@ Examples:
 
         #---------------------------------------------------------------------------------------------------
         # figure settings
-        line_width = 2
-
         fig = plt.figure(constrained_layout=True, figsize=(30,5))
         gs00 = fig.add_gridspec(1,4, width_ratios=[10,20,10,10])
         gs01 = fig.add_gridspec(5,1, left=0.48, right=0.98)        
 
         #---------------------------------------------------------------------------------------------------
         # load in subject
-        subject_info = prf.CollectSubject(subject, prf_dir=prf_dir, cx_dir=cx_dir, settings='recent', hemi=hemi)
+        subject_info = prf.CollectSubject(subject, 
+                                          prf_dir=prf_dir, 
+                                          cx_dir=cx_dir, 
+                                          settings='recent', 
+                                          hemi=hemi, 
+                                          resize_pix=270,
+                                          correct_screen=adjust,
+                                          verbose=False)
 
         # make pRF plot
         ax1 = fig.add_subplot(gs00[0])
         plotting.LazyPRF(subject_info.prf_array, subject_info.settings['vf_extent'], ax=ax1)    
 
         # Get and plot fMRI signal
-        data_fn = utils.get_file_from_substring(f"avg_bold_{hemi_tag}.npy", subject_info.prf_dir)
-        if data_fn != None:
-            data = np.load(data_fn)[...,subject_info.return_target_vertex(hemi=hemi)]
-        else:
-            raise ValueError(f"Could not find file with '{hemi_tag}.npy' in {prf_dir}")
+        search_bold = [f"{hemi_tag}_", "avg_bold", ".npy"]
+        data_fn = utils.get_file_from_substring(search_bold, subject_info.prf_dir)
+
+        if isinstance(data_fn, list):
+            raise ValueError(f"Found multiple files with {search_bold} in '{subject_info.prf_dir}': \n{data_fn}")
+
+        data = np.load(data_fn)[...,subject_info.return_target_vertex(hemi=hemi)]
 
         #---------------------------------------------------------------------------------------------------    
         # insert old parameters
-        # insert_params =(np.array(subject_info.target_params)[np.newaxis,...],"gauss+iter")
-        insert_params =np.array(subject_info.target_params)[np.newaxis,...]
+        insert_params = np.array(subject_info.target_params)[np.newaxis,...]
         
         # initiate class
         fitting = prf.pRFmodelFitting(data[...,np.newaxis].T,
@@ -192,13 +205,13 @@ Examples:
         # make plot 
         ax3 = fig.add_subplot(gs00[2])
         plotting.LazyPlot([sr_curve1, sr_curve2], 
-                        xx=SR.stims_fill_sizes,
-                        color=["#1B9E77","#D95F02"], 
-                        labels=['superficial', 'middle'],
-                        axs=ax3,
-                        y_label="Response",
-                        x_label="Stimulus size (°)",
-                        font_size=16)
+                          xx=SR.stims_fill_sizes,
+                          color=["#1B9E77","#D95F02"], 
+                          labels=['superficial', 'middle'],
+                          axs=ax3,
+                          y_label="Response",
+                          x_label="Stimulus size (°)",
+                          font_size=16)
 
         #---------------------------------------------------------------------------------------------------
         # find stim sizes
@@ -222,8 +235,10 @@ Examples:
         # finalize figure and save output
         fig.tight_layout(rect=[0, 0, 0.91, 1])
         fig.savefig(opj(cx_dir, f"{subject}_{hemi_tag}_desc-prf_sizeresponse.pdf"))
-        np.save(opj(cx_dir, f"{subject}_{hemi_tag}_desc-prf_sizeresponse.npy"), use_stim_sizes)
-        SR.save_target_params(hemi=hemi)
+        SR.save_target_params(hemi=hemi, stim_sizes=use_stim_sizes)
+
+    ff = opj(cx_dir, f"{subject}_model-norm_desc-best_vertices.csv")
+    print(f"Copy '{ff}' to the 'LineExps/data' folder")
 
 if __name__ == "__main__":
     main(sys.argv[1:])

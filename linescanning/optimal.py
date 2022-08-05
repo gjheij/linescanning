@@ -350,40 +350,6 @@ def target_vertex(subject,
 
             best_vertex.to_csv(prf_bestvertex)
             print(" writing {file}".format(file=prf_bestvertex))
-            
-            # load pRF-experiment details
-            for hemi in ["lh", "rh"]:
-                if hemi == "lh":
-                    hemi_tag = "hemi-L"
-                elif hemi == "rh":
-                    hemi_tag = "hemi-R"
-
-                # fetch subject's pRF-stuff
-                subject_info = prf.CollectSubject(subject, cx_dir=opj(cx_dir, subject), prf_dir=prf_dir, settings='recent', hemi=hemi, verbose=False, model=model, resize_pix=270)
-
-                # initiate figure
-                fig = plt.figure(constrained_layout=True, figsize=(20,5))
-                gs00 = fig.add_gridspec(1,2, width_ratios=[10,20])
-
-                # add pRF-plot
-                ax1 = fig.add_subplot(gs00[0])
-                plotting.LazyPRF(subject_info.prf_array, subject_info.settings['vf_extent'], ax=ax1)
-                
-                # create timecourse plot
-                ax2 = fig.add_subplot(gs00[1])
-                bold = np.load(utils.get_file_from_substring([f"{hemi_tag}_", "avg_bold", ".npy"], os.path.dirname(prf_params)))
-                vert = getattr(GetBestVertex, f"{hemi}_best_vertex")
-                plotting.LazyPlot(bold[:,vert], 
-                                  x_label="volumes", 
-                                  y_label="amplitude (percent signal)", 
-                                  font_size=18,
-                                  label_size=14,
-                                  line_width=2,
-                                  color="#53107B",
-                                  add_hline='default',
-                                  axs=ax2)
-
-                fig.savefig(opj(cx_dir, subject, f'{subject}_{hemi_tag}_desc-prf_info.pdf'))
 
         print("Done")
         return GetBestVertex
