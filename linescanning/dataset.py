@@ -1247,6 +1247,8 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
         (List of) Transformation(s) mapping the slices of subsequent runs to the first acquired `1slice` image. Default is None.
     save_as: str, optional
         Directory + basename for several figures that can be created during the process (mainly during aCompCor)
+    transpose: bool, optional
+        The data needs to be in the format of <time,voxels>. We'll be trying to force the input data into this format, but sometimes this breaks. This flag serves as an opportunity to flip whatever the default is for a particular input file (e.g., `gii`, `npy`, or `np.ndarray`), so that your final dataframe has the format it needs to have. For gifti-input, we transpose by default. `transpose=True` turns this transposing *off*. For `npy`-inputs, we do **NOT** transpose (we assume the numpy arrays are already in <time,voxels> format). `transpose=True` will transpose this input.
 
     Example
     ----------
@@ -1291,6 +1293,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                  tissue_thresholds=[0.7,0.7,0.7],
                  save_ext="pdf",
                  report=False,
+                 transpose=False,
                  **kwargs):
 
         self.sub                        = subject
@@ -1327,6 +1330,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
         self.save_ext                   = save_ext
         self.filter_strategy            = filter_strategy
         self.report                     = report
+        self.transpose                  = transpose
         self.__dict__.update(kwargs)
 
         # sampling rate and nyquist freq
@@ -1577,10 +1581,16 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
 
             elif func_file.endswith('gii'):
                 self.gif_obj = ParseGiftiFile(func_file)
-                self.ts_magnitude = self.gif_obj.data.T
+
+                self.ts_magnitude = self.gif_obj.data
+                if not self.transpose:
+                    self.ts_magnitude = self.gif_obj.data.T
 
             elif func_file.endswith("npy"):
-                self.ts_magnitude   = np.load(func_file)
+                self.ts_magnitude = np.load(func_file)
+
+                if self.transpose:
+                    self.ts_magnitude = np.load(func_file).T
 
             elif func_file.endswith("nii") or func_file.endswith("gz"):
                 fdata = nb.load(func_file).get_fdata()
@@ -2067,7 +2077,9 @@ class Dataset(ParseFuncFile):
     RTs: bool, optional
         If we have a design that required some response to a stimulus, we can request the reaction times. Default = False
     RT_relative_to: str, optional
-        If `RTs=True`, we need to know relative to what time the button response should be offset. Only correct responses are considered, as there's a conditional statement that requires the present of the reference time (e.g., `target_onset`) and button response. If there's a response but no reference time, the reaction time cannot be calculated. If you do not have a separate reference time column, you can specify `RT_relative_to='start'` to calculate the reaction time relative to onset time. If `RT_relative_to != 'start'`, I'll assume you had a target in your experiment in X/n_trials. From this, we can calculate the accuracy and save that to `self.df_accuracy`, while reaction times are saved in`self.df_rts`        
+        If `RTs=True`, we need to know relative to what time the button response should be offset. Only correct responses are considered, as there's a conditional statement that requires the present of the reference time (e.g., `target_onset`) and button response. If there's a response but no reference time, the reaction time cannot be calculated. If you do not have a separate reference time column, you can specify `RT_relative_to='start'` to calculate the reaction time relative to onset time. If `RT_relative_to != 'start'`, I'll assume you had a target in your experiment in X/n_trials. From this, we can calculate the accuracy and save that to `self.df_accuracy`, while reaction times are saved in`self.df_rts`
+    transpose: bool, optional
+        The data needs to be in the format of <time,voxels>. We'll be trying to force the input data into this format, but sometimes this breaks. This flag serves as an opportunity to flip whatever the default is for a particular input file (e.g., `gii`, `npy`, or `np.ndarray`), so that your final dataframe has the format it needs to have. For gifti-input, we transpose by default. `transpose=True` turns this transposing *off*. For `npy`-inputs, we do **NOT** transpose (we assume the numpy arrays are already in <time,voxels> format). `transpose=True` will transpose this input.
 
     Example
     ----------
@@ -2135,7 +2147,8 @@ class Dataset(ParseFuncFile):
                  phase_onset=1,
                  stim_duration=None,
                  add_events=None,
-                 event_names=None,                 
+                 event_names=None,   
+                 transpose=False,              
                  **kwargs):
 
         if verbose:
@@ -2184,6 +2197,7 @@ class Dataset(ParseFuncFile):
                              add_events=add_events,
                              event_names=event_names,
                              phase_onset=phase_onset,
+                             transpose=transpose,
                             **kwargs)
 
         if verbose:
