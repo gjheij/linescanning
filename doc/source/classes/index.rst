@@ -6,6 +6,7 @@ Python functions
 
    dataset
    image
+   fitting
    glm
    optimal
    planning
