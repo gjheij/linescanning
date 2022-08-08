@@ -28,6 +28,7 @@ Contents
    :caption: Example gallery
 
    examples/lazyplot
+   examples/prfmodelfitter
    examples/genericglm
    examples/nideconv
    examples/acompcor
