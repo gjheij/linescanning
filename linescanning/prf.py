@@ -1372,7 +1372,7 @@ class ExtendedModel():
 class pRFmodelFitting(GaussianModel, ExtendedModel):
     """pRFmodelFitting
 
-    Main class to perform all the pRF-fitting. As of now, the Gaussian and Divisive Normalization models are implemented. For each model, an analysis-file is produced an stored in <output_dir> for later reference.
+    Main class to perform all the pRF-fitting. By default, we'll first look for a `prf_analysis.yml`-file in `DIR_DATA_HOME/code`. If there's no file there, we'll take the file provided with the *linescanning*-repository (https://github.com/gjheij/linescanning/blob/main/misc/prf_analysis.yml). Generally, the input data is expected to be percent-signal changed where the timecourses are shifted such that the median of the timepoints *without* stimulus is set to 0 (see https://github.com/gjheij/linescanning/blob/main/bin/call_prf#L267 how this works). 
 
     Parameters
     ----------
@@ -1381,7 +1381,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
     design_matrix: numpy.ndarray
         <n_pix, n_pix, time> numpy array containing the paradigm
     TR: float
-        repetition time of acquisition; required for the analysis file. If you're using gifti-input, you can fetch the TR from that file with `gifti = linescanning.utils.ParseGiftiFile(gii_file).TR_sec`. If you're file have been created with fMRIprep or call_vol2fsaverage, this should work.
+        repetition time of acquisition; required for the analysis file. If you're using gifti-input, you can fetch the TR from that file with `gifti = linescanning.utils.ParseGiftiFile(gii_file).TR_sec`. If you're file have been created with `fMRIprep` or `call_vol2fsaverage`, this should work.
     model: str
         as of now, one of ['gauss','dog','css','norm'] is accepted
     stage: str
@@ -1392,14 +1392,10 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         basename for output files; should be something like <subject>_<ses-?>_<task-?>
     write_files: bool
         save files (True) or not (False). Should be used in combination with <output_dir> and <output_base>
-    old_params: tuple, optional
-        A tuple of a numpy.ndarray and string describing the nature of the old parameters. Can be inserted at any stage of the fitting. Generally you'd insert Gaussian iterfit parameters before fitting the normalization model.
-
-        >>> old_params = (<voxels, parameters>, 'gauss+iter')
-        >>> old_params = (<voxels, parameters>, 'gauss+grid')
+    old_params: np.ndarray, str, optional
+        A string pointing to a numpy file (npy) or a numpy array. Will throw an error if a string is given which can't be opened with `np.load()`. Maybe add support for *.mat*-files in the future? Internally, the parameters will be assigned to `Iso2DGaussianFitter.gridsearch_params` and `Iso2DGaussianFitter.iterative_search_params`. This fitter object is then assigned to `Iso2DGaussianFitter.previous_gaussian_fitter`, which is then directly inserted in one of the extended models (e.g., `DN`, `DoG`, or `CSS`).
     hrf: np.ndarray
-        <1,time_points> describing the HRF. Can be created with :func:`linescanning.glm.double_gamma`, then add an
-        axis before the timepoints:
+        <1,time_points> describing the HRF. Can be created with :func:`linescanning.glm.double_gamma`, then add an axis before the timepoints:
 
         >>> dt = 1
         >>> time_points = np.linspace(0,36,np.rint(float(36)/dt).astype(int))
@@ -1415,7 +1411,9 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
     Returns
     ----------
     npy-files
-        For each model (gauss/normalization), a npy-file with the grid/iterative parameters and an npy-file with the predictions (*only* for iterative stage!). The format of these files is as follows: <output_dir>/<output_base>_model-<gauss|norm>_stage-<grid|iter>_desc-<prf_params|predictions>.npy
+        For each model, a npy-file with the grid/iterative parameters and an npy-file with the predictions (*only* for iterative stage!). The format of these files is as follows: <output_dir>/<output_base>_model-<gauss|norm>_stage-<grid|iter>_desc-<prf_params|predictions>.npy
+    pkl-files
+        For each model, a pickle file with the settings, parameters, and predictions all in one. Eventually, this will become the standard over `npy`-file, as one file with everything is much cleaner and allows us to neatly store analysis-specific settings without having to deal with separate files.
 
     Example
     ----------
@@ -1424,18 +1422,18 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
 
     >>> # we can use this class to read in existing parameter files
     >>> prf_pfov = opj(prf_new, "sub-003_ses-3_task-pRF_acq-3DEPI_model-norm_stage-iter_desc-prf_params.npy")
-    >>> yml = utils.get_file_from_substring("settings", prf_new)
-    >>> if isinstance(yml, list):
-    >>>     yml = yml[-1]
-    >>> #
     >>> modelling_pfov = prf.pRFmodelFitting(partial_nan.T,
     >>>                                      design_matrix=design_pfov,
-    >>>                                      settings=yml,
+    >>>                                      stage="grid+iter",
     >>>                                      model="norm",
     >>>                                      output_dir=prf_new,
     >>>                                      output_base="sub-003_ses-3_task-pRF_acq-3DEPI")
     >>> #
     >>> modelling_pfov.load_params(np.load(prf_pfov), model='norm', stage='iter')
+
+    Notes
+    ----------
+    See https://linescanning.readthedocs.io/en/latest/examples/prfmodelfitter.html for more elaborate example of fitting, loading, visualization, and HRF-fitting
     """
 
     def __init__(self, 
@@ -1593,10 +1591,13 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         if isinstance(self.old_params, np.ndarray) or isinstance(self.old_params, str):
             if isinstance(self.old_params, np.ndarray):
                 pass
-            elif isinstance(self.old_params, str):
-                self.old_params = np.load(self.old_params)
+            elif isinstance(self.old_params, str): 
+                try:
+                    self.old_params = np.load(self.old_params)
+                except:
+                    raise TypeError(f"old_params is a string, but not a numpy file? '{self.old_params}'")
             else:
-                raise ValueError(f"old_params must be a string pointing to a npy-file or a np.ndarray, not '{type(self.old_params)}'")
+                raise TypeError(f"old_params must be a string pointing to a npy-file or a np.ndarray, not '{type(self.old_params)}'")
 
             # initiate Gaussian model
             GaussianModel.__init__(self)
@@ -1632,6 +1633,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                 ExtendedModel.iterfit(self)
 
     def fetch_bounds(self, model=None):
+        
         if model == "norm":
             bounds = [tuple(self.settings['bounds']['x']),                  # x
                       tuple(self.settings['bounds']['y']),                  # y
@@ -1795,7 +1797,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
             raise ValueError(f"Could not find {stage} parameters for {model}")
 
     def plot_vox(self, 
-                 vox_nr=0, 
+                 vox_nr=0,
                  model='gauss', 
                  stage='iter', 
                  make_figure=True, 
@@ -1809,10 +1811,84 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                  save_as=None,
                  axis_type="volumes",
                  resize_pix=None,
-                 **kwargs):
+                 **kwargs):    
+        
+        """plot_vox
 
-        """plot real and predicted timecourses for a voxel. Also returns parameters, the numpy array representing the pRF in visual space, and timecourse of data"""
+        Quick function to plot the pRF-location in visual space as well as the raw timecourse + prediction. This is done based on voxel-indexing, `vox_nr`. You'll need to specify the `model` and `stage` flags to select the correct pRF-estimates. If you do not want a figure, but just the outputs, you can set `make_figure=False`. Other flags are customizations, such as adding a power spectrum, font size, and xkcd-style plotting. `axis_type` refers to the nature of the x-axis. Can either be `volumes` or `time` (generally time is more informative). Finally, if you have a slightly lower resolution design matrix, you can upsample your pRF-location with a given pixel size (e.g., `270`). This is only for aesthetics in the figure.
 
+        Parameters
+        ----------
+        vox_nr: int, optional
+            Voxel/vertex index to create the plot for, by default 0
+        model: str, optional
+            Which *model* to select the pRF-estimates from, by default 'gauss'
+        stage: str, optional
+            Which *stage* to select the pRF-estimates from, by default 'iter'
+        make_figure: bool, optional
+            Make the figure (`make_figure=True`) and output `params`, the `np.ndarray` representing the pRF in visual space, the BOLD timecourse, and the `prediction`; or `make_figure=False` and only return `params` and `prediction`, by default True
+        xkcd: bool, optional
+            Make the plot in xkcd-style, by default False
+        title: str, optional
+            Title of the timecourse plot. If `title='pars'`, we'll set the parameters as title. This can be useful to quickly check parameters, by default None
+        font_size: int, optional
+            Fontsize for x/y-labels and title, by default 18
+        transpose: bool, optional
+            Depending on how the predictions are loaded, you might need to transpose. Generally, if you've ran the fitting before plotting, this should be fine. Rule of thumb: if you get an indexing error, try `transpose=True`.
+        freq_spectrum: bool, optional
+            Add a frequency spectrum of the timecourse, by default False
+        freq_type: str, optional
+            Which type of frequency sprectrum, by default 'fft' (see also :func:`linescanning.preproc.get_freq` or https://linescanning.readthedocs.io/en/latest/classes/preproc.html#linescanning.preproc.get_freq)
+        clip_power: int, optional
+            Clip the power of the spectrum to enhance visualization, by default None
+        save_as: str, optional
+            Save the figure as `save_as`, by default None
+        axis_type: str, optional
+            Type of x-axis, by default "volumes". Can also be 'time' to use time-dimension, rather than volume-dimension
+        resize_pix: int, optional
+            Spatially smooth your pRF if you've used a low-resolution design matrix, by default None. Generally, `resize_pix=270` results in pleasing pRF-depictions
+
+        Returns
+        ----------
+        
+        - if `make_figure=True`:
+            np.ndarray
+                1D-array representing the parameters of you selected voxel
+            np.ndarray
+                2D-array representing the pRF of your selected voxel in visual space
+            np.ndarray
+                1D-array representing the raw BOLD timecourse of your selected voxel
+            np.ndarray
+                1D-array representing the prediction of your selected voxel given `model`, `stage`, and `voxel`
+        
+        - if `make_figure=False`:
+            np.ndarray
+                1D-array representing the parameters of you selected voxel
+            np.ndarray
+                1D-array representing the prediction of your selected voxel given `model`, `stage`, and `voxel`                            
+
+        Example
+        ----------
+        >>> from linescanning.prf import pRFmodelFitting
+        >>> #
+        >>> # define the model
+        >>> fitting = pRFmodelFitting(func, design_matrix=dm, model='gauss')
+        >>> #
+        >>> # fit
+        >>> fitting.fit()
+        >>> #
+        >>> # plot the 1st voxel
+        >>> fitting.plot_vox(vox_nr=0,
+        >>>                  title='pars',
+        >>>                  model='gauss',
+        >>>                  stage='iter')
+
+        Notes
+        ----------
+        
+        - To silence output, use `_,_,_,_= fitting.plot_vox()`
+        - Also check https://linescanning.readthedocs.io/en/latest/examples/prfmodelfitter.html for more examples
+        """
         self.prediction, params, vox = self.make_predictions(vox_nr=vox_nr, model=model, stage=stage)
 
         if hasattr(self, f"{model}_{stage}_predictions"):
