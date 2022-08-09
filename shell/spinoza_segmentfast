@@ -63,10 +63,10 @@ FSL=${@:$OPTIND+1:1}
 
 if [[ -z ${sub} ]]; then
   # loop through subjects
-  search="${SKULL}/${PREFIX}*"
+  search="${SKULL}/${SUBJECT_PREFIX}*"
 else
   # do for 1 subject
-  search="${SKULL}/${PREFIX}${sub}"
+  search="${SKULL}/${SUBJECT_PREFIX}${sub}"
 fi
 
 #-----------------------------------------------------------------------------
@@ -89,11 +89,11 @@ for subID in ${search}; do
 
   # collect subject name
   if [[ ! -z ${sub} ]]; then
-    sub_name=${PREFIX}${subID}
+    sub_name=${SUBJECT_PREFIX}${subID}
     sub_id=${subID}
   else
     sub_name=$(basename ${subID})
-    sub_id=`get_id ${sub_name} ${PREFIX}`
+    sub_id=`get_id ${sub_name} ${SUBJECT_PREFIX}`
   fi
 
   if [[ ! -z ${ses} ]]; then

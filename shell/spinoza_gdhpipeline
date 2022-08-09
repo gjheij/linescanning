@@ -69,11 +69,11 @@ Usage:
   spinoza_gdhpipeline -s <sub ID> -t <mgdm dir> -f <fprep dir> -r <fs dir> -m <mask dir> -w <wf dir>
 
 Example:
-  spinoza_gdhpipeline -s ${PREFIX}001
-  spinoza_gdhpipeline -s ${PREFIX}001 -t /path/to/mdgm -p pial -i n (don't overwrite brainmask)
-  spinoza_gdhpipeline -s ${PREFIX}001 -r n -f n (skip FreeSurfer & fMRIprep)
-  spinoza_gdhpipeline -s ${PREFIX}001 -r n -f n -z n (run call_gdhmgdm only)
-  spinoza_gdhpipeline -s ${PREFIX}001 -f n -z n -y n (only inject manual edits and re-run FreeSurfer)
+  spinoza_gdhpipeline -s ${SUBJECT_PREFIX}001
+  spinoza_gdhpipeline -s ${SUBJECT_PREFIX}001 -t /path/to/mdgm -p pial -i n (don't overwrite brainmask)
+  spinoza_gdhpipeline -s ${SUBJECT_PREFIX}001 -r n -f n (skip FreeSurfer & fMRIprep)
+  spinoza_gdhpipeline -s ${SUBJECT_PREFIX}001 -r n -f n -z n (run call_gdhmgdm only)
+  spinoza_gdhpipeline -s ${SUBJECT_PREFIX}001 -f n -z n -y n (only inject manual edits and re-run FreeSurfer)
 
 ---------------------------------------------------------------------------------------------------
 

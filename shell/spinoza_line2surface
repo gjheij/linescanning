@@ -43,7 +43,7 @@ Arguments:
                           ture like "<input dir>/<sub>/ses-2"
 
 Example:
-  spinoza_line2surface -s ${PREFIX}001 -y anat_session2 -d /output/directory/whatev
+  spinoza_line2surface -s ${SUBJECT_PREFIX}001 -y anat_session2 -d /output/directory/whatev
 
 ---------------------------------------------------------------------------------------------------
 
@@ -166,7 +166,7 @@ fi
 
 for f in ${ff[@]}; do
 
-  # assumes a filename ${PREFIX}xxx_ses-1_acq-MP2RAGE...*.nii.gz and will insert 'space-' after MP2RAGE
+  # assumes a filename ${SUBJECT_PREFIX}xxx_ses-1_acq-MP2RAGE...*.nii.gz and will insert 'space-' after MP2RAGE
   transform_fs=${outputdir}/${SUB}/warped/$(basename ${f} | cut -d'_' -f-3)_space-fs_$(basename ${f} | cut -d"_" -f4-)
   if [[ ! -f ${transform_fs} ]]; then
 

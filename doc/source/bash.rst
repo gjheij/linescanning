@@ -485,7 +485,7 @@ Below the help information for each module, which can also be called with:
 
     Mask out the dura and skull from the T1-image to reduce noise. It follow Gilles' masking procedure,
     by setting the contents of dura ('outside') and other masks ('inside') to zero. The idea is to run
-    this, run fMRIprep, check segmentations, manually edit it as "${PREFIX}xxx_ses-1_acq-MP2RAGE_desc-manual
+    this, run fMRIprep, check segmentations, manually edit it as "${SUBJECT_PREFIX}xxx_ses-1_acq-MP2RAGE_desc-manual
     wmseg" or something alike. These 'manualseg' will be taken as 'inside' to boost areas that were not
     counted as brain.
 
@@ -547,20 +547,20 @@ Below the help information for each module, which can also be called with:
       - Fix skullstrip:   call_freesurfer -s <subj ID> -o gcut                    ~10 minutes
       - Run autorecon2:   call_freesurfer -s <subj ID> -r 2                       ~few hours
       - Fix errors with:
-          - norm; then run call_freesurfer -s ${PREFIX}001 -r 23 -e cp                 ~few hours
-          - pia;  then run call_freesurfer -s ${PREFIX}001 -r 23 -e pial               ~few hours
+          - norm; then run call_freesurfer -s ${SUBJECT_PREFIX}001 -r 23 -e cp                 ~few hours
+          - pia;  then run call_freesurfer -s ${SUBJECT_PREFIX}001 -r 23 -e pial               ~few hours
 
     You can specify in which directory to look for anatomical scans in the first argument. Usually,
-    this is one of the following options: DIR_DATA_HOME if we should use the T1w in the project/${PREFIX}xxx
+    this is one of the following options: DIR_DATA_HOME if we should use the T1w in the project/${SUBJECT_PREFIX}xxx
     /anat directory, or DIR_DATA_DERIV/pymp2rage to use T1w-images derived from pymp2rage, or DIR_DATA_
     DERIV/masked_mp2rage to use T1w-images where the dura and sagittal sinus are masked out (should be
-    default!). In any case, it assumes that the file is in YOURINPUT/${PREFIX}xxx/ses-1/. If the input is
+    default!). In any case, it assumes that the file is in YOURINPUT/${SUBJECT_PREFIX}xxx/ses-1/. If the input is
     equal to the DIR_DATA_HOME variable, this will be recognize and 'anat' will be appended to YOURINPUT
-    /${PREFIX}xxx/ses-1/anat.
+    /${SUBJECT_PREFIX}xxx/ses-1/anat.
 
     You can also specify a directory where the T2-weighted image is located. Do this the same way as de-
-    scribed above. To you path, ${PREFIX}xxx/ses-x will be appended if the input path is not equal to DIR_DATA
-    _HOME. Again, if it is, ${PREFIX}xxx/ses-x/anat will be appended as well.
+    scribed above. To you path, ${SUBJECT_PREFIX}xxx/ses-x will be appended if the input path is not equal to DIR_DATA
+    _HOME. Again, if it is, ${SUBJECT_PREFIX}xxx/ses-x/anat will be appended as well.
 
     Example:
       spinoza_freesurfer DIR_DATA_DERIV/masked_mp2rage all DIR_DATA_HOME
@@ -808,8 +808,8 @@ Below the help information for each module, which can also be called with:
     spinoza_mgdm
 
     Tissue segmentation using nighres' MGDM. It assumes that you've run module from this pipeline before,
-    so that you're directory structure is like derivatives/<process>/${PREFIX}xxx/ses-x. For this script, you
-    need to give the path to the skullstripped directory up until ${PREFIX}xxx, the output mgdm directory,
+    so that you're directory structure is like derivatives/<process>/${SUBJECT_PREFIX}xxx/ses-x. For this script, you
+    need to give the path to the skullstripped directory up until ${SUBJECT_PREFIX}xxx, the output mgdm directory,
     and the directory containing masks that are used to filter out stuff in the MGDM segmentation.
 
     By default, it's set to overwrite existing files in order to be able to iterate over the structural
@@ -1035,7 +1035,7 @@ Below the help information for each module, which can also be called with:
                               ture like "<input dir>/<sub>/ses-2"
 
     Example:
-      spinoza_line2surface -s ${PREFIX}001 -y anat_session2 -d /output/directory/whatev
+      spinoza_line2surface -s ${SUBJECT_PREFIX}001 -y anat_session2 -d /output/directory/whatev
 
     ---------------------------------------------------------------------------------------------------
 

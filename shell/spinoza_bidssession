@@ -26,7 +26,7 @@ Notes:
   The default structure that is created is this:
     > PROJECT
       > sourcedata
-        > ${PREFIX}001
+        > ${SUBJECT_PREFIX}001
           > ses-1
             > anat
             > func
@@ -94,17 +94,17 @@ echo
 
 #---------------------------------------------------------------------------------------------------------
 # Do the "sourcedata" part
-if [[ ! -d ${DIR_DATA_SOURCE}/${PREFIX}${1}/ses-${2} ]]; then
-  echo "creating ${DIR_DATA_SOURCE}/${PREFIX}${1}/ses-${2}"
-  mkdir -p ${DIR_DATA_SOURCE}/${PREFIX}${1}/ses-${2}
+if [[ ! -d ${DIR_DATA_SOURCE}/${SUBJECT_PREFIX}${1}/ses-${2} ]]; then
+  echo "creating ${DIR_DATA_SOURCE}/${SUBJECT_PREFIX}${1}/ses-${2}"
+  mkdir -p ${DIR_DATA_SOURCE}/${SUBJECT_PREFIX}${1}/ses-${2}
 fi
 
-if [[ ! -d ${DIR_DATA_HOME}/${PREFIX}${1}/ses-${2}/anat ]]; then
-  echo "creating ${DIR_DATA_HOME}/${PREFIX}${1}/ses-${2}/anat"
-  mkdir -p ${DIR_DATA_HOME}/${PREFIX}${1}/ses-${2}/anat
+if [[ ! -d ${DIR_DATA_HOME}/${SUBJECT_PREFIX}${1}/ses-${2}/anat ]]; then
+  echo "creating ${DIR_DATA_HOME}/${SUBJECT_PREFIX}${1}/ses-${2}/anat"
+  mkdir -p ${DIR_DATA_HOME}/${SUBJECT_PREFIX}${1}/ses-${2}/anat
 fi
 
-if [[ ! -d ${DIR_DATA_HOME}/${PREFIX}${1}/ses-${2}/func ]]; then
-  echo "creating ${DIR_DATA_HOME}/${PREFIX}${1}/ses-${2}/func"
-  mkdir -p ${DIR_DATA_HOME}/${PREFIX}${1}/ses-${2}/func
+if [[ ! -d ${DIR_DATA_HOME}/${SUBJECT_PREFIX}${1}/ses-${2}/func ]]; then
+  echo "creating ${DIR_DATA_HOME}/${SUBJECT_PREFIX}${1}/ses-${2}/func"
+  mkdir -p ${DIR_DATA_HOME}/${SUBJECT_PREFIX}${1}/ses-${2}/func
 fi

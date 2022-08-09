@@ -472,7 +472,7 @@ if [[ $? -eq 0 ]]; then
     ses_nr=${SES}
   fi
   
-  subject=${PREFIX}${SUB}
+  subject=${SUBJECT_PREFIX}${SUB}
   ${job} spinoza_lineplanning ${OW} \
                               -s ${subject} \
                               -n ${ses_nr} \

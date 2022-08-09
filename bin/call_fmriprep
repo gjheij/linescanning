@@ -69,6 +69,9 @@ task_flag=""
 syn_flag=""
 init_flag=""
 fprep_container=${FPREP_SIMG}
+project=${DIR_DATA_HOME}
+work=${PATH_HOME}/fmriprep/${PROJECT}
+pref="sub-"
 while getopts :-:us:m:r:d:c:i:b:w:l:x:t: arg
 do
   case ${arg} in
@@ -134,9 +137,7 @@ fi
 
 #-----------------------------------------------------------------------------
 # Set default project root directory if none specified
-if [[ -z ${ROOT} ]]; then
-  project=${DIR_DATA_HOME}
-else
+if [[ ! -z ${ROOT} ]]; then
   project=${ROOT}
 fi
 
@@ -156,9 +157,7 @@ fi
 
 #-----------------------------------------------------------------------------
 # Set default working directory if none specified
-if [[ -z ${WORK} ]]; then
-  work=${PATH_HOME}/fmriprep/${PROJECT}
-else
+if [[ ! -z ${WORK} ]]; then
   work=${WORK}
 fi
 
@@ -301,10 +300,8 @@ fi
 
 #-----------------------------------------------------------------------------
 # copy the bold-to-T1w warps from the fmriprep_wf
-if [ -z ${PREFIX} ]; then
-  pref="sub-"
-else
-  pref=${PREFIX}
+if [ ! -z ${SUBJECT_PREFIX} ]; then
+  pref=${SUBJECT_PREFIX}
 fi
 
 # see https://github.com/nipreps/fmriprep/issues/2189#issuecomment-646620788

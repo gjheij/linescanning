@@ -119,7 +119,7 @@ TYPE=${@:$OPTIND+2:1}
 
 if [[ -z ${sub} ]]; then
   # loop through subjects
-  search="${INPUT}/${PREFIX}*"
+  search="${INPUT}/${SUBJECT_PREFIX}*"
 else
   # read specified subjects into array
   IFS=', ' read -r -a search <<< "${sub}"
@@ -153,11 +153,11 @@ for subID in ${search}; do
 
   # collect subject name
   if [[ ! -z ${sub} ]]; then
-    sub_name=${PREFIX}${subID}
+    sub_name=${SUBJECT_PREFIX}${subID}
     sub_id=${subID}
   else
     sub_name=$(basename ${subID})
-    sub_id=`get_id ${sub_name} ${PREFIX}`
+    sub_id=`get_id ${sub_name} ${SUBJECT_PREFIX}`
   fi
 
   if [[ ! -z ${ses} ]]; then

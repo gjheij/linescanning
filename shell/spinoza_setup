@@ -152,7 +152,7 @@ export DIR_PROJECTS="/mnt/d/FSL/shared/spinoza/projects"
 export PROJECT="WB-pRF"
 export TASK_SES1="pRF"
 export TASK_SES2="LR"
-export PREFIX="sub-"
+export SUBJECT_PREFIX="sub-"
 export COMBINE_SEGMENTATIONS="weighted"
 
 # DATA TYPE(S)
