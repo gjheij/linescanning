@@ -22,6 +22,26 @@ import pickle
 
 opj = os.path.join
 
+def read_par_file(prf_file):
+
+    if prf_file.endswith("npy"):
+        pars = np.load(prf_file)
+    elif prf_file.endswith("mat"):
+        tmp = io.loadmat(prf_file)
+        pars = tmp[list(tmp.keys)[-1]] # find last key in list
+    elif prf_file.endswith("pkl"):
+        with open(prf_file, 'rb') as input:
+            data = pickle.load(input)
+
+            try:
+                pars = data['pars']
+            except:
+                raise TypeError(f"Pickle-file did not arise from 'pRFmodelFitting'. I'm looking for 'pars', but got '{data.keys()}'")
+    else:
+        raise TypeError(f"Unknown input file '{self.prf_file}'. Must be one of ['str', 'npy', 'pkl']")
+
+    return pars
+     
 def get_prfdesign(screenshot_path,
                   n_pix=40,
                   dm_edges_clipping=[0,0,0,0]):
