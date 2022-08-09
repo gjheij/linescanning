@@ -96,8 +96,8 @@ if [[ -z ${MODE} ]]; then
   MODE='brain'
 else
   if [[ ${MODE,,} != 'full' && ${MODE,,} != 'brain' ]]; then
-      echo "ERROR in `basename ${0}`: MODE must be \"full\" or \"brain\", got \"${MODE}\""
-      exit 1
+    echo "ERROR in `basename ${0}`: MODE must be \"full\" or \"brain\", got \"${MODE}\""
+    exit 1
   fi
 fi
 
