@@ -682,8 +682,8 @@ function make_cat_script {
 
 	# Check if we have compatible version; we're using 12.6!!
 	VER=`cat ${1}/toolbox/cat12/Contents.txt | grep Version | cut -d" " -f3 2>/dev/null`
-	if [[ ${VER} != "1113"]] && [[ ${VER} != "1450" ]] && [[ ${VER} != "2043" ]]; then
-		echo "CAT12 VERSION = ${VER}: I only have support for CAT12 (r1113), CAT12.6 (r1450), or CAT12.8 (r2043)"
+	if [[ ${VER} != "1113" && ${VER} != "1450" && ${VER} != "2043" ]]; then
+    echo "CAT12 VERSION = ${VER}: I only have support for CAT12 (r1113), CAT12.6 (r1450), or CAT12.8 (r2043)"
 		exit 1
 	fi
 
@@ -828,7 +828,7 @@ function make_cat_script {
     (
     echo "matlabbatch{1}.spm.tools.cat.estwrite.data_wmh = {''};"
     echo "matlabbatch{1}.spm.tools.cat.estwrite.useprior = '';"
-    echo "matlabbatch{1}.spm.tools.cat.estwrite.opts.biasstr = 2.22044604925e-16;"
+    echo "matlabbatch{1}.spm.tools.cat.estwrite.opts.biasstr = eps;"
     echo "matlabbatch{1}.spm.tools.cat.estwrite.opts.accstr = 0.5;"
     echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.segmentation.restypes.native = struct([]);"
     echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.segmentation.setCOM = 1;"
@@ -861,7 +861,7 @@ function make_cat_script {
     echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.admin.lazy = 0;"
     echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.admin.ignoreErrors = 0;"
     echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.admin.verb = 2;"
-    echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.admin.print = 2;"
+    echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.admin.print = 1;"
     echo "matlabbatch{1}.spm.tools.cat.estwrite.output.BIDS.BIDSno = 1;"
     echo "matlabbatch{1}.spm.tools.cat.estwrite.output.surf_measures = 1;"
     echo "matlabbatch{1}.spm.tools.cat.estwrite.output.ROImenu.noROI = struct([]);"
@@ -884,7 +884,7 @@ function make_cat_script {
     echo "matlabbatch{1}.spm.tools.cat.estwrite.output.jacobianwarped = 0;"
     echo "matlabbatch{1}.spm.tools.cat.estwrite.output.warps = [0 0];"
     echo "matlabbatch{1}.spm.tools.cat.estwrite.output.rmat = 0;"
-    )
+  ) >> ${4}
 	fi
 
   (
