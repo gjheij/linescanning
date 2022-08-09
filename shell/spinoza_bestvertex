@@ -53,9 +53,9 @@ Usage:
   spinoza_bestvertex <-s sub> <-v "lh,rh"> <sourcedata> <derivatives> <ROI>
 
 Example:
-  spinoza_bestvertex $DIR_DATA_HOME $DIR_DATA_DERIV V1_exvivo.thresh
-  spinoza_bestvertex -s 001 $DIR_DATA_HOME $DIR_DATA_DERIV V1_exvivo.thresh
-  spinoza_bestvertex -s 001 -v "1957,8753" $DIR_DATA_HOME $DIR_DATA_DERIV V1_exvivo.thresh
+  spinoza_bestvertex DIR_DATA_HOME DIR_DATA_DERIV V1_exvivo.thresh
+  spinoza_bestvertex -s 001 DIR_DATA_HOME DIR_DATA_DERIV V1_exvivo.thresh
+  spinoza_bestvertex -s 001 -v "1957,8753" DIR_DATA_HOME DIR_DATA_DERIV V1_exvivo.thresh
 
 ---------------------------------------------------------------------------------------------------
 
@@ -66,28 +66,31 @@ USAGE
 #-----------------------------------------------------------------------------
 # Deal with arguments
 OW=0
-FREEVIEW=1
+fv_flag=""
 task="${TASK_SES1[0]}"
 model="gauss"
-stage_flag=""
+stage="iter"
 man_verts=""
 roi="V1_exvivo.thresh"
 OPEN_FV=""
+prf_ext="pkl"
 while getopts :-:fos:v:n:m:t: argument
 do
   case ${argument} in
     -)
       case "${OPTARG}" in
         no_freeview)
-          FREEVIEW=0
-          echo "Disabling Freeview (debug)"
+          fv_flag="--no-freeview"
           ;;     
         grid)
-          stage_flag="--grid"
-          ;;                                     
+          stage="grid"
+          ;;
+        npy)
+          prf_ext="npy"
+          ;;          
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
-            echo "Unknown option --${OPTARG}, did you mean \"--no_freeview\"?"
+            echo "Unknown option --${OPTARG}"
             exit 1
           fi
           ;;
@@ -120,7 +123,7 @@ ROI=${@:$OPTIND+2:1}
 # check if we should loop through subjects or do it for 1 subject only
 if [[ -z ${sub} ]]; then
   # loop through subjects
-  search="${INPUT}/${SUBJECT_PREFIX}*"
+  search="${BASE}/${SUBJECT_PREFIX}*"
 else
   # read specified subjects into array
   IFS=', ' read -r -a search <<< "${sub}"
@@ -170,14 +173,14 @@ for subID in ${search}; do
   prf_dir=${DERIV}/prf/${base_path}
 
   # make the pycortex directory if it doesn't exists; the others should exists already. If not, it will complain about it below
-  if [[ ! -d ${DERIV}/pycortex ]]; then
-    mkdir -p ${DERIV}/pycortex
+  if [[ ! -d ${cx_dir} ]]; then
+    mkdir -p ${cx_dir}
   fi
 
   # never really delete a line_pycortex file, but rename numerically, so that the highest number is the oldest file.
   # The file without any numbering will be the most recent one and also the one that will be used; unless otherwise
   # specified in the master script
-  line_orientation_file=${DERIV}/pycortex/${sub_name}/line_pycortex.csv
+  line_orientation_file=${cx_dir}/${sub_name}/line_pycortex.csv
   if [[ ${OW} -eq 1 ]]; then
     if [[ -f ${line_orientation_file} ]]; then
       nr=`find $(dirname ${line_orientation_file}) -type f -name "line_pycortex*" | wc -w`
@@ -196,7 +199,7 @@ for subID in ${search}; do
 
     echo
     echo "**************************************** Processing ${sub_name} ***************************************"
-    echo "Creating line_pycortex.csv file"
+    echo "Creating `basename ${line_orientation_file}` file"
     
     # set the call_pycortex2 '-v' flag  if we want manually selected vertices
     if [[ ! -z ${vert} ]]; then
@@ -213,27 +216,24 @@ for subID in ${search}; do
       use_prfs=""
     else
       use_prfs="--use-prf"
-      if [[ ! -d ${prf_dir} ]]; then
-        echo "${sub_name}: No pRF directory found > \"${prf_dir}\""
+
+      # find prf parameters
+      pars=`find ${prf_dir} -type f \( -name "*model-${model}*" -and -name "*stage-${stage}*" -and -name "*task-${task}*" -and -name "*prf_params.${prf_ext}" \) 2>/dev/null`
+      if [[ -z ${pars} ]]; then
+        echo "${sub_name}: No pRF file found with \"model-${model}\", \"stage-${stage}\", \"task-${task}\", and \"*prf_params.${prf_ext}\" in \"${prf_dir}\""
         continue
       fi
     fi
 
-    # set the call_pycortex2 flag for skipping FreeView
-    if [[ ${FREEVIEW} -eq 0 ]]; then
-      OPEN_FV="--no-freeview"
-    fi
-
-    call_targetvertex ${OPEN_FV} ${man_verts} ${stage_flag} \
+    call_targetvertex \
       -s ${sub_name} \
-      --fs ${fs_dir} \
-      --cx ${cx_dir} \
-      --prf ${prf_dir} \
+      -d ${DERIV} \
       -r ${roi} \
-      -t ${task} \
-      -m ${model} \
+      -o ${line_orientation_file} \
+      -p ${pars} \
+      ${fv_flag} \
+      ${man_verts} \
       ${use_prfs} \
-      -o ${line_orientation_file}
 
     if [[ $? != 0 ]]; then
       echo

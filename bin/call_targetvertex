@@ -16,84 +16,68 @@ def main(argv):
 call_targetvertex
 
 This script calculates the orientation of the line in the first session anatomy based on the sur-
-faces as outputted by FreeSurfer and later also the pRF-maps. Eventually it will create a csv-file
-containing the most important information about the orientation of the line. The main operations
-will be governed by the classes in linescanning/optimal.py. Aside from functional properties, we
-can now also set cut off criteria for cortical thickness and sulcal depth. If you do not wish to
-apply a certain filter, just leave it empty and press ENTER. That way, the default value (i.e.,
-no thresholding) will be used.
+faces as outputted by FreeSurfer and later also the pRF-maps. Eventually it will create a csv-
+file containing the most important information about the orientation of the line. The main ope-
+rations will be governed by the classes in linescanning/optimal.py. Aside from functional proper-
+ties, we can now also set cut off criteria for cortical thickness and sulcal depth. If you do not wish to apply a certain filter, just leave it empty and press ENTER. That way, the default value (i.e., no thresholding) will be used.
 
-Args:
-    -d (--deriv=)       Path to all derivatives (e.g., freesurfer/pycortex/prf)
-    -s (--sub=)         Subject name as defined in FreeSurfer directory
-    -r (--roi=)         ROI to be used; must be a label present in <fs_dir>/<subject>/label; de-
-                        fault = V1_exvivo.thresh. It should be following the nomenclature of Free-
-                        Surfer but omitting the 'lh'/'rh' to include both hemispheres
-                        in the analysis
-    -t (--task=)        Specify the task to use in case of multiple tasks in one session. Default
-                        is read from os.environ['TASK_SES1'] as specified in the spinoza_setup 
-                        file
-    -o (--out=)         Output file containing translation and rotation values
-    -u (--use-prf)      Exclude pRF in the calculation of the best vertex even if you have a pRF-
-                        parameter file to only use surface (anatomical) information. Does not re-
-                        quire an argument. Specifying this flag means you want to include it
-    -v (--vert)         list of manually specified vertices instead of based on surface calculation.
-                        use the format [5875,8872] with the first vertex in left hemisphere and se-
-                        cond in right hemisphere.
-    -f (--freeview)     Disable FreeView while verifying vertex location. Only do this if you al-
-                        ready know where it's located!
+Parameters
+----------
+    -s|--sub        Subject name as defined in FreeSurfer directory
+    -d|--deriv      Path to all derivatives (e.g., freesurfer/pycortex/prf)
+    -r|--roi        ROI to be used; must be a label present in <fs_dir>/<subject>/label; default 
+                    = V1_exvivo.thresh. It should be following the nomenclature of FreeSurfer but omitting the 'lh'/'rh' to include both hemispheresin the analysis
+    -o|--out        Output file containing translation and rotation values
+    -u|--use-prf    Exclude pRF in the calculation of the best vertex even if you have a pRF-
+                    parameter file to only use surface (anatomical) information. Does not re-
+                    quire an argument. Specifying this flag means you want to include it
+    -v|--vert       list of manually specified vertices instead of based on surface calculation.
+                    use the format [5875,8872] with the first vertex in left hemisphere and se-
+                    cond in right hemisphere.
+    -f|--freeview   Disable FreeView while verifying vertex location. Only do this if you al-
+                    ready know where it's located!
+    -p|--prf_file   File containing the pRF-estimates. Required if '--use-prf' is specified
 
-Optional (if -d is not specified or the directories are not all located in 'derivatives'):
-    --fs                   path to freesurfer directory up to subject specific directories
-    --ctx                  path to pycortex directory up to subject specific directories
-    --prf                  path to pRF directory up to subject specific directories
-
-Outputs:
+Returns
+----------
     a csv-file called line_pycortex.csv in the pycortex/sub-xxx directory specifying the
     orientation of the line in the first session anatomy
 
-Examples:
-    call_targetvertex -s sub-001 -d /dir/to/derivatives -o pycortex/sub-001/line_pycortex.csv -b 1
-    call_targetvertex -s sub-001 --fs /path/freesurfer --ctx /path/pycortex --prf /path/prf
-    call_targetvertex -s sub-001 -d /dir/to/derivatives -u
+Examples
+----------
+    call_targetvertex -s sub-001 -d /dir/to/derivatives -p prf_params.npy --use-prf
+    call_targetvertex -s sub-001 -d /dir/to/derivatives 
 
-Notes:
-    - You only need to specify the paths up until the sub-xxx, assuming a BIDS-like structure
-    - There are various types of vertex-selection:
-        > pRF and surface:
-            use both the information from pRF and surface calculations (default). For
-            this we need a pRF-parameter file from call_prfpy or separate numpy files for eccentric-
-            ity, r2, and polar angle. Additionally, we need the surfaces from FreeSurfer
-        > pRF-only:
-            will still require the same information as above, but instead you can leave the thres-
-            hold for structural properties to default
-        > surface-only:
-            will require the FreeSurfer surfaces, but if the pRF file is present, set the thres-
-            holds to default to not interfere with the mask
-        > curvature-only:
-            leave all thresholds to default to only look for minimal curvature
+Notes
+----------
+- You only need to specify the paths up until the sub-xxx, assuming a BIDS-like structure
+- There are various types of vertex-selection:
+    >pRF and surface:
+        use both the information from pRF and surface calculations (default). For this we need a 
+        pRF-parameter file from call_prf. Additionally, we need the surfaces from FreeSurfer
+    > pRF-only:
+        will still require the same information as above, but instead you can leave the thres-
+        hold for structural properties to default
+    > surface-only:
+        will require the FreeSurfer surfaces, but if the pRF file is present, set the thres-
+        holds to default to not interfere with the mask
+    > curvature-only:
+        leave all thresholds to default to only look for minimal curvature
 
 ---------------------------------------------------------------------------------------------------
     """
 
     subject     = None
-    model       = "gauss"
-    stage       = "iter"
-    task        = "2R"
     out         = None
     roi         = "V1_exvivo.thresh"
     use_prf     = False
     verts       = None
     open_fv     = True
     deriv       = None
-    fs_dir      = None
-    cx_dir      = None
-    prf_dir     = None
-    search_prf  = None
-    session     = None
+    prf_file    = None
 
     try:
-        opts = getopt.getopt(argv,"fuhd:s:t:r:o:b:v:m:n:",["help", "deriv=", "ses=", "task=", "sub=", "roi=", "out=", "fs=", "cx=", "prf=", "vert=", "use-prf", "no-freeview", "grid", "--model="])[0]
+        opts = getopt.getopt(argv,"fuhd:s:t:r:o:b:v:m:n:p:",["help", "deriv=", "sub=", "roi=", "out=", "vert=", "use-prf", "no-freeview", "prf_file="])[0]
     except getopt.GetoptError:
         print("ERROR IN ARGUMENT HANDLING!")
         print(main.__doc__)
@@ -104,29 +88,17 @@ Notes:
             print(main.__doc__)
             sys.exit()
         elif opt in ("-s", "--sub"):
-            subject = arg
-        elif opt in ("-n", "--ses"):
-            subject = arg            
+            subject = arg       
         elif opt in ("-r", "--roi"):
             roi = arg
         elif opt in ("-o", "--out"):
             out = arg
         elif opt in ("-d", "--deriv"):
             deriv = arg
-        elif opt in ("--fs"):
-            fs_dir = arg
-        elif opt in ("--cx"):
-            cx_dir = arg
-        elif opt in ("--prf"):
-            prf_dir = arg
+        elif opt in ("-p", "--prf_file"):
+            prf_file = arg
         elif opt in ("-u", "--use-prf"):
-            use_prf = True
-        elif opt in ("-t", "--task"):
-            task = arg
-        elif opt in ("-m", "--model"):
-            model = arg
-        elif opt in ("--grid"):
-            stage = "grid"                        
+            use_prf = True                        
         elif opt in ("-f", "--no-freeview"):
             open_fv = False
         elif opt in ("--vert"):
@@ -145,43 +117,9 @@ Notes:
         except:
             raise ValueError(f"You used '{verts}'. Make sure to use '[x,y,z]' (comma-separated and no spaces)")
     
-        
-    # when including pRF-parameters, use individual directories as pRF-directory has an additional 'ses-' directory that's unaccounted for when looking for defaults
-    if not fs_dir:
-        fs_dir = os.environ.get('SUBJECTS_DIR')
-
-    if not deriv:
-        if not cx_dir:
-            raise ValueError("Pycortex directory not specified. Use '--cx <path to pycortex directory>'")
-
-        if not prf_dir:
-            raise ValueError("pRF-directory not specified. Use '--prf <path to pycortex directory>'")
-    else:
-        if session:
-            base_path = f'{subject}_ses-{session}'
-        else:
-            base_path = subject
-
-        if not cx_dir:
-            cx_dir = opj(os.environ.get("CTX"), subject)
-
-        if not prf_dir:
-            prf_dir = opj(os.environ.get("PRF"), base_path)
-
-    # set output file
-    if out == None:
-        out = opj(cx_dir, subject, 'line_pycortex.csv')
-
-    if use_prf:
-        search_prf = [f'model-{model}', f'task-{task}', f'stage-{stage}', "params.npy"]
-
-    # update the filestore
-    pycortex.set_ctx_path(p=cx_dir)
     optimal.target_vertex(subject,
-                          fs_dir=fs_dir,
-                          cx_dir=cx_dir,
-                          prf_dir=prf_dir,
-                          search_prf=search_prf, 
+                          prf_file=prf_file,
+                          deriv=deriv, 
                           vert=verts,
                           use_prf=use_prf,
                           out=out,
