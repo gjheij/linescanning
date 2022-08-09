@@ -19,40 +19,43 @@ This script calculates the orientation of the line in the first session anatomy 
 faces as outputted by FreeSurfer and later also the pRF-maps. Eventually it will create a csv-
 file containing the most important information about the orientation of the line. The main ope-
 rations will be governed by the classes in linescanning/optimal.py. Aside from functional proper-
-ties, we can now also set cut off criteria for cortical thickness and sulcal depth. If you do not wish to apply a certain filter, just leave it empty and press ENTER. That way, the default value (i.e., no thresholding) will be used.
+ties, we can now also set cut off criteria for cortical thickness and sulcal depth. If you do not 
+wish to apply a certain filter, just leave it empty and press ENTER. That way, the default value 
+(i.e., no thresholding) will be used.
 
 Parameters
 ----------
     -s|--sub        Subject name as defined in FreeSurfer directory
     -d|--deriv      Path to all derivatives (e.g., freesurfer/pycortex/prf)
     -r|--roi        ROI to be used; must be a label present in <fs_dir>/<subject>/label; default 
-                    = V1_exvivo.thresh. It should be following the nomenclature of FreeSurfer but omitting the 'lh'/'rh' to include both hemispheresin the analysis
+                    = V1_exvivo.thresh. It should be following the nomenclature of FreeSurfer but 
+                    omitting the 'lh'/'rh' to include both hemispheresin the analysis
     -o|--out        Output file containing translation and rotation values
-    -u|--use-prf    Exclude pRF in the calculation of the best vertex even if you have a pRF-
-                    parameter file to only use surface (anatomical) information. Does not re-
+    -u|--use-prf    Exclude pRF in the calculation of the best vertex even if you have a pRF-para-
+                    meter file to only use surface (anatomical) information. Does not re-
                     quire an argument. Specifying this flag means you want to include it
     -v|--vert       list of manually specified vertices instead of based on surface calculation.
                     use the format [5875,8872] with the first vertex in left hemisphere and se-
                     cond in right hemisphere.
-    -f|--freeview   Disable FreeView while verifying vertex location. Only do this if you al-
-                    ready know where it's located!
+    -f|--freeview   Disable FreeView while verifying vertex location. Only do this if you already 
+                    know where it's located!
     -p|--prf_file   File containing the pRF-estimates. Required if '--use-prf' is specified
 
 Returns
 ----------
-    a csv-file called line_pycortex.csv in the pycortex/sub-xxx directory specifying the
-    orientation of the line in the first session anatomy
+a csv-file called line_pycortex.csv in the pycortex/sub-xxx directory specifying the orientation 
+of the line in the first session anatomy
 
 Examples
 ----------
-    call_targetvertex -s sub-001 -d /dir/to/derivatives -p prf_params.npy --use-prf
-    call_targetvertex -s sub-001 -d /dir/to/derivatives 
+call_targetvertex -s sub-001 -d /dir/to/derivatives -p prf_params.npy --use-prf
+call_targetvertex -s sub-001 -d /dir/to/derivatives 
 
 Notes
 ----------
 - You only need to specify the paths up until the sub-xxx, assuming a BIDS-like structure
 - There are various types of vertex-selection:
-    >pRF and surface:
+    > pRF and surface:
         use both the information from pRF and surface calculations (default). For this we need a 
         pRF-parameter file from call_prf. Additionally, we need the surfaces from FreeSurfer
     > pRF-only:
