@@ -850,7 +850,7 @@ def split_bids_components(fname):
     comp_list = fname.split('_')
     comps = {}
     
-    ids = ['ses', 'task', 'acq', 'rec', 'sub', 'desc', 'run', 'space', 'hemi', 'model', 'stage']
+    ids = ['sub', 'ses', 'task', 'acq', 'rec', 'run', 'space', 'hemi', 'model', 'stage', 'desc']
     for el in comp_list:
         for i in ids:
             if i in el:
