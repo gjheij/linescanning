@@ -2,7 +2,7 @@
 
 function conda2jupyter {
   conda activate ${1}
-	python -m ipykernel install --user --name=${1}
+  python -m ipykernel install --user --name=${1}
   conda deactivate
 }
 
@@ -46,15 +46,15 @@ function flywheel2bids {
 } 
 
 function permission_codes {
-	stat -c "%a %n" *
+  stat -c "%a %n" *
 }
 
 function delete_prefix {
-	for i in "$1"*; do mv "$i" "${i#"$1"}"; done
+  for i in "$1"*; do mv "$i" "${i#"$1"}"; done
 }
 
 function add_prefix {
-	for f in *; do mv "$f" "$1$f"; done
+  for f in *; do mv "$f" "$1$f"; done
 }
 
 function task_id {
@@ -122,28 +122,25 @@ function get_id {
 
 #start_ssh client
 function start_ssh {
-	# start the ssh-agent in the background
-	eval $(ssh-agent -s)
-	
-	# Add a private key to SSH.
-	if [ -f ${SSH_KEY} ]; then
-		ssh-add ${SSH_KEY}
-		
-		# Should say: Hi username, you have been verified blabla
-		ssh -T git@github.com
-	else
-		echo "${SSH_KEY} key not found!"
-	fi
+  # start the ssh-agent in the background
+  eval $(ssh-agent -s)
+  # Add a private key to SSH.
+  if [ -f ${SSH_KEY} ]; then
+    ssh-add ${SSH_KEY}
+    ssh -T git@github.com
+  else
+    echo "${SSH_KEY} key not found!"
+  fi
 }
 
 function check_function {
-    FN=`type -t $1`
+  FN=`type -t $1`
 
-    if [[ -z ${FN} ]]; then
-      echo 1
-    else
-      echo 0
-    fi
+  if [[ -z ${FN} ]]; then
+    echo 1
+  else
+    echo 0
+  fi
 }
 
 # function to wait for a submitted job
@@ -231,10 +228,10 @@ function get_module_nr() {
 
 # get extension from file
 function fetch_extension {
-	fname=$(basename -- "${1}")
-	ext="${fname##*.}"
-	filename="${fname%.*}"
-	echo $ext
+  fname=$(basename -- "${1}")
+  ext="${fname##*.}"
+  filename="${fname%.*}"
+  echo $ext
 }
 
 # function to get whole file path
@@ -680,30 +677,30 @@ function make_cat_script {
     exit 1
   fi
 
-	# Check if we have compatible version; we're using 12.6!!
-	VER=`cat ${1}/toolbox/cat12/Contents.txt | grep Version | cut -d" " -f3 2>/dev/null`
-	if [[ ${VER} != "1113" && ${VER} != "1450" && ${VER} != "2043" ]]; then
+  # Check if we have compatible version; we're using 12.6!!
+  VER=`cat ${1}/toolbox/cat12/Contents.txt | grep Version | cut -d" " -f3 2>/dev/null`
+  if [[ ${VER} != "1113" && ${VER} != "1450" && ${VER} != "2043" ]]; then
     echo "CAT12 VERSION = ${VER}: I only have support for CAT12 (r1113), CAT12.6 (r1450), or CAT12.8 (r2043)"
-		exit 1
-	fi
+    exit 1
+  fi
 
-	cat12_dir=`find ${1} -type d -name "*cat12*" -print -quit 2>/dev/null`
-	if [[ -z ${cat12_dir} ]]; then
-		echo "Could not find CAT12-directory in \"${1}\""
-		exit 1
-	fi
+  cat12_dir=`find ${1} -type d -name "*cat12*" -print -quit 2>/dev/null`
+  if [[ -z ${cat12_dir} ]]; then
+    echo "Could not find CAT12-directory in \"${1}\""
+    exit 1
+  fi
 
-	tpm_dir=`find $(dirname ${1}) -type d -name "*tpm*" -print -quit 2>/dev/null`
-	if [[ -z ${tpm_dir} ]]; then
-		echo "Could not find template-directory in \"${1})\""
-		exit 1
-	fi
+  tpm_dir=`find $(dirname ${1}) -type d -name "*tpm*" -print -quit 2>/dev/null`
+  if [[ -z ${tpm_dir} ]]; then
+    echo "Could not find template-directory in \"${1})\""
+    exit 1
+  fi
 
-	if [[ ${PLACE} == "SGE" ]]; then
-		CPUs=0
-	else
-		CPUs=0
-	fi
+  if [[ ${PLACE} == "SGE" ]]; then
+    CPUs=0
+  else
+    CPUs=0
+  fi
 
   (
   echo "%-----------------------------------------------------------------------------"
@@ -742,6 +739,7 @@ function make_cat_script {
   echo "matlabbatch{1}.spm.tools.cat.estwrite.output.las.native = 1;"
   echo "matlabbatch{1}.spm.tools.cat.estwrite.output.las.warped = 0;"
   echo "matlabbatch{1}.spm.tools.cat.estwrite.output.las.dartel = 0;"
+  echo "matlabbatch{1}.spm.tools.cat.estwrite.output.warps = [0 0];"
   ) >> ${4}
 
   if [[ ${3} == 'brain' ]]; then
@@ -757,7 +755,7 @@ function make_cat_script {
     sanlm=0
   fi
 
-	if [[ ${VER} == "1113" ]]; then
+  if [[ ${VER} == "1113" ]]; then
 
     (
     echo "matlabbatch{1}.spm.tools.cat.estwrite.opts.ngaus = [1 1 2 3 4 2];"
@@ -787,42 +785,40 @@ function make_cat_script {
     echo "matlabbatch{1}.spm.tools.cat.estwrite.output.atlases.cobra = 0;"
     echo "matlabbatch{1}.spm.tools.cat.estwrite.output.atlases.hammers = 0;"
     echo "matlabbatch{1}.spm.tools.cat.estwrite.output.jacobian.warped = 0;"
-    echo "matlabbatch{1}.spm.tools.cat.estwrite.output.warps = [0 0];"
     ) >> ${4}
 
   elif [[ ${VER} == "1450" ]]; then
-		(
-		echo "matlabbatch{1}.spm.tools.cat.estwrite.opts.affreg = 'mni';"
-		echo "matlabbatch{1}.spm.tools.cat.estwrite.opts.biasstr = 0.75;"
-		echo "matlabbatch{1}.spm.tools.cat.estwrite.opts.accstr = 0.5;"
-		echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.segmentation.APP = 1070;"
-		echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.segmentation.NCstr = -Inf;"
-		echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.segmentation.LASstr = 0.5;"
-		echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.segmentation.gcutstr = 2;"
-		echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.segmentation.cleanupstr = 0.5;"
-		echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.segmentation.WMHC = 0;"
-		echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.segmentation.SLC = 0;"
-		echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.segmentation.restypes.native = struct([]);"
-		echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.registration.dartel.darteltpm = {'${1}/toolbox/cat12/templates_1.50mm/Template_1_IXI555_MNI152.nii'};"
-		echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.vox = 1.5;"
-		echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.surface.pbtres = 0.5;"
-		echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.surface.scale_cortex = 0.7;"
-		echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.surface.add_parahipp = 0.1;"
-		echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.surface.close_parahipp = 0;"
-		echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.admin.ignoreErrors = 0;"
-		echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.admin.verb = 2;"
-		echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.admin.print = 2;"
-		echo "matlabbatch{1}.spm.tools.cat.estwrite.output.surface = 0;"
-		echo "matlabbatch{1}.spm.tools.cat.estwrite.output.ROImenu.noROI = struct([]);"
-		echo "matlabbatch{1}.spm.tools.cat.estwrite.output.SL.native = 0;"
-		echo "matlabbatch{1}.spm.tools.cat.estwrite.output.SL.warped = 0;"
-		echo "matlabbatch{1}.spm.tools.cat.estwrite.output.SL.mod = 0;"
-		echo "matlabbatch{1}.spm.tools.cat.estwrite.output.SL.dartel = 0;"
-		echo "matlabbatch{1}.spm.tools.cat.estwrite.output.atlas.native = 0;"
-		echo "matlabbatch{1}.spm.tools.cat.estwrite.output.atlas.dartel = 0;"
-		echo "matlabbatch{1}.spm.tools.cat.estwrite.output.jacobianwarped = 0;"
-		echo "matlabbatch{1}.spm.tools.cat.estwrite.output.warps = [0 0];"
-		) >> ${4}
+    (
+    echo "matlabbatch{1}.spm.tools.cat.estwrite.opts.affreg = 'mni';"
+    echo "matlabbatch{1}.spm.tools.cat.estwrite.opts.biasstr = 0.75;"
+    echo "matlabbatch{1}.spm.tools.cat.estwrite.opts.accstr = 0.5;"
+    echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.segmentation.APP = 1070;"
+    echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.segmentation.NCstr = -Inf;"
+    echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.segmentation.LASstr = 0.5;"
+    echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.segmentation.gcutstr = 2;"
+    echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.segmentation.cleanupstr = 0.5;"
+    echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.segmentation.WMHC = 0;"
+    echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.segmentation.SLC = 0;"
+    echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.segmentation.restypes.native = struct([]);"
+    echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.registration.dartel.darteltpm = {'${1}/toolbox/cat12/templates_1.50mm/Template_1_IXI555_MNI152.nii'};"
+    echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.vox = 1.5;"
+    echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.surface.pbtres = 0.5;"
+    echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.surface.scale_cortex = 0.7;"
+    echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.surface.add_parahipp = 0.1;"
+    echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.surface.close_parahipp = 0;"
+    echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.admin.ignoreErrors = 0;"
+    echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.admin.verb = 2;"
+    echo "matlabbatch{1}.spm.tools.cat.estwrite.extopts.admin.print = 2;"
+    echo "matlabbatch{1}.spm.tools.cat.estwrite.output.surface = 0;"
+    echo "matlabbatch{1}.spm.tools.cat.estwrite.output.ROImenu.noROI = struct([]);"
+    echo "matlabbatch{1}.spm.tools.cat.estwrite.output.SL.native = 0;"
+    echo "matlabbatch{1}.spm.tools.cat.estwrite.output.SL.warped = 0;"
+    echo "matlabbatch{1}.spm.tools.cat.estwrite.output.SL.mod = 0;"
+    echo "matlabbatch{1}.spm.tools.cat.estwrite.output.SL.dartel = 0;"
+    echo "matlabbatch{1}.spm.tools.cat.estwrite.output.atlas.native = 0;"
+    echo "matlabbatch{1}.spm.tools.cat.estwrite.output.atlas.dartel = 0;"
+    echo "matlabbatch{1}.spm.tools.cat.estwrite.output.jacobianwarped = 0;"
+    ) >> ${4}
 
   elif [[ ${VER} == "2043" ]]; then
     (
@@ -882,10 +878,9 @@ function make_cat_script {
     echo "matlabbatch{1}.spm.tools.cat.estwrite.output.atlas.native = 0;"
     echo "matlabbatch{1}.spm.tools.cat.estwrite.output.labelnative = 1;"
     echo "matlabbatch{1}.spm.tools.cat.estwrite.output.jacobianwarped = 0;"
-    echo "matlabbatch{1}.spm.tools.cat.estwrite.output.warps = [0 0];"
     echo "matlabbatch{1}.spm.tools.cat.estwrite.output.rmat = 0;"
   ) >> ${4}
-	fi
+  fi
 
   (
   echo ""
@@ -896,12 +891,12 @@ function make_cat_script {
   echo "exit"
   ) >> ${4}
 
-	# also save the matlabbatch-only lines to a file that we can load in SPM/CAT12
-	if [[ -f $(dirname ${4})/$(basename ${4} .m)_batch.m ]]; then
-		rm $(dirname ${4})/$(basename ${4} .m)_batch.m
-	fi
+  # also save the matlabbatch-only lines to a file that we can load in SPM/CAT12
+  if [[ -f $(dirname ${4})/$(basename ${4} .m)_batch.m ]]; then
+    rm $(dirname ${4})/$(basename ${4} .m)_batch.m
+  fi
 
-	cat ${4} | grep -A0 "matlabbatch{" >> $(dirname ${4})/$(basename ${4} .m)_batch.m
+  cat ${4} | grep -A0 "matlabbatch{" >> $(dirname ${4})/$(basename ${4} .m)_batch.m
 
 }
 
