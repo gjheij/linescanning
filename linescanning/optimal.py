@@ -184,7 +184,7 @@ def target_vertex(subject,
 
         # This thing mainly does everything. See the linescanning/optimal.py file for more information
         print("Combining surface and pRF-estimates in one object")
-        GetBestVertex = CalcBestVertex(subject=subject, fs_dir=fs_dir, prffile=prf_params, fs_label=roi)
+        BV_ = CalcBestVertex(subject=subject, fs_dir=fs_dir, prffile=prf_params, fs_label=roi)
 
         #----------------------------------------------------------------------------------------------------------------
         # Set the cutoff criteria based on which you'd like to select a vertex
@@ -195,10 +195,10 @@ def target_vertex(subject,
             if not isinstance(vert, np.ndarray):
                 print("Set thresholds (leave empty and press [ENTER] to not use a particular property):")
                 # get user input with set_threshold > included the possibility to have only pRF or structure only!
-                if hasattr(GetBestVertex, 'prf'):
-                    size_val    = set_threshold(name="pRF size (beta)", borders=(0,5), set_default=round(min(GetBestVertex.prf.size)))
-                    r2_val      = set_threshold(name="r2 (variance)", borders=(0,1), set_default=round(min(GetBestVertex.prf.r2)))
-                    ecc_val     = set_threshold(name="eccentricity", borders=(0,15), set_default=round(min(GetBestVertex.prf.ecc)))
+                if hasattr(BV_, 'prf'):
+                    size_val    = set_threshold(name="pRF size (beta)", borders=(0,5), set_default=round(min(BV_.prf.size)))
+                    r2_val      = set_threshold(name="r2 (variance)", borders=(0,1), set_default=round(min(BV_.prf.r2)))
+                    ecc_val     = set_threshold(name="eccentricity", borders=(0,15), set_default=round(min(BV_.prf.ecc)))
                     pol_val_lh  = set_threshold(name="polar angle lh", borders=(0,np.pi), set_default=round(np.pi))
                     pol_val_rh  = set_threshold(name="polar angle rh", borders=(-np.pi,0), set_default=round(-np.pi))
                     pol_val     = [pol_val_lh,pol_val_rh]
@@ -208,9 +208,9 @@ def target_vertex(subject,
                     r2_val      = 0
                     pol_val     = 0
 
-                if hasattr(GetBestVertex, 'surface'):
-                    thick_val   = set_threshold(name="thickness (mm)", borders=(0,5), set_default=max(GetBestVertex.surface.thickness.data))
-                    depth_val   = set_threshold(name="sulcal depth", set_default=round(min(GetBestVertex.surface.depth.data)))
+                if hasattr(BV_, 'surface'):
+                    thick_val   = set_threshold(name="thickness (mm)", borders=(0,5), set_default=max(BV_.surface.thickness.data))
+                    depth_val   = set_threshold(name="sulcal depth", set_default=round(min(BV_.surface.depth.data)))
                 else:
                     thick_val   = 0
                     depth_val   = 0
@@ -225,25 +225,25 @@ def target_vertex(subject,
                 print(f" depth:           {round(depth_val,4)}")
 
                 # Create mask using selected criteria
-                GetBestVertex.apply_thresholds(ecc_thresh=ecc_val,
-                                               size_thresh=size_val,
-                                               r2_thresh=r2_val,
-                                               polar_thresh=pol_val,
-                                               depth_thresh=depth_val,
-                                               thick_thresh=thick_val)
+                BV_.apply_thresholds(ecc_thresh=ecc_val,
+                                     size_thresh=size_val,
+                                     r2_thresh=r2_val,
+                                     polar_thresh=pol_val,
+                                     depth_thresh=depth_val,
+                                     thick_thresh=thick_val)
 
                 # Pick out best vertex
-                GetBestVertex.best_vertex()
+                BV_.best_vertex()
                 
             else:
             
                 for i,r in enumerate(['lh', 'rh']):
-                    setattr(GetBestVertex, f"{r}_best_vertex", vert[i])
-                    setattr(GetBestVertex, f"{r}_best_vertex_coord", getattr(GetBestVertex.surface, f'{r}_surf_data')[0][vert[i]])
-                    setattr(GetBestVertex, f"{r}_best_vert_mask", (getattr(GetBestVertex.surface, f'{r}_surf_data')[1] == [vert[i]]).sum(0))
+                    setattr(BV_, f"{r}_best_vertex", vert[i])
+                    setattr(BV_, f"{r}_best_vertex_coord", getattr(BV_.surface, f'{r}_surf_data')[0][vert[i]])
+                    setattr(BV_, f"{r}_best_vert_mask", (getattr(BV_.surface, f'{r}_surf_data')[1] == [vert[i]]).sum(0))
 
             # Calculate normal using the standard method. Other options are "cross" and "Newell"
-            GetBestVertex.fetch_normal()
+            BV_.fetch_normal()
 
             for hemi in ['left', 'right']:
                 if hemi == "left":
@@ -251,9 +251,10 @@ def target_vertex(subject,
                 else:
                     tag = "rh"
 
-                coord = getattr(GetBestVertex, f"{tag}_best_vertex_coord")
-                vertex = getattr(GetBestVertex, f"{tag}_best_vertex")
-                normal = getattr(GetBestVertex.surface, f"{tag}_surf_normals")[vertex]
+                coord = getattr(BV_, f"{tag}_best_vertex_coord")
+                vertex = getattr(BV_, f"{tag}_best_vertex")
+                normal = getattr(BV_.surface, f"{tag}_surf_normals")[vertex]
+                
                 print(f"Found following vertex in {hemi} hemisphere:")
                 print(f" vertex = {vertex}")
                 print(f" coord  = {coord}")
@@ -264,15 +265,15 @@ def target_vertex(subject,
 
             # # Smooth vertex maps
             # print("Smooth vertex maps for visual verification")
-            # GetBestVertex.vertex_to_map()
-            # GetBestVertex.smooth_vertexmap()
+            # BV_.vertex_to_map()
+            # BV_.smooth_vertexmap()
 
             if isinstance(vert,np.ndarray):
                 webshow = False
         
             if webshow:
                 orig = opj(fs_dir, subject, 'mri', 'orig.mgz')
-                tkr = transform.ctx2tkr(subject, coord=[GetBestVertex.lh_best_vertex_coord,GetBestVertex.rh_best_vertex_coord])
+                tkr = transform.ctx2tkr(subject, coord=[BV_.lh_best_vertex_coord,BV_.rh_best_vertex_coord])
                 tkr_ = {'lh': tkr[0], 'rh': tkr[1]}
                 lh_fid=opj(fs_dir, subject, 'surf', "lh.fiducial")
                 rh_fid=opj(fs_dir, subject, 'surf', "rh.fiducial")
@@ -306,7 +307,7 @@ def target_vertex(subject,
                 outF.close()
                 check = True
 
-        GetBestVertex.write_line_pycortex(save_as=out)
+        BV_.write_line_pycortex(save_as=out)
         print(" writing {file}".format(file=out))
 
         #----------------------------------------------------------------------------------------------------------------
@@ -322,8 +323,8 @@ def target_vertex(subject,
 
             prf_bestvertex = opj(cx_dir, subject, f'{fbase}_desc-best_vertices.csv')
 
-            prf_right = prf_data[GetBestVertex.surface.lh_surf_data[0].shape[0]:][GetBestVertex.rh_best_vertex]
-            prf_left = prf_data[0:GetBestVertex.surface.lh_surf_data[0].shape[0]][GetBestVertex.lh_best_vertex]
+            prf_right = prf_data[BV_.surface.lh_surf_data[0].shape[0]:][BV_.rh_best_vertex]
+            prf_left = prf_data[0:BV_.surface.lh_surf_data[0].shape[0]][BV_.lh_best_vertex]
             
             # print(prf_right)
             # print(prf_left)
@@ -334,18 +335,18 @@ def target_vertex(subject,
                                         "beta":     [prf_left[3], prf_right[3]],
                                         "baseline": [prf_left[4], prf_right[4]],
                                         "r2":       [prf_left[5], prf_right[5]],
-                                        "ecc":      [GetBestVertex.prf.ecc[GetBestVertex.lh_best_vertex], GetBestVertex.prf.ecc[GetBestVertex.surface.lh_surf_data[0].shape[0]:][GetBestVertex.rh_best_vertex]],
-                                        "polar":    [GetBestVertex.prf.polar[GetBestVertex.lh_best_vertex], GetBestVertex.prf.polar[GetBestVertex.surface.lh_surf_data[0].shape[0]:][GetBestVertex.rh_best_vertex]],
-                                        "index":    [GetBestVertex.lh_best_vertex, GetBestVertex.rh_best_vertex],
-                                        "position": [GetBestVertex.lh_best_vertex_coord, GetBestVertex.rh_best_vertex_coord],
-                                        "normal":   [GetBestVertex.lh_normal, GetBestVertex.rh_normal]})
+                                        "ecc":      [BV_.prf.ecc[BV_.lh_best_vertex], BV_.prf.ecc[BV_.surface.lh_surf_data[0].shape[0]:][BV_.rh_best_vertex]],
+                                        "polar":    [BV_.prf.polar[BV_.lh_best_vertex], BV_.prf.polar[BV_.surface.lh_surf_data[0].shape[0]:][BV_.rh_best_vertex]],
+                                        "index":    [BV_.lh_best_vertex, BV_.rh_best_vertex],
+                                        "position": [BV_.lh_best_vertex_coord, BV_.rh_best_vertex_coord],
+                                        "normal":   [BV_.lh_normal, BV_.rh_normal]})
 
             best_vertex.to_csv(prf_bestvertex)
             print(" writing {file}".format(file=prf_bestvertex))
             print(f"Now run 'call_sizeresponse -s {subject} --verbose' to obtain DN-parameters (don't forget to use '--adjust' where applicable!")
 
         print("Done")
-        return GetBestVertex
+        return BV_
 
 
 class SurfaceCalc(object):
@@ -666,7 +667,7 @@ class CalcBestVertex(object):
 
     Example
     ----------
-    >>> GetBestVertex = CalcBestVertex(subject=subject, fs_dir='/path/to/derivatives/freesurfer'), prffile=prf_params)
+    >>> BV_ = CalcBestVertex(subject=subject, fs_dir='/path/to/derivatives/freesurfer'), prffile=prf_params)
     """
 
     def __init__(self, subject=None,
@@ -737,7 +738,7 @@ class CalcBestVertex(object):
 
         Example
         ----------
-        >>> GetBestVertex.apply_thresholds(r2_thresh=0.4, ecc_thresh=3, polar_thresh=5)
+        >>> BV_.apply_thresholds(r2_thresh=0.4, ecc_thresh=3, polar_thresh=5)
         """
 
         if r2_thresh:
