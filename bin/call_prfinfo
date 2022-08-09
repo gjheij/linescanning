@@ -6,8 +6,6 @@ from linescanning import (
 import sys, getopt
 import os
 import numpy as np
-import pickle
-from scipy import io
 np.set_printoptions(precision=3, suppress=True)
 opj = os.path.join
 

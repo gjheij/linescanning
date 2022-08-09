@@ -13,9 +13,6 @@ import nibabel as nb
 import numpy as np
 import os
 import pandas as pd
-import pickle
-import random
-from scipy import io
 import warnings
 
 warnings.filterwarnings('ignore')
