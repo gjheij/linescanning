@@ -92,7 +92,7 @@ class CurveFitter():
             self.guess = False
             self.pmodel = lmfit.Model(self.func)
 
-        if self.x == None:
+        if not isinstance(self.x, list) and not isinstance(self.x, np.ndarray):
             self.x = np.arange(self.y_data.shape[0])
 
         # self.params = self.pmodel.make_params(a=1, b=1, c=1, d=1)
