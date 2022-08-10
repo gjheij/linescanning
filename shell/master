@@ -344,11 +344,11 @@ Additional options:
   - Specify a particular session to use:              master -m <module> -n 1
   - Specify processing type fMRIprep (anat|func)      master -m <module> -t anat
 
-Available modules:                                     Script                           Time (pp)
-  -00:  Register anat ses-1 to ms ses-1 for planning   (spinoza_lineplanning)
-  -01:  Make new session for subject                   (spinoza_bidssession)
-  -02:  Convert raw files to nifti                     (spinoza_scanner2bids)
-  -03:  Reconstruction of line data                    (spinoza_linerecon)
+Available modules:                                     Script                           hh:mm:ss
+  -00:  Register anat ses-1 to ms ses-1 for planning   (spinoza_lineplanning)           00:06:00
+  -01:  Make new session for subject                   (spinoza_bidssession)            00:00:01
+  -02:  Convert raw files to nifti                     (spinoza_scanner2bids)           00:02:00
+  -03:  Reconstruction of line data                    (spinoza_linerecon)              00:10:00
   -04:  Estimate T1's from mp2rage and memp2rage       (spinoza_qmrimaps)               00:01:30
   -05a: Register T1 from memp2rage to T1 from mp2rage  (spinoza_registration)           00:03:00
   -05b: Register T1 from mp2rage to MNI152             (spinoza_registration)           01:05:00
