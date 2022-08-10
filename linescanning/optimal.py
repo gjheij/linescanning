@@ -476,7 +476,9 @@ class SurfaceCalc(object):
         # # dots are annoying in attributes, to replace them with underscores; won't fail if there aren't any present
         # setattr(self, 'roi_label', fs_label.replace('.', '_'))
 
-        # print("reading {}".format(opj(self.fs_dir, self.subject, 'label', f'{fs_label}.label')))
+        if not fs_dir:
+            fs_dir = os.environ.get("SUBJECTS_DIR")
+
         if hemi == "both":
             return {'lh': nb.freesurfer.io.read_label(opj(fs_dir, subject, 'label', f'lh.{fs_label}.label'), read_scalars=False),
                     'rh': nb.freesurfer.io.read_label(opj(fs_dir, subject, 'label', f'rh.{fs_label}.label'), read_scalars=False)}
@@ -612,8 +614,8 @@ class pRFCalc():
             self.prf_dir = os.path.dirname(self.prf_file)
 
             # obtained pRF parameters
-            self.r2     = self.prf_params[:,-1].copy()
-            self.size   = self.prf_params[:,2].copy()
+            self.r2     = self.prf_params[:,-1]
+            self.size   = self.prf_params[:,2]
             self.ecc    = np.sqrt(self.prf_params[:,0]**2+self.prf_params[:,1]**2)
             self.polar  = np.angle(self.prf_params[:,0]+self.prf_params[:,1]*1j)
 
