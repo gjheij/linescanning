@@ -378,9 +378,15 @@ def make_prf(prf_object, mu_x=0, mu_y=0, size=None, resize_pix=None, **kwargs):
                                        mu=(mu_x, mu_y),
                                        sigma=size,
                                        normalize_RFs=False).T, axes=(1, 2))
+
+    # spatially smooth for visualization
     if isinstance(resize_pix, int):
         prf_squeezed = np.squeeze(prf, axis=0)
-        prf = utils.resample2d(prf_squeezed, resize_pix)[np.newaxis,...] 
+        prf = utils.resample2d(prf_squeezed, resize_pix)
+    
+    # save a bunch of problems if returned array is 2D
+    if prf.ndim > 2:
+        prf = np.squeeze(prf,axis=0)
         
     return prf
 
@@ -1924,12 +1930,14 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         if hasattr(self, f"{model}_{stage}_predictions"):
             self.prediction = getattr(self, f"{model}_{stage}_predictions")[vox_nr]
 
+        prf_array = make_prf(
+            self.prf_stim, 
+            size=params[2], 
+            mu_x=params[0], 
+            mu_y=params[1], 
+            resize_pix=resize_pix)
+            
         if make_figure:
-            prf_array = make_prf(self.prf_stim, 
-                                 size=params[2], 
-                                 mu_x=params[0], 
-                                 mu_y=params[1], 
-                                 resize_pix=resize_pix)
 
             if freq_spectrum:
                 fig = plt.figure(constrained_layout=True, figsize=(20,5))
@@ -2006,9 +2014,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                 print(f"Writing {save_as}")
                 fig.savefig(save_as)
 
-            return params, prf_array, tc, self.prediction
-        else:
-            return params, self.prediction
+        return params, prf_array, tc, self.prediction
 
     def save_params(self, model="gauss", stage="grid", predictions=False):
         
