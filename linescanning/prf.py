@@ -37,8 +37,11 @@ def read_par_file(prf_file):
                 pars = data['pars']
             except:
                 raise TypeError(f"Pickle-file did not arise from 'pRFmodelFitting'. I'm looking for 'pars', but got '{data.keys()}'")
+
+    elif isinstance(prf_file, np.ndarray):
+        pars = prf_file.copy()
     else:
-        raise TypeError(f"Unknown input file '{self.prf_file}'. Must be one of ['str', 'npy', 'pkl']")
+        raise TypeError(f"Unknown input file '{self.prf_file}'. Must be one of ['str', 'npy', 'pkl'] or a numpy.ndarray")
 
     return pars
      
@@ -1839,8 +1842,8 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
 
         Parameters
         ----------
-        vox_nr: int, optional
-            Voxel/vertex index to create the plot for, by default 0
+        vox_nr: int, np.ndarray, optional
+            Voxel/vertex index to create the plot for, by default 0. Can also be a 1D array
         model: str, optional
             Which *model* to select the pRF-estimates from, by default 'gauss'
         stage: str, optional
@@ -1871,7 +1874,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         Returns
         ----------
         
-        - if `make_figure=True`:
+        if `make_figure=True`:
             np.ndarray
                 1D-array representing the parameters of you selected voxel
             np.ndarray
@@ -1881,7 +1884,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
             np.ndarray
                 1D-array representing the prediction of your selected voxel given `model`, `stage`, and `voxel`
         
-        - if `make_figure=False`:
+        if `make_figure=False`:
             np.ndarray
                 1D-array representing the parameters of you selected voxel
             np.ndarray
@@ -1909,6 +1912,13 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         - To silence output, use `_,_,_,_= fitting.plot_vox()`
         - Also check https://linescanning.readthedocs.io/en/latest/examples/prfmodelfitter.html for more examples
         """
+
+        if isinstance(vox_nr, np.ndarray):
+            if len(vox_nr) == 1:
+                vox_nr = vox_nr[0]
+            else:
+                raise ValueError(f"Array of length {len(vox_nr)} was given. Can only be 1")
+
         self.prediction, params, vox = self.make_predictions(vox_nr=vox_nr, model=model, stage=stage)
 
         if hasattr(self, f"{model}_{stage}_predictions"):
