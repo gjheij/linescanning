@@ -474,7 +474,7 @@ class LazyPlot():
             if self.set_xlim_zero:
                 axs.set_xlim(0)
 
-        if isinstance(self.y_lim, list):
+        if self.y_lim:
             axs.set_ylim(self.y_lim)
 
         # despine the axis
@@ -560,8 +560,14 @@ class LazyCorr():
                  figsize=(8,8),
                  xkcd=False,
                  font_size=20,
+                 label_size=10,
+                 tick_width=0.5,
+                 tick_length=7,
+                 axis_width=0.5,
                  sns_despine=5,
                  sns_trim=True,
+                 y_lim=None,
+                 x_lim=None,                 
                  save_as=None):
 
         self.x              = x
@@ -575,7 +581,13 @@ class LazyCorr():
         self.sns_trim       = sns_trim
         self.color          = color
         self.figsize        = figsize
+        self.label_size     = label_size
+        self.tick_width     = tick_width
+        self.axis_width     = axis_width        
+        self.tick_length    = tick_length        
         self.title          = title
+        self.y_lim          = y_lim
+        self.x_lim          = x_lim        
         self.save_as        = save_as
 
         if self.xkcd:
@@ -593,8 +605,7 @@ class LazyCorr():
             elif isinstance(self.save_as, str):
                 plt.savefig(self.save_as, transparant=True)
             else:
-                raise ValueError(
-                    f"Unknown input '{self.save_as}' for 'save_as'")
+                raise ValueError(f"Unknown input '{self.save_as}' for 'save_as'")
 
     def plot(self):
 
@@ -619,6 +630,19 @@ class LazyCorr():
 
         if self.title:
             axs.set_title(self.title, fontname=self.fontname, fontsize=self.font_size)
+
+        axs.tick_params(width=self.tick_width, 
+                        length=self.tick_length,
+                        labelsize=self.label_size)
+
+        for axis in ['top', 'bottom', 'left', 'right']:
+            axs.spines[axis].set_linewidth(self.axis_width)
+
+        if self.x_lim:
+            axs.set_xlim(self.x_lim)
+
+        if self.y_lim:
+            axs.set_ylim(self.y_lim)
 
         sns.despine(offset=self.sns_despine, trim=self.sns_trim)
 
