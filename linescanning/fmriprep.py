@@ -57,8 +57,9 @@ class init_single_subject_wf():
         self.layout = BIDSLayout(self.bids_dir, validate=False)
 
         if isinstance(self.bids_filters, str):
-            with open(self.bids_filters) as f:
-                self.bids_filters = json.load(f)
+            if len(self.bids_filters) != 0:
+                with open(self.bids_filters) as f:
+                    self.bids_filters = json.load(f)
 
         self.name = "single_subject_%s_wf" % self.subject_id
         self.subject_data = collect_data(self.layout,
@@ -94,6 +95,7 @@ class init_single_subject_wf():
         self.has_fieldmap = bool(self.fmap_estimators)
 
         for bold_file in self.subject_data['bold']:
+            print(bold_file)
             func_preproc_wf = init_func_preproc_wf(bold_file, 
                                                    has_fieldmap=self.has_fieldmap, 
                                                    fmriprep_dir=self.fmriprep_dir, 
@@ -240,8 +242,7 @@ def init_func_preproc_wf(bold_file, has_fieldmap=False, fmriprep_dir=None, layou
     from niworkflows.utils.spaces import SpatialReferences
     spaces = SpatialReferences(non_standard)
 
-    if nb.load(
-        bold_file[0] if isinstance(bold_file, (list, tuple)) else bold_file
+    if nb.load(bold_file[0] if isinstance(bold_file, (list, tuple)) else bold_file
     ).shape[3:] <= (5 - False,):
         config.loggers.workflow.warning(
             f"Too short BOLD series (<= 5 timepoints). Skipping processing of <{bold_file}>."
@@ -1386,8 +1387,8 @@ def prepare_timing_parameters(metadata):
         for key in ("RepetitionTime", "VolumeTiming", "DelayTime",
                     "AcquisitionDuration", "SliceTiming")
         if key in metadata}
-
-    run_stc = "SliceTiming" in metadata and 'slicetiming' not in config.workflow.ignore
+    
+    run_stc = "SliceTiming" in metadata
     timing_parameters["SliceTimingCorrected"] = run_stc
 
     if "SliceTiming" in timing_parameters:
@@ -1429,7 +1430,6 @@ def init_func_derivatives_wf(
     from smriprep.workflows.outputs import _bids_relative
 
     metadata = all_metadata[0]
-
     timing_parameters = prepare_timing_parameters(metadata)
 
     nonstd_spaces = set(spaces.get_nonstandard())
