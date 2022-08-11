@@ -117,7 +117,7 @@ def target_vertex(subject,
     >>> # use Gaussian iterative parameters to find target vertex for sub-001 in V1_exvivo.thresh by using the default derivatives folders
     >>> optimal.target_vertex("sub-001", 
     >>>                       deriv="/path/to/derivatives",
-    >>>                       prf_file="gaussian_pars.npy", 
+    >>>                       prf_file="gaussian_pars.pkl", 
     >>>                       use_prf=True,                         # default
     >>>                       out="line_pycortex.csv",              # default
     >>>                       roi="V1_exvivo.thresh",               # default
@@ -555,7 +555,7 @@ class pRFCalc():
     Parameters
     ----------
     prf_file: str, optional
-        Path to a desc-prf_params.npy file containing a 6xn dataframe representing the 6 variables from the pRF-analysis times the amount of TRs (time points). You can either specify this file directly or specify the pRF-directory containing separate files for R2, eccentricity, and polar angle if you do not happen to have the prf parameter file
+        Path to a desc-prf_params.pkl file containing a 6xn dataframe representing the 6 variables from the pRF-analysis times the amount of TRs (time points). You can either specify this file directly or specify the pRF-directory containing separate files for R2, eccentricity, and polar angle if you do not happen to have the prf parameter file
     subject (str): str, optional
         subject ID as used in SUBJECTS_DIR. If `prf_file` is a BIDS-file and contains 'sub', we'll set `subject` to that. Subject ID is required if you want to produce `cortex.Vertex`-objects. In that case, the subject ID must match that of FreeSurfer.
     thr: float, optional
@@ -572,7 +572,7 @@ class pRFCalc():
 
     Example
     ----------
-    >>> prf = pRFCalc("sub-001_desc-prf_params.npy", thr=0.05)
+    >>> prf = pRFCalc("sub-001_desc-prf_params.pkl", thr=0.05)
     """
 
     # Get stuff from SurfaceCalc
@@ -660,7 +660,7 @@ class CalcBestVertex():
     deriv: str, optional
         Path to derivatives folder of the project. Generally should be the path specified with `DIR_DATA_DERIV` in the bash environment. This option overwrite the individual specification of `prf_dir`, `cx_dir`, and `fs_dir`, and will look up defaults.
     prf_file: str, optional
-        Path to a desc-prf_params.npy file containing a 6xn dataframe representing the 6 variables from the pRF-analysis times the amount of TRs (time points). You can either specify this file directly or specify the pRF-directory containing separate files for R2, eccentricity, and polar angle if you do not happen to have the prf parameter file        
+        Path to a desc-prf_params.pkl file containing a 6xn dataframe representing the 6 variables from the pRF-analysis times the amount of TRs (time points). You can either specify this file directly or specify the pRF-directory containing separate files for R2, eccentricity, and polar angle if you do not happen to have the prf parameter file        
     fs_label: str, optional
         ROI-name to extract the vertex from as per ROIs created with `FreeSurfer`. Default is V1_exvivo.thresh
 

@@ -257,7 +257,7 @@ for subID in ${search}; do
     for task in ${search_tasks[@]}; do
 
       # Check if we should overwrite file
-      prf_params=`find ${prf_dir} -type f \( -name "*${use_model}*" -and -name "*${stage}*" -and -name "*task-${task}*" -and -name "*prf_params.npy" \) 2>/dev/null`
+      prf_params=`find ${prf_dir} -type f \( -name "*${use_model}*" -and -name "*${stage}*" -and -name "*task-${task}*" -and -name "*prf_params.pkl" \) 2>/dev/null`
       if [[ ${OW} -eq 1 ]]; then
         if [[ -f ${prf_params} ]]; then
           rm -r ${prf_params}

@@ -48,7 +48,7 @@ of the line in the first session anatomy
 
 Examples
 ----------
-call_targetvertex -s sub-001 -d /dir/to/derivatives -p prf_params.npy --use-prf
+call_targetvertex -s sub-001 -d /dir/to/derivatives -p prf_params.pkl --use-prf
 call_targetvertex -s sub-001 -d /dir/to/derivatives 
 
 Notes

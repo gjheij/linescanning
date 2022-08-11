@@ -306,10 +306,10 @@ Example:
 
     if not overwrite:
         # check if we have existing Gaussian pRFs that we should insert in DN-model
-        old_params = utils.get_file_from_substring(['model-gauss', 'stage-iter', 'params.npy'], outputdir, return_msg=None)
+        old_params = utils.get_file_from_substring(['model-gauss', 'stage-iter', 'params.pkl'], outputdir, return_msg=None)
         if verbose:
             if old_params != None:
-                print(f"Injecting '{old_params}' into DN-model")
+                print(f"Injecting '{old_params}' into {model}-model")
     else:
         old_params = None
 
