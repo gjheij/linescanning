@@ -28,11 +28,6 @@ surround_sigma_larger_than_centre: False
 #unit volume RFs
 normalize_RFs: False
 
-#whether to fit hrf or not
-fit_hrf: False
-#explicit hrf or spm hrf params. see prfpy for details
-hrf: [1,1,0]
-
 #DM size in pixels (n_pix x n_pix) (has to be divisor of 1080)
 n_pix: 100
 eps: 1e-1
@@ -48,6 +43,9 @@ norm:
   surround_size_grid: [5,8,12,18]
   neural_baseline_grid: [0,1,10,100]
   surround_baseline_grid: [0.1,1.0,10.0,100.0]
+  surround_amplitude_bound: [0,1000]
+  neural_baseline_bound: [0,1000]
+  surround_baseline_bound: [1e-6,1000]
 
 css:
   css_exponent_grid: [0.05,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,1.1]
@@ -55,6 +53,12 @@ css:
 dog:
   dog_surround_amplitude_grid: [0.05,0.1,0.25,0.5,0.75,1,2]
   dog_surround_size_grid: [3,5,8,11,14,17,20,23,26]
+  surround_amplitude_bound: [0,1000]
+
+hrf:
+  pars: [1,1,0]
+  deriv_bound: [0,10]
+  disp_bound: [0,0]
 
 grid_nr: 20
 max_ecc_size: 15
