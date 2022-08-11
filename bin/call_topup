@@ -21,9 +21,10 @@ fail. Therefore, I just need motion-corrected, topup data for a very select part
 Parameters
 ----------
     -s  subject ID
-    -i  subject-directory containing the files that need to be run through Topup.
+    -i  subject-directory containing the files that need to be run through Topup. Defaults to DIR_
+        DATA_HOME as per spinoza_setup
     -o  output directory containing the topup'ed data. Easiest is to give the fMRIPrep folder, it
-        will be formatted accordingly automatically
+        will be formatted accordingly automatically. Defaults to <input_dir>/derivatives/fmriprep
     -w  working directory where fMRIPrep's intermediate files are stored; default is some folder 
         in /tmp
     -b  bids filter file (maps to --bids-filter-file from fMRIPrep); allows you to select parti-
@@ -39,6 +40,8 @@ USAGE
     exit 1
 }
 
+# default input directory
+inputdir=${DIR_DATA_HOME}
 while getopts :-:hs:i:o:w:b: argument
 do
 case ${argument} in
