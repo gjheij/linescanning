@@ -143,11 +143,13 @@ for subID in ${search}; do
     echo "ERROR in `basename ${0}`: could not find folder \"${func_folder}\""
     exit 1
   else
-    echo "Make backup of \"func\" in \"no_nordic\""
-    if [ -d ${tmp_folder} ]; then
-      rm -r ${tmp_folder}
+
+    if [ ! -d ${tmp_folder} ]; then
+      echo "Make backup of \"func\" in \"no_nordic\""
+      cp -r ${func_folder} ${tmp_folder} 2>/dev/null
+    else
+      echo "Backup \"no_nordic\" already exists"
     fi
-    cp -r ${func_folder} ${tmp_folder} 2>/dev/null
     rm -r ${func_folder}/*.nii.gz 2>/dev/null
   fi
 
