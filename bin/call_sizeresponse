@@ -28,11 +28,16 @@ deeper layers (= `regular` pRF size) and middle layers (= `0.8*pRF-size`), and e
 sizes where the differences between these to curves are largest.
 
 
-Args:
+Parameters
+----------
     -s|--sub)   Subject name as defined in FreeSurfer directory
-    -n|--ses)   Session to use pRF-parameters from
+    -n|--ses)   Session to use pRF-parameters from. Default assumes that we have a 'ses-1'-folder. 
+                If this is not the case, use '-n none'. This will remove the 'ses'-indexer from the
+                folder we'll be looking for parameters
     --lh|--rh   Process a single hemisphere, default is to loop through both
     --grid      Do not proceed to iterative fit after grid stage
+    --deriv     Path to 'derivatives'-folder. From there, assume 'prf' and 'pycortex' folder. Loses
+                the need to specify '--ctx' and '--prf'
     --ctx       Path to pycortex directory up to subject specific directories (defaults to <de-
                 rivatives>/pycortex/<subject>
     --prf       Path to pRF directory up to subject specific directories (defaults to <deriva-
@@ -40,12 +45,18 @@ Args:
     --adjust    The pRFs of some subjects are fitted before the BOLD screen was moved closer into
                 the bore. With this flag, we can correct for the closer screen. This factor is 1.08
                 and is applied to the x/y coordinates as well  as the size.
+    --fraction  Define what fraction of the 'superficial' (input) pRF-size should define the 'middle'
+                layer pRF. Default is 0.8, meaning we assume that the middle pRF is 20% smaller com-
+                pared to the 'superficial' pRF. Maps to 'scale_factor' in:
+                https://linescanning.readthedocs.io/en/latest/classes/prf.html#linescanning.prf.SizeResponse.make_sr_function
 
-Outputs:
+Returns
+----------
     a *npy-file containing stimulus sizes
-    matplotlib figure
+    a *pdf-file containing matplotlib figure
 
-Examples:
+Example
+----------
     call_sizeresponse -s sub-001 --ctx /path/pycortex --prf /path/prf
     call_sizeresponse -s sub-001
     qsub -N SR_001 -q $SGE_QUEUE_SHORT -wd $DIR_LOGS $DIR_SCRIPTS/bin/call_sizeresponse -s sub-001
@@ -54,16 +65,18 @@ Examples:
     """
 
     subject     = None
-    session     = None
+    session     = 1
     hemi_list   = ['lh', 'rh']
     cx_dir      = None
     prf_dir     = None
     stage       = "iter"
     verbose     = False
     adjust      = False
+    deriv       = os.environ.get("DIR_DATA_DERIV")
+    fraction    = 0.8
 
     try:
-        opts = getopt.getopt(argv,"vqs:n:h:m:l:",["help", "sub=", "lh", "rh", "ses=", "cx=", "prf=", "grid", "verbose", "adjust"])[0]
+        opts = getopt.getopt(argv,"vqs:n:h:m:l:d:",["help", "sub=", "deriv=", "lh", "rh", "ses=", "cx=", "prf=", "grid", "verbose", "adjust", "fraction="])[0]
     except getopt.GetoptError:
         print("ERROR IN ARGUMENT HANDLING!")
         print(main.__doc__)
@@ -85,12 +98,16 @@ Examples:
             hemi_list = ["lh"]
         elif opt in ("--rh"):
             hemi_list = ["rh"]
+        elif opt in ("-d", "--deriv"):
+            deriv = arg
         elif opt in ("--cx"):
             cx_dir = arg
         elif opt in ("--prf"):
             prf_dir = arg
         elif opt in ("--adjust"):
-            adjust = True       
+            adjust = True 
+        elif opt in ("--fraction"):
+            fraction = float(fraction)                   
 
     if len(argv) < 1:
         print("\nNEED AT LEAST A SUBJECT ID")
@@ -99,16 +116,19 @@ Examples:
 
     #---------------------------------------------------------------------------------------------------
     # set some defaults
-    if not prf_dir:
-        if not session:
-            ses = 'ses-1'
-        else:
-            ses = f'ses-{session}'
+    if not prf_dir or not cx_dir:
+        if deriv:
+            if isinstance(session, str):
+                if session.lower() == "none":
+                    ses = ""
+                else:
+                    raise ValueError(f"Unknown session type '{session}'. Must be an integer or 'none'")
+            else:
+                ses = f'ses-{session}'
 
-        prf_dir = opj(os.environ.get('DIR_DATA_DERIV'), 'prf', subject, ses)
-
-    if not cx_dir:
-        cx_dir = opj(os.environ.get('DIR_DATA_DERIV'), 'pycortex', subject)
+                
+            prf_dir = opj(os.environ.get('DIR_DATA_DERIV'), 'prf', subject, ses)
+            cx_dir = opj(os.environ.get('DIR_DATA_DERIV'), 'pycortex', subject)
 
     if stage != "grid" and stage != "iter" and stage != "grid+iter":
         raise ValueError(f"Stage must be 'grid' or 'iter', not {stage}")
@@ -133,7 +153,6 @@ Examples:
         subject_info = prf.CollectSubject(subject, 
                                           prf_dir=prf_dir, 
                                           cx_dir=cx_dir, 
-                                          settings='recent', 
                                           hemi=hemi, 
                                           resize_pix=270,
                                           correct_screen=adjust,
@@ -199,7 +218,7 @@ Examples:
         SR = prf.SizeResponse(fitting.prf_stim, new_params, subject_info=subject_info)
         SR.make_stimuli()
         sr_curve1 = SR.make_sr_function(center_prf=True)
-        sr_curve2 = SR.make_sr_function(center_prf=True, scale_factor=0.8)
+        sr_curve2 = SR.make_sr_function(center_prf=True, scale_factor=fraction)
 
         #---------------------------------------------------------------------------------------------------
         # make plot 
