@@ -24,11 +24,40 @@ opj = os.path.join
 
 def read_par_file(prf_file):
 
+    """read_par_file
+
+    Function to read in files containing pRF-estimates from various sources. Currently, supports the following inputs: `np.ndarray`, `npy`-file, `mat`-file (will read in the data from the last item in `list(prf_file.keys())`), `pkl`-file (assumes has key 'pars' in it). Because we generally save the design matrix as a *.mat*-file, we can use the same function to read in that file and obtain the design matrix in `np.ndarray`-format.
+
+    Returns
+    ----------
+    np.ndarray
+        array containing the pRF-estimates or other parameters (e.g., design matrix embedded in `mat`-file)
+
+    Raises
+    ----------
+    TypeError
+        If `pkl`-file was given, but attribute `pars` does not exist inside the file
+    TypeError
+        If the input is not a `np.ndarray`, and not a string ending on `npy`, `mat`, or `pkl`
+
+    Example
+    ----------
+    >>> # read in pRF-estimates file
+    >>> from linescanning import prf
+    >>> prf_file = "sub-01_ses-1_task-2R_model-norm_stage-iter_desc-prf_params.pkl"
+    >>> pars = prf.read_par_file(prf_file)
+
+    >>> # read design matrix
+    >>> from linescanning import prf
+    >>> dm_file = "design_task-2R.mat"
+    >>> dm = prf.read_par_file(dm_file)
+    """
+
     if prf_file.endswith("npy"):
         pars = np.load(prf_file)
     elif prf_file.endswith("mat"):
         tmp = io.loadmat(prf_file)
-        pars = tmp[list(tmp.keys)[-1]] # find last key in list
+        pars = tmp[list(tmp.keys())[-1]] # find last key in list
     elif prf_file.endswith("pkl"):
         with open(prf_file, 'rb') as input:
             data = pickle.load(input)
@@ -41,7 +70,7 @@ def read_par_file(prf_file):
     elif isinstance(prf_file, np.ndarray):
         pars = prf_file.copy()
     else:
-        raise TypeError(f"Unknown input file '{self.prf_file}'. Must be one of ['str', 'npy', 'pkl'] or a numpy.ndarray")
+        raise TypeError(f"Unknown input file '{prf_file}'. Must be one of ['str', 'npy', 'pkl'] or a numpy.ndarray")
 
     return pars
      
@@ -1057,7 +1086,7 @@ def distance_centers(prf1,prf2):
     return math.sqrt(math.pow(x2 - x1, 2) + math.pow(y2 - y1, 2) * 1.0)
  
 
-def generate_model_params(model='gauss', dm=None, TR=1.5, outputdir=None, settings=None, fit_hrf=False):
+def generate_model_params(model='gauss', dm=None, TR=1.5, fit_hrf=False):
 
     """generate_model_params
 
@@ -1070,11 +1099,7 @@ def generate_model_params(model='gauss', dm=None, TR=1.5, outputdir=None, settin
     dm: numpy.ndarray
         design matrix, n_pix X n_pix X volumes. Needed to create the pRF stimulus
     TR: float
-        repetition time; can be fetched from gifti-file; default = 1.5s
-    outputdir: str
-        path-like object pointing to the prf-directory so each analysis comes with its own analysis-settings file  
-    settings: str
-        load the settings from a settings file generate earlier
+        repetition time; can be fetched from gifti-file; default = 1.5
     fit_hrf: bool
         Whether or not to fit two extra parameters for hrf derivative and dispersion. The default is False.
 
@@ -1090,30 +1115,31 @@ def generate_model_params(model='gauss', dm=None, TR=1.5, outputdir=None, settin
         pRF object
     """
     
-    if settings != None:
-        yml_file = settings
-    else:
-        # check if we have project-specific template; otherwise take linescanning-repo template
-        # yml_file = utils.get_file_from_substring("prf_analysis.yml", opj(os.environ.get("DIR_DATA_HOME"), 'code'), return_msg=None)
-        yml_file = None
-        if yml_file == None:
-            yml_file = utils.get_file_from_substring("prf_analysis.yml", opj(os.path.dirname(os.path.dirname(utils.__file__)), 'misc'))
+    # check if we have project-specific template; otherwise take linescanning-repo template
+    yml_file = utils.get_file_from_substring("prf_analysis.yml", opj(os.environ.get("DIR_DATA_HOME"), 'code'), return_msg=None)
+    
+    if yml_file == None:
+        yml_file = utils.get_file_from_substring("prf_analysis.yml", opj(os.path.dirname(os.path.dirname(utils.__file__)), 'misc'))
 
     with open(yml_file) as file:
         
-        data = yaml.safe_load(file)
+        settings = yaml.safe_load(file)
 
-        prf_stim = stimulus.PRFStimulus2D(screen_size_cm=data['screen_size_cm'],
-                                          screen_distance_cm=data['screen_distance_cm'],
-                                          design_matrix=dm,
-                                          TR=TR)
+        prf_stim = stimulus.PRFStimulus2D(
+            screen_size_cm=settings['screen_size_cm'],
+            screen_distance_cm=settings['screen_distance_cm'],
+            design_matrix=dm,
+            TR=TR)
 
         ss = prf_stim.screen_size_degrees
 
         # define grids
-        sizes, eccs, polars = data['max_ecc_size'] * np.linspace(0.125,1,data['grid_nr'])**2, \
-                              data['max_ecc_size'] * np.linspace(0.05,1,data['grid_nr'])**2, \
-                              np.linspace(0, 2*np.pi, data['grid_nr'], endpoint=False)
+        sizes = settings['max_ecc_size'] * np.linspace(0.125,1,settings['grid_nr'])**2
+        eccs = settings['max_ecc_size'] * np.linspace(0.05,1,settings['grid_nr'])**2
+        polars = np.linspace(0, 2*np.pi, settings['grid_nr'], endpoint=False)
+
+        coord_bounds = (-1.5*settings['max_ecc_size'], 1.5*settings['max_ecc_size'])
+        prf_size = (settings['eps'], 1.5*ss)
 
         grids = {'screensize_degrees': float(ss), 
                  'grids': {'sizes': [float(item) for item in sizes], 
@@ -1126,11 +1152,11 @@ def generate_model_params(model='gauss', dm=None, TR=1.5, outputdir=None, settin
 
         # define bounds
         if model == "gauss":
-            gauss_bounds = [(-1.5*data['max_ecc_size'], 1.5*data['max_ecc_size']),  # x
-                            (-1.5*data['max_ecc_size'], 1.5*data['max_ecc_size']),  # y
-                            (data['eps'], 1.5*ss),                                  # prf size
-                            data['prf_ampl'],                                       # prf amplitude
-                            data['bold_bsl']]                                       # bold baseline
+            gauss_bounds = [coord_bounds,                                           # x
+                            coord_bounds,                                           # y
+                            prf_size,                                               # prf size
+                            settings['prf_ampl'],                                   # prf amplitude
+                            settings['bold_bsl']]                                   # bold baseline
 
             bounds = {'bounds': {'x': list(gauss_bounds[0]), 
                                  'y': list(gauss_bounds[1]), 
@@ -1140,12 +1166,12 @@ def generate_model_params(model='gauss', dm=None, TR=1.5, outputdir=None, settin
 
         elif model == "css":
 
-            css_bounds = [(-1.5*data['max_ecc_size'], 1.5*data['max_ecc_size']),    # x
-                          (-1.5*data['max_ecc_size'], 1.5*data['max_ecc_size']),    # y
-                          (data['eps'], 1.5*ss),                                    # prf size
-                          data['prf_ampl'],                                         # prf amplitude
-                          data['bold_bsl'],                                         # bold baseline
-                          data['css_exponent']]                                     # CSS exponent
+            css_bounds = [coord_bounds,                                             # x
+                          coord_bounds,                                             # y
+                          prf_size,                                                 # prf size
+                          settings['prf_ampl'],                                     # prf amplitude
+                          settings['bold_bsl'],                                     # bold baseline
+                          settings['css_exponent']]                                 # CSS exponent
 
             bounds = {'bounds': {'x': list(css_bounds[0]),
                                  'y': list(css_bounds[1]),
@@ -1156,70 +1182,54 @@ def generate_model_params(model='gauss', dm=None, TR=1.5, outputdir=None, settin
 
         elif model == "dog":
 
-            dog_bounds = [(-1.5*data['max_ecc_size'], 1.5*data['max_ecc_size']),    # x
-                          (-1.5*data['max_ecc_size'], 1.5*data['max_ecc_size']),    # y
-                          (data['eps'], 1.5*ss),                                    # prf size
-                          data['prf_ampl'],                                         # prf amplitude
-                          data['bold_bsl'],                                         # bold baseline
-                          (0, 1000),                                                # surround amplitude
-                          (data['eps'], 3*ss)]                                      # surround size
+            dog_bounds = [coord_bounds,                                             # x
+                          coord_bounds,                                             # y
+                          prf_size,                                                 # prf size
+                          settings['prf_ampl'],                                     # prf amplitude
+                          settings['bold_bsl'],                                     # bold baseline
+                          settings[model]['surround_amplitude_bound'],              # surround amplitude
+                          (settings['eps'], 3*ss)]                                  # surround size
 
             bounds = {'bounds': {'x': list(dog_bounds[0]),
                                  'y': list(dog_bounds[1]),
                                  'size': [float(item) for item in dog_bounds[2]],
                                  'prf_ampl': dog_bounds[3],
                                  'bold_bsl': dog_bounds[4],
-                                 'surr_ampl': list(dog_bounds[5]),
+                                 'surr_ampl': dog_bounds[5],
                                  'surr_size': [float(item) for item in dog_bounds[6]]}}
 
         elif model == "norm":
-            norm_bounds = [(-1.5*data['max_ecc_size'], 1.5*data['max_ecc_size']),   # x
-                           (-1.5*data['max_ecc_size'], 1.5*data['max_ecc_size']),   # y
-                           (data['eps'], 1.5*ss),                                   # prf size
-                           data['prf_ampl'],                                        # prf amplitude
-                           data['bold_bsl'],                                        # bold baseline
-                           (0, 1000),                                               # surround amplitude
-                           (data['eps'], 3*ss),                                     # surround size
-                           (0, 1000),                                               # neural baseline
-                           (1e-6, 1000)]                                            # surround baseline
+            norm_bounds = [coord_bounds,                                            # x
+                           coord_bounds,                                            # x
+                           prf_size,                                                # prf size
+                           settings['prf_ampl'],                                    # prf amplitude
+                           settings['bold_bsl'],                                    # bold baseline
+                           settings[model]['surround_amplitude_bound'],             # surround amplitude
+                           (settings['eps'], 3*ss),                                 # surround size
+                           settings[model]['neural_baseline_bound'],                # neural baseline
+                           settings[model]['surround_baseline_bound']]              # surround baseline
 
             bounds = {'bounds': {'x': list(norm_bounds[0]), 
                                  'y': list(norm_bounds[1]), 
                                  'size': [float(item) for item in norm_bounds[2]], 
                                  'prf_ampl': norm_bounds[3], 
                                  'bold_bsl': norm_bounds[4],
-                                 'surr_ampl': list(norm_bounds[5]),
+                                 'surr_ampl': norm_bounds[4],
                                  'surr_size': [float(item) for item in norm_bounds[6]],
                                  'neur_bsl': list(norm_bounds[7]),
                                  'surr_bsl': list(norm_bounds[8])}}
 
         if fit_hrf:
-            bounds['bounds']["hrf_deriv"] = [0,10]
-            bounds['bounds']["hrf_disp"] = [0,0]
+            bounds['bounds']["hrf_deriv"] = settings["hrf"]["deriv_bound"]
+            bounds['bounds']["hrf_disp"] = settings["hrf"]["disp_bound"]
 
         # update settings file if we've generated a new one
-        if settings == None:
-            data.update(bounds)
-            data.update(grids)
-            data.update({'model': model})
-            data.update({'TR': TR})
+        settings.update(bounds)
+        settings.update(grids)
+        settings.update({'model': model})
+        settings.update({'TR': TR})
 
-        date = datetime.now().strftime("%Y%m%d")
-
-    if settings == None:
-
-        if isinstance(outputdir, str):
-            fname = opj(outputdir, f'{date}_model-{model}_desc-settings.yml')
-            with open(fname, 'w') as yml_file:
-                yaml.safe_dump(data, yml_file)
-
-            return data, fname, prf_stim
-        
-        else:
-            return data, settings, prf_stim
-
-    else:
-        return data, settings, prf_stim
+    return settings, prf_stim
 
 class GaussianModel():
 
@@ -1268,7 +1278,7 @@ class GaussianModel():
             print("Mean rsq>"+str(self.rsq)+": "+str(round(np.nanmean(self.gauss_grid[self.gauss_grid[:, -1]>self.rsq, -1]),2)))
         
         if self.write_files:
-            self.save_params(model="gauss", stage="grid", predictions=False) 
+            self.save_params(model="gauss", stage="grid") 
 
     def iterfit(self):
         start = time.time()
@@ -1279,7 +1289,18 @@ class GaussianModel():
         self.gauss_bounds = self.fetch_bounds(model='gauss') 
 
         # fit
-        self.gaussian_fitter.iterative_fit(rsq_threshold=self.rsq, bounds=self.gauss_bounds)
+        if self.constraints[0] == "tc":
+            constr = []
+        elif self.constraints[0] == "bgfs":
+            constr = None
+        else:
+            raise ValueError(f"Unknown optimizer '{self.constraints[0]}'. Must be one of ['tc', 'bgfs']")
+
+        self.gaussian_fitter.iterative_fit(
+            rsq_threshold=self.rsq, 
+            bounds=self.gauss_bounds,
+            constraints=constr,
+            verbose=self.verbose)
 
         # print summary
         elapsed = (time.time() - start)              
@@ -1290,7 +1311,7 @@ class GaussianModel():
 
         # save intermediate files
         if self.write_files:
-            self.save_params(model="gauss", stage="iter", predictions=True)  
+            self.save_params(model="gauss", stage="iter")  
             
 class ExtendedModel():
 
@@ -1382,7 +1403,19 @@ class ExtendedModel():
         if self.verbose:
             print(f"Starting {self.model} iterfit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S'))
 
-        self.tmp_fitter.iterative_fit(rsq_threshold=self.settings['rsq_threshold'], bounds=self.tmp_bounds)
+        # fit
+        if self.constraints[1] == "tc":
+            constr = []
+        elif self.constraints[1] == "bgfs":
+            constr = None
+        else:
+            raise ValueError(f"Unknown optimizer '{self.constraints[0]}'. Must be one of {self.allowed_optimizers}")        
+
+        self.tmp_fitter.iterative_fit(
+            rsq_threshold=self.settings['rsq_threshold'], 
+            bounds=self.tmp_bounds,
+            constraints=constr,
+            verbose=self.verbose)
         
         elapsed = (time.time() - start)  
 
@@ -1394,7 +1427,7 @@ class ExtendedModel():
             print(f"Iterfit took {str(timedelta(seconds=elapsed))}")
 
         if self.write_files:
-            self.save_params(model=self.model, stage="iter", predictions=True)   
+            self.save_params(model=self.model, stage="iter")   
 
         setattr(self, f"{self.model}_fitter", self.tmp_fitter)
 
@@ -1422,7 +1455,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
     write_files: bool
         save files (True) or not (False). Should be used in combination with <output_dir> and <output_base>
     old_params: np.ndarray, str, optional
-        A string pointing to a numpy file (npy) or a numpy array. Will throw an error if a string is given which can't be opened with `np.load()`. Maybe add support for *.mat*-files in the future? Internally, the parameters will be assigned to `Iso2DGaussianFitter.gridsearch_params` and `Iso2DGaussianFitter.iterative_search_params`. This fitter object is then assigned to `Iso2DGaussianFitter.previous_gaussian_fitter`, which is then directly inserted in one of the extended models (e.g., `DN`, `DoG`, or `CSS`).
+        A string pointing to an existing file or a numpy array. Internally, the parameters will be assigned to `Iso2DGaussianFitter.gridsearch_params` and `Iso2DGaussianFitter.iterative_search_params`. This fitter object is then assigned to `Iso2DGaussianFitter.previous_gaussian_fitter`, which is then directly inserted in one of the extended models (e.g., `DN`, `DoG`, or `CSS`).
     hrf: np.ndarray
         <1,time_points> describing the HRF. Can be created with :func:`linescanning.glm.double_gamma`, then add an axis before the timepoints:
 
@@ -1436,6 +1469,8 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         Set the number of jobs. By default 1.
     verbose: bool, optional
         Set to True if you want some messages along the way (default = False)
+    constraints: list, optional
+        List of optimizers; first element is for *Gaussian*-model, second element is for extended model. Generally, the extended model has more parameters so the fit is slower, while the Gaussian-model runs fine with slow optimization. Use `tc` for trust-constrained minimization (= slower, but less local. I.e., can move away from the grid), or `bfgs` for L-BFGS-B minimization (lot faster, but more local. I.e., stays closer to the grid). 
 
     Returns
     ----------
@@ -1484,6 +1519,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                  prf_stim=None,
                  model_obj=None,
                  fix_bold_baseline=False,
+                 constraints=['tc', 'bgfs'],
                  **kwargs):
 
         self.data               = data
@@ -1504,16 +1540,16 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         self.rsq_threshold      = rsq_threshold
         self.fit_hrf            = fit_hrf
         self.fix_bold_baseline  = fix_bold_baseline
+        self.constraints        = constraints
         self.__dict__.update(kwargs)
 
         #----------------------------------------------------------------------------------------------------------------------------------------------------------
         # Fetch the settings
-        self.settings, self.settings_file, self.prf_stim_ = generate_model_params(model=self.model, 
-                                                                                  dm=self.design_matrix, 
-                                                                                  outputdir=self.output_dir, 
-                                                                                  TR=self.TR,
-                                                                                  settings=self.settings_fn,
-                                                                                  fit_hrf=self.fit_hrf)
+        self.settings, self.prf_stim_ = generate_model_params(
+            model=self.model, 
+            dm=self.design_matrix, 
+            TR=self.TR,
+            fit_hrf=self.fit_hrf)
 
         # overwrite bold baseline tuple if bold baseline should be fixed
         if self.fix_bold_baseline:
@@ -1537,11 +1573,6 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         else:
             self.prf_stim = self.prf_stim_
         
-        # read the settings
-        if isinstance(self.settings_fn, str):
-            if self.verbose:
-                print(f"Using settings file: {self.settings_fn}")
-
         self.allowed_models = ["gauss", "css", "dog", "norm"]
         if self.model.lower() not in self.allowed_models:
             raise ValueError(f"Model specification needs to be one of {self.allowed_models}; got {model}.")
@@ -1564,7 +1595,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         else:
             # try to read HRF parameters from settings
             try:
-                hrf_pars = self.settings['hrf']
+                hrf_pars = self.settings['hrf']['pars']
             except:
                 hrf_pars = [1,1,0]
 
@@ -1576,38 +1607,51 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
 
         if self.verbose:
             print(f"HRF: {self.hrf}")
-        
+
+        # check validity of constraints
+        self.allowed_optimizers = ['tc', 'bgfs']
+        if isinstance(self.constraints, str):
+            self.constraints = [self.constraints, self.constraints]
+
+        for optimizer in self.constraints:
+            if optimizer not in self.allowed_optimizers:
+                raise ValueError(f"Unknown optimizer '{optimizer}'. Must be one of {self.allowed_optimizers}")
+
         #----------------------------------------------------------------------------------------------------------------------------------------------------------
         # whichever model you run, run the Gaussian first
 
         ## Define model
-        self.gauss_model = Iso2DGaussianModel(stimulus=self.prf_stim,
-                                              filter_predictions=self.settings['filter_predictions'],
-                                              filter_type='sg',
-                                              hrf=self.hrf,
-                                              filter_params={'window_length': self.settings['filter_window_length'],
-                                                             'polyorder': self.settings['filter_polyorder']})
+        self.gauss_model = Iso2DGaussianModel(
+            stimulus=self.prf_stim,
+            filter_predictions=self.settings['filter_predictions'],
+            filter_type='sg',
+            hrf=self.hrf,
+            filter_params={'window_length': self.settings['filter_window_length'],
+                           'polyorder': self.settings['filter_polyorder']})
 
-        self.css_model = CSS_Iso2DGaussianModel(stimulus=self.prf_stim,
-                                                filter_predictions=self.settings['filter_predictions'],
-                                                filter_type='sg',
-                                                hrf=self.hrf,
-                                                filter_params={'window_length': self.settings['filter_window_length'],
-                                                               'polyorder': self.settings['filter_polyorder']})
+        self.css_model = CSS_Iso2DGaussianModel(
+            stimulus=self.prf_stim,
+            filter_predictions=self.settings['filter_predictions'],
+            filter_type='sg',
+            hrf=self.hrf,
+            filter_params={'window_length': self.settings['filter_window_length'],
+                           'polyorder': self.settings['filter_polyorder']})
 
-        self.dog_model = DoG_Iso2DGaussianModel(stimulus=self.prf_stim,
-                                                filter_predictions=self.settings['filter_predictions'],
-                                                filter_type='sg',
-                                                hrf=self.hrf,
-                                                filter_params={'window_length': self.settings['filter_window_length'],
-                                                               'polyorder': self.settings['filter_polyorder']})
+        self.dog_model = DoG_Iso2DGaussianModel(
+            stimulus=self.prf_stim,
+            filter_predictions=self.settings['filter_predictions'],
+            filter_type='sg',
+            hrf=self.hrf,
+            filter_params={'window_length': self.settings['filter_window_length'],
+                           'polyorder': self.settings['filter_polyorder']})
 
-        self.norm_model = Norm_Iso2DGaussianModel(stimulus=self.prf_stim,
-                                                  filter_predictions=self.settings['filter_predictions'],
-                                                  filter_type='sg',
-                                                  hrf=self.hrf,                                                  
-                                                  filter_params={'window_length': self.settings['filter_window_length'],
-                                                                 'polyorder': self.settings['filter_polyorder']})
+        self.norm_model = Norm_Iso2DGaussianModel(
+            stimulus=self.prf_stim,
+            filter_predictions=self.settings['filter_predictions'],
+            filter_type='sg',
+            hrf=self.hrf,
+            filter_params={'window_length': self.settings['filter_window_length'],
+                           'polyorder': self.settings['filter_polyorder']})
 
         if self.model_obj != None:
             if self.verbose:
@@ -1618,15 +1662,9 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
 
         # check whether we got old parameters so we can skip Gaussian fit:
         if isinstance(self.old_params, np.ndarray) or isinstance(self.old_params, str):
-            if isinstance(self.old_params, np.ndarray):
-                pass
-            elif isinstance(self.old_params, str): 
-                try:
-                    self.old_params = np.load(self.old_params)
-                except:
-                    raise TypeError(f"old_params is a string, but not a numpy file? '{self.old_params}'")
-            else:
-                raise TypeError(f"old_params must be a string pointing to a npy-file or a np.ndarray, not '{type(self.old_params)}'")
+            
+            # agnostic read-in of existing parameter file
+            self.old_params = read_par_file(self.old_params)
 
             # initiate Gaussian model
             GaussianModel.__init__(self)
@@ -1640,13 +1678,17 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
             # Check if we should do Gaussian iterfit        
             if 'iter' in self.stage:
                 GaussianModel.iterfit(self)
+
         #----------------------------------------------------------------------------------------------------------------------------------------------------------
         # Check if we should do DN-model
         if self.model.lower() != "gauss":            
             
             ## Define settings/grids/fitter/bounds etcs
-            self.settings, self.settings_file, self.prf_stim = generate_model_params(
-                model=self.model, dm=self.design_matrix, outputdir=self.output_dir, fit_hrf=self.fit_hrf)
+            self.settings, self.prf_stim_ = generate_model_params(
+                model=self.model, 
+                dm=self.design_matrix, 
+                TR=self.TR,
+                fit_hrf=self.fit_hrf)
 
             # overwrite rsq-threshold from settings file
             if self.rsq_threshold != None:
@@ -1709,7 +1751,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
 
         return bounds
 
-    def load_params(self, params_file, model='gauss', stage='iter', acq=None, run=None, hrf=None):
+    def load_params(self, params_file, model='gauss', stage='iter', acq=None, run=None, hrf=None, hemi=None):
 
         """Load in a numpy array into the class; allows for quick plotting of voxel timecourses"""
 
@@ -1723,6 +1765,12 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                 params = data['pars']
                 self.settings = data['settings']
                 setattr(self, f'{model}_{stage}_predictions', data['predictions'])
+
+                # try to set the HRFs if fit_hrf=True
+                try:
+                    setattr(self, f'{model}_{stage}_hrf', data['hrf'])
+                except:
+                    pass
                 
                 if self.verbose:
                     print("Reading settings from pickle-file (safest option; overwrites other settings)")
@@ -1730,56 +1778,28 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         elif isinstance(params_file, np.ndarray):
             params = params_file.copy()
         elif isinstance(params_file, pd.DataFrame):
-            dict_keys = list(params_file.keys())
-            if not "hemi" in dict_keys:
+            if hemi:
                 # got normalization parameter file
-                params = np.array((params_file['x'][0],
-                                  params_file['y'][0],
-                                  params_file['prf_size'][0],
-                                  params_file['A'][0],
-                                  params_file['bold_bsl'][0],
-                                  params_file['B'][0],
-                                  params_file['C'][0],
-                                  params_file['surr_size'][0],
-                                  params_file['D'][0],
-                                  params_file['r2'][0]))
+                params = np.array((
+                    params_file['x'][hemi],
+                    params_file['y'][hemi],
+                    params_file['prf_size'][hemi],
+                    params_file['A'][hemi],
+                    params_file['bold_bsl'][hemi],
+                    params_file['B'][hemi],
+                    params_file['C'][hemi],
+                    params_file['surr_size'][hemi],
+                    params_file['D'][hemi],
+                    params_file['r2'][hemi]))
             else:
-                raise NotImplementedError()
+                raise ValueError(f"Must specify 'hemi' for this option. Must be one of 'L' or 'R'")
         else:
             raise ValueError(f"Unrecognized input type for '{params_file}'")
 
         if self.verbose:
-            print(f"Inserting parameters in '{model}_{stage}' in {self}")
+            print(f"Inserting parameters from {type(params_file)} as '{model}_{stage}' in {self}")
 
         setattr(self, f'{model}_{stage}', params)
-
-        # try to find predictions if not embedded in pickle file
-        if isinstance(params_file, str):
-            if not params_file.endswith('pkl'):
-                
-                # refine search parameters
-                search_list = [model, stage, "predictions.npy"]
-
-                # acq flag
-                if acq != None:
-                    search_list += [f"acq-{acq}"]
-
-                # hrf flag
-                if hrf:
-                    search_list += ["hrf-true"]
-                
-                # run flag
-                if run != None:
-                    search_list += [f"run-{run}"]        
-
-                preds = utils.get_file_from_substring(search_list, os.path.dirname(params_file), return_msg=None)
-                if preds != None:
-                    if isinstance(preds, list):
-                        raise ValueError(f"Found multiple instances for {search_list}: {preds}")
-                    else:
-                        print(f"Predictions: {preds}")
-
-                    setattr(self, f'{model}_{stage}_predictions', np.load(preds))
 
     def make_predictions(self, vox_nr=None, model='gauss', stage='iter'):
         
@@ -2016,13 +2036,12 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
 
         return params, prf_array, tc, self.prediction
 
-    def save_params(self, model="gauss", stage="grid", predictions=False):
+    def save_params(self, model="gauss", stage="grid"):
         
         if hasattr(self, f"{model}_{stage}"):
-            # write simple numpy files
+
+            # get parameters given model and stage
             params = getattr(self, f"{model}_{stage}")
-            output = opj(self.output_dir, f'{self.output_base}_model-{model}_stage-{stage}_desc-prf_params.npy')
-            np.save(output, params)
 
             # write a pickle-file with relevant outputs
             pkl_file = opj(self.output_dir, f'{self.output_base}_model-{model}_stage-{stage}_desc-prf_params.pkl')
@@ -2030,22 +2049,6 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
             out_dict['pars'] = params
             out_dict['settings'] = self.settings
             out_dict['predictions'] = self.make_predictions(model=model, stage=stage)
-
-            f = open(pkl_file, "wb")
-            pickle.dump(out_dict, f)
-            f.close()
-
-            if self.verbose:
-                print(f"Save {stage}-fit parameters in {output}")
-
-            # save predictions
-            if predictions:
-                predictions = out_dict['predictions']
-                output = opj(self.output_dir, f'{self.output_base}_model-{model}_stage-{stage}_desc-predictions.npy')
-                np.save(output, predictions)
-                
-                if self.verbose:
-                    print(f"Save {stage}-fit predictions in {output}")
 
             # save HRFs if applicable
             if self.fit_hrf:
@@ -2059,11 +2062,14 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                 except:
                     raise IOError(f"Could not create HRFs from '{used_model}'")
 
-                output = opj(self.output_dir, f'{self.output_base}_model-{model}_stage-{stage}_desc-hrfs.npy')
-                np.save(output, self.hrfs)
-                
-                if self.verbose:
-                    print(f"Save {stage}-HRFs in {output}")
+                out_dict['hrf'] = self.hrfs
+
+            if self.verbose:
+                print(f"Save {stage}-fit parameters in {pkl_file}")
+
+            f = open(pkl_file, "wb")
+            pickle.dump(out_dict, f)
+            f.close()
 
         else:
             raise ValueError(f"{self} does not have attribute '{model}_{stage}'. Not saving parameters")
@@ -2427,28 +2433,26 @@ class CollectSubject:
     ----------
     subject: str
         subject ID as used throughout the pipeline
+    ses: int, optional
+        Source session of pRF-parameters to use, by default 1
     derivatives: str, optional
         Derivatives directory, by default None. 
     cx_dir: str, optional
         path to subject-specific pycortex directory
     prf_dir: str, optional
         subject-specific pRF directory, by default None. `derivatives` will be ignore if this flag is used
-    ses: int, optional
-        Source session of pRF-parameters to use, by default 1
-    analysis_yaml: str, optional
-        String pointing to an existing file, by default None. 
     hemi: str, optional
         Hemisphere to extract target vertex from, by default "lh"
-    settings: str, optional
-        Fetch most recent settings file rather than `analysis_yaml`, by default None. 
     model: str, optional
-        This flag can be set to read in a specific 'best_vertex' file as the location parameters sometimes differ between a Gaussian and DN-fit.
+        By default `gauss`, which reads in the gaussian iterative fit parameters in a :class:`linescanning.prf.pRFmodelFitting`-object. Can be any of the allowed models ('gauss', 'css', 'dog', norm).
     correct_screen: bool, optional
         Mid-way our experiments, the boldscreen was moved closer to the bore, meaning the field-of-view changed with a factor of 1.08. For most of our normalization parameters, this correction is applied already to the x,y, and size parameters. Therefore the default is False.
     verbose: bool, optional
         Set to True if you want some messages along the way (default = True)
     resize_pix: int
         resolution of pRF to resample to. For instance, if you've used a low-resolution design matrix, but you'd like a prettier image, you can set `resize` to something higher than the original (54 >> 270, for example). By default not used.
+    best_vertex: bool, optional
+        Signifies that we should load in the parameters of the target vertex used in line-scanning experiments. If *True*, the 'best_vertex'-parameters given `model` will be read in. If *False*, the iterative fit parameters from `model` will be read in.
 
     Example
     ----------
@@ -2456,7 +2460,18 @@ class CollectSubject:
     >>> subject_info = utils.CollectSubject(subject, derivatives=<path_to_derivatives>, settings='recent', hemi="lh")
     """
 
-    def __init__(self, subject, derivatives=None, cx_dir=None, prf_dir=None, ses=1, analysis_yaml=None, hemi="lh", settings=None, model="gauss", correct_screen=False, verbose=True, **kwargs):
+    def __init__(self, 
+                 subject, 
+                 ses=1, 
+                 derivatives=None, 
+                 cx_dir=None, 
+                 prf_dir=None, 
+                 hemi="lh", 
+                 model="gauss", 
+                 correct_screen=False, 
+                 verbose=True, 
+                 best_vertex=False,
+                 **kwargs):
 
         self.subject        = subject
         self.derivatives    = derivatives
@@ -2465,9 +2480,10 @@ class CollectSubject:
         self.prf_ses        = ses
         self.hemi           = hemi
         self.model          = model
-        self.analysis_yaml  = analysis_yaml
         self.correct_screen = correct_screen
         self.verbose        = verbose
+        self.best_vertex    = best_vertex
+
         self.__dict__.update(kwargs)
 
         if self.hemi == "lh" or self.hemi.lower() == "l" or self.hemi.lower() == "left":
@@ -2481,86 +2497,59 @@ class CollectSubject:
         if self.prf_dir == None:
             if derivatives != None:
                 self.prf_dir = opj(self.derivatives, 'prf', self.subject, f'ses-{self.prf_ses}')
-
                 
         # get design matrix, vertex info, and analysis file
         if self.prf_dir != None:
             self.design_fn      = utils.get_file_from_substring(["design", ".mat"], self.prf_dir)
-            self.design_matrix  = io.loadmat(self.design_fn)['stim']
+            self.design_matrix  = read_par_file(self.design_fn) # read_par_file doesn't care whether it's a npy-/mat-/pkl-file
             self.func_data_lr   = np.load(utils.get_file_from_substring(["hemi-LR_", "avg_bold", ".npy"], self.prf_dir))
             self.func_data_l    = np.load(utils.get_file_from_substring(["hemi-L_", "avg_bold", ".npy"], self.prf_dir))
             self.func_data_r    = np.load(utils.get_file_from_substring(["hemi-R_", "avg_bold", ".npy"], self.prf_dir))
 
-        # load specific analysis file
-        if self.analysis_yaml != None:
-            self.settings = yaml.safe_load(self.analysis_yaml)
-
-            with open(self.analysis_yaml) as file:
-                self.settings = yaml.safe_load(file)      
-
-        try:
-            self.gauss_iter_pars = np.load(utils.get_file_from_substring(["model-gauss", "stage-iter", "params.npy"], self.prf_dir))
-        except:
-            pass
+        # try to read iterative fit parameters
+        allowed_models = ['gauss', 'css', 'dog', 'norm']
+        for model in allowed_models:
+            par_file = utils.get_file_from_substring([f"model-{model}", "stage-iter", "params.pkl"], self.prf_dir, return_msg=None)
+            if isinstance(par_file, str):
+                setattr(self, f'{model}_iter_pars', read_par_file(par_file))
         
-        # load the most recent analysis file. This is fine for screens/stimulus information
-        if settings == "recent":
-            self.analysis_yaml = opj(self.prf_dir, sorted([ii for ii in os.listdir(self.prf_dir) if "desc-settings" in ii])[-1])
-        
-            with open(self.analysis_yaml) as file:
-                self.settings = yaml.safe_load(file)
-
         # set pycortex directory
         if self.cx_dir == None:
             if derivatives != None:
                 self.cx_dir = opj(self.derivatives, 'pycortex', self.subject)
 
-        if self.cx_dir != None:
-            self.vert_fn        = utils.get_file_from_substring([self.model, "best_vertices.csv"], self.cx_dir)
-            self.vert_info      = utils.VertexInfo(self.vert_fn, subject=self.subject, hemi=self.hemi)
-        
-        # fetch target vertex parameters
-        if hasattr(self, "vert_info"):
-            self.target_params = self.return_prf_params(hemi=self.hemi)
-            self.target_vertex = self.return_target_vertex(hemi=self.hemi)
+        # initialize the model
+        self.modelling = pRFmodelFitting(
+            self.func_data_lr,
+            design_matrix=self.design_matrix,
+            verbose=self.verbose)
 
-        # create pRF if settings were specified
-        if hasattr(self, "settings"):
-            self.prf_stim = stimulus.PRFStimulus2D(screen_size_cm=self.settings['screen_size_cm'], 
-                                                   screen_distance_cm=self.settings['screen_distance_cm'], 
-                                                   design_matrix=self.design_matrix,TR=self.settings['TR'])
-            self.prf_array = make_prf(self.prf_stim, 
-                                      size=self.target_params[2], 
-                                      mu_x=self.target_params[0], 
-                                      mu_y=self.target_params[1],
-                                      **kwargs)
+        if self.best_vertex:
+            
+            if self.cx_dir != None and os.path.exists(self.cx_dir):
+                self.vert_fn = utils.get_file_from_substring([self.model, "best_vertices.csv"], self.cx_dir)
+                self.vert_info = utils.VertexInfo(self.vert_fn, subject=self.subject, hemi=self.hemi)
+            
+            # fetch target vertex parameters
+            if hasattr(self, "vert_info"):
+                self.target_params = self.return_prf_params(hemi=self.hemi)
+                self.target_vertex = self.return_target_vertex(hemi=self.hemi)
 
-        try:
-            self.normalization_params_df    = pd.read_csv(utils.get_file_from_substring([f"hemi-{self.hemi_tag}", "normalization", "csv"], self.cx_dir), index_col=0)
-            self.normalization_params       = np.load(utils.get_file_from_substring([f"hemi-{self.hemi_tag}", "normalization", "npy"], self.cx_dir))
+            # find the csv file with parameters (generally available with 'norm')
+            try:
+                self.normalization_params_df = pd.read_csv(utils.get_file_from_substring([f"model-{self.model}", "desc-params.csv"], self.cx_dir), index_col=0)            
+                self.pars = self.normalization_params_df.copy()
+            except:
+                self.pars = self.target_params
 
-            if self.correct_screen:
-                self.normalization_params = self.normalization_params*1.08
-                
-        except:
-            self.normalization_params_df    = None
-            self.normalization_params       = None
-
-        if self.prf_dir != None:
-            self.modelling = pRFmodelFitting(self.func_data_lr,
-                                             design_matrix=self.design_matrix,
-                                             settings=self.analysis_yaml,
-                                             verbose=self.verbose)
-
-            if self.model == "gauss":
-                if hasattr(self, "gauss_iter_pars"):
-                    self.pars = self.gauss_iter_pars.copy()
-                else:
-                    raise AttributeError("Could not find 'gauss_iter_pars' attribute")
+        else:
+            if hasattr(self, f"{self.model}_iter_pars"):
+                self.pars = getattr(self, f"{self.model}_iter_pars")
             else:
-                self.pars = self.normalization_params.copy()
+                print(f"WARNING: Could not find '{self.model}_iter_pars' attribute")
 
-            self.modelling.load_params(self.pars, model=self.model, stage="iter")
+        if hasattr(self, "pars"):
+            self.modelling.load_params(self.pars, model=self.model, stage="iter", hemi=self.hemi_tag)
 
     def return_prf_params(self, hemi="lh"):
         """return pRF parameters from :class:`linescanning.utils.VertexInfo`"""
@@ -2571,27 +2560,22 @@ class CollectSubject:
         return self.vert_info.get('index', hemi=hemi)
 
     def target_prediction_prf(self, xkcd=False, freq_spectrum=None, save_as=None, make_figure=True, **kwargs):
+        
+        if not hasattr(self, "target_vertex"):
+            raise ValueError(f"Option not available with model='{self.model}', initialize with model='best' or use 'plot_vox()' from '<obj_name>.modelling'")
 
-        if make_figure:
-            self.targ_pars, self.targ_prf, self.targ_tc, self.targ_pred = self.modelling.plot_vox(vox_nr=self.target_vertex, 
-                                                                                    model=self.model, 
-                                                                                    stage='iter', 
-                                                                                    make_figure=make_figure, 
-                                                                                    xkcd=xkcd,
-                                                                                    title='pars',
-                                                                                    transpose=True, 
-                                                                                    freq_spectrum=freq_spectrum, 
-                                                                                    freq_type="fft",
-                                                                                    save_as=save_as,
-                                                                                    **kwargs)     
-        else:
-            self.targ_pars, self.targ_pred = self.modelling.plot_vox(vox_nr=self.target_vertex, 
-                                                                     model=self.model, 
-                                                                     stage='iter', 
-                                                                     make_figure=make_figure, 
-                                                                     xkcd=xkcd,
-                                                                     transpose=True, 
-                                                                     **kwargs)
+        self.targ_pars, self.targ_prf, self.targ_tc, self.targ_pred = self.modelling.plot_vox(
+            vox_nr=self.target_vertex, 
+            model=self.model, 
+            stage='iter', 
+            make_figure=make_figure, 
+            xkcd=xkcd,
+            title='pars',
+            transpose=True, 
+            freq_spectrum=freq_spectrum, 
+            freq_type="fft",
+            save_as=save_as,
+            **kwargs)
 
 def baseline_from_dm(dm, n_trs=7):
     shifted_dm = np.zeros_like(dm)
