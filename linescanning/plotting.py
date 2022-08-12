@@ -45,6 +45,12 @@ class LazyPRF():
         If `True`, limit spines to the smallest and largest major tick on each non-despined axis. Maps to `sns.despine(trim=sns_trim)`
     sns_offset: int, optional
         Offset in the origin of the plot. Maps to `sns.despine(offset=sns_offset)`. Default is 10
+    vf_only: bool, optional
+        Only show the outline of the the visual field, without pRF. You still need to specify the pRF as we'll `imshow` an empty array with the same shape rather than the pRF. Default = False
+    line_width: float, optional
+        Width of the outer border of the visual field if `cmap` is not *viridis* or *magma* (these color maps are quite default, and do not require an extra border like :func:`linescanning.utils.make_binary_cm`-objects do). Default is 0.5.
+    cross_width: float, optional
+        Width of the cross denoting the x/y axis. Default is 0.5, but can be increased if `cmap` is not *viridis* or *magma* to enhance visibility 
 
     Returns
     ----------
@@ -72,6 +78,9 @@ class LazyPRF():
                  full_axis=False,
                  sns_trim=True,
                  sns_offset=10,
+                 vf_only=False,
+                 line_width=0.5,
+                 cross_width=0.5,
                  **kwargs):
         
         self.prf            = prf
@@ -94,6 +103,9 @@ class LazyPRF():
         self.full_axis      = full_axis
         self.sns_trim       = sns_trim
         self.sns_offset     = sns_offset
+        self.vf_only        = vf_only
+        self.line_width     = line_width
+        self.cross_width    = cross_width
         self.__dict__.update(kwargs)      
 
         if self.xkcd:
@@ -122,12 +134,33 @@ class LazyPRF():
         if self.alpha == None:
             self.alpha = 1
 
-        self.ax.axvline(0, color=self.cross_color, linestyle='dashed', lw=0.5)
-        self.ax.axhline(0, color=self.cross_color, linestyle='dashed', lw=0.5)
-        im = self.ax.imshow(self.prf, extent=self.vf_extent+self.vf_extent, cmap=self.cmap, alpha=self.alpha)
+        # line on x-axis
+        self.ax.axvline(
+            0, 
+            color=self.cross_color, 
+            linestyle='dashed', 
+            lw=self.cross_width)
+
+        # line on y-axis
+        self.ax.axhline(
+            0, 
+            color=self.cross_color, 
+            linestyle='dashed', 
+            lw=self.cross_width)
+
+        if not self.vf_only:
+            plot_obj = self.prf
+        else:
+            plot_obj = np.zeros_like(self.prf)
+
+        im = self.ax.imshow(
+            plot_obj, 
+            extent=self.vf_extent+self.vf_extent, 
+            cmap=self.cmap, 
+            alpha=self.alpha)
         
         # In case of a white background, the circle for the visual field is cut off, so we need to make an adjustment:
-        if self.cmap != 'magma':
+        if self.cmap != 'magma' and self.cmap != 'viridis':
             radius = self.vf_extent[-1]*self.shrink_factor
         else:
             radius = self.vf_extent[-1]
@@ -140,7 +173,7 @@ class LazyPRF():
                                     transform=self.ax.transData,
                                     edgecolor=self.cross_color,
                                     facecolor="None",
-                                    linewidth=0.5)
+                                    linewidth=self.line_width)
 
         self.ax.add_patch(self.patch)
         im.set_clip_path(self.patch)
