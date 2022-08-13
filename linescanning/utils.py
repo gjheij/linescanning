@@ -179,6 +179,37 @@ def convert2unit(v, method="np"):
         v[:,2] /= lens
         return v
 
+def string2list(string_array):
+    """string2list
+
+    This function converts a array in string representation to a list of string. This can happen, for instance, when you use bash to give a list of strings to python, where ast.literal_eval fails.
+
+    Parameters
+    ----------
+    string_array: str
+        string to be converted to a valid numpy array with float values
+
+    Returns
+    ----------
+    numpy.ndarray
+        array containing elements in float rather than in string representation
+
+    Example
+    ----------
+    >>> string2list('[tc,bgfs]')
+    ['tc', 'bgfs']
+    """
+
+    if type(string_array) == str:
+        new = string_array[1:-1].split(',')[0:]
+        new = list(filter(None, new))
+
+        return new
+
+    else:
+        # array is already in non-string format
+        return string_array
+
 def string2float(string_array):
     """string2float
 
