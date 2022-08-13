@@ -1071,7 +1071,7 @@ def generate_model_params(model='gauss', dm=None, TR=1.5, fit_hrf=False):
 
     """generate_model_params
 
-    Function to generate a yaml-file with parameters to use. Utilizes the analysis_settings.yml as basis, and adds information along the way, such as grid specifications and model type.
+    Function to generate a yaml-file with parameters to use. Utilizes the [prf_analysis.yml](https://github.com/gjheij/linescanning/blob/main/misc/prf_analysis.yml) as basis, but it's advised to copy the file to the `DIR_DATA_HOME/code`-folder so you have a project-specific template. Depending on the model, we'll add grids and bounds and return a dictionary of settings. This dictionary is saved in the `pkl`-file as per the output of :class:`linescanning.prf.pRFmodelFitting`. 
 
     Parameters
     ----------
@@ -1086,14 +1086,10 @@ def generate_model_params(model='gauss', dm=None, TR=1.5, fit_hrf=False):
 
     Returns
     ----------
-    str
-        saves a settings-file in the output directory
-
-    yml
-        returns the content of settings-file
-
-    prfpy.stimlus.PRFStimulus2D
-        pRF object
+    dict
+        Dictionary containing the settings
+    :class:`prfpy.stimlus.PRFStimulus2D`-object
+        pRF stimulus object
     """
     
     # check if we have project-specific template; otherwise take linescanning-repo template
@@ -1718,10 +1714,43 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
             bounds.append(tuple(self.settings["bounds"]['hrf_disp']))       # HRF dispersion derivative
 
         return bounds
+    
+    def load_params(self, params_file, model='gauss', stage='iter'):
+        """load_params
 
-    def load_params(self, params_file, model='gauss', stage='iter', acq=None, run=None, hrf=None, hemi=None):
+        Attribute of `self`, with which you can load in an existing file with pRF-estimates. If the input file is a `pkl`-file, you'll get access to all the required information about your analysis: the settings, the input data, the predictions, and the design matrix. To do this, we need the `params_file` as well as information about the origin of the file; which model (e.g., `gauss`) and stage (e.g., 'iter') did the file arise from. We'll then internally set the parameters to the specified model and stage, making it compatible with :func:`linescanning.prf.pRFmodelFitting.plot_vox()`. It can also be a `numpy.ndarray` or `pandas.DataFrame`, but then less information about the analysis is known. 
 
-        """Load in a numpy array into the class; allows for quick plotting of voxel timecourses"""
+        Parameters
+        ----------
+        params_file: str, pandas.DataFrame, numpy.ndarray
+            Input to load in. You'll get the most out of it when you use a `pkl`-file created with :class:`linescanning.prf.pRFmodelFitting`, as you'll have access to the predictions, timecourses, parameters, and settings. If you do not have this, you can also enter a `numpy.ndarray` or `pandas.DataFrame`. The later is assumed to be a result from :class:`linescanning.prf.SizeResponse`, in that it's a *Divisive-Normalization* model result, with the following columns: `['x','y','prf_size','A','bold_bsl','B','C','surr_size','D','r2']` and indexed by `hemi` (`L`/`R`).
+        model: str, optional
+            Model from which the pRF-estimates came from, by default 'gauss'
+        stage: str, optional
+            Stage from which the pRF-estimates came from, by default 'iter'
+
+        Raises
+        ----------
+        ValueError
+            If input is `pandas.DataFrame`, but input does not have index `hemi`
+        ValueError
+            If input is not one of `str`, `numpy.ndarray`, `pandas.DataFrame`
+
+        Example
+        ----------
+        >>> # we initiate the model as per usual
+        >>> gauss_load = prf.pRFmodelFitting(
+        >>>     data.T,
+        >>>     design_matrix=design,
+        >>>     TR=1.5,
+        >>>     verbose=True)
+        >>> #
+        >>> gauss_load.load_params("sub-01_ses-1_model-norm_stage-iter_desc-prf_params.pkl", model="gauss", stage="iter")
+
+        Notes
+        ----------
+        Also see https://linescanning.readthedocs.io/en/latest/examples/prfmodelfitter.html
+        """
 
         if isinstance(params_file, str):
             if params_file.endswith('npy'):
@@ -2111,12 +2140,12 @@ class SizeResponse():
 
     Parameters
     ----------
-    prf_stim: prfpy.stimulus.PRFStimulus2D
+    prf_stim: :class:`prfpy.stimulus.PRFStimulus2D`
         Object describing the nature of the stimulus
     params: numpy.ndarray
         array with shape (10,) as per the output of a Divisive Normalization fit operation.
-    subject_info: `linescanning.utils.VertexInfo`-object
-        Subject information collected in `linescanning.utils.VertexInfo` that can be used for :func:`linescanning.prf.SizeResponse.save_target_params`
+    subject_info: :class:`linescanning.utils.VertexInfo`-object
+        Subject information collected in :class:`linescanning.utils.VertexInfo` that can be used for :func:`linescanning.prf.SizeResponse.save_target_params`
 
     Example
     ----------
@@ -2130,25 +2159,32 @@ class SizeResponse():
     >>> elif hemi == "rh":
     >>>     hemi_tag = "hemi-R"
     >>> #
-    >>> subject_info = utils.CollectSubject(subject, derivatives=opj('<path_to_project>', 'derivatives'), settings='recent', hemi="lh")
+    >>> subject_info = prf.CollectSubject(
+    >>>     subject, 
+    >>>     prf_dir=prf_dir, 
+    >>>     cx_dir=cx_dir, 
+    >>>     hemi=hemi, 
+    >>>     resize_pix=270,
+    >>>     verbose=False)
     >>> #
     >>> # Get and plot fMRI signal
     >>> data_fn = utils.get_file_from_substring(f"avg_bold_{hemi_tag}.npy", subject_info.prfdir)
     >>> data = np.load(data_fn)[...,subject_info.return_target_vertex(hemi=hemi)]
     >>> #
     >>> # insert old parameters
-    >>> insert_params =(np.array(subject_info.target_params)[np.newaxis,...],"gauss+iter")
+    >>> insert_params = subject_info.target_params
     >>> #
     >>> # initiate class
-    >>> fitting = prf.pRFmodelFitting(data[...,np.newaxis].T, 
-    >>>                               design_matrix=subject_info.design_matrix, 
-    >>>                               TR=subject_info.settings['TR'], 
-    >>>                               model="norm", 
-    >>>                               stage="grid", 
-    >>>                               old_params=insert_params, 
-    >>>                               verbose=False, 
-    >>>                               output_dir=subject_info.prfdir, 
-    >>>                               nr_jobs=1)
+    >>> fitting = prf.pRFmodelFitting(
+    >>>     data[...,np.newaxis].T, 
+    >>>     design_matrix=subject_info.design_matrix, 
+    >>>     TR=subject_info.settings['TR'], 
+    >>>     model="norm", 
+    >>>     stage="grid", 
+    >>>     old_params=insert_params, 
+    >>>     verbose=False, 
+    >>>     output_dir=subject_info.prfdir, 
+    >>>     nr_jobs=1)
     >>> #
     >>> # fit
     >>> fitting.fit()
