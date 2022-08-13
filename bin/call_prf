@@ -48,6 +48,12 @@ Arguments:
     -x|--params <gaussian params>   path to numpy array containing old parameters of Gaussian model
                                     to use for the Normalization model
     -u|--space  <fit space>         default is set as PYBEST_SPACE in spinoza_setup
+    -c|--constr <constraints>       string or list representing the type of constraints to use for
+                                    each stage (Gaussian and beyond). By default, we'll use trust-
+                                    constr minimization ('tc'), but you can speed up the normaliza-
+                                    tion fitting by using L-BGFS ('bgfs'). To specify a list, use 
+                                    the format '-c [tc,bgfs]'. Use --tc or --bgfs to sync the mini-
+                                    mizers across stages
 
 Options:                                  
     --hrf           Fit the HRF during pRF-fitting. If `True`, the fitting will consist of two 
@@ -76,7 +82,11 @@ Options:
                     This will ensure the baseline of periods without stimulus are set to zero.
     --overwrite     If specified, we'll overwrite existing Gaussian parameters. If not, we'll look
                     for a file with ['model-gauss', 'stage-iter', 'params.npy'] in *outputdir* and,
-                    if it exists, inject it in the normalization model (if `model=norm`)                    
+                    if it exists, inject it in the normalization model (if `model=norm`)  
+    --tc            use trust-constr minimization for both the Gaussian as well as the extended model. 
+                    Use the -x flag if you want different minimizers for both stages
+    --bgfs          use L-BGFS minimization for both the Gaussian as well as the extended model. Use 
+                    the -x flag if you want different minimizers for both stages                      
 
 Example:
   call_prf -s 001 -n 1 -t 2R -o /path/derivatives/prf -i /path/to/pybest/sub-001 -p /path/png
@@ -102,15 +112,17 @@ Example:
     file_ending = None
     psc         = True
     overwrite   = False
+    constraints = "tc"
 
     try:
-        opts = getopt.getopt(argv,"ghs:n:t:o:i:p:m:x:u:",["sub=", "model=", "ses=", "task=", "out=", "in=", "png=", "params=", "grid", "space=", "hrf", "n_pix=", "clip=", "verbose", "file_ending=", "zscore", "overwrite"])[0]
+        opts = getopt.getopt(argv,"ghs:n:t:o:i:p:m:x:u:c:",["help", "sub=", "model=", "ses=", "task=", "out=", "in=", "png=", "params=", "grid", "space=", "hrf", "n_pix=", "clip=", "verbose", "file_ending=", "zscore", "overwrite", "constr=", "tc", "bgfs"])[0]
     except getopt.GetoptError:
         print(main.__doc__)
         sys.exit(2)
-
+    
+    print(opts)
     for opt, arg in opts:
-        if opt == '-h':
+        if opt in ('-h', '--help'):
             print(main.__doc__)
             sys.exit()
         elif opt in ("-s", "--sub"):
@@ -145,6 +157,12 @@ Example:
             psc = False
         elif opt in ("--overwrite"):
             overwrite = True
+        elif opt in ("--tc"):
+            constraints = "tc"
+        elif opt in ("--bgfs"):
+            constraints = "bgfs"
+        elif opt in ("--constr"):
+            constraints = utils.string2list(arg)
 
     if len(argv) < 2:
         print("\nNOT ENOUGH ARGUMENTS SPECIFIED")
@@ -314,18 +332,20 @@ Example:
         old_params = None
 
     # stage 1 - no HRF
-    stage1 = prf.pRFmodelFitting(m_prf_tc_data.T, 
-                                 design_matrix=design_matrix[list(design_matrix.keys())[-1]], 
-                                 TR=tr, 
-                                 model=model, 
-                                 stage=stage, 
-                                 verbose=verbose, 
-                                 output_dir=outputdir,
-                                 output_base=out,
-                                 write_files=True,
-                                 fit_hrf=False,
-                                 fix_bold_baseline=psc,
-                                 old_params=old_params)
+    stage1 = prf.pRFmodelFitting(
+        m_prf_tc_data.T, 
+        design_matrix=design_matrix[list(design_matrix.keys())[-1]], 
+        TR=tr, 
+        model=model, 
+        stage=stage, 
+        verbose=verbose, 
+        output_dir=outputdir,
+        output_base=out,
+        write_files=True,
+        fit_hrf=False,
+        fix_bold_baseline=psc,
+        old_params=old_params,
+        constraints=constraints)
 
     stage1.fit()
 
@@ -340,18 +360,21 @@ Example:
         out += "_hrf-true"
 
         # initiate fitter object with previous fitter
-        stage2 = prf.pRFmodelFitting(m_prf_tc_data.T, 
-                                     design_matrix=stage1.design, 
-                                     TR=stage1.TR, 
-                                     model=model, 
-                                     stage=stage, 
-                                     verbose=stage1.verbose,
-                                     fit_hrf=True,
-                                     output_dir=stage1.output_dir,
-                                     output_base=out,
-                                     write_files=True,                                
-                                     previous_gaussian_fitter=stage1.previous_fitter,
-                                     fix_bold_baseline=psc)
+        stage2 = prf.pRFmodelFitting(
+            m_prf_tc_data.T, 
+            design_matrix=stage1.design, 
+            TR=stage1.TR, 
+            model=model, 
+            stage=stage, 
+            verbose=stage1.verbose,
+            fit_hrf=True,
+            output_dir=stage1.output_dir,
+            output_base=out,
+            write_files=True,                                
+            previous_gaussian_fitter=stage1.previous_fitter,
+            fix_bold_baseline=psc,
+            constraints=constraints)
+
         stage2.fit()    
 
 if __name__ == "__main__":

@@ -44,6 +44,10 @@ Options:
   --zscore        use the zscore'd output from pybest, rather than percent signal change. If not specified, 
                   percent signal change is implemented as follows:
                     psc = signals*100/(mean(signals)) - median(signals_without_stimulus)
+  --tc            use trust-constr minimization for both the Gaussian as well as the extended model. Use the
+                  -x flag if you want different minimizers for both stages
+  --bgfs          use L-BGFS minimization for both the Gaussian as well as the extended model. Use the -x 
+                  flag if you want different minimizers for both stages                  
   -s <subject>    subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
   -n <session>    session ID (e.g., 1, 2, or none)
   -m <model>      one of ['gauss','dog','css','norm'] is accepted, default = "gauss"
@@ -51,6 +55,12 @@ Options:
                   you want to run only one, specify the task name here ('task-rest' is ignored by default!).
                   You can also specify multiple tasks if you want to bypass the setup file completely. In
                   that case, use the format '-t <task1>,<task2>,<task3>'
+  -x <constr>     String or list of constraints to use for the gaussian and extended stage. By default, we'll
+                  use trust-constr minimization for both stages, but you can speed up the extended models with
+                  L-BGFS. Note that if you want the same minimizer for both stages, you can use the '--tc' or 
+                  '--bgfs' tags. This input specifically allows you to specify a list of different minimizers
+                  for each stage, e.g., trust-constr for Gaussian model, and L-BGFS for extended model. The 
+                  format should be '-x "tc,bgfs"'
 
 Arguments:
   <input dir>     base input directory with pybest data (e.g., 'DIR_DATA_DERIV/pybest')
@@ -87,7 +97,8 @@ zscore_flag=""
 verb_flag=""
 clip_flag=""
 clip=1
-while getopts :-:los:n:m:t: argument
+use_constr="--tc"
+while getopts :-:los:n:m:t:x:c: argument
 do
   case ${argument} in
     -)
@@ -112,7 +123,13 @@ do
           ;;       
         grid)
           grid_flag="--grid"
-          ;;                    
+          ;;
+        tc)
+          use_constr="--tc"
+          ;;
+        bgfs)
+          use_constr="--bgfs"
+          ;;                           
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}"
@@ -132,7 +149,9 @@ do
         OW_flag="--overwrite"
           ;;
     c)  clipper=${OPTARG}
-          ;;                 
+          ;;     
+    x)  use_constr="--constr [${OPTARG[@]}]"
+          ;;                       
   esac
 done
 
@@ -197,10 +216,10 @@ for subID in ${search}; do
   if [[ -z ${model} ]]; then
     use_model="gauss"
   else
-    if [[ ${model,,} == "gauss" || ${model,,} == "norm" ]]; then
+    if [[ ${model,,} == "gauss" || ${model,,} == "css" || ${model,,} == "dog" || ${model,,} == "norm" ]]; then
       use_model=${model,,}
     else
-      echo "ERROR in `basename ${0}`: model specified was \"${model}\". Please use \"gauss\", or \"norm\"."
+      echo "ERROR in `basename ${0}`: model specified was \"${model}\". Please use \"gauss\", \"dog\", \"css\", or \"norm\"."
       exit 1
     fi
   fi
@@ -332,7 +351,7 @@ for subID in ${search}; do
             else
               clip_flag="--clip ${clipper}"
             fi
-          fi          
+          fi
 
           # decide how to execute the process
           if [[ ${PLACE} != "SGE" ]]; then
@@ -361,7 +380,8 @@ for subID in ${search}; do
             -u ${PYBEST_SPACE} \
             ${zscore_flag} \
             ${verb_flag} \
-            ${OW_flag}
+            ${OW_flag} \
+            ${use_constr}
           
           if [[ $? -ne 0 ]]; then
             echo "ERROR in `basename ${0}`: call_prf did not execute cleanly"
