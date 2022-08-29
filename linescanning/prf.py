@@ -53,20 +53,20 @@ def read_par_file(prf_file):
     >>> dm = prf.read_par_file(dm_file)
     """
 
-    if prf_file.endswith("npy"):
-        pars = np.load(prf_file)
-    elif prf_file.endswith("mat"):
-        tmp = io.loadmat(prf_file)
-        pars = tmp[list(tmp.keys())[-1]] # find last key in list
-    elif prf_file.endswith("pkl"):
-        with open(prf_file, 'rb') as input:
-            data = pickle.load(input)
+    if isinstance(prf_file, str):
+        if prf_file.endswith("npy"):
+            pars = np.load(prf_file)
+        elif prf_file.endswith("mat"):
+            tmp = io.loadmat(prf_file)
+            pars = tmp[list(tmp.keys())[-1]] # find last key in list
+        elif prf_file.endswith("pkl"):
+            with open(prf_file, 'rb') as input:
+                data = pickle.load(input)
 
-            try:
-                pars = data['pars']
-            except:
-                raise TypeError(f"Pickle-file did not arise from 'pRFmodelFitting'. I'm looking for 'pars', but got '{data.keys()}'")
-
+                try:
+                    pars = data['pars']
+                except:
+                    raise TypeError(f"Pickle-file did not arise from 'pRFmodelFitting'. I'm looking for 'pars', but got '{data.keys()}'")
     elif isinstance(prf_file, np.ndarray):
         pars = prf_file.copy()
     else:
@@ -1253,7 +1253,7 @@ class GaussianModel():
 
         self.gauss_grid = utils.filter_for_nans(self.gaussian_fitter.gridsearch_params)
         if self.verbose:
-            print("Gaussian gridfit completed at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+
+            print("Completed Gaussian gridfit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+
                     ". voxels/vertices above "+str(self.rsq)+": "+str(np.sum(self.gauss_grid[:, -1]>self.rsq))+" out of "+
                     str(self.gaussian_fitter.data.shape[0]))
             print(f"Gridfit took {str(timedelta(seconds=elapsed))}")
@@ -1289,7 +1289,7 @@ class GaussianModel():
         elapsed = (time.time() - start)              
         self.gauss_iter = utils.filter_for_nans(self.gaussian_fitter.iterative_search_params)
         if self.verbose:
-            print("Gaussian iterfit completed at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+". Mean rsq>"+str(self.rsq)+": "+str(round(np.nanmean(self.gauss_iter[self.gaussian_fitter.rsq_mask, -1]),2)))
+            print("Completed Gaussian iterfit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+". Mean rsq>"+str(self.rsq)+": "+str(round(np.nanmean(self.gauss_iter[self.gaussian_fitter.rsq_mask, -1]),2)))
             print(f"Iterfit took {str(timedelta(seconds=elapsed))}")
 
         # save intermediate files
@@ -1335,7 +1335,7 @@ class ExtendedModel():
         ## Start grid fit
         start = time.time()
         if self.verbose:
-            print(f"Starting {self.model} grid fit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S'))
+            print(f"Starting {self.model} gridfit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S'))
 
         # let the fitter find the parameters; easier when fitting the HRF as indexing gets complicated
         if not hasattr(self, "old_params_filt"):
@@ -1371,7 +1371,7 @@ class ExtendedModel():
         ### save grid parameters
         setattr(self, f"{self.model}_grid", utils.filter_for_nans(self.tmp_fitter.gridsearch_params))
         if self.verbose:
-            print(f"{self.model} gridfit completed at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+". Mean rsq>"+str(self.rsq)+": "+str(round(np.nanmean(self.tmp_fitter.gridsearch_params[self.tmp_fitter.gridsearch_rsq_mask, -1]),2)))
+            print(f"Completed {self.model} gridfit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+". Mean rsq>"+str(self.rsq)+": "+str(round(np.nanmean(self.tmp_fitter.gridsearch_params[self.tmp_fitter.gridsearch_rsq_mask, -1]),2)))
             print(f"Gridfit took {str(timedelta(seconds=elapsed))}")
 
         if self.write_files:
@@ -1398,7 +1398,7 @@ class ExtendedModel():
             raise ValueError(f"Unknown optimizer '{self.constraints[0]}'. Must be one of {self.allowed_optimizers}")        
 
         self.tmp_fitter.iterative_fit(
-            rsq_threshold=self.settings['rsq_threshold'], 
+            rsq_threshold=self.rsq, 
             bounds=self.tmp_bounds,
             constraints=constr,
             xtol=self.settings['xtol'],
@@ -1410,7 +1410,7 @@ class ExtendedModel():
         setattr(self, f"{self.model}_iter", utils.filter_for_nans(self.tmp_fitter.iterative_search_params))
 
         if self.verbose:
-            print(f"{self.model} iterfit completed at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+". Mean rsq>"+str(self.rsq)+": "+str(round(np.mean(self.tmp_fitter.iterative_search_params[self.tmp_fitter.rsq_mask, -1]),2)))
+            print(f"Completed {self.model} iterfit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+". Mean rsq>"+str(self.rsq)+": "+str(round(np.mean(self.tmp_fitter.iterative_search_params[self.tmp_fitter.rsq_mask, -1]),2)))
             print(f"Iterfit took {str(timedelta(seconds=elapsed))}")
 
         if self.write_files:
@@ -1715,7 +1715,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
 
         return bounds
     
-    def load_params(self, params_file, model='gauss', stage='iter'):
+    def load_params(self, params_file, model='gauss', stage='iter', hemi=None):
         """load_params
 
         Attribute of `self`, with which you can load in an existing file with pRF-estimates. If the input file is a `pkl`-file, you'll get access to all the required information about your analysis: the settings, the input data, the predictions, and the design matrix. To do this, we need the `params_file` as well as information about the origin of the file; which model (e.g., `gauss`) and stage (e.g., 'iter') did the file arise from. We'll then internally set the parameters to the specified model and stage, making it compatible with :func:`linescanning.prf.pRFmodelFitting.plot_vox()`. It can also be a `numpy.ndarray` or `pandas.DataFrame`, but then less information about the analysis is known. 
@@ -1728,6 +1728,8 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
             Model from which the pRF-estimates came from, by default 'gauss'
         stage: str, optional
             Stage from which the pRF-estimates came from, by default 'iter'
+        hemi: str, optional
+            In case `params_file` is a `pandas.DataFrame` indexed by `hemi` and you want a particular subset of the dataframe
 
         Raises
         ----------
@@ -1774,6 +1776,8 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
 
         elif isinstance(params_file, np.ndarray):
             params = params_file.copy()
+        elif isinstance(params_file, list):
+            params = np.array(params_file)
         elif isinstance(params_file, pd.DataFrame):
             if hemi:
                 # got normalization parameter file
@@ -1791,7 +1795,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
             else:
                 raise ValueError(f"Must specify 'hemi' for this option. Must be one of 'L' or 'R'")
         else:
-            raise ValueError(f"Unrecognized input type for '{params_file}'")
+            raise ValueError(f"Unrecognized input type for '{params_file}' ({type(params_file)})")
 
         if self.verbose:
             print(f"Inserting parameters from {type(params_file)} as '{model}_{stage}' in {self}")
@@ -1842,22 +1846,23 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         else:
             raise ValueError(f"Could not find {stage} parameters for {model}")
 
-    def plot_vox(self, 
-                 vox_nr=0,
-                 model='gauss', 
-                 stage='iter', 
-                 make_figure=True, 
-                 xkcd=False, 
-                 title=None, 
-                 font_size=18,
-                 transpose=False,
-                 freq_spectrum=False,
-                 freq_type='fft',
-                 clip_power=None,
-                 save_as=None,
-                 axis_type="volumes",
-                 resize_pix=None,
-                 **kwargs):    
+    def plot_vox(
+        self, 
+        vox_nr=0,
+        model='gauss', 
+        stage='iter', 
+        make_figure=True, 
+        xkcd=False, 
+        title=None, 
+        font_size=18,
+        transpose=False,
+        freq_spectrum=False,
+        freq_type='fft',
+        clip_power=None,
+        save_as=None,
+        axis_type="volumes",
+        resize_pix=None,
+        **kwargs):    
         
         """plot_vox
 
@@ -1896,22 +1901,14 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
 
         Returns
         ----------
-        
-        if `make_figure=True`:
-            np.ndarray
-                1D-array representing the parameters of you selected voxel
-            np.ndarray
-                2D-array representing the pRF of your selected voxel in visual space
-            np.ndarray
-                1D-array representing the raw BOLD timecourse of your selected voxel
-            np.ndarray
-                1D-array representing the prediction of your selected voxel given `model`, `stage`, and `voxel`
-        
-        if `make_figure=False`:
-            np.ndarray
-                1D-array representing the parameters of you selected voxel
-            np.ndarray
-                1D-array representing the prediction of your selected voxel given `model`, `stage`, and `voxel`                            
+        np.ndarray
+            1D-array representing the parameters of you selected voxel
+        np.ndarray
+            2D-array representing the pRF of your selected voxel in visual space
+        np.ndarray
+            1D-array representing the raw BOLD timecourse of your selected voxel
+        np.ndarray
+            1D-array representing the prediction of your selected voxel given `model`, `stage`, and `voxel`
 
         Example
         ----------
@@ -1974,11 +1971,12 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
 
             # make plot 
             ax1 = fig.add_subplot(gs00[0])
-            plotting.LazyPRF(prf_array, 
-                             vf_extent=self.settings['vf_extent'], 
-                             ax=ax1, 
-                             xkcd=xkcd,
-                             **kwargs)
+            plotting.LazyPRF(
+                prf_array, 
+                vf_extent=self.settings['vf_extent'], 
+                ax=ax1, 
+                xkcd=xkcd,
+                **kwargs)
 
             # make plot 
             if title != None:
@@ -1997,38 +1995,40 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                 x_label = "volumes"
 
             ax2 = fig.add_subplot(gs00[1])
-            plotting.LazyPlot([tc, self.prediction],
-                              xx=x_axis,
-                              color=['#cccccc', 'r'], 
-                              labels=['real', 'pred'], 
-                              add_hline='default',
-                              x_label=x_label,
-                              y_label="amplitude",
-                              axs=ax2,
-                              title=set_title,
-                              xkcd=xkcd,
-                              font_size=font_size,
-                              line_width=[0.5, 3],
-                              markers=['.', None],
-                              **kwargs)
+            plotting.LazyPlot(
+                [tc, self.prediction],
+                xx=x_axis,
+                color=['#cccccc', 'r'], 
+                labels=['real', 'pred'], 
+                add_hline='default',
+                x_label=x_label,
+                y_label="amplitude",
+                axs=ax2,
+                title=set_title,
+                xkcd=xkcd,
+                font_size=font_size,
+                line_width=[0.5, 3],
+                markers=['.', None],
+                **kwargs)
 
             if freq_spectrum:
                 ax3 = fig.add_subplot(gs00[2])
                 self.freq = preproc.get_freq(tc, TR=self.TR, spectrum_type=freq_type, clip_power=clip_power)
 
-                plotting.LazyPlot(self.freq[1],
-                                  xx=self.freq[0],
-                                  color="#1B9E77", 
-                                  x_label="frequency (Hz)",
-                                  y_label="power (a.u.)",
-                                  axs=ax3,
-                                  title=freq_type,
-                                  xkcd=xkcd,
-                                  font_size=font_size,
-                                  x_lim=[0,0.5],
-                                  line_width=2,
-                                  **kwargs)
-            
+                plotting.LazyPlot(
+                    self.freq[1],
+                    xx=self.freq[0],
+                    color="#1B9E77", 
+                    x_label="frequency (Hz)",
+                    y_label="power (a.u.)",
+                    axs=ax3,
+                    title=freq_type,
+                    xkcd=xkcd,
+                    font_size=font_size,
+                    x_lim=[0,0.5],
+                    line_width=2,
+                    **kwargs)
+
             if save_as:
                 print(f"Writing {save_as}")
                 fig.savefig(save_as)
@@ -2339,7 +2339,7 @@ class SizeResponse():
 
         # append a stimulus of size 3dva if len(use_stim_sizes) == 4
         if len(use_stim_sizes) == 4:
-            use_stim_sizes.append(3)
+            use_stim_sizes.append(2.5)
 
         return use_stim_sizes
 
@@ -2430,7 +2430,7 @@ class SizeResponse():
 
         self.params_df.set_index('hemi').to_csv(pars_file)
 
-class CollectSubject:
+class CollectSubject(pRFmodelFitting):
     """CollectSubject
 
     Simple class to fetch pRF-related settings given a subject. Collects the design matrix, settings, and target vertex information. The `ses`-flag decides from which session the pRF-parameters to be used. You can either specify an *analysis_yaml* file containing information about a pRF-analysis, or specify *settings='recent'* to fetch the most recent analysis file in the pRF-directory of the subject. The latter is generally fine if you want information about the stimulus.
@@ -2512,6 +2512,7 @@ class CollectSubject:
             self.func_data_l    = np.load(utils.get_file_from_substring(["hemi-L_", "avg_bold", ".npy"], self.prf_dir))
             self.func_data_r    = np.load(utils.get_file_from_substring(["hemi-R_", "avg_bold", ".npy"], self.prf_dir))
 
+        print(utils.get_file_from_substring(["hemi-LR_", "avg_bold", ".npy"], self.prf_dir))
         # try to read iterative fit parameters
         allowed_models = ['gauss', 'css', 'dog', 'norm']
         for model in allowed_models:
@@ -2524,17 +2525,14 @@ class CollectSubject:
             if derivatives != None:
                 self.cx_dir = opj(self.derivatives, 'pycortex', self.subject)
 
-        # initialize the model
-        self.modelling = pRFmodelFitting(
-            self.func_data_lr,
-            design_matrix=self.design_matrix,
-            verbose=self.verbose)
-
         if self.best_vertex:
             
             if self.cx_dir != None and os.path.exists(self.cx_dir):
                 self.vert_fn = utils.get_file_from_substring([self.model, "best_vertices.csv"], self.cx_dir)
-                self.vert_info = utils.VertexInfo(self.vert_fn, subject=self.subject, hemi=self.hemi)
+                self.vert_info = utils.VertexInfo(
+                    self.vert_fn, 
+                    subject=self.subject, 
+                    hemi=self.hemi)
             
             # fetch target vertex parameters
             if hasattr(self, "vert_info"):
@@ -2546,7 +2544,14 @@ class CollectSubject:
                 self.normalization_params_df = pd.read_csv(utils.get_file_from_substring([f"model-{self.model}", "desc-params.csv"], self.cx_dir), index_col=0)            
                 self.pars = self.normalization_params_df.copy()
             except:
-                self.pars = self.target_params
+                self.pars = np.array(self.target_params)[np.newaxis,...]
+            
+            if hemi == "lh":
+                tmp_data = self.func_data_l.copy()
+            elif hemi == "rh":
+                tmp_data = self.func_data_r.copy()
+            
+            self.data = tmp_data[...,self.target_vertex][np.newaxis,...]
 
         else:
             if hasattr(self, f"{self.model}_iter_pars"):
@@ -2554,8 +2559,20 @@ class CollectSubject:
             else:
                 print(f"WARNING: Could not find '{self.model}_iter_pars' attribute")
 
+            self.data = self.func_data_lr.T
+
+        # initialize the model
+        super().__init__(
+            self.data,
+            design_matrix=self.design_matrix,
+            verbose=self.verbose)
+
         if hasattr(self, "pars"):
-            self.modelling.load_params(self.pars, model=self.model, stage="iter", hemi=self.hemi_tag)
+            self.load_params(
+                self.pars, 
+                model=self.model, 
+                stage="iter", 
+                hemi=self.hemi_tag)
 
     def return_prf_params(self, hemi="lh"):
         """return pRF parameters from :class:`linescanning.utils.VertexInfo`"""
@@ -2570,7 +2587,7 @@ class CollectSubject:
         if not hasattr(self, "target_vertex"):
             raise ValueError(f"Option not available with model='{self.model}', initialize with model='best' or use 'plot_vox()' from '<obj_name>.modelling'")
 
-        self.targ_pars, self.targ_prf, self.targ_tc, self.targ_pred = self.modelling.plot_vox(
+        self.targ_pars, self.targ_prf, self.targ_tc, self.targ_pred = self.plot_vox(
             vox_nr=self.target_vertex, 
             model=self.model, 
             stage='iter', 

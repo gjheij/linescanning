@@ -30,8 +30,8 @@ sizes where the differences between these to curves are largest.
 
 Parameters
 ----------
-    -s|--sub)   Subject name as defined in FreeSurfer directory
-    -n|--ses)   Session to use pRF-parameters from. Default assumes that we have a 'ses-1'-folder. 
+    -s|--sub    Subject name as defined in FreeSurfer directory
+    -n|--ses    Session to use pRF-parameters from. Default assumes that we have a 'ses-1'-folder. 
                 If this is not the case, use '-n none'. This will remove the 'ses'-indexer from the
                 folder we'll be looking for parameters
     --lh|--rh   Process a single hemisphere, default is to loop through both
@@ -132,8 +132,6 @@ Example
 
     if stage != "grid" and stage != "iter" and stage != "grid+iter":
         raise ValueError(f"Stage must be 'grid' or 'iter', not {stage}")
-    elif stage == "iter":
-        stage = "grid+iter"
 
     for hemi in hemi_list:
         
@@ -150,72 +148,77 @@ Example
 
         #---------------------------------------------------------------------------------------------------
         # load in subject
-        subject_info = prf.CollectSubject(subject, 
-                                          prf_dir=prf_dir, 
-                                          cx_dir=cx_dir, 
-                                          hemi=hemi, 
-                                          resize_pix=270,
-                                          correct_screen=adjust,
-                                          verbose=False)
+        SI_ = prf.CollectSubject(
+            subject, 
+            prf_dir=prf_dir, 
+            cx_dir=cx_dir, 
+            hemi=hemi, 
+            resize_pix=270,
+            correct_screen=adjust,
+            best_vertex=True,
+            verbose=True)
+
+        # get the prf, timecourse, and prediction
+        pars,prf_array,tc_bold,_ = SI_.plot_vox(
+            model="gauss",
+            stage="iter",
+            make_figure=False)
 
         # make pRF plot
         ax1 = fig.add_subplot(gs00[0])
-        plotting.LazyPRF(subject_info.prf_array, subject_info.settings['vf_extent'], ax=ax1)    
+        plotting.LazyPRF(
+            prf_array, 
+            SI_.settings['vf_extent'], 
+            ax=ax1)    
 
-        # Get and plot fMRI signal
-        search_bold = [f"{hemi_tag}_", "avg_bold", ".npy"]
-        data_fn = utils.get_file_from_substring(search_bold, subject_info.prf_dir)
-
-        if isinstance(data_fn, list):
-            raise ValueError(f"Found multiple files with {search_bold} in '{subject_info.prf_dir}': \n{data_fn}")
-
-        data = np.load(data_fn)[...,subject_info.return_target_vertex(hemi=hemi)]
-
-        #---------------------------------------------------------------------------------------------------    
-        # insert old parameters
-        insert_params = np.array(subject_info.target_params)[np.newaxis,...]
-        
         # initiate class
-        fitting = prf.pRFmodelFitting(data[...,np.newaxis].T,
-                                      design_matrix=subject_info.design_matrix, 
-                                      TR=subject_info.settings['TR'], 
-                                      model="norm", 
-                                      stage=stage, 
-                                      old_params=insert_params, 
-                                      verbose=verbose, 
-                                      output_dir=subject_info.prf_dir, 
-                                      nr_jobs=1)
-        
+        fitting = prf.pRFmodelFitting(
+            tc_bold[np.newaxis,...],
+            design_matrix=SI_.design_matrix, 
+            TR=SI_.settings['TR'], 
+            model="norm", 
+            stage=stage, 
+            old_params=pars[np.newaxis,...], 
+            verbose=verbose,
+            fix_bold_baseline=True,
+            rsq_threshold=0,
+            nr_jobs=1)
+
         # fit
         fitting.fit()
 
-        if stage == "grid+iter":
+        if "iter" in stage:
             new_params = fitting.norm_iter[0]
         else:
             new_params = fitting.norm_grid[0]
+        
+        if np.all(new_params == 0):
+            raise ValueError("All parameters in 'new_params' are equal to zero..")
 
         new_prediction = fitting.norm_model.return_prediction(*new_params[:-1]).T
 
-        print(f"Params in: \t{[round(ii, 2) for ii in np.array(subject_info.target_params)]}")
+        print(f"Params in: \t{[round(ii, 2) for ii in SI_.pars[0,...]]}")
         print(f"Params out: \t{[round(ii, 2) for ii in new_params]}")
+
         #---------------------------------------------------------------------------------------------------
         # plot pRF output
         ax2 = fig.add_subplot(gs00[1])
-        plotting.LazyPlot([data, new_prediction],
-                          xx=np.arange(0,data.shape[0],1)*fitting.TR,
-                          color=['#cccccc', 'r'], 
-                          labels=['real', 'pred'], 
-                          add_hline='default', 
-                          axs=ax2,
-                          y_label="amplitude",
-                          x_label="time (s)",
-                          line_width=[0.5, 3],
-                          markers=['.', None],                        
-                          font_size=16)
+        plotting.LazyPlot(
+            [tc_bold, new_prediction],
+            xx=np.arange(0,tc_bold.shape[0],1)*fitting.TR,
+            color=['#cccccc', 'r'], 
+            labels=['real', 'pred'], 
+            add_hline='default', 
+            axs=ax2,
+            y_label="amplitude",
+            x_label="time (s)",
+            line_width=[0.5, 3],
+            markers=['.', None],                        
+            font_size=16)
 
         #---------------------------------------------------------------------------------------------------
         # size response functions
-        SR = prf.SizeResponse(fitting.prf_stim, new_params, subject_info=subject_info)
+        SR = prf.SizeResponse(fitting.prf_stim, new_params, subject_info=SI_)
         SR.make_stimuli()
         sr_curve1 = SR.make_sr_function(center_prf=True)
         sr_curve2 = SR.make_sr_function(center_prf=True, scale_factor=fraction)
@@ -223,14 +226,15 @@ Example
         #---------------------------------------------------------------------------------------------------
         # make plot 
         ax3 = fig.add_subplot(gs00[2])
-        plotting.LazyPlot([sr_curve1, sr_curve2], 
-                          xx=SR.stims_fill_sizes,
-                          color=["#1B9E77","#D95F02"], 
-                          labels=['superficial', 'middle'],
-                          axs=ax3,
-                          y_label="Response",
-                          x_label="Stimulus size (°)",
-                          font_size=16)
+        plotting.LazyPlot(
+            [sr_curve1, sr_curve2], 
+            xx=SR.stims_fill_sizes,
+            color=["#1B9E77","#D95F02"], 
+            labels=['superficial', 'middle'],
+            axs=ax3,
+            y_label="Response",
+            x_label="Stimulus size (°)",
+            font_size=16)
 
         #---------------------------------------------------------------------------------------------------
         # find stim sizes
@@ -243,17 +247,19 @@ Example
             stim_ix = utils.find_nearest(SR.stims_fill_sizes, ii)[0]
             cmap_blue = utils.make_binary_cm((8,178,240))
 
-            im = ax.imshow(SR.stims_fill[stim_ix], extent=subject_info.settings['vf_extent']+subject_info.settings['vf_extent'], cmap=cmap_blue)
+            im = ax.imshow(
+                SR.stims_fill[stim_ix], 
+                extent=SI_.settings['vf_extent']+SI_.settings['vf_extent'], cmap=cmap_blue)
             ax.axvline(0, color='k', linestyle='dashed', lw=0.5)
             ax.axhline(0, color='k', linestyle='dashed', lw=0.5)
             ax.axis('off')
-            patch = patches.Circle((0,0), radius=subject_info.settings['vf_extent'][-1], transform=ax.transData)
+            patch = patches.Circle((0,0), radius=SI_.settings['vf_extent'][-1], transform=ax.transData)
             im.set_clip_path(patch)
 
         #---------------------------------------------------------------------------------------------------
         # finalize figure and save output
         fig.tight_layout(rect=[0, 0, 0.91, 1])
-        fig.savefig(opj(cx_dir, f"{subject}_{hemi_tag}_desc-prf_sizeresponse.pdf"))
+        fig.savefig(opj(cx_dir, f"{subject}_{hemi_tag}_desc-sizeresponse.svg"))
         SR.save_target_params(hemi=hemi, stim_sizes=use_stim_sizes)
 
     ff = opj(cx_dir, f"{subject}_model-norm_desc-best_vertices.csv")
