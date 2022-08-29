@@ -120,14 +120,16 @@ Notes
         except:
             raise ValueError(f"You used '{verts}'. Make sure to use '[x,y,z]' (comma-separated and no spaces)")
     
-    optimal.target_vertex(subject,
-                          prf_file=prf_file,
-                          deriv=deriv, 
-                          vert=verts,
-                          use_prf=use_prf,
-                          out=out,
-                          roi=roi,
-                          webshow=open_fv)
-    
+    print(deriv)
+    optimal.target_vertex(
+        subject,
+        prf_file=prf_file,
+        deriv=deriv, 
+        vert=verts,
+        use_prf=use_prf,
+        out=out,
+        roi=roi,
+        webshow=open_fv)
+
 if __name__ == "__main__":
     main(sys.argv[1:])
