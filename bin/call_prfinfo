@@ -30,7 +30,9 @@ Parameters
     --css                       Look for CSS parameters instead of DN-parameters
     --dog                       Look for DoG parameters instead of DN-parameters
     --grid                      Look for grid fit parameters, rather than iterative fit
-                                parameters                     
+                                parameters
+    --plot                      create a plot of the pRF+timecourse+prediction
+    --verbose                   print some extra information to the terminal
 
 Returns
 ----------
@@ -50,9 +52,11 @@ Example
     hemi        = 'lh'
     model       = "norm"
     stage       = "iter"
+    plot        = False
+    verbose     = False
 
     try:
-        opts = getopt.getopt(argv,"qs:v:p:h:d:",["subject=", "prfdir=", "vertex=", "prf=", "lh", "rh", "gauss", "grid", "css", "dog", "norm"])[0]
+        opts = getopt.getopt(argv,"qs:v:p:h:d:",["subject=", "prfdir=", "vertex=", "prf=", "lh", "rh", "gauss", "grid", "css", "dog", "norm", "plot", "verbose"])[0]
     except getopt.GetoptError:
         print(main.__doc__)
         sys.exit(2)
@@ -82,7 +86,11 @@ Example
         elif opt in ("--dog"):
             model = "dog"                                       
         elif opt in ("--grid"):
-            stage = "grid"            
+            stage = "grid"
+        elif opt in ("--plot"):
+            plot = True
+        elif opt in ("--verbose"):
+            verbose = True            
 
     if len(argv) < 1:
         print("\nNEED AT LEAST A SUBJECT ID")
@@ -93,7 +101,7 @@ Example
         prf_dir = opj(os.environ['PRF'], subject, 'ses-1')
 
     if not prf_info:
-        search_for = [f'model-{model}', stage, "desc-prf_params.npy"]
+        search_for = [f'model-{model}', stage, "desc-prf_params.pkl"]
         prf_info = utils.get_file_from_substring(search_for, prf_dir)
     
     if isinstance(prf_info, list):
@@ -103,8 +111,11 @@ Example
     info = prf.read_par_file(prf_info)
 
     if hemi == "rh":
+        tag = "hemi-R"
         tmp = utils.get_file_from_substring(["hemi-L_", "avg_bold", ".npy"], prf_dir)
         vertex = np.load(tmp).shape[-1]+vertex
+    else:
+        tag = "hemi-L"
 
     vert_info = info[vertex,:]
     polar = np.angle(vert_info[0]+vert_info[1]*1j)
@@ -119,6 +130,34 @@ Example
     print(f" size:    {round(vert_info[2],2)}")
     print(f" ecc:     {round(ecc,2)}")
     print(f" r2:      {round(vert_info[5],2)}")
+
+    if plot:
+
+        # get data
+        data = utils.get_file_from_substring(["hemi-LR_", "avg_bold"], prf_dir)
+        data = prf.read_par_file(data)
+
+        # get design
+        design = utils.get_file_from_substring(["design", "mat"], prf_dir)
+        design = prf.read_par_file(design)        
+    
+        # load object
+        obj = prf.pRFmodelFitting(
+            data.T,
+            design_matrix=design,
+            verbose=verbose)
+
+        obj.load_params(prf_info, model=model, stage=stage)
+
+        # make plot
+        obj.plot_vox(
+            vox_nr=vertex,
+            model=model,
+            stage=stage,
+            axis_type="time",
+            resize_pix=270,
+            title="pars",
+            save_as=opj(prf_dir, f"{subject}_{tag}_vox-{vertex}_model-{model}_stage-{stage}.svg"))        
 
 if __name__ == "__main__":
     main(sys.argv[1:])
