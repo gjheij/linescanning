@@ -107,7 +107,7 @@ def target_vertex(subject,
     Returns
     ---------
     str
-        Creates vertex-information files `<subject>_desc-prf_params_best_vertices.csv` & `line_pycortex.csv` as well as figures showing the timecourses/pRF-location of selected vertices. Doesn't 
+        Creates vertex-information files `<subject>_desc-prf_params_best_vertices.csv` & `line_pycortex.csv` as well as figures showing the timecourses/pRF-location of selected vertices.
     
     class
         :class:`linescanning.CalcBestVertex`
@@ -130,8 +130,8 @@ def target_vertex(subject,
 
     # set paths
     if deriv:
-        prf_dir = opj(deriv, 'prf'),
-        fs_dir = opj(deriv, 'freesurfer'),
+        prf_dir = opj(deriv, 'prf')
+        fs_dir = opj(deriv, 'freesurfer')
         cx_dir = opj(deriv, 'pycortex')
 
     # create if necessary
@@ -168,10 +168,11 @@ def target_vertex(subject,
 
         # This thing mainly does everything. See the linescanning/optimal.py file for more information
         print("Combining surface and pRF-estimates in one object")
-        BV_ = CalcBestVertex(subject=subject, 
-                             deriv=deriv, 
-                             prf_file=prf_file, 
-                             fs_label=roi)
+        BV_ = CalcBestVertex(
+            subject=subject, 
+            deriv=deriv, 
+            prf_file=prf_file, 
+            fs_label=roi)
 
         #----------------------------------------------------------------------------------------------------------------
         # Set the cutoff criteria based on which you'd like to select a vertex
@@ -184,7 +185,7 @@ def target_vertex(subject,
                 # get user input with set_threshold > included the possibility to have only pRF or structure only!
                 if hasattr(BV_, 'prf'):
                     size_val    = set_threshold(name="pRF size (beta)", borders=(0,5), set_default=round(min(BV_.prf.size)))
-                    r2_val      = set_threshold(name="r2 (variance)", borders=(0,1), set_default=round(min(BV_.prf.r2)))
+                    r2_val      = set_threshold(name="r2 (variance)", borders=(0,1), set_default=round(max(BV_.prf.r2)))
                     ecc_val     = set_threshold(name="eccentricity", borders=(0,15), set_default=round(min(BV_.prf.ecc)))
                     pol_val_lh  = set_threshold(name="polar angle lh", borders=(0,np.pi), set_default=round(np.pi))
                     pol_val_rh  = set_threshold(name="polar angle rh", borders=(-np.pi,0), set_default=round(-np.pi))
@@ -204,12 +205,12 @@ def target_vertex(subject,
 
                 # print out to confirm
                 print("Using these parameters to find vertex with minimal curvature:")
-                print(f" pRF size:        {round(size_val,2)}")
-                print(f" eccentricity:    {round(ecc_val,4)}")
-                print(f" r2:              {round(r2_val,4)}")
-                print(f" polar angle:     {pol_val}")
-                print(f" thickness:       {thick_val}")
-                print(f" depth:           {round(depth_val,4)}")
+                print(f" pRF size:      {round(size_val,2)}")
+                print(f" eccentricity:  {round(ecc_val,4)}")
+                print(f" variance (r2): {round(r2_val,4)}")
+                print(f" polar angle:   {pol_val}")
+                print(f" thickness:     {thick_val}")
+                print(f" depth:         {round(depth_val,4)}")
 
                 # Create mask using selected criteria
                 BV_.apply_thresholds(ecc_thresh=ecc_val,
@@ -248,7 +249,7 @@ def target_vertex(subject,
                 print(f" normal = {normal}")
 
                 if use_prf == True:
-                    os.system(f"call_prfinfo -s {subject} -v {vertex} --{tag} --{model} -p {prf_file}")
+                    os.system(f"call_prfinfo -s {subject} -v {vertex} --{tag} --{model} -p {prf_file} --plot")
 
             # # Smooth vertex maps
             # print("Smooth vertex maps for visual verification")
@@ -315,18 +316,19 @@ def target_vertex(subject,
             
             # print(prf_right)
             # print(prf_left)
-            best_vertex = pd.DataFrame({"hemi":     ["L", "R"],
-                                        "x":        [prf_left[0], prf_right[0]],
-                                        "y":        [prf_left[1], prf_right[1]],
-                                        "size":     [prf_left[2], prf_right[2]],
-                                        "beta":     [prf_left[3], prf_right[3]],
-                                        "baseline": [prf_left[4], prf_right[4]],
-                                        "r2":       [prf_left[5], prf_right[5]],
-                                        "ecc":      [BV_.prf.ecc[BV_.lh_best_vertex], BV_.prf.ecc[BV_.surface.lh_surf_data[0].shape[0]:][BV_.rh_best_vertex]],
-                                        "polar":    [BV_.prf.polar[BV_.lh_best_vertex], BV_.prf.polar[BV_.surface.lh_surf_data[0].shape[0]:][BV_.rh_best_vertex]],
-                                        "index":    [BV_.lh_best_vertex, BV_.rh_best_vertex],
-                                        "position": [BV_.lh_best_vertex_coord, BV_.rh_best_vertex_coord],
-                                        "normal":   [BV_.lh_normal, BV_.rh_normal]})
+            best_vertex = pd.DataFrame(
+                {"hemi":    ["L", "R"],
+                "x":        [prf_left[0], prf_right[0]],
+                "y":        [prf_left[1], prf_right[1]],
+                "size":     [prf_left[2], prf_right[2]],
+                "beta":     [prf_left[3], prf_right[3]],
+                "baseline": [prf_left[4], prf_right[4]],
+                "r2":       [prf_left[5], prf_right[5]],
+                "ecc":      [BV_.prf.ecc[BV_.lh_best_vertex], BV_.prf.ecc[BV_.surface.lh_surf_data[0].shape[0]:][BV_.rh_best_vertex]],
+                "polar":    [BV_.prf.polar[BV_.lh_best_vertex], BV_.prf.polar[BV_.surface.lh_surf_data[0].shape[0]:][BV_.rh_best_vertex]],
+                "index":    [BV_.lh_best_vertex, BV_.rh_best_vertex],
+                "position": [BV_.lh_best_vertex_coord, BV_.rh_best_vertex_coord],
+                "normal":   [BV_.lh_normal, BV_.rh_normal]})
 
             best_vertex.to_csv(prf_bestvertex)
             print(" writing {file}".format(file=prf_bestvertex))
