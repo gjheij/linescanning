@@ -120,7 +120,6 @@ Example:
         print(main.__doc__)
         sys.exit(2)
     
-    print(opts)
     for opt, arg in opts:
         if opt in ('-h', '--help'):
             print(main.__doc__)
