@@ -1250,7 +1250,13 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
     subject: int, optional
         subject number in the returned pandas DataFrame (should start with 1, ..., n)
     run: int, optional
-        run number you'd like to have the onset times for
+        run number you'd like to have the onset times forpsc_nilearn: b
+    baseline: float, int, optional
+        Duration of the baseline used to calculate the percent-signal change.
+    baseline_units: str, optional
+        Units of the baseline. Use `seconds`, `sec`, or `s` to imply that `baseline` is in seconds. We'll convert it to volumes internally. If `deleted_first_timepoints` is specified, `baseline` will be corrected for that as well.
+    psc_nilearn: bool, optional
+        Use nilearn method of calculating percent signal change. This method uses the mean of the entire timecourse, rather than the baseline period. Overwrites `baseline` and `baseline_units`.
     standardize: str, optional
         method of standardization (e.g., "zscore" or "psc")
     low_pass: bool, optional
@@ -1324,15 +1330,18 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
         func_tag=None,
         select_component=None,
         standardization="psc",
-        filter_pca=None,
+        filter_pca=0.2,
         ses1_2_ls=None,
         run_2_run=None,
         save_as=None,
         gm_range=[355, 375],
         tissue_thresholds=[0.7,0.7,0.7],
-        save_ext="pdf",
+        save_ext="svg",
         report=False,
         transpose=False,
+        baseline=20,
+        baseline_units="seconds",
+        psc_nilearn=True,
         **kwargs):
 
         self.sub                        = subject
@@ -1370,12 +1379,14 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
         self.filter_strategy            = filter_strategy
         self.report                     = report
         self.transpose                  = transpose
+        self.baseline                   = baseline
+        self.baseline_units             = baseline_units
+        self.psc_nilearn                = psc_nilearn
         self.__dict__.update(kwargs)
 
         # sampling rate and nyquist freq
         self.fs = 1/self.TR
         self.fn = self.fs/2
-
 
         if self.phys_file != None: 
                                                         
@@ -1420,13 +1431,13 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
             self.gm_per_run  = []    # keep track of GM-voxel indices
 
             # reports
-            for run, func in enumerate(self.func_file):
+            for run_id, func in enumerate(self.func_file):
                 
                 if self.verbose:
                     if isinstance(func, str):
                         print(f"Preprocessing {func}")
                     elif isinstance(func, np.ndarray):
-                        print(f"Preprocessing array {run+1} in list")
+                        print(f"Preprocessing array {run_id+1} in list")
                         
                         # override use_bids. Can't be use with numpy arrays
                         self.use_bids = False
@@ -1438,7 +1449,7 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                     for el in ['sub', 'run', 'ses']:
                         setattr(self, el, bids_comps[el])
                 else:
-                    self.run = run+1
+                    self.run = run_id+1
                     self.ses = None
                 
                 # make LSprep output directory
@@ -1466,13 +1477,25 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                             os.makedirs(dir, exist_ok=True)
 
                 # check if deleted_first_timepoints is list or not
-                delete_first = check_input_is_list(self, var="deleted_first_timepoints", list_element=run)
+                delete_first = check_input_is_list(
+                    self, 
+                    var="deleted_first_timepoints", 
+                    list_element=run_id)
 
                 # check if deleted_last_timepoints is list or not
-                delete_last = check_input_is_list(self, var="deleted_last_timepoints", list_element=run)
+                delete_last = check_input_is_list(
+                    self, 
+                    var="deleted_last_timepoints", 
+                    list_element=run_id)
+
+                # check if baseline is list or not
+                baseline = check_input_is_list(
+                    self, 
+                    var="baseline", 
+                    list_element=run_id)
 
                 if self.acompcor:
-                    ref_slice = self.ref_slice[run]
+                    ref_slice = self.ref_slice[run_id]
                 else:
                     ref_slice = None
 
@@ -1487,6 +1510,7 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                     deleted_last_timepoints=delete_last,
                     acompcor=self.acompcor,
                     reference_slice=ref_slice,
+                    baseline=baseline,
                     **kwargs)
                 
                 if self.standardization == "psc":
@@ -1546,10 +1570,16 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                 # decide on GM-voxels across runs by averaging tissue probabilities
                 if len(self.acomp_objs) > 1:
                     self.select_voxels_across_runs()
-                    self.gm_df = utils.select_from_df(self.df_func_acomp, expression='ribbon', indices=self.voxel_classification['gm'])
+                    self.gm_df = utils.select_from_df(
+                        self.df_func_acomp, 
+                        expression='ribbon', 
+                        indices=self.voxel_classification['gm'])
+                    
                     self.ribbon_voxels = [ii for ii in range(*self.gm_range) if ii in self.voxel_classification['gm']]
                     self.ribbon_df = utils.select_from_df(
-                        self.df_func_acomp, expression='ribbon', indices=self.ribbon_voxels)
+                        self.df_func_acomp, 
+                        expression='ribbon', 
+                        indices=self.ribbon_voxels)
                 else:
                     self.gm_df = self.df_gm_only[0].copy()
 
@@ -1600,6 +1630,7 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
         deleted_last_timepoints=0,
         acompcor=False,
         reference_slice=None,
+        baseline=None,
         **kwargs):
 
         #----------------------------------------------------------------------------------------------------------------------------------------------------
@@ -1610,7 +1641,7 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
             if func_file.endswith("mat"):
 
                 # load matlab file
-                self.ts_wcsmtSNR    = io.loadmat(func_file)
+                self.ts_wcsmtSNR = io.loadmat(func_file)
 
                 # decide which key to read from the .mat file
                 if self.func_tag == None:
@@ -1650,7 +1681,26 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
             self.ts_magnitude = func_file.copy()
             
         else:
-            raise NotImplementedError()
+            raise NotImplementedError(f"Input type {type(func_file)} not supported")
+
+        # check baseline
+        if not self.psc_nilearn:
+            if self.baseline_units == "seconds" or self.baseline_units == "s" or self.baseline_units == "sec":
+                baseline_vols_old = int(np.round(baseline*self.fs, 0))
+                if self.verbose:
+                    print(
+                        f" Baseline is {baseline} seconds, or {baseline_vols_old} TRs")
+            else:
+                baseline_vols_old = baseline
+                if self.verbose:
+                    print(f" Baseline is {baseline} TRs")
+
+            # correct for deleted samples
+            baseline_vols = baseline_vols_old-self.deleted_first_timepoints
+            txt = f" (also cut from baseline (was {baseline_vols_old}, now {baseline_vols} TRs)"
+        else:
+            txt = ""
+            baseline_vols = 0
 
         # trim beginning and end
         if deleted_last_timepoints != 0:
@@ -1661,7 +1711,7 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
             self.ts_corrected = self.ts_magnitude[:,deleted_first_timepoints:]
 
         if self.verbose:
-            print(f" Cutting {deleted_first_timepoints} volumes from beginning")
+            print(f" Cutting {deleted_first_timepoints} volumes from beginning{txt}")
 
         self.vox_cols = [f'vox {x}' for x in range(self.ts_corrected.shape[0])]
 
@@ -1679,7 +1729,12 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
             set_index=True)
 
         # dataframe of unfiltered PSC-data
-        self.data_psc = _standardize(self.data_raw.T, standardize='psc').T
+        self.data_psc = utils.percent_change(
+            self.data_raw, 
+            1, 
+            baseline=baseline_vols,
+            nilearn=self.psc_nilearn)
+
         self.data_psc_df = self.index_func(
             self.data_psc,
             columns=self.vox_cols, 
@@ -1718,7 +1773,12 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                 set_index=True)
 
             # dataframe of high-passed PSC-data (set NaN to 0)
-            self.hp_psc = np.nan_to_num(_standardize(self.hp_raw.T, standardize='psc').T)
+            self.hp_psc = np.nan_to_num(utils.percent_change(
+                self.hp_raw,
+                1, 
+                baseline=baseline_vols,
+                nilearn=self.psc_nilearn))
+                
             self.hp_psc_df = self.index_func(
                 self.hp_psc,
                 columns=self.vox_cols, 
@@ -1818,7 +1878,12 @@ for line-scanning data: """
                     set_index=True)
 
                 # make percent signal
-                self.hp_acomp_psc = np.nan_to_num(_standardize(self.hp_acomp_raw.T, standardize='psc').T)
+                self.hp_acomp_psc = np.nan_to_num(utils.percent_change(
+                    self.hp_acomp_raw,
+                    1, 
+                    baseline=baseline_vols,
+                    nilearn=self.psc_nilearn))
+
                 self.hp_acomp_psc_df = self.index_func(
                     self.hp_acomp_psc,
                     columns=self.vox_cols, 
@@ -2072,70 +2137,16 @@ order={self.poly_order}). """
 class Dataset(ParseFuncFile):
     """Dataset
 
-    Main class for retrieving, formatting, and preprocessing of all datatypes including fMRI (2D), eyetracker (*.edf), physiology (*.log [WIP]), and experiment files derived from `Exptools2` (*.tsv). If you leave `subject` and `run` empty, these elements will be derived from the file names. So if you have BIDS-like files, leave them empty and the dataframe will be created for you with the correct subject/run IDs
+    Main class for retrieving, formatting, and preprocessing of all datatypes including fMRI (2D), eyetracker (*.edf), physiology (*.log [WIP]), and experiment files derived from `Exptools2` (*.tsv). If you leave `subject` and `run` empty, these elements will be derived from the file names. So if you have BIDS-like files, leave them empty and the dataframe will be created for you with the correct subject/run IDs. 
+
+    Inherits from :class:`linescanning.dataset.ParseFuncFile`, so all arguments from that class are available and are passed on via `**kwargs`.	Only `func_file` and `verbose` are required. The first one is necessary because if the input is an **h5**-file, we'll set the attributes accordingly. Otherwise :class:`linescanning.dataset.ParseFuncFile` is invoked. `verbose` is required for aesthetic reasons. Given that :class:`linescanning.dataset.ParseFuncFile` inherits in turn from :class:`linescanning.dataset.ParseExpToolsFile`, you can pass the arguments for that class here as well.
     
     Parameters
     ----------
     func_file: str, list
         path or list of paths pointing to the output file of the experiment
-    tsv_file: str
-        path pointing to the output file of the experiment 
-    edf_file: str, list
-        path pointing to the output file of the experiment; can be a list of multiple
-    phys_file: str, list
-        output from PhysIO-toolbox containing the regressors that we need to implement for RETROICOR
-    phys_mat: str, list
-        output *.mat file containing the heart rate and respiration traces
-    subject: int, optional
-        subject number in the returned pandas DataFrame (should start with 1, ..., n)
-    run: int, optional
-        run number you'd like to have the onset times for
-    lb: float, optional
-        lower bound for signal filtering
-    TR: float, optional
-        repetition time to correct onset times for deleted volumes
-    button: bool
-        boolean whether to include onset times of button responses (default is false)        
-    deleted_first_timepoints: int, list, optional
-        number of volumes deleted at the beginning of the timeseries. Can be specified for each individual run if `func_file` is a list
-    deleted_last_timepoints: int, list, optional
-        number of volumes deleted at the end of the timeseries. Can be specified for each individual run if `func_file` is a list
-    window_size: int, optional
-        size of window for rolling median and Savitsky-Golay filter
-    poly_order: int, optional
-        The order of the polynomial used to fit the samples. polyorder must be less than window_length.
-    use_bids: bool, optional
-        If true, we'll read BIDS-components such as 'sub', 'run', 'task', etc from the input file and use those as indexers, rather than sequential 1,2,3.
     verbose: bool, optional
         Print details to the terminal, default is False
-    retroicor: bool, optional
-        WIP: implementation of retroicor, requires the specification of `phys_file` and `phys_mat` containing the output from the PhysIO-toolbox
-    n_pca: int, optional
-        Number of components to use for WM/CSF PCA during aCompCor
-    select_component: int, optional
-        If `verbose=True` and `aCompcor=True`, we'll create a scree-plot of the PCA components. With this flag, you can re-run this call but regress out only this particular component. [Deprecated: `filter_pca` is much more effective]
-    filter_pca: float, optional
-        High-pass filter the components from the PCA during aCompCor. This seems to be pretty effective. Default is 0.2Hz.
-    ses1_2_ls: str, optional:
-        Transformation mapping `ses-1` anatomy to current linescanning-session, ideally the multi-slice image that is acquired directly before the first `1slice`-image. Default is None.
-    run_2_run: str, list, optional
-        (List of) Transformation(s) mapping the slices of subsequent runs to the first acquired `1slice` image. Default is None.
-    save_as: str, optional
-        Directory + basename for several figures that can be created during the process (mainly during aCompCor)        
-    phase_onset: int, optional
-        Which phase of exptools-trial should be considered the actual stimulus trial. Usually, `phase_onset=0` means the interstimulus interval. Therefore, default = 1
-    stim_duration: str, int, optional
-        If desired, add stimulus duration to onset dataframe. Can be one of 'None', 'stim' (to use duration from exptools'  log file) or any given integer
-    add_events: str, list, optional
-        Add additional events to onset dataframe. Must be an existing column in the exptools log file. For intance, `responses` and `event_type = stim` are read in by default, but if we have a separate column containing the onset of some target (e.g., 'target_onset'), we can add these times to the dataframe with `add_events='target_onset'`.
-    event_names: str, list, optional
-        Custom names for manually added events through `add_events` if the column names are not the names you want to use in the dataframe. E.g., if I find `target_onset` too long of a name, I can specify `event_names='target'`. If `add_events` is a list, then `event_names` must be a list of equal length if custom names are desired. By default we'll take the names from `add_events`
-    RTs: bool, optional
-        If we have a design that required some response to a stimulus, we can request the reaction times. Default = False
-    RT_relative_to: str, optional
-        If `RTs=True`, we need to know relative to what time the button response should be offset. Only correct responses are considered, as there's a conditional statement that requires the present of the reference time (e.g., `target_onset`) and button response. If there's a response but no reference time, the reaction time cannot be calculated. If you do not have a separate reference time column, you can specify `RT_relative_to='start'` to calculate the reaction time relative to onset time. If `RT_relative_to != 'start'`, I'll assume you had a target in your experiment in X/n_trials. From this, we can calculate the accuracy and save that to `self.df_accuracy`, while reaction times are saved in`self.df_rts`
-    transpose: bool, optional
-        The data needs to be in the format of <time,voxels>. We'll be trying to force the input data into this format, but sometimes this breaks. This flag serves as an opportunity to flip whatever the default is for a particular input file (e.g., `gii`, `npy`, or `np.ndarray`), so that your final dataframe has the format it needs to have. For gifti-input, we transpose by default. `transpose=True` turns this transposing *off*. For `npy`-inputs, we do **NOT** transpose (we assume the numpy arrays are already in <time,voxels> format). `transpose=True` will transpose this input.
 
     Example
     ----------
@@ -2164,45 +2175,8 @@ class Dataset(ParseFuncFile):
 
     def __init__(
         self, 
-        func_file,
-        subject=1,
-        run=1,
-        TR=0.105, 
-        lb=0.01, 
-        tsv_file=None,
-        edf_file=None,
-        phys_file=None,
-        phys_mat=None,
-        low_pass=False,
-        button=False,
-        deleted_first_timepoints=0, 
-        deleted_last_timepoints=0, 
-        window_size=11,
-        poly_order=3,
-        attribute_tag=None,
-        hdf_key="df",
-        use_bids=True,
-        verbose=False,
-        retroicor=False,
-        filter=None,
-        n_pca=5,
-        select_component=None,
-        filter_pca=0.2,
-        ses1_2_ls=None,
-        run_2_run=None,
-        save_as=None,
-        gm_range=[355,375],
-        tissue_thresholds=[0.7,0.7,0.7],
-        save_ext="svg",
-        filter_strategy="hp",
-        report=False,
-        RTs=False,
-        RT_relative_to=None,
-        phase_onset=1,
-        stim_duration=None,
-        add_events=None,
-        event_names=None,   
-        transpose=False,              
+        func_file,  
+        verbose=False,         
         **kwargs):
 
         if verbose:
@@ -2220,41 +2194,7 @@ class Dataset(ParseFuncFile):
             print(f" Reading from {func_file}")
             self.from_hdf(func_file)
         else:
-            super().__init__(
-                func_file,
-                TR=TR,
-                subject=subject,
-                run=run,
-                lb=lb, 
-                deleted_first_timepoints=deleted_first_timepoints,
-                deleted_last_timepoints=deleted_last_timepoints,
-                window_size=window_size,
-                poly_order=poly_order,
-                tsv_file=tsv_file,
-                edf_file=edf_file,
-                phys_file=phys_file,
-                phys_mat=phys_mat,
-                use_bids=use_bids,
-                verbose=verbose,
-                retroicor=retroicor,
-                n_pca=n_pca,
-                select_component=select_component,
-                filter_pca=filter_pca,
-                ses1_2_ls=ses1_2_ls,
-                run_2_run=run_2_run,
-                save_as=save_as,
-                gm_range=gm_range,
-                tissue_thresholds=tissue_thresholds,
-                save_ext=save_ext,
-                filter_strategy=filter_strategy,
-                report=report,
-                RTs=RTs,
-                RT_relative_to=RT_relative_to,
-                add_events=add_events,
-                event_names=event_names,
-                phase_onset=phase_onset,
-                transpose=transpose,
-                **kwargs)
+            super().__init__(func_file, **kwargs)
 
         if verbose:
             print("\nDATASET: created")
