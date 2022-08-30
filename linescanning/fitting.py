@@ -393,7 +393,7 @@ class NideconvFitter():
         self, 
         add_offset=True, 
         axs=None, 
-        title="Average HRF across voxels", 
+        title="Average HRF across events", 
         save_as=None, 
         error_type="sem", 
         ttp=False, 
@@ -685,7 +685,6 @@ class NideconvFitter():
                         axs=ax,
                         title=col,
                         labels=set_labels,
-                        font_size=16,
                         add_hline='default',
                         **kwargs)
 
@@ -702,17 +701,7 @@ class NideconvFitter():
                         xx=self.time,
                         axs=axs,
                         labels=labels,
-                        font_size=16,
                         add_hline='default',
-                        **kwargs)
-            else:
-                    plotting.LazyPlot(
-                        self.all_voxels_in_event,
-                        xx=self.time,
-                        font_size=16,
-                        labels=labels,
-                        add_hline='default',
-                        figsize=figsize,
                         **kwargs)
 
         if save_as:
@@ -741,7 +730,6 @@ class NideconvFitter():
             axs=axs,
             error=cf.ci_upsampled,
             color=ci_color,
-            font_size=16,
             **kwargs)
 
         if save_as:
@@ -801,7 +789,6 @@ class NideconvFitter():
                 xx=self.time,
                 error=self.error_for_plot,
                 axs=ax,
-                font_size=16,
                 **kwargs)
             if not axs:
                 if save_as:
