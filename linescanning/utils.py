@@ -3,6 +3,7 @@ import fnmatch
 import json
 import matplotlib.colors as mcolors
 import nibabel as nb
+from nilearn.signal import _standardize
 import numpy as np
 import operator
 import os
@@ -807,9 +808,9 @@ def percent_change(ts, ax, nilearn=False, baseline=20):
     Parameters
     ----------
     ts: numpy.ndarray
-        Array representing the data to be converted to percent signal change.
+        Array representing the data to be converted to percent signal change. Should be of shape (n_voxels, n_timepoints)
     ax: int
-        Axis over which to perform the conversion.
+        Axis over which to perform the conversion. If shape (n_voxels, n_timepoints), then ax=1. If shape (n_timepoints, n_voxels), then ax=0.
     nilearn: bool, optional
         Use nilearn method, by default False
     baseline: int, optional
@@ -818,7 +819,7 @@ def percent_change(ts, ax, nilearn=False, baseline=20):
     Returns
     ----------
     numpy.ndarray
-        Array with the same size as `ts`, but with percent signal change.
+        Array with the same size as `ts` (voxels,time), but with percent signal change.
 
     Raises
     ----------
@@ -827,21 +828,26 @@ def percent_change(ts, ax, nilearn=False, baseline=20):
     """
     
     if nilearn:
-        return (ts / np.expand_dims(np.mean(ts, ax), ax) - 1) * 100 
+        if ax == 0:
+            return _standardize(ts, standardize='psc')
+        else:
+            return _standardize(ts.T, standardize='psc').T
     else:
         # first step of PSC; set NaNs to zero if dividing by 0 (in case of crappy timecourses)
-        ts *= np.nan_to_num((100/np.mean(ts, axis=ax)))
+        ts *= np.expand_dims(np.nan_to_num((100/np.mean(ts, axis=ax))), ax)
 
         # get median of baseline
         if ax == 0:
-            median_baseline = np.median(ts[:baseline,:], axis=0)
+            median_baseline = np.median(ts[:baseline,:], axis=1)
         elif ax == 1:
-            median_baseline = np.median(ts[:,:baseline], axis=1)
+            median_baseline = np.median(ts[:,:baseline], axis=0)
         else:
             raise ValueError("ax must be 0 or 1")
 
         # subtract
-        return ts -= median_baseline
+        ts -= np.expand_dims(median_baseline,ax)
+        
+        return ts
 
 def select_from_df(df, expression="run = 1", index=True, indices=None):
     """select_from_df
