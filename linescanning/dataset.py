@@ -78,16 +78,17 @@ class ParseEyetrackerFile():
     >>> onsets = pd.concat(onsets).set_index(['subject', 'run', 'event_type'])
     """
 
-    def __init__(self, 
-                 edf_file, 
-                 subject=1, 
-                 low_pass_pupil_f=6.0, 
-                 high_pass_pupil_f=0.01,
-                 func_file=None, 
-                 TR1=0.105, 
-                 TR2=None, 
-                 verbose=False, 
-                 use_bids=True):
+    def __init__(
+        self, 
+        edf_file, 
+        subject=1, 
+        low_pass_pupil_f=6.0, 
+        high_pass_pupil_f=0.01,
+        func_file=None, 
+        TR1=0.105, 
+        TR2=None, 
+        verbose=False, 
+        use_bids=True):
 
         self.edf_file           = edf_file
         self.func_file          = func_file
@@ -147,9 +148,10 @@ class ParseEyetrackerFile():
 
                 self.ho.add_edf_file(edf_file)
                 self.ho.edf_message_data_to_hdf(alias=alias)
-                self.ho.edf_gaze_data_to_hdf(alias=alias,
-                                             pupil_hp=self.high_pass_pupil_f,
-                                             pupil_lp=self.low_pass_pupil_f)
+                self.ho.edf_gaze_data_to_hdf(
+                    alias=alias,
+                    pupil_hp=self.high_pass_pupil_f,
+                    pupil_lp=self.low_pass_pupil_f)
         else:
             self.ho.open_hdf_file()
 
@@ -258,20 +260,47 @@ class ParseEyetrackerFile():
                 duration_sec, n_samples))
 
         # Fetch a bunch of data
-        pupil_raw = np.squeeze(self.ho.signal_during_period(time_period=[
-                               session_start_EL_time, session_stop_EL_time+1], alias=alias, signal='pupil', requested_eye=eye))
-        pupil_int = np.squeeze(self.ho.signal_during_period(time_period=[
-                               session_start_EL_time, session_stop_EL_time+1], alias=alias, signal='pupil_int', requested_eye=eye))
-        pupil_bp = np.squeeze(self.ho.signal_during_period(time_period=[
-                              session_start_EL_time, session_stop_EL_time+1], alias=alias, signal='pupil_bp', requested_eye=eye))
-        pupil_lp = np.squeeze(self.ho.signal_during_period(time_period=[
-                              session_start_EL_time, session_stop_EL_time+1], alias=alias, signal='pupil_lp', requested_eye=eye))
-        pupil_hp = np.squeeze(self.ho.signal_during_period(time_period=[
-                              session_start_EL_time, session_stop_EL_time+1], alias=alias, signal='pupil_hp', requested_eye=eye))
-        pupil_bp_psc = np.squeeze(self.ho.signal_during_period(time_period=[
-                                  session_start_EL_time, session_stop_EL_time+1], alias=alias, signal='pupil_bp_psc', requested_eye=eye))
-        pupil_bp_psc_c = np.squeeze(self.ho.signal_during_period(time_period=[
-                                    session_start_EL_time, session_stop_EL_time+1], alias=alias, signal='pupil_bp_clean_psc', requested_eye=eye))
+        pupil_raw = np.squeeze(
+            self.ho.signal_during_period(
+                time_period=[session_start_EL_time, session_stop_EL_time+1], 
+                alias=alias, signal='pupil', 
+                requested_eye=eye))
+        pupil_int = np.squeeze(
+            self.ho.signal_during_period(
+                time_period=[session_start_EL_time, session_stop_EL_time+1], 
+                alias=alias, 
+                signal='pupil_int', 
+                requested_eye=eye))
+        pupil_bp = np.squeeze(
+            self.ho.signal_during_period(
+                time_period=[session_start_EL_time, session_stop_EL_time+1], 
+                alias=alias, 
+                signal='pupil_bp', 
+                requested_eye=eye))
+        pupil_lp = np.squeeze(
+            self.ho.signal_during_period(
+                time_period=[session_start_EL_time, session_stop_EL_time+1], 
+                alias=alias, 
+                signal='pupil_lp', 
+                requested_eye=eye))
+        pupil_hp = np.squeeze(
+            self.ho.signal_during_period(
+                time_period=[session_start_EL_time, session_stop_EL_time+1], 
+                alias=alias, 
+                signal='pupil_hp', 
+                requested_eye=eye))
+        pupil_bp_psc = np.squeeze(
+            self.ho.signal_during_period(
+                time_period=[session_start_EL_time, session_stop_EL_time+1], 
+                alias=alias, 
+                signal='pupil_bp_psc', 
+                requested_eye=eye))
+        pupil_bp_psc_c = np.squeeze(
+            self.ho.signal_during_period(
+                time_period=[session_start_EL_time, session_stop_EL_time+1], 
+                alias=alias, 
+                signal='pupil_bp_clean_psc', 
+                requested_eye=eye))
 
         # Do some plotting
         if not div:
@@ -290,11 +319,12 @@ class ParseEyetrackerFile():
             print(" Start time exp = ", round(start_exp_time, 2))
 
         # get onset time of blinks, cluster blinks that occur within 350 ms
-        onsets = self.filter_for_eyeblinks(pupil_raw.to_numpy(),
-                                           skip_time=10,
-                                           filt_window=500,
-                                           sample_rate=sample_rate,
-                                           exp_start=start_exp_time)
+        onsets = self.filter_for_eyeblinks(
+            pupil_raw.to_numpy(),
+            skip_time=10,
+            filt_window=500,
+            sample_rate=sample_rate,
+            exp_start=start_exp_time)
 
         # normal eye blink is 1 blink every 4 seconds, throw warning if we found more than a blink per second
         # ref: https://www.sciencedirect.com/science/article/abs/pii/S0014483599906607
@@ -314,13 +344,14 @@ class ParseEyetrackerFile():
         # np.save(opj(func_dir, '{}_ses-2_task-LR_{}_pupilsize.npy'.format(subject, alias.replace('_','-'))), resamp)
 
         # build dataframe with relevant information
-        df_space_eye = pd.DataFrame({"pupil_raw": pupil_raw,
-                                     "pupil_int": pupil_int,
-                                     "pupil_bp": pupil_bp,
-                                     "pupil_lp": pupil_lp,
-                                     "pupil_hp": pupil_hp,
-                                     "pupil_bp_psc": pupil_bp_psc,
-                                     "pupil_bp_psc_c": pupil_bp_psc_c})
+        df_space_eye = pd.DataFrame({
+            "pupil_raw": pupil_raw,
+            "pupil_int": pupil_int,
+            "pupil_bp": pupil_bp,
+            "pupil_lp": pupil_lp,
+            "pupil_hp": pupil_hp,
+            "pupil_bp_psc": pupil_bp_psc,
+            "pupil_bp_psc_c": pupil_bp_psc_c})
 
         # index
         df_space_eye['subject'], df_space_eye['run'] = self.sub, run
@@ -488,25 +519,26 @@ class ParseExpToolsFile(ParseEyetrackerFile):
     >>> onsets = pd.concat(onsets).set_index(['subject', 'run', 'event_type'])
     """
 
-    def __init__(self, 
-                 tsv_file, 
-                 subject=1, 
-                 run=1, 
-                 button=False, 
-                 blinks=None, 
-                 RTs=False,
-                 RT_relative_to=None,
-                 TR=0.105, 
-                 deleted_first_timepoints=0, 
-                 edfs=None, 
-                 funcs=None, 
-                 use_bids=True,
-                 verbose=False,
-                 phase_onset=1,
-                 stim_duration=None,
-                 add_events=None,
-                 event_names=None,
-                 **kwargs):
+    def __init__(
+        self, 
+        tsv_file, 
+        subject=1, 
+        run=1, 
+        button=False, 
+        blinks=None, 
+        RTs=False,
+        RT_relative_to=None,
+        TR=0.105, 
+        deleted_first_timepoints=0, 
+        edfs=None, 
+        funcs=None, 
+        use_bids=True,
+        verbose=False,
+        phase_onset=1,
+        stim_duration=None,
+        add_events=None,
+        event_names=None,
+        **kwargs):
 
         self.tsv_file                       = tsv_file
         self.sub                            = int(subject)
@@ -528,12 +560,13 @@ class ParseExpToolsFile(ParseEyetrackerFile):
         self.__dict__.update(kwargs)
 
         if self.edfs != None:
-            super().__init__(self.edfs, 
-                            subject=self.sub, 
-                            func_file=self.funcs, 
-                            TR1=self.TR, 
-                            use_bids=self.use_bids, 
-                            verbose=self.verbose)
+            super().__init__(
+                self.edfs, 
+                subject=self.sub, 
+                func_file=self.funcs, 
+                TR1=self.TR, 
+                use_bids=self.use_bids, 
+                verbose=self.verbose)
         else:
             self.include_blinks = False
 
@@ -1064,28 +1097,30 @@ class ParsePhysioFile():
     ----------
     >>> physio_file = opj(os.path.dirname(func_file), "sub-001_ses-1_task-SR_run-1_physio.txt")
     >>> physio_mat  = opj(os.path.dirname(func_file), "sub-001_ses-1_task-SR_run-1_physio.mat")
-    >>> physio = utils.ParsePhysioFile(physio_file,
-    >>>                                physio_mat=physio_mat,
-    >>>                                subject=func.subject,
-    >>>                                run=func.run,
-    >>>                                TR=func.TR,
-    >>>                                deleted_first_timepoints=func.deleted_first_timepoints,
-    >>>                                deleted_last_timepoints=func.deleted_last_timepoints)
+    >>> physio = utils.ParsePhysioFile(
+    >>>     physio_file,
+    >>>     physio_mat=physio_mat,
+    >>>     subject=func.subject,
+    >>>     run=func.run,
+    >>>     TR=func.TR,
+    >>>     deleted_first_timepoints=func.deleted_first_timepoints,
+    >>>     deleted_last_timepoints=func.deleted_last_timepoints)
     >>> physio_df   = physio.get_physio(index=False)
     """
 
-    def __init__(self, 
-                 physio_file, 
-                 physio_mat=None, 
-                 subject=1, 
-                 run=1, 
-                 TR=0.105, 
-                 orders=[3,4,1], 
-                 deleted_first_timepoints=0, 
-                 deleted_last_timepoints=0, 
-                 use_bids=False, 
-                 verbose=True,
-                 **kwargs):
+    def __init__(
+        self, 
+        physio_file, 
+        physio_mat=None, 
+        subject=1, 
+        run=1, 
+        TR=0.105, 
+        orders=[3,4,1], 
+        deleted_first_timepoints=0, 
+        deleted_last_timepoints=0, 
+        use_bids=False, 
+        verbose=True,
+        **kwargs):
 
         self.physio_file                = physio_file
         self.physio_mat                 = physio_mat
@@ -1142,27 +1177,30 @@ class ParsePhysioFile():
                 else:
                     mat_file = None
 
-                self.preprocess_physio_file(func, 
-                                            physio_mat=mat_file,
-                                            deleted_first_timepoints=delete_first,
-                                            deleted_last_timepoints=delete_last)
+                self.preprocess_physio_file(
+                    func, 
+                    physio_mat=mat_file,
+                    deleted_first_timepoints=delete_first,
+                    deleted_last_timepoints=delete_last)
 
                 df_physio.append(self.get_physio(index=False))
 
             self.df_physio = pd.concat(df_physio).set_index(['subject', 'run', 't'])
         
-    def preprocess_physio_file(self, 
-                               physio_tsv, 
-                               physio_mat=None, 
-                               deleted_first_timepoints=0, 
-                               deleted_last_timepoints=0):
+    def preprocess_physio_file(
+        self, 
+        physio_tsv, 
+        physio_mat=None, 
+        deleted_first_timepoints=0, 
+        deleted_last_timepoints=0):
 
-        self.physio_data = pd.read_csv(physio_tsv,
-                                        header=None,
-                                        sep="\t",
-                                        engine='python',
-                                        skiprows=deleted_first_timepoints,
-                                        usecols=list(range(0, len(self.physio_cols))))
+        self.physio_data = pd.read_csv(
+            physio_tsv,
+            header=None,
+            sep="\t",
+            engine='python',
+            skiprows=deleted_first_timepoints,
+            usecols=list(range(0, len(self.physio_cols))))
 
         self.physio_df = pd.DataFrame(self.physio_data)
         self.physio_df.drop(self.physio_df.tail(deleted_last_timepoints).index,inplace=True)
@@ -1259,42 +1297,43 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
     >>> psc = func.get_psc(index=True)
     """
 
-    def __init__(self, 
-                 func_file, 
-                 subject=1, 
-                 run=1,
-                 filter_strategy="hp",
-                 TR=0.105, 
-                 lb=0.01,
-                 deleted_first_timepoints=0, 
-                 deleted_last_timepoints=0, 
-                 window_size=11,
-                 poly_order=3,
-                 attribute_tag=None,
-                 hdf_key="df",
-                 tsv_file=None,
-                 edf_file=None,
-                 phys_file=None,
-                 phys_mat=None,
-                 use_bids=True,
-                 button=False,
-                 verbose=True,
-                 retroicor=False,
-                 acompcor=False,
-                 n_pca=5,
-                 func_tag=None,
-                 select_component=None,
-                 standardization="psc",
-                 filter_pca=None,
-                 ses1_2_ls=None,
-                 run_2_run=None,
-                 save_as=None,
-                 gm_range=[355, 375],
-                 tissue_thresholds=[0.7,0.7,0.7],
-                 save_ext="pdf",
-                 report=False,
-                 transpose=False,
-                 **kwargs):
+    def __init__(
+        self, 
+        func_file, 
+        subject=1, 
+        run=1,
+        filter_strategy="hp",
+        TR=0.105, 
+        lb=0.01,
+        deleted_first_timepoints=0, 
+        deleted_last_timepoints=0, 
+        window_size=11,
+        poly_order=3,
+        attribute_tag=None,
+        hdf_key="df",
+        tsv_file=None,
+        edf_file=None,
+        phys_file=None,
+        phys_mat=None,
+        use_bids=True,
+        button=False,
+        verbose=True,
+        retroicor=False,
+        acompcor=False,
+        n_pca=5,
+        func_tag=None,
+        select_component=None,
+        standardization="psc",
+        filter_pca=None,
+        ses1_2_ls=None,
+        run_2_run=None,
+        save_as=None,
+        gm_range=[355, 375],
+        tissue_thresholds=[0.7,0.7,0.7],
+        save_ext="pdf",
+        report=False,
+        transpose=False,
+        **kwargs):
 
         self.sub                        = subject
         self.run                        = run
@@ -1340,14 +1379,15 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
 
         if self.phys_file != None: 
                                                         
-            ParsePhysioFile.__init__(self, 
-                                     self.phys_file, 
-                                     physio_mat=self.phys_mat, 
-                                     use_bids=self.use_bids,
-                                     TR=self.TR,
-                                     deleted_first_timepoints=self.deleted_first_timepoints,
-                                     deleted_last_timepoints=self.deleted_last_timepoints,
-                                     **kwargs)
+            ParsePhysioFile.__init__(
+                self, 
+                self.phys_file, 
+                physio_mat=self.phys_mat, 
+                use_bids=self.use_bids,
+                TR=self.TR,
+                deleted_first_timepoints=self.deleted_first_timepoints,
+                deleted_last_timepoints=self.deleted_last_timepoints,
+                **kwargs)
         
         if self.acompcor:
             if isinstance(self.ref_slice, str):
@@ -1440,13 +1480,14 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                     print(f" Filtering strategy: '{self.filter_strategy}'")
                     print(f" Standardization strategy: '{self.standardization}'")
 
-                self.preprocess_func_file(func, 
-                                          run=self.run, 
-                                          deleted_first_timepoints=delete_first,
-                                          deleted_last_timepoints=delete_last,
-                                          acompcor=self.acompcor,
-                                          reference_slice=ref_slice,
-                                          **kwargs)
+                self.preprocess_func_file(
+                    func, 
+                    run=self.run, 
+                    deleted_first_timepoints=delete_first,
+                    deleted_last_timepoints=delete_last,
+                    acompcor=self.acompcor,
+                    reference_slice=ref_slice,
+                    **kwargs)
                 
                 if self.standardization == "psc":
                     self.df_psc.append(self.get_data(index=False, filter_strategy=self.filter_strategy, dtype='psc', acompcor=self.acompcor))
@@ -1514,17 +1555,18 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
 
         # now that we have nicely formatted functional data, initialize the ParseExpToolsFile-class
         if self.tsv_file != None: 
-            ParseExpToolsFile.__init__(self,
-                                       self.tsv_file, 
-                                       subject=self.sub, 
-                                       deleted_first_timepoints=self.deleted_first_timepoints, 
-                                       TR=self.TR, 
-                                       edfs=self.edf_file, 
-                                       funcs=self.func_file, 
-                                       use_bids=self.use_bids,
-                                       button=self.button,
-                                       verbose=self.verbose,
-                                       **kwargs)
+            ParseExpToolsFile.__init__(
+                self,
+                self.tsv_file, 
+                subject=self.sub, 
+                deleted_first_timepoints=self.deleted_first_timepoints, 
+                TR=self.TR, 
+                edfs=self.edf_file, 
+                funcs=self.func_file, 
+                use_bids=self.use_bids,
+                button=self.button,
+                verbose=self.verbose,
+                **kwargs)
 
         # write boilerplate
         if self.report:
@@ -1537,11 +1579,12 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                 raise FileNotFoundError(f"Could not find 'default.yml'-file in '{str(Path(utils.__file__).parents[1]/'misc')}'")
             
             if self.report:
-                self.report_obj = core.Report(os.path.dirname(self.lsprep_dir),
-                                              self.run_uuid,
-                                              subject_id=self.sub,
-                                              packagename="lsprep",
-                                              config=self.config)
+                self.report_obj = core.Report(
+                    os.path.dirname(self.lsprep_dir),
+                    self.run_uuid,
+                    subject_id=self.sub,
+                    packagename="lsprep",
+                    config=self.config)
 
                 # generate report
                 self.report_obj.generate_report()
@@ -1549,14 +1592,15 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                 if self.verbose:
                     print(f" Saving report to {str(self.report_obj.out_dir/self.report_obj.out_filename)}")                                      
 
-    def preprocess_func_file(self, 
-                             func_file, 
-                             run=1, 
-                             deleted_first_timepoints=0, 
-                             deleted_last_timepoints=0,
-                             acompcor=False,
-                             reference_slice=None,
-                             **kwargs):
+    def preprocess_func_file(
+        self, 
+        func_file, 
+        run=1, 
+        deleted_first_timepoints=0, 
+        deleted_last_timepoints=0,
+        acompcor=False,
+        reference_slice=None,
+        **kwargs):
 
         #----------------------------------------------------------------------------------------------------------------------------------------------------
         # BASIC DATA LOADING
@@ -1626,30 +1670,33 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
 
         # dataframe of raw, unfiltered data
         self.data_raw = self.ts_corrected.copy()
-        self.data_raw_df = self.index_func(self.data_raw, 
-                                           columns=self.vox_cols, 
-                                           subject=self.sub, 
-                                           run=run, 
-                                           TR=self.TR,
-                                           set_index=True)
+        self.data_raw_df = self.index_func(
+            self.data_raw, 
+            columns=self.vox_cols, 
+            subject=self.sub, 
+            run=run, 
+            TR=self.TR,
+            set_index=True)
 
         # dataframe of unfiltered PSC-data
         self.data_psc = _standardize(self.data_raw.T, standardize='psc').T
-        self.data_psc_df = self.index_func(self.data_psc,
-                                           columns=self.vox_cols, 
-                                           subject=self.sub,
-                                           run=run, 
-                                           TR=self.TR, 
-                                           set_index=True)
+        self.data_psc_df = self.index_func(
+            self.data_psc,
+            columns=self.vox_cols, 
+            subject=self.sub,
+            run=run, 
+            TR=self.TR, 
+            set_index=True)
 
         # dataframe of unfiltered z-scored data
         self.data_zscore = _standardize(self.data_raw.T, standardize='zscore').T
-        self.data_zscore_df = self.index_func(self.data_zscore,
-                                              columns=self.vox_cols, 
-                                              subject=self.sub, 
-                                              run=run, 
-                                              TR=self.TR,
-                                              set_index=True)
+        self.data_zscore_df = self.index_func(
+            self.data_zscore,
+            columns=self.vox_cols, 
+            subject=self.sub, 
+            run=run, 
+            TR=self.TR,
+            set_index=True)
 
         #----------------------------------------------------------------------------------------------------------------------------------------------------
         # HIGH PASS FILTER
@@ -1662,30 +1709,33 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                 print(f" DCT-high pass filter [removes low frequencies <{self.lb} Hz] to correct low-frequency drifts.")
 
             self.hp_raw, self._cosine_drift = preproc.highpass_dct(self.data_raw, self.lb, TR=self.TR)
-            self.hp_raw_df = self.index_func(self.hp_raw,
-                                             columns=self.vox_cols, 
-                                             subject=self.sub, 
-                                             run=run, 
-                                             TR=self.TR,
-                                             set_index=True)
+            self.hp_raw_df = self.index_func(
+                self.hp_raw,
+                columns=self.vox_cols, 
+                subject=self.sub, 
+                run=run, 
+                TR=self.TR,
+                set_index=True)
 
             # dataframe of high-passed PSC-data (set NaN to 0)
             self.hp_psc = np.nan_to_num(_standardize(self.hp_raw.T, standardize='psc').T)
-            self.hp_psc_df = self.index_func(self.hp_psc,
-                                             columns=self.vox_cols, 
-                                             subject=self.sub,
-                                             run=run, 
-                                             TR=self.TR, 
-                                             set_index=True)
+            self.hp_psc_df = self.index_func(
+                self.hp_psc,
+                columns=self.vox_cols, 
+                subject=self.sub,
+                run=run, 
+                TR=self.TR, 
+                set_index=True)
 
             # dataframe of high-passed z-scored data
             self.hp_zscore = _standardize(self.hp_raw.T, standardize='zscore').T
-            self.hp_zscore_df = self.index_func(self.hp_zscore,
-                                                columns=self.vox_cols, 
-                                                subject=self.sub, 
-                                                run=run, 
-                                                TR=self.TR,
-                                                set_index=True)
+            self.hp_zscore_df = self.index_func(
+                self.hp_zscore,
+                columns=self.vox_cols, 
+                subject=self.sub, 
+                run=run, 
+                TR=self.TR,
+                set_index=True)
 
             # save SD and Mean so we can go from zscore back to original
             self.zscore_SD = self.hp_raw.std(axis=-1, keepdims=True)
@@ -1731,47 +1781,51 @@ for line-scanning data: """
                     save_as = None
 
                 # aCompCor implemented in `preproc` module
-                self.acomp = preproc.aCompCor(self.hp_zscore_df,
-                                              subject=self.subject,
-                                              run=self.run,
-                                              trg_session=self.target_session,
-                                              reference_slice=reference_slice,
-                                              trafo_list=self.trafos,
-                                              n_pca=self.n_pca,
-                                              filter_pca=self.filter_pca,
-                                              save_as=save_as,
-                                              select_component=self.select_component, 
-                                              summary_plot=self.verbose,
-                                              TR=self.TR,
-                                              foldover=self.foldover,
-                                              verbose=self.verbose,
-                                              save_ext=self.save_ext,
-                                              **kwargs)
+                self.acomp = preproc.aCompCor(
+                    self.hp_zscore_df,
+                    subject=self.subject,
+                    run=self.run,
+                    trg_session=self.target_session,
+                    reference_slice=reference_slice,
+                    trafo_list=self.trafos,
+                    n_pca=self.n_pca,
+                    filter_pca=self.filter_pca,
+                    save_as=save_as,
+                    select_component=self.select_component, 
+                    summary_plot=self.verbose,
+                    TR=self.TR,
+                    foldover=self.foldover,
+                    verbose=self.verbose,
+                    save_ext=self.save_ext,
+                    **kwargs)
                 
-                self.hp_acomp_df = self.index_func(self.acomp.acomp_data,
-                                                columns=self.vox_cols, 
-                                                subject=self.sub, 
-                                                run=run, 
-                                                TR=self.TR,
-                                                set_index=True)
+                self.hp_acomp_df = self.index_func(
+                    self.acomp.acomp_data,
+                    columns=self.vox_cols, 
+                    subject=self.sub, 
+                    run=run, 
+                    TR=self.TR,
+                    set_index=True)
                 
                 # multiply by SD and add mean
                 self.hp_acomp_raw = (self.acomp.acomp_data * self.zscore_SD) + self.zscore_M
-                self.hp_acomp_raw_df = self.index_func(self.hp_acomp_raw,
-                                                    columns=self.vox_cols, 
-                                                    subject=self.sub, 
-                                                    run=run, 
-                                                    TR=self.TR,
-                                                    set_index=True)
+                self.hp_acomp_raw_df = self.index_func(
+                    self.hp_acomp_raw,
+                    columns=self.vox_cols, 
+                    subject=self.sub, 
+                    run=run, 
+                    TR=self.TR,
+                    set_index=True)
 
                 # make percent signal
                 self.hp_acomp_psc = np.nan_to_num(_standardize(self.hp_acomp_raw.T, standardize='psc').T)
-                self.hp_acomp_psc_df = self.index_func(self.hp_acomp_psc,
-                                                    columns=self.vox_cols, 
-                                                    subject=self.sub, 
-                                                    run=run, 
-                                                    TR=self.TR,
-                                                    set_index=True)            
+                self.hp_acomp_psc_df = self.index_func(
+                    self.hp_acomp_psc,
+                    columns=self.vox_cols, 
+                    subject=self.sub, 
+                    run=run, 
+                    TR=self.TR,
+                    set_index=True)            
                 
                 self.desc_filt += self.acomp.__desc__
                 self.desc_filt += """
@@ -1808,12 +1862,13 @@ order={self.poly_order}). """
 
                 tmp_filtered = preproc.lowpass_savgol(data_for_filtering, window_length=self.window_size, polyorder=self.poly_order)
 
-                tmp_filtered_df = self.index_func(tmp_filtered,
-                                                columns=self.vox_cols,
-                                                subject=self.sub,
-                                                run=run,
-                                                TR=self.TR,
-                                                set_index=True)
+                tmp_filtered_df = self.index_func(
+                    tmp_filtered,
+                    columns=self.vox_cols,
+                    subject=self.sub,
+                    run=run,
+                    TR=self.TR,
+                    set_index=True)
 
                 setattr(self, out_attr, tmp_filtered.copy())
                 setattr(self, f'{out_attr}_df', tmp_filtered_df.copy())
@@ -1860,16 +1915,17 @@ order={self.poly_order}). """
                 for ii in self.voxel_classification[seg]:
                     ax.axvline(ii, alpha=0.3, color="#cccccc")
 
-                plotting.LazyPlot(avg_runs,
-                                  axs=ax,
-                                  error=avg_err,
-                                  title=f'Average probability of {seg.upper()}',
-                                  font_size=16,
-                                  linewidth=2,
-                                  color=use_color,
-                                  sns_trim=True,
-                                  line_width=2,
-                                  add_hline=add_hline)
+                plotting.LazyPlot(
+                    avg_runs,
+                    axs=ax,
+                    error=avg_err,
+                    title=f'Average probability of {seg.upper()}',
+                    font_size=16,
+                    linewidth=2,
+                    color=use_color,
+                    sns_trim=True,
+                    line_width=2,
+                    add_hline=add_hline)
 
         if self.report:
             fname = opj(self.lsprep_figures, f"sub-{self.sub}_ses-{self.ses}_desc-tissue_classification.{self.save_ext}")
@@ -2094,111 +2150,111 @@ class Dataset(ParseFuncFile):
     >>> #
     >>> window = 19
     >>> order = 3
-    >>> data = dataset.Dataset(funcs,
-    >>>                        deleted_first_timepoints=delete_first,
-    >>>                        deleted_last_timepoints=delete_last,
-    >>>                        window_size=window,
-    >>>                        high_pass=True,
-    >>>                        low_pass=True,
-    >>>                        poly_order=order,
-    >>>                        tsv_file=exp,
-    >>>                        verbose=True)
+    >>> data = dataset.Dataset(
+    >>>     funcs,
+    >>>     deleted_first_timepoints=delete_first,
+    >>>     deleted_last_timepoints=delete_last,
+    >>>     tsv_file=exp,
+    >>>     verbose=True)
     >>> #
     >>> # retrieve data
     >>> fmri = data.fetch_fmri()
     >>> onsets = data.fetch_onsets()
     """
 
-    def __init__(self, 
-                 func_file,
-                 subject=1,
-                 run=1,
-                 TR=0.105, 
-                 lb=0.01, 
-                 tsv_file=None,
-                 edf_file=None,
-                 phys_file=None,
-                 phys_mat=None,
-                 low_pass=False,
-                 button=False,
-                 deleted_first_timepoints=0, 
-                 deleted_last_timepoints=0, 
-                 window_size=11,
-                 poly_order=3,
-                 attribute_tag=None,
-                 hdf_key="df",
-                 use_bids=True,
-                 verbose=False,
-                 retroicor=False,
-                 filter=None,
-                 n_pca=5,
-                 select_component=None,
-                 filter_pca=0.2,
-                 ses1_2_ls=None,
-                 run_2_run=None,
-                 save_as=None,
-                 gm_range=[355,375],
-                 tissue_thresholds=[0.7,0.7,0.7],
-                 save_ext="svg",
-                 filter_strategy="hp",
-                 report=False,
-                 RTs=False,
-                 RT_relative_to=None,
-                 phase_onset=1,
-                 stim_duration=None,
-                 add_events=None,
-                 event_names=None,   
-                 transpose=False,              
-                 **kwargs):
+    def __init__(
+        self, 
+        func_file,
+        subject=1,
+        run=1,
+        TR=0.105, 
+        lb=0.01, 
+        tsv_file=None,
+        edf_file=None,
+        phys_file=None,
+        phys_mat=None,
+        low_pass=False,
+        button=False,
+        deleted_first_timepoints=0, 
+        deleted_last_timepoints=0, 
+        window_size=11,
+        poly_order=3,
+        attribute_tag=None,
+        hdf_key="df",
+        use_bids=True,
+        verbose=False,
+        retroicor=False,
+        filter=None,
+        n_pca=5,
+        select_component=None,
+        filter_pca=0.2,
+        ses1_2_ls=None,
+        run_2_run=None,
+        save_as=None,
+        gm_range=[355,375],
+        tissue_thresholds=[0.7,0.7,0.7],
+        save_ext="svg",
+        filter_strategy="hp",
+        report=False,
+        RTs=False,
+        RT_relative_to=None,
+        phase_onset=1,
+        stim_duration=None,
+        add_events=None,
+        event_names=None,   
+        transpose=False,              
+        **kwargs):
 
         if verbose:
             print("DATASET")
         
-        self.read_attributes = ['df_func_psc', 
-                                'df_func_raw', 
-                                'df_retro_zscore', 
-                                'df_onsets', 
-                                'eye_in_func', 
-                                'blink_events']
+        self.read_attributes = [
+            'df_func_psc', 
+            'df_func_raw', 
+            'df_retro_zscore', 
+            'df_onsets', 
+            'eye_in_func', 
+            'blink_events']
 
         if isinstance(func_file, str) and func_file.endswith(".h5"):
             print(f" Reading from {func_file}")
             self.from_hdf(func_file)
         else:
-            super().__init__(func_file,
-                             TR=TR,
-                             subject=subject,
-                             run=run,
-                             lb=lb, 
-                             deleted_first_timepoints=deleted_first_timepoints,
-                             deleted_last_timepoints=deleted_last_timepoints,
-                             window_size=window_size,
-                             poly_order=poly_order,
-                             tsv_file=tsv_file,
-                             edf_file=edf_file,
-                             phys_file=phys_file,
-                             phys_mat=phys_mat,
-                             use_bids=use_bids,
-                             verbose=verbose,
-                             retroicor=retroicor,
-                             n_pca=n_pca,
-                             select_component=select_component,
-                             filter_pca=filter_pca,
-                             ses1_2_ls=ses1_2_ls,
-                             run_2_run=run_2_run,
-                             save_as=save_as,
-                             gm_range=gm_range,
-                             tissue_thresholds=tissue_thresholds,
-                             save_ext=save_ext,
-                             filter_strategy=filter_strategy,
-                             report=report,
-                             RTs=RTs,
-                             RT_relative_to=RT_relative_to,
-                             add_events=add_events,
-                             event_names=event_names,
-                             phase_onset=phase_onset,
-                             transpose=transpose,
-                            **kwargs)
+            super().__init__(
+                func_file,
+                TR=TR,
+                subject=subject,
+                run=run,
+                lb=lb, 
+                deleted_first_timepoints=deleted_first_timepoints,
+                deleted_last_timepoints=deleted_last_timepoints,
+                window_size=window_size,
+                poly_order=poly_order,
+                tsv_file=tsv_file,
+                edf_file=edf_file,
+                phys_file=phys_file,
+                phys_mat=phys_mat,
+                use_bids=use_bids,
+                verbose=verbose,
+                retroicor=retroicor,
+                n_pca=n_pca,
+                select_component=select_component,
+                filter_pca=filter_pca,
+                ses1_2_ls=ses1_2_ls,
+                run_2_run=run_2_run,
+                save_as=save_as,
+                gm_range=gm_range,
+                tissue_thresholds=tissue_thresholds,
+                save_ext=save_ext,
+                filter_strategy=filter_strategy,
+                report=report,
+                RTs=RTs,
+                RT_relative_to=RT_relative_to,
+                add_events=add_events,
+                event_names=event_names,
+                phase_onset=phase_onset,
+                transpose=transpose,
+                **kwargs)
 
         if verbose:
             print("\nDATASET: created")

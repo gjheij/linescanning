@@ -57,31 +57,32 @@ class LazyPRF():
     matplotlib.pyplot plot
     """
 
-    def __init__(self, 
-                 prf, 
-                 vf_extent, 
-                 save_as=None, 
-                 ax=None, 
-                 cmap='magma', 
-                 cross_color="white", 
-                 alpha=None,
-                 shrink_factor=1, 
-                 xkcd=False,
-                 font_size=None,
-                 title=None,
-                 axis_off=True,
-                 figsize=(8,8),
-                 label_size=10,
-                 tick_width=0.5,
-                 tick_length=7,
-                 axis_width=0.5,
-                 full_axis=False,
-                 sns_trim=True,
-                 sns_offset=10,
-                 vf_only=False,
-                 line_width=0.5,
-                 cross_width=0.5,
-                 **kwargs):
+    def __init__(
+        self, 
+        prf, 
+        vf_extent, 
+        save_as=None, 
+        ax=None, 
+        cmap='magma', 
+        cross_color="white", 
+        alpha=None,
+        shrink_factor=1, 
+        xkcd=False,
+        font_size=None,
+        title=None,
+        axis_off=True,
+        figsize=(8,8),
+        label_size=10,
+        tick_width=0.5,
+        tick_length=7,
+        axis_width=0.5,
+        full_axis=False,
+        sns_trim=True,
+        sns_offset=10,
+        vf_only=False,
+        line_width=0.5,
+        cross_width=0.5,
+        **kwargs):
         
         self.prf            = prf
         self.vf_extent      = vf_extent
@@ -168,12 +169,13 @@ class LazyPRF():
         if self.title != None:
             self.ax.set_title(self.title, fontsize=self.font_size, fontname="Arial")
             
-        self.patch = patches.Circle((0, 0),
-                                    radius=radius,
-                                    transform=self.ax.transData,
-                                    edgecolor=self.cross_color,
-                                    facecolor="None",
-                                    linewidth=self.line_width)
+        self.patch = patches.Circle(
+            (0, 0),
+            radius=radius,
+            transform=self.ax.transData,
+            edgecolor=self.cross_color,
+            facecolor="None",
+            linewidth=self.line_width)
 
         self.ax.add_patch(self.patch)
         im.set_clip_path(self.patch)
@@ -181,9 +183,10 @@ class LazyPRF():
         if self.axis_off:
             self.ax.axis('off')
         else:
-            self.ax.tick_params(width=self.tick_width, 
-                                length=self.tick_length,
-                                labelsize=self.label_size)
+            self.ax.tick_params(
+                width=self.tick_width, 
+                length=self.tick_length,
+                labelsize=self.label_size)
 
             for axis in ['top', 'bottom', 'left', 'right']:
                 self.ax.spines[axis].set_linewidth(self.axis_width)
@@ -299,39 +302,44 @@ class LazyPlot():
     >>> err = sem(stack, axis=-1) # calculate error
     >>> plotting.LazyPlot(avg, figsize=(20, 5), error=err)
     <linescanning.plotting.LazyPlot at 0x7f839b0d5220>
+
+    Notes
+    ----------
+    See https://linescanning.readthedocs.io/en/latest/examples/lazyplot.html for more examples
     """
 
-    def __init__(self,
-                 ts,
-                 xx=None,
-                 error=None,
-                 error_alpha=0.3,
-                 x_label=None,
-                 y_label=None,
-                 title=None,
-                 xkcd=False,
-                 color=None,
-                 figsize=(30, 5),
-                 cmap='viridis',
-                 save_as=None,
-                 labels=None,
-                 font_size=12,
-                 label_size=10,
-                 tick_width=0.5,
-                 tick_length=7,
-                 axis_width=0.5,
-                 add_hline=None,
-                 add_vline=None,
-                 line_width=1,
-                 axs=None,
-                 y_lim=None,
-                 x_lim=None,
-                 sns_offset=10,
-                 sns_trim=True,
-                 sns_rm_bottom=False,
-                 set_xlim_zero=True,
-                 markers=None,
-                 **kwargs):
+    def __init__(
+        self,
+        ts,
+        xx=None,
+        error=None,
+        error_alpha=0.3,
+        x_label=None,
+        y_label=None,
+        title=None,
+        xkcd=False,
+        color=None,
+        figsize=(30, 5),
+        cmap='viridis',
+        save_as=None,
+        labels=None,
+        font_size=12,
+        label_size=10,
+        tick_width=0.5,
+        tick_length=7,
+        axis_width=0.5,
+        add_hline=None,
+        add_vline=None,
+        line_width=1,
+        axs=None,
+        y_lim=None,
+        x_lim=None,
+        sns_offset=10,
+        sns_trim=True,
+        sns_rm_bottom=False,
+        set_xlim_zero=True,
+        markers=None,
+        **kwargs):
 
         self.array              = ts
         self.xx                 = xx
@@ -533,17 +541,19 @@ class LazyPlot():
 
             if isinstance(self.add_hline['pos'], list) or isinstance(self.add_hline['pos'], np.ndarray):
                 for line in self.add_hline['pos']:
-                    axs.axhline(line,
-                                color=self.add_hline['color'], 
-                                lw=self.add_hline['lw'], 
-                                ls=self.add_hline['ls'],
-                                xmax=set_xlim)
+                    axs.axhline(
+                        line,
+                        color=self.add_hline['color'], 
+                        lw=self.add_hline['lw'], 
+                        ls=self.add_hline['ls'],
+                        xmax=set_xlim)
             else:
-                axs.axhline(self.add_hline['pos'], 
-                            color=self.add_hline['color'],
-                            lw=self.add_hline['lw'], 
-                            ls=self.add_hline['ls'],
-                            xmax=set_xlim)
+                axs.axhline(
+                    self.add_hline['pos'], 
+                    color=self.add_hline['color'],
+                    lw=self.add_hline['lw'], 
+                    ls=self.add_hline['ls'],
+                    xmax=set_xlim)
 
 class LazyCorr():
     """LazyCorr
@@ -582,26 +592,27 @@ class LazyCorr():
         figure with the regression + confidence intervals for the given variables
     """    
 
-    def __init__(self,
-                 x, 
-                 y, 
-                 color="#cccccc", 
-                 axs=None, 
-                 title=None,
-                 x_label=None, 
-                 y_label=None, 
-                 figsize=(8,8),
-                 xkcd=False,
-                 font_size=20,
-                 label_size=10,
-                 tick_width=0.5,
-                 tick_length=7,
-                 axis_width=0.5,
-                 sns_despine=5,
-                 sns_trim=True,
-                 y_lim=None,
-                 x_lim=None,                 
-                 save_as=None):
+    def __init__(
+        self,
+        x, 
+        y, 
+        color="#cccccc", 
+        axs=None, 
+        title=None,
+        x_label=None, 
+        y_label=None, 
+        figsize=(8,8),
+        xkcd=False,
+        font_size=20,
+        label_size=10,
+        tick_width=0.5,
+        tick_length=7,
+        axis_width=0.5,
+        sns_despine=5,
+        sns_trim=True,
+        y_lim=None,
+        x_lim=None,                 
+        save_as=None):
 
         self.x              = x
         self.y              = y
@@ -664,9 +675,10 @@ class LazyCorr():
         if self.title:
             axs.set_title(self.title, fontname=self.fontname, fontsize=self.font_size)
 
-        axs.tick_params(width=self.tick_width, 
-                        length=self.tick_length,
-                        labelsize=self.label_size)
+        axs.tick_params(
+            width=self.tick_width, 
+            length=self.tick_length,
+            labelsize=self.label_size)
 
         for axis in ['top', 'bottom', 'left', 'right']:
             axs.spines[axis].set_linewidth(self.axis_width)
@@ -681,32 +693,33 @@ class LazyCorr():
 
 class LazyBar():
 
-    def __init__(self, 
-                 x=None, 
-                 y=None, 
-                 axs=None,
-                 sns_ori='h', 
-                 sns_trim=2, 
-                 labels=None,
-                 font_size=14,
-                 label_size=10,
-                 tick_width=0.5,
-                 tick_length=7,
-                 axis_width=0.5,
-                 sns_rot=None,
-                 palette=None,
-                 cmap='viridis',
-                 save_as=None,
-                 xkcd=False,
-                 title=None,
-                 add_labels=False,
-                 add_axis=True,
-                 lim=None,
-                 ticks=None,
-                 x_label2=None,
-                 y_label2=None,
-                 title2=None,
-                 **kwargs):
+    def __init__(
+        self, 
+        x=None, 
+        y=None, 
+        axs=None,
+        sns_ori='h', 
+        sns_trim=2, 
+        labels=None,
+        font_size=14,
+        label_size=10,
+        tick_width=0.5,
+        tick_length=7,
+        axis_width=0.5,
+        sns_rot=None,
+        palette=None,
+        cmap='viridis',
+        save_as=None,
+        xkcd=False,
+        title=None,
+        add_labels=False,
+        add_axis=True,
+        lim=None,
+        ticks=None,
+        x_label2=None,
+        y_label2=None,
+        title2=None,
+        **kwargs):
 
         self.x                  = x
         self.y                  = y
@@ -767,11 +780,12 @@ class LazyBar():
         else:
             raise ValueError(f"sns_ori must be 'v' or 'h', not '{self.sns_ori}'")
 
-        sns.barplot(x=xx, 
-                    y=yy, 
-                    ax=axs, 
-                    palette=self.palette, 
-                    orient=self.sns_ori)
+        sns.barplot(
+            x=xx, 
+            y=yy, 
+            ax=axs, 
+            palette=self.palette, 
+            orient=self.sns_ori)
 
         # axis labels and titles
         if self.title:
@@ -821,11 +835,12 @@ class LazyBar():
         if self.y_label2:
             axs.set_ylabel(self.y_label2, fontname=self.fontname, fontsize=self.font_size)
 
-        sns.despine(offset=self.sns_trim, 
-                    trim=True,
-                    left=trim_left, 
-                    bottom=trim_bottom, 
-                    ax=self.axs)
+        sns.despine(
+            offset=self.sns_trim, 
+            trim=True,
+            left=trim_left, 
+            bottom=trim_bottom, 
+            ax=self.axs)
 
         if self.title2:
             axs.set_title(self.title2, fontname=self.fontname, fontsize=self.font_size)                    

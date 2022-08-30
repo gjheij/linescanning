@@ -75,36 +75,38 @@ class aCompCor(Segmentations):
     ----------
     >>> from linescanning import preproc
     >>> # data = (voxels,timepoints)
-    >>> acomp = preproc.aCompCor(data,
-    >>>                          subject="sub-003",
-    >>>                          run=1,
-    >>>                          trg_session=4,
-    >>>                          n_pca=5,
-    >>>                          trafo_list=['ses_to_motion.mat', 'run_to_run.mat'],
-    >>>                          filter_pca=0.2,
-    >>>                          TR=0.105,
-    >>>                          verbose=True)
+    >>> acomp = preproc.aCompCor(
+    >>>     data,
+    >>>     subject="sub-003",
+    >>>     run=1,
+    >>>     trg_session=4,
+    >>>     n_pca=5,
+    >>>     trafo_list=['ses_to_motion.mat', 'run_to_run.mat'],
+    >>>     filter_pca=0.2,
+    >>>     TR=0.105,
+    >>>     verbose=True)
     """
     
-    def __init__(self, 
-                 data, 
-                 run=None,
-                 subject=None, 
-                 wm_voxels=None,
-                 csf_voxels=None,
-                 n_pca=5, 
-                 select_component=None, 
-                 filter_pca=None, 
-                 save_as=None, 
-                 save_ext="pdf",
-                 summary_plot=True, 
-                 TR=0.105, 
-                 verbose=False, 
-                 reference_slice=None,
-                 trg_session=None, 
-                 trafo_list=None, 
-                 foldover="FH", 
-                 **kwargs):
+    def __init__(
+        self, 
+        data, 
+        run=None,
+        subject=None, 
+        wm_voxels=None,
+        csf_voxels=None,
+        n_pca=5, 
+        select_component=None, 
+        filter_pca=None, 
+        save_as=None, 
+        save_ext="pdf",
+        summary_plot=True, 
+        TR=0.105, 
+        verbose=False, 
+        reference_slice=None,
+        trg_session=None, 
+        trafo_list=None, 
+        foldover="FH", 
+        **kwargs):
 
         self.data               = data
         self.subject            = subject
@@ -265,18 +267,19 @@ direction) were assigned to this tissue type. This limited the possibility for p
                         use_colors = use_colors[ii]
                         label = [label[ii]]
 
-            plotting.LazyPlot([self.pcas[ii].explained_variance_ratio_ for ii in range(len(self.pcas))],
-                            xx=self.xx,
-                            color=use_colors,
-                            axs=ax1,
-                            title=f"Scree-plot run-{self.run}",
-                            x_label="nr of components",
-                            y_label="variance explained (%)",
-                            labels=label,
-                            font_size=16,
-                            line_width=line_width,
-                            sns_trim=True,
-                            **kwargs)
+            plotting.LazyPlot(
+                [self.pcas[ii].explained_variance_ratio_ for ii in range(len(self.pcas))],
+                xx=self.xx,
+                color=use_colors,
+                axs=ax1,
+                title=f"Scree-plot run-{self.run}",
+                x_label="nr of components",
+                y_label="variance explained (%)",
+                labels=label,
+                font_size=16,
+                line_width=line_width,
+                sns_trim=True,
+                **kwargs)
 
         # create dashed line on cut-off frequency if specified
         if self.filter_pca != None:
@@ -291,19 +294,20 @@ direction) were assigned to this tissue type. This limited the possibility for p
             ax2 = fig.add_subplot(gs[2])
         else:
             ax2 = fig.add_subplot(gs[1])
-        plotting.LazyPlot(self.nuisance_spectra,
-                            xx=self.nuisance_freqs[0],
-                            axs=ax2,
-                            labels=[f"component {ii+1}" for ii in range(self.acompcor_components.shape[-1])],
-                            title=f"Power spectra of {self.info}",
-                            x_label="frequency (Hz)",
-                            y_label="power (a.u.)",
-                            x_lim=[0, 1.5],
-                            font_size=16,
-                            line_width=line_width,
-                            add_vline=add_vline,
-                            sns_trim=True,
-                            **kwargs)
+        plotting.LazyPlot(
+            self.nuisance_spectra,
+            xx=self.nuisance_freqs[0],
+            axs=ax2,
+            labels=[f"component {ii+1}" for ii in range(self.acompcor_components.shape[-1])],
+            title=f"Power spectra of {self.info}",
+            x_label="frequency (Hz)",
+            y_label="power (a.u.)",
+            x_lim=[0, 1.5],
+            font_size=16,
+            line_width=line_width,
+            add_vline=add_vline,
+            sns_trim=True,
+            **kwargs)
 
         # plot power spectra from non-aCompCor'ed vs aCompCor'ed data
         tc1 = utils.select_from_df(self.data, expression='ribbon', indices=self.gm_voxels).mean(axis=1).values
@@ -319,30 +323,33 @@ direction) were assigned to this tissue type. This limited the possibility for p
         tc1_freq = get_freq(tc1, TR=self.TR, spectrum_type='fft', clip_power=clip_power)
         tc2_freq = get_freq(tc2, TR=self.TR, spectrum_type='fft', clip_power=clip_power)
 
-        plotting.LazyPlot([tc1_freq[1], tc2_freq[1]],
-                            xx=tc1_freq[0],
-                            color=["#1B9E77", "#D95F02"],
-                            x_label="frequency (Hz)",
-                            y_label="power (a.u.)",
-                            title="Power spectra of average GM-voxels",
-                            labels=['no aCompCor', 'aCompCor'],
-                            axs=ax3,
-                            font_size=16,
-                            x_lim=[0, 1.5],
-                            line_width=2,
-                            sns_trim=True,
-                            **kwargs)
+        plotting.LazyPlot(
+            [tc1_freq[1], tc2_freq[1]],
+            xx=tc1_freq[0],
+            color=["#1B9E77", "#D95F02"],
+            x_label="frequency (Hz)",
+            y_label="power (a.u.)",
+            title="Power spectra of average GM-voxels",
+            labels=['no aCompCor', 'aCompCor'],
+            axs=ax3,
+            font_size=16,
+            x_lim=[0, 1.5],
+            line_width=2,
+            sns_trim=True,
+            **kwargs)
 
         # add insets with time-to-peak
         left, bottom, width, height = [0.2, 0.5, 0.8, 0.4]
         inset = ax3.inset_axes([left, bottom, width, height])
-        plotting.LazyPlot([tc1, tc2],
-                           xx=np.array(list(np.arange(0,tc1.shape[0])*self.TR)),
-                           color=["#1B9E77", "#D95F02"],
-                           y_label="magnitude",
-                           axs=inset,
-                           font_size=12,
-                           **kwargs)
+        plotting.LazyPlot(
+            [tc1, tc2],
+            xx=np.array(list(np.arange(0,tc1.shape[0])*self.TR)),
+            color=["#1B9E77", "#D95F02"],
+            y_label="magnitude",
+            axs=inset,
+            font_size=12,
+            **kwargs)
+            
         inset.set_xticks([])
         sns.despine(offset=5, bottom=True, trim=True, ax=inset)
 
@@ -358,7 +365,22 @@ direction) were assigned to this tissue type. This limited the possibility for p
 class RegressOut():
 
     def __init__(self, data, regressors):
+        """RegressOut
 
+        Class to regress out nuisance regressors from data.
+
+        Parameters
+        ----------
+        data: pandas.DataFrame, numpy.ndarray
+            Input data to be regressed
+        regressors: pandas.DataFrame, numpy.ndarray
+            Data to be regressed out
+
+        Raises
+        ----------
+        ValueError
+            If shapes of input data and regressors are not compatible
+        """
         self.data = data
         self.regressors = regressors
         
@@ -476,17 +498,15 @@ def get_freq(func, TR=0.105, spectrum_type='psd', clip_power=None):
 
     Returns
     ----------
-    _type_
-        _description_
+    freq
+        numpy.ndarray representing the
+    power
+        numpy.ndarray representing the power spectra
 
     Raises
     ----------
     ValueError
-        _description_
-
-    Example
-    ----------
-    >>> 
+        If invalid spectrum_type is given. Must be one of `psd`, `mtaper`, `fft`, or `periodogram`.
     """
     if spectrum_type != "fft":
         TC      = TimeSeries(np.asarray(func), sampling_interval=TR)

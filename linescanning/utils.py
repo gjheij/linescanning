@@ -799,12 +799,80 @@ def make_binary_cm(color):
 
     return cmap
 
-def percent_change(ts, ax):
-    """convert timeseries to percent signal change via the nilearn method"""
+def percent_change(ts, ax, nilearn=False, baseline=20):
+    """percent_change
 
-    return (ts / np.expand_dims(np.mean(ts, ax), ax) - 1) * 100    
+    Function to convert input data to percent signal change. Two options are current supported: the nilearn method (`nilearn=True`), where the mean of the entire timecourse if subtracted from the timecourse, and the baseline method (`nilearn=False`), where the median of `baseline` is subtracted from the timecourse.
+
+    Parameters
+    ----------
+    ts: numpy.ndarray
+        Array representing the data to be converted to percent signal change.
+    ax: int
+        Axis over which to perform the conversion.
+    nilearn: bool, optional
+        Use nilearn method, by default False
+    baseline: int, optional
+        Use custom method where only the median of the baseline (instead of the full timecourse) is subtracted, by default 20. Length should be in `volumes`, not `seconds`.
+
+    Returns
+    ----------
+    numpy.ndarray
+        Array with the same size as `ts`, but with percent signal change.
+
+    Raises
+    ----------
+    ValueError
+        If `ax` > 2
+    """
+    
+    if nilearn:
+        return (ts / np.expand_dims(np.mean(ts, ax), ax) - 1) * 100 
+    else:
+        # first step of PSC; set NaNs to zero if dividing by 0 (in case of crappy timecourses)
+        ts *= np.nan_to_num((100/np.mean(ts, axis=ax)))
+
+        # get median of baseline
+        if ax == 0:
+            median_baseline = np.median(ts[:baseline,:], axis=0)
+        elif ax == 1:
+            median_baseline = np.median(ts[:,:baseline], axis=1)
+        else:
+            raise ValueError("ax must be 0 or 1")
+
+        # subtract
+        return ts -= median_baseline
 
 def select_from_df(df, expression="run = 1", index=True, indices=None):
+    """select_from_df
+
+    Select a subset of a dataframe based on an expression. Dataframe should be indexed by the variable you want to select on or have the variable specified in the expression argument as column name. If index is True, the dataframe will be indexed by the selected variable. If indices is specified, the dataframe will be indexed by the indices specified through a list (only select the elements in the list) or a `range`-object (select within range).
+
+    Parameters
+    ----------
+    df: pandas.DataFrame
+        input dataframe
+    expression: str, optional
+        what subject of the dataframe to select, by default "run = 1". The expression must consist of a variable name and an operator. The operator can be any of the following: '=', '>', '<', '>=', '<=', '!=', separated by spaces. You can also change 2 operations by specifying the `&`-operator between the two expressions. If you want to use `indices`, specify `expression="ribbon"`. 
+    index: bool, optional
+        return output dataframe with the same indexing as `df`, by default True
+    indices: list, range, numpy.ndarray, optional
+        List, range, or numpy array of indices to select from `df`, by default None
+
+    Returns
+    ----------
+    pandas.DataFrame
+        new dataframe where `expression` or `indices` were selected from `df`
+
+    Raises
+    ----------
+    TypeError
+        If `indices` is not a tuple, list, or array
+
+    Notes
+    ----------
+    See https://linescanning.readthedocs.io/en/latest/examples/nideconv.html for an example of how to use this function (do ctrl+F and enter "select_from_df").
+    """    
 
     if expression == "ribbon":
         

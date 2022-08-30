@@ -74,9 +74,7 @@ def read_par_file(prf_file):
 
     return pars
      
-def get_prfdesign(screenshot_path,
-                  n_pix=40,
-                  dm_edges_clipping=[0,0,0,0]):
+def get_prfdesign(screenshot_path, n_pix=40, dm_edges_clipping=[0,0,0,0]):
     """
     get_prfdesign
 
@@ -132,10 +130,11 @@ def get_prfdesign(screenshot_path,
 
     #clipping edges; top, bottom, left, right
     if isinstance(dm_edges_clipping, dict):
-        dm_edges_clipping = [dm_edges_clipping['top'],
-                             dm_edges_clipping['bottom'],
-                             dm_edges_clipping['left'],
-                             dm_edges_clipping['right']]
+        dm_edges_clipping = [
+            dm_edges_clipping['top'],
+            dm_edges_clipping['bottom'],
+            dm_edges_clipping['left'],
+            dm_edges_clipping['right']]
 
     design_matrix[:dm_edges_clipping[0], :, :] = 0
     design_matrix[(design_matrix.shape[0]-dm_edges_clipping[1]):, :, :] = 0
@@ -383,11 +382,12 @@ def make_prf(prf_object, mu_x=0, mu_y=0, size=None, resize_pix=None, **kwargs):
         meshgrid containing Gaussian characteristics of the pRF. Can be plotted with :func:`linescanning.plotting.LazyPRF`
     """
 
-    prf = np.rot90(rf.gauss2D_iso_cart(x=prf_object.x_coordinates[..., np.newaxis],
-                                       y=prf_object.y_coordinates[..., np.newaxis],
-                                       mu=(mu_x, mu_y),
-                                       sigma=size,
-                                       normalize_RFs=False).T, axes=(1, 2))
+    prf = np.rot90(rf.gauss2D_iso_cart(
+        x=prf_object.x_coordinates[..., np.newaxis],
+        y=prf_object.y_coordinates[..., np.newaxis],
+        mu=(mu_x, mu_y),
+        sigma=size,
+        normalize_RFs=False).T, axes=(1, 2))
 
     # spatially smooth for visualization
     if isinstance(resize_pix, int):
@@ -799,19 +799,20 @@ def prf_neighbouring_vertices(subject, hemi='lh', vertex=None, prf_params=None, 
 
     return prfs, verts
 
-def create_line_prf_matrix(log_dir, 
-                           nr_trs=None,
-                           stim_at_half_TR=False,
-                           TR=0.105, 
-                           n_pix=270, 
-                           deleted_first_timepoints=0, 
-                           deleted_last_timepoints=0, 
-                           stim_duration=1, 
-                           baseline_before=24,
-                           baseline_after=24,
-                           skip_first_img=True,
-                           verbose=False,
-                           dm_edges_clipping=[0,0,0,0]):
+def create_line_prf_matrix(
+    log_dir, 
+    nr_trs=None,
+    stim_at_half_TR=False,
+    TR=0.105, 
+    n_pix=270, 
+    deleted_first_timepoints=0, 
+    deleted_last_timepoints=0, 
+    stim_duration=1, 
+    baseline_before=24,
+    baseline_after=24,
+    skip_first_img=True,
+    verbose=False,
+    dm_edges_clipping=[0,0,0,0]):
 
     """create_line_prf_matrix
 
@@ -853,11 +854,12 @@ def create_line_prf_matrix(log_dir,
 
     #clipping edges; top, bottom, left, right
     if isinstance(dm_edges_clipping, dict):
-        dm_edges_clipping = [dm_edges_clipping['top'],
-                             dm_edges_clipping['bottom'],
-                             dm_edges_clipping['left'],
-                             dm_edges_clipping['right']]    
-    
+        dm_edges_clipping = [
+            dm_edges_clipping['top'],
+            dm_edges_clipping['bottom'],
+            dm_edges_clipping['left'],
+            dm_edges_clipping['right']]    
+
     # whether the stimulus duration is modulo the repetition time or not differs. In case it is, 
     # we can use the loop below. If not, we need to loop through the TRs, find the onset time 
     # closest to it, and select that particular image
@@ -919,12 +921,13 @@ def create_line_prf_matrix(log_dir,
             print("Reading onset times from log-file")
 
         # get the onsets
-        onsets = dataset.ParseExpToolsFile(utils.get_file_from_substring(".tsv", log_dir), 
-                                           TR=TR, 
-                                           deleted_first_timepoints=deleted_first_timepoints, 
-                                           use_bids=False,
-                                           verbose=verbose,
-                                           phase_onset=0)
+        onsets = dataset.ParseExpToolsFile(
+            utils.get_file_from_substring(".tsv", log_dir), 
+            TR=TR, 
+            deleted_first_timepoints=deleted_first_timepoints, 
+            use_bids=False,
+            verbose=verbose,
+            phase_onset=0)
         trial_df = onsets.get_onset_df()
 
         settings_fn = utils.get_file_from_substring(['yml'], log_dir)
@@ -1213,10 +1216,11 @@ class GaussianModel():
 
     def __init__(self):
 
-        self.gaussian_fitter = Iso2DGaussianFitter(data=self.data,
-                                                   model=self.gauss_model,
-                                                   fit_css=False,
-                                                   fit_hrf=self.fit_hrf)
+        self.gaussian_fitter = Iso2DGaussianFitter(
+            data=self.data,
+            model=self.gauss_model,
+            fit_css=False,
+            fit_hrf=self.fit_hrf)
 
         if isinstance(self.old_params, np.ndarray) or isinstance(self.old_params, str):
             if isinstance(self.old_params, np.ndarray):
@@ -1434,7 +1438,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
     model: str
         as of now, one of ['gauss','dog','css','norm'] is accepted
     stage: str
-        can either be 'grid' or 'grid+iter', in combination with the <model> flag
+        Can technically be anything. By default, grid-fits are executed, but if `stage` contains `iter` (e.g., `stage="iter"`), an iterative fit is executed as well.
     output_dir: str
         directory to store all files in; should be somewhere in <project>/derivatives/prf/<subject>
     output_base: str
@@ -1443,13 +1447,15 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         save files (True) or not (False). Should be used in combination with <output_dir> and <output_base>
     old_params: np.ndarray, str, optional
         A string pointing to an existing file or a numpy array. Internally, the parameters will be assigned to `Iso2DGaussianFitter.gridsearch_params` and `Iso2DGaussianFitter.iterative_search_params`. This fitter object is then assigned to `Iso2DGaussianFitter.previous_gaussian_fitter`, which is then directly inserted in one of the extended models (e.g., `DN`, `DoG`, or `CSS`).
-    hrf: np.ndarray
+    hrf: np.ndarray, list, optional
         <1,time_points> describing the HRF. Can be created with :func:`linescanning.glm.double_gamma`, then add an axis before the timepoints:
 
         >>> dt = 1
         >>> time_points = np.linspace(0,36,np.rint(float(36)/dt).astype(int))
         >>> hrf_custom = linescanning.glm.double_gamma(time_points, lag=6)
         >>> hrf_custom = hrf_custom[np.newaxis,...]
+
+        Can also be a list of three parameters for the SPM-functions. Defaults to [1,1,0], for the HRF, and the time derivative. 
     fit_hrf: bool
         fit the HRF with the pRF-parameters as implemented in `prfpy`
     nr_jobs: int, optional
@@ -1461,10 +1467,8 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
 
     Returns
     ----------
-    npy-files
-        For each model, a npy-file with the grid/iterative parameters and an npy-file with the predictions (*only* for iterative stage!). The format of these files is as follows: <output_dir>/<output_base>_model-<gauss|norm>_stage-<grid|iter>_desc-<prf_params|predictions>.npy
-    pkl-files
-        For each model, a pickle file with the settings, parameters, and predictions all in one. Eventually, this will become the standard over `npy`-file, as one file with everything is much cleaner and allows us to neatly store analysis-specific settings without having to deal with separate files.
+    pkl-file
+        For each model, a pickle file with the settings, parameters, and predictions all in one
 
     Example
     ----------
@@ -1473,12 +1477,13 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
 
     >>> # we can use this class to read in existing parameter files
     >>> prf_pfov = opj(prf_new, "sub-003_ses-3_task-pRF_acq-3DEPI_model-norm_stage-iter_desc-prf_params.npy")
-    >>> modelling_pfov = prf.pRFmodelFitting(partial_nan.T,
-    >>>                                      design_matrix=design_pfov,
-    >>>                                      stage="grid+iter",
-    >>>                                      model="norm",
-    >>>                                      output_dir=prf_new,
-    >>>                                      output_base="sub-003_ses-3_task-pRF_acq-3DEPI")
+    >>> modelling_pfov = prf.pRFmodelFitting(
+    >>>     partial_nan.T,
+    >>>     design_matrix=design_pfov,
+    >>>     stage="grid+iter",
+    >>>     model="norm",
+    >>>     output_dir=prf_new,
+    >>>     output_base="sub-003_ses-3_task-pRF_acq-3DEPI")
     >>> #
     >>> modelling_pfov.load_params(np.load(prf_pfov), model='norm', stage='iter')
 
@@ -1487,27 +1492,28 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
     See https://linescanning.readthedocs.io/en/latest/examples/prfmodelfitter.html for more elaborate example of fitting, loading, visualization, and HRF-fitting
     """
 
-    def __init__(self, 
-                 data, 
-                 design_matrix=None, 
-                 TR=1.5, 
-                 model="gauss", 
-                 stage="grid+iter", 
-                 output_dir=None, 
-                 write_files=False, 
-                 output_base=None,
-                 old_params=None,
-                 verbose=True,
-                 hrf=None,
-                 fit_hrf=False,
-                 settings=None,
-                 nr_jobs=1000,
-                 rsq_threshold=None,
-                 prf_stim=None,
-                 model_obj=None,
-                 fix_bold_baseline=False,
-                 constraints="tc",
-                 **kwargs):
+    def __init__(
+        self, 
+        data, 
+        design_matrix=None, 
+        TR=1.5, 
+        model="gauss", 
+        stage="iter", 
+        output_dir=None, 
+        write_files=False, 
+        output_base=None,
+        old_params=None,
+        verbose=True,
+        hrf=None,
+        fit_hrf=False,
+        settings=None,
+        nr_jobs=1000,
+        rsq_threshold=None,
+        prf_stim=None,
+        model_obj=None,
+        fix_bold_baseline=False,
+        constraints="tc",
+        **kwargs):
 
         self.data               = data
         self.design_matrix      = design_matrix
@@ -1793,7 +1799,18 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                     params_file['D'][hemi],
                     params_file['r2'][hemi]))
             else:
-                raise ValueError(f"Must specify 'hemi' for this option. Must be one of 'L' or 'R'")
+                params = np.array((
+                    params_file['x'],
+                    params_file['y'],
+                    params_file['prf_size'],
+                    params_file['A'],
+                    params_file['bold_bsl'],
+                    params_file['B'],
+                    params_file['C'],
+                    params_file['surr_size'],
+                    params_file['D'],
+                    params_file['r2']))
+
         else:
             raise ValueError(f"Unrecognized input type for '{params_file}' ({type(params_file)})")
 
@@ -1921,10 +1938,11 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         >>> fitting.fit()
         >>> #
         >>> # plot the 1st voxel
-        >>> fitting.plot_vox(vox_nr=0,
-        >>>                  title='pars',
-        >>>                  model='gauss',
-        >>>                  stage='iter')
+        >>> fitting.plot_vox(
+        >>>     vox_nr=0,
+        >>>     title='pars',
+        >>>     model='gauss',
+        >>>     stage='iter')
 
         Notes
         ----------
@@ -2466,18 +2484,19 @@ class CollectSubject(pRFmodelFitting):
     >>> subject_info = utils.CollectSubject(subject, derivatives=<path_to_derivatives>, settings='recent', hemi="lh")
     """
 
-    def __init__(self, 
-                 subject, 
-                 ses=1, 
-                 derivatives=None, 
-                 cx_dir=None, 
-                 prf_dir=None, 
-                 hemi="lh", 
-                 model="gauss", 
-                 correct_screen=False, 
-                 verbose=True, 
-                 best_vertex=False,
-                 **kwargs):
+    def __init__(
+        self, 
+        subject, 
+        ses=1, 
+        derivatives=None, 
+        cx_dir=None, 
+        prf_dir=None, 
+        hemi="lh", 
+        model="gauss", 
+        correct_screen=False, 
+        verbose=True, 
+        best_vertex=False,
+        **kwargs):
 
         self.subject        = subject
         self.derivatives    = derivatives

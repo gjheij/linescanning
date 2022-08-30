@@ -68,14 +68,15 @@ def set_threshold(name=None, borders=None, set_default=None):
         else:
             return float(val)
 
-def target_vertex(subject,
-                  deriv=None,
-                  prf_file=None,
-                  webshow=True,
-                  out=None,
-                  roi="V1_exvivo.thresh",
-                  use_prf=True,
-                  vert=None):
+def target_vertex(
+    subject,
+    deriv=None,
+    prf_file=None,
+    webshow=True,
+    out=None,
+    roi="V1_exvivo.thresh",
+    use_prf=True,
+    vert=None):
 
     """target_vertex
 
@@ -213,12 +214,13 @@ def target_vertex(subject,
                 print(f" depth:         {round(depth_val,4)}")
 
                 # Create mask using selected criteria
-                BV_.apply_thresholds(ecc_thresh=ecc_val,
-                                     size_thresh=size_val,
-                                     r2_thresh=r2_val,
-                                     polar_thresh=pol_val,
-                                     depth_thresh=depth_val,
-                                     thick_thresh=thick_val)
+                BV_.apply_thresholds(
+                    ecc_thresh=ecc_val,
+                    size_thresh=size_val,
+                    r2_thresh=r2_val,
+                    polar_thresh=pol_val,
+                    depth_thresh=depth_val,
+                    thick_thresh=thick_val)
 
                 # Pick out best vertex
                 BV_.best_vertex()
@@ -276,19 +278,20 @@ def target_vertex(subject,
                 print(" Alrighty, continuing with these parameters")
 
                 if not isinstance(vert, np.ndarray):
-                    textList = ["# Created on {date}\n".format(date=datetime.now().strftime("%d/%m/%Y %H:%M:%S")),
-                                f"size: {size_val}\n",
-                                f"ecc: {ecc_val}\n",
-                                f"r2: {r2_val}\n",
-                                f"polar: {pol_val}\n",
-                                f"thickness: {thick_val}\n",
-                                f"depth: {depth_val}\n",
-                                ]
+                    textList = [
+                        "# Created on {date}\n".format(date=datetime.now().strftime("%d/%m/%Y %H:%M:%S")),
+                        f"size: {size_val}\n",
+                        f"ecc: {ecc_val}\n",
+                        f"r2: {r2_val}\n",
+                        f"polar: {pol_val}\n",
+                        f"thickness: {thick_val}\n",
+                        f"depth: {depth_val}\n"]
                 else:
-                    textList = ["# Created on {date}\n".format(date=datetime.now().strftime("%d/%m/%Y %H:%M:%S")),
-                                "Manually selected following vertices:\n",
-                                f"lh: {vert[0]}\n",
-                                f"rh: {vert[1]}\n"]
+                    textList = [
+                        "# Created on {date}\n".format(date=datetime.now().strftime("%d/%m/%Y %H:%M:%S")),
+                        "Manually selected following vertices:\n",
+                        f"lh: {vert[0]}\n",
+                        f"rh: {vert[1]}\n"]
 
                 outF = open(opj(cx_dir, subject, "cutoffs.o{ext}".format(ext=os.getpid())), "w")
                 outF.writelines(textList)
@@ -377,10 +380,11 @@ class SurfaceCalc(object):
 
         if not os.path.exists(self.ctx_path):
             # import subject from freesurfer (will have the same names)
-            cortex.freesurfer.import_subj(fs_subject=self.subject,
-                                            cx_subject=self.subject,
-                                            freesurfer_subject_dir=self.fs_dir,
-                                            whitematter_surf='smoothwm')
+            cortex.freesurfer.import_subj(
+                fs_subject=self.subject,
+                cx_subject=self.subject,
+                freesurfer_subject_dir=self.fs_dir,
+                whitematter_surf='smoothwm')
 
         self.curvature = cortex.db.get_surfinfo(self.subject, type="curvature")
         self.thickness = cortex.db.get_surfinfo(self.subject, type="thickness")
@@ -671,11 +675,12 @@ class CalcBestVertex():
     >>> BV_ = CalcBestVertex(subject=subject, fs_dir='/path/to/derivatives/freesurfer'), prf_file=prf_params)
     """
 
-    def __init__(self, 
-                 subject=None,
-                 deriv=None,
-                 prf_file=None,
-                 fs_label="V1_exvivo.thresh"):
+    def __init__(
+        self, 
+        subject=None,
+        deriv=None,
+        prf_file=None,
+        fs_label="V1_exvivo.thresh"):
 
         # read arguments
         self.subject    = subject
@@ -688,15 +693,11 @@ class CalcBestVertex():
         self.cx_dir = opj(self.deriv, 'pycortex')
 
         # Get surface object
-        self.surface = SurfaceCalc(subject=self.subject, 
-                                   fs_dir=self.fs_dir, 
-                                   fs_label=self.fs_label)
+        self.surface = SurfaceCalc(subject=self.subject, fs_dir=self.fs_dir, fs_label=self.fs_label)
 
         if self.prf_file != None:
             self.prf_dir = os.path.dirname(self.prf_file)
-            self.prf = pRFCalc(subject=self.subject,
-                               prf_file=self.prf_file, 
-                               fs_dir=self.fs_dir)
+            self.prf = pRFCalc(subject=self.subject, prf_file=self.prf_file, fs_dir=self.fs_dir)
 
     def apply_thresholds(self, r2_thresh=None, size_thresh=None, ecc_thresh=None, polar_thresh=None, thick_thresh=None, depth_thresh=None):
 

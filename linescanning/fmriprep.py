@@ -27,15 +27,16 @@ import os
 
 class init_single_subject_wf():
 
-    def __init__(self, 
-                 subject_id, 
-                 fmriprep_dir=None, 
-                 bids_dir=None, 
-                 workdir=None, 
-                 bids_filters=None, 
-                 non_standard=['func'], 
-                 omp_nthreads=8, 
-                 max_topup_vols=5):
+    def __init__(
+        self, 
+        subject_id, 
+        fmriprep_dir=None, 
+        bids_dir=None, 
+        workdir=None, 
+        bids_filters=None, 
+        non_standard=['func'], 
+        omp_nthreads=8, 
+        max_topup_vols=5):
 
         from niworkflows.engine.workflows import LiterateWorkflow as Workflow
         from niworkflows.utils.bids import collect_data
@@ -96,12 +97,13 @@ class init_single_subject_wf():
 
         for bold_file in self.subject_data['bold']:
             print(bold_file)
-            func_preproc_wf = init_func_preproc_wf(bold_file, 
-                                                   has_fieldmap=self.has_fieldmap, 
-                                                   fmriprep_dir=self.fmriprep_dir, 
-                                                   layout=self.layout,
-                                                   non_standard=self.non_standard,
-                                                   omp_nthreads=self.omp_nthreads)
+            func_preproc_wf = init_func_preproc_wf(
+                bold_file, 
+                has_fieldmap=self.has_fieldmap, 
+                fmriprep_dir=self.fmriprep_dir, 
+                layout=self.layout,
+                non_standard=self.non_standard,
+                omp_nthreads=self.omp_nthreads)
             if func_preproc_wf is None:
                 continue
 
@@ -174,14 +176,15 @@ class init_single_subject_wf():
 
 class bold_reg_wf():
 
-    def __init__(self, 
-                 subject_id,
-                 boldref, 
-                 workdir=None,
-                 omp_nthreads=8,
-                 use_bbr=True,
-                 bold2t1w_dof=6,
-                 bold2t1w_init='header'):
+    def __init__(
+        self, 
+        subject_id,
+        boldref, 
+        workdir=None,
+        omp_nthreads=8,
+        use_bbr=True,
+        bold2t1w_dof=6,
+        bold2t1w_init='header'):
 
         self.subject_id     = subject_id
         self.boldref        = boldref

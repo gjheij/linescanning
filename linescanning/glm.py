@@ -73,33 +73,25 @@ class GenericGLM():
     ----------
     >>> # import modules
     >>> from linescanning.glm import GenericGLM
-    >>> from linescanning import utils
-    >>> 
+    >>> from linescanning import dataset
+
     >>> # define file with fMRI-data and the output from Exptools2
     >>> func_file = "some_func_file.mat"
     >>> exp_file = "some_exp_file.tsv"
-    >>>
+
     >>> # load in functional data
-    >>> func = utils.ParseFuncFile(func_file, 
-    >>>                            subject=1, 
-    >>>                            run=1, 
-    >>>                            deleted_first_timepoints=200, 
-    >>>                            deleted_last_timepoints=200,
-    >>>                            bp_filter="rolling")
-    >>>
+    >>> obj = dataset.Dataset(
+    >>>     func_file, 
+    >>>     exp_file=exp_file,
+    >>>     subject=1, 
+    >>>     run=1, 
+    >>>     deleted_first_timepoints=200, 
+    >>>     deleted_last_timepoints=200)
+    
     >>> # fetch HP-filtered, percent-signal changed data
-    >>> data = func.dct_psc_df.copy()
-    >>>
-    >>> # load in exptools-file, use attributes from 'func'
-    >>> onset = utils.ParseExpToolsFile(exp_file,
-    >>>                                 subject=func.subject,
-    >>>                                 run=func.run,
-    >>>                                 delete_vols=(func.deleted_first_timepoints),
-    >>>                                 TR=func.TR)
-    >>>
-    >>> # fetch the onset times and event names in a dataframe
-    >>> onsets = onset.get_onset_df()
-    >>>
+    >>> data = obj.fetch_fmri()
+    >>> onsets = obj.fetch_onsets()
+
     >>> # do the fitting
     >>> fitting = GenericGLM(onsets, data.values, TR=func.TR, osf=1000)
 
@@ -127,27 +119,28 @@ class GenericGLM():
     This ensures we're getting an array back, rather than a nifti-image for our statistics
     """
     
-    def __init__(self, 
-                 onsets, 
-                 data, 
-                 hrf_pars=None, 
-                 TR=None, 
-                 osf=1, 
-                 contrast_matrix=None, 
-                 exp_type='event', 
-                 block_length=None, 
-                 amplitude=None, 
-                 regressors=None, 
-                 make_figure=False, 
-                 xkcd=False, 
-                 plot_event=[1, 2], 
-                 plot_vox=None, 
-                 verbose=False, 
-                 nilearn=False, 
-                 derivative=False, 
-                 dispersion=False, 
-                 add_intercept=True,
-                 cmap='inferno'):
+    def __init__(
+        self, 
+        onsets, 
+        data, 
+        hrf_pars=None, 
+        TR=None, 
+        osf=1, 
+        contrast_matrix=None, 
+        exp_type='event', 
+        block_length=None, 
+        amplitude=None, 
+        regressors=None, 
+        make_figure=False, 
+        xkcd=False, 
+        plot_event=[1, 2], 
+        plot_vox=None, 
+        verbose=False, 
+        nilearn=False, 
+        derivative=False, 
+        dispersion=False, 
+        add_intercept=True,
+        cmap='inferno'):
         
         # instantiate 
         self.onsets             = onsets
@@ -227,12 +220,13 @@ class GenericGLM():
         
         if self.nilearn_method:
             # we're going to hack Nilearn's FirstLevelModel to be compatible with our line-data. First, we specify the model as usual
-            self.fmri_glm = first_level.FirstLevelModel(t_r=self.TR,
-                                                        noise_model='ar1',
-                                                        standardize=False,
-                                                        hrf_model='spm',
-                                                        drift_model='cosine',
-                                                        high_pass=.01)
+            self.fmri_glm = first_level.FirstLevelModel(
+                t_r=self.TR,
+                noise_model='ar1',
+                standardize=False,
+                hrf_model='spm',
+                drift_model='cosine',
+                high_pass=.01)
 
             # Normally, we'd run `fmri_glm = fmri_glm.fit()`, but because this requires nifti-like inputs, we run `run_glm` outside of that function to get the labels:
             if isinstance(data, pd.DataFrame):
@@ -269,10 +263,11 @@ class GenericGLM():
                 print("Computing contrasts")
             self.tstats = []
             for event in self.conditions:
-                tstat = self.fmri_glm.compute_contrast(self.conditions[event], 
-                                                       stat_type='t', 
-                                                       output_type='stat', 
-                                                       return_type=None)
+                tstat = self.fmri_glm.compute_contrast(
+                    self.conditions[event], 
+                    stat_type='t', 
+                    output_type='stat', 
+                    return_type=None)
                 self.tstats.append(tstat)
 
             self.tstats = np.array(self.tstats)
@@ -477,15 +472,16 @@ def convolve_hrf(hrf, stim_v, make_figure=False, xkcd=False):
         gs = fig.add_gridspec(2, 2, width_ratios=[20, 10], hspace=0.7)
 
         ax0 = fig.add_subplot(gs[0,0])
-        LazyPlot(stim_v, 
-                 color="#B1BDBD", 
-                 axs=ax0,
-                 title="Events",
-                 y_lim=[-.5, 1.5], 
-                 x_label='Time (*osf)',
-                 y_label='Activity (A.U.)', 
-                 xkcd=xkcd,
-                 font_size=16)
+        LazyPlot(
+            stim_v, 
+            color="#B1BDBD", 
+            axs=ax0,
+            title="Events",
+            y_lim=[-.5, 1.5], 
+            x_label='Time (*osf)',
+            y_label='Activity (A.U.)', 
+            xkcd=xkcd,
+            font_size=16)
         
         # check if we got derivatives; if so, select first element (= standard HRF)
         if isinstance(convolved, list):
@@ -495,21 +491,23 @@ def convolve_hrf(hrf, stim_v, make_figure=False, xkcd=False):
             convolved = convolved[:,0]
 
         ax1 = fig.add_subplot(gs[1, 0])
-        LazyPlot(convolved,
-                 axs=ax1,
-                 title="Convolved stimulus-vector",
-                 x_label='Time (*osf)',
-                 y_label='Activity (A.U.)',
-                 xkcd=xkcd,
-                 font_size=16)
+        LazyPlot(
+            convolved,
+            axs=ax1,
+            title="Convolved stimulus-vector",
+            x_label='Time (*osf)',
+            y_label='Activity (A.U.)',
+            xkcd=xkcd,
+            font_size=16)
 
         ax2 = fig.add_subplot(gs[:, 1])
-        LazyPlot(hrf,
-                 axs=ax2,
-                 title="HRF", 
-                 x_label='Time (*osf)',
-                 xkcd=xkcd,
-                 font_size=16)
+        LazyPlot(
+            hrf,
+            axs=ax2,
+            title="HRF", 
+            x_label='Time (*osf)',
+            xkcd=xkcd,
+            font_size=16)
 
     # check hrf input
     if isinstance(hrf, list):
@@ -789,18 +787,19 @@ def fit_first_level(stim_vector, data, make_figure=False, copes=None, xkcd=False
         else:
             raise NotImplementedError("Im lazy.. Please use indexing for now")
 
-        LazyPlot(signals,
-                 y_label="Activity (A.U.)",
-                 x_label="volumes",
-                 title=f"Model fit vox {best_vox}",
-                 labels=labels,
-                 figsize=(20,5),
-                 font_size=20,
-                 xkcd=xkcd,
-                 markers=markers,
-                 color=colors,
-                 line_width=linewidth,
-                 **kwargs)
+        LazyPlot(
+            signals,
+            y_label="Activity (A.U.)",
+            x_label="volumes",
+            title=f"Model fit vox {best_vox}",
+            labels=labels,
+            figsize=(20,5),
+            font_size=20,
+            xkcd=xkcd,
+            markers=markers,
+            color=colors,
+            line_width=linewidth,
+            **kwargs)
 
     return {'betas': betas_conv,
             'x_conv': X_conv,

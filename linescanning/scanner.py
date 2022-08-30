@@ -44,15 +44,16 @@ class Scanner(object):
     >>> scan = scanner.Scanner(optimal.target_vertex('sub-001'), fs2ses='genaff.mat', hemi='left', new_anat='path/to/sub-001_ses-2_T1w.nii.gz')
     """
 
-    def __init__(self, 
-                 df,
-                 fs2ses=None,
-                 new_anat=None,
-                 hemi=None,
-                 fs_dir=None,
-                 ses='2',
-                 print_to_console=True,
-                 debug=False):
+    def __init__(
+        self, 
+        df,
+        fs2ses=None,
+        new_anat=None,
+        hemi=None,
+        fs_dir=None,
+        ses='2',
+        print_to_console=True,
+        debug=False):
 
         if fs_dir == None:
             self.fs_dir = os.environ['SUBJECTS_DIR']

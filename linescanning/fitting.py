@@ -202,21 +202,22 @@ class NideconvFitter():
     See also https://linescanning.readthedocs.io/en/latest/examples/nideconv.html for more details.
     """
 
-    def __init__(self, 
-                 func, 
-                 onsets, 
-                 TR=0.105, 
-                 confounds=None, 
-                 basis_sets="fourier", 
-                 fit_type="ols", 
-                 n_regressors=9, 
-                 add_intercept=False, 
-                 concatenate_runs=False, 
-                 verbose=False, 
-                 lump_events=False, 
-                 interval=[0,12], 
-                 osf=20,
-                 **kwargs):
+    def __init__(
+        self, 
+        func, 
+        onsets, 
+        TR=0.105, 
+        confounds=None, 
+        basis_sets="fourier", 
+        fit_type="ols", 
+        n_regressors=9, 
+        add_intercept=False, 
+        concatenate_runs=False, 
+        verbose=False, 
+        lump_events=False, 
+        interval=[0,12], 
+        osf=20,
+        **kwargs):
 
         self.func               = func
         self.onsets             = onsets
@@ -314,14 +315,15 @@ class NideconvFitter():
 
     def define_model(self, **kwargs):
 
-        self.model = nd.GroupResponseFitter(self.func,
-                                            self.used_onsets,
-                                            input_sample_rate=self.fs,
-                                            confounds=self.confounds, 
-                                            add_intercept=self.add_intercept,
-                                            concatenate_runs=self.concatenate_runs,
-                                            oversample_design_matrix=self.osf,
-                                            **kwargs)
+        self.model = nd.GroupResponseFitter(
+            self.func,
+            self.used_onsets,
+            input_sample_rate=self.fs,
+            confounds=self.confounds, 
+            add_intercept=self.add_intercept,
+            concatenate_runs=self.concatenate_runs,
+            oversample_design_matrix=self.osf,
+            **kwargs)
     
     def define_events(self):
         
@@ -337,10 +339,11 @@ class NideconvFitter():
             if self.verbose:
                 print(f"Adding event '{event}' to model")
             
-            self.model.add_event(str(event), 
-                                 basis_set=self.basis_sets,
-                                 n_regressors=self.n_regressors, 
-                                 interval=self.interval)
+            self.model.add_event(
+                str(event), 
+                basis_set=self.basis_sets,
+                n_regressors=self.n_regressors, 
+                interval=self.interval)
 
     def make_onsets_for_ridge(self):
         return self.used_onsets.reset_index().drop(['subject', 'run'], axis=1).set_index('event_type').loc['stim'].onset
@@ -365,11 +368,12 @@ class NideconvFitter():
                 # specify voxel-specific model
                 vox_model = nd.ResponseFitter(input_signal=vox_signal, sample_rate=self.fs)
 
-                [vox_model.add_event(str(i),
-                                    onsets=vox_onsets,
-                                    basis_set=self.basis_sets,
-                                    n_regressors=self.n_regressors,
-                                    interval=self.interval) for i in self.cond]
+                [vox_model.add_event(
+                    str(i),
+                    onsets=vox_onsets,
+                    basis_set=self.basis_sets,
+                    n_regressors=self.n_regressors,
+                    interval=self.interval) for i in self.cond]
 
                 vox_model.fit(type='ridge')
                 self.ridge_models[ix] = vox_model
@@ -385,29 +389,30 @@ class NideconvFitter():
         if self.verbose:
             print("Done")
 
-    def plot_average_per_event(self, 
-                               add_offset=True, 
-                               axs=None, 
-                               title="Average HRF across voxels", 
-                               save_as=None, 
-                               error_type="sem", 
-                               ttp=False, 
-                               ttp_lines=False, 
-                               ttp_legend=True, 
-                               ttp_labels=None, 
-                               events=None, 
-                               ttp_ori='h', 
-                               ttp_rot=30, 
-                               fwhm=False, 
-                               fwhm_lines=False, 
-                               fwhm_legend=True, 
-                               fwhm_labels=None, 
-                               fwhm_ori='v', 
-                               fwhm_rot=30,
-                               inset_ttp=[0.75, 0.65, 0.3, 0.3],
-                               inset_fwhm=[0.75, 0.65, 0.3, 0.3],
-                               reduction_factor=1.3,
-                               **kwargs):
+    def plot_average_per_event(
+        self, 
+        add_offset=True, 
+        axs=None, 
+        title="Average HRF across voxels", 
+        save_as=None, 
+        error_type="sem", 
+        ttp=False, 
+        ttp_lines=False, 
+        ttp_legend=True, 
+        ttp_labels=None, 
+        events=None, 
+        ttp_ori='h', 
+        ttp_rot=30, 
+        fwhm=False, 
+        fwhm_lines=False, 
+        fwhm_legend=True, 
+        fwhm_labels=None, 
+        fwhm_ori='v', 
+        fwhm_rot=30,
+        inset_ttp=[0.75, 0.65, 0.3, 0.3],
+        inset_fwhm=[0.75, 0.65, 0.3, 0.3],
+        reduction_factor=1.3,
+        **kwargs):
 
         self.__dict__.update(kwargs)
 
@@ -451,13 +456,14 @@ class NideconvFitter():
         else:
             raise ValueError(f"Error type must be 'sem' or 'std', not {error_type}")
 
-        plotting.LazyPlot(self.event_avg,
-                          xx=self.time,
-                          axs=axs,
-                          error=self.use_error,
-                          title=title,
-                          save_as=save_as,
-                          **kwargs)
+        plotting.LazyPlot(
+            self.event_avg,
+            xx=self.time,
+            axs=axs,
+            error=self.use_error,
+            title=title,
+            save_as=save_as,
+            **kwargs)
         
         if ttp:
 
@@ -481,13 +487,14 @@ class NideconvFitter():
             else:
                 fontsize = 16/reduction_factor # = 16-2 (as per default of `plotting.LazyPlot`)   
 
-            self.plot_ttp(self.event_avg, 
-                          axs=ax2, 
-                          hrf_axs=axs, 
-                          ttp_labels=ttp_labels, 
-                          ttp_lines=ttp_lines,
-                          font_size=fontsize, 
-                          **kwargs)
+            self.plot_ttp(
+                self.event_avg, 
+                axs=ax2, 
+                hrf_axs=axs, 
+                ttp_labels=ttp_labels, 
+                ttp_lines=ttp_lines,
+                font_size=fontsize, 
+                **kwargs)
 
         if fwhm:
 
@@ -511,24 +518,26 @@ class NideconvFitter():
             else:
                 fontsize = 16/reduction_factor # = 16-2 (as per default of `plotting.LazyPlot`)                
 
-            self.plot_fwhm(self.event_avg, 
-                           axs=ax2, 
-                           hrf_axs=axs, 
-                           fwhm_labels=fwhm_labels, 
-                           fwhm_lines=fwhm_lines,
-                           font_size=fontsize, 
-                           **kwargs)
+            self.plot_fwhm(
+                self.event_avg, 
+                axs=ax2, 
+                hrf_axs=axs, 
+                fwhm_labels=fwhm_labels, 
+                fwhm_lines=fwhm_lines,
+                font_size=fontsize, 
+                **kwargs)
 
-    def plot_ttp(self, 
-                 tcs, 
-                 axs=None, 
-                 hrf_axs=None, 
-                 ttp_lines=False, 
-                 ttp_labels=None, 
-                 figsize=(8,8), 
-                 ttp_ori='h', 
-                 *args, 
-                 **kwargs):
+    def plot_ttp(
+        self, 
+        tcs, 
+        axs=None, 
+        hrf_axs=None, 
+        ttp_lines=False, 
+        ttp_labels=None, 
+        figsize=(8,8), 
+        ttp_ori='h', 
+        *args, 
+        **kwargs):
 
         if not hasattr(self, "color"):
             if not hasattr(self, "cmap"):
@@ -559,30 +568,33 @@ class NideconvFitter():
             tot = sum(list(np.abs(ylim)))
             start = (0-ylim[0])/tot
             for ix,ii in enumerate(peak_positions):
-                hrf_axs.axvline(ii, 
-                                ymin=start, 
-                                ymax=peaks[ix]/tot+start, 
-                                color=colors[ix], 
-                                linewidth=0.5)
-        
-        x = [i for i in range(len(peaks))]
-        plotting.LazyBar(x=ttp_labels,
-                         y=peak_positions,
-                         palette=colors,
-                         sns_ori=ttp_ori,
-                         axs=axs,
-                         **kwargs)           
+                hrf_axs.axvline(
+                    ii, 
+                    ymin=start, 
+                    ymax=peaks[ix]/tot+start, 
+                    color=colors[ix], 
+                    linewidth=0.5)
 
-    def plot_fwhm(self, 
-                  hrfs, 
-                  axs=None, 
-                  hrf_axs=None, 
-                  fwhm_lines=False, 
-                  fwhm_labels=None, 
-                  figsize=(8,8), 
-                  fwhm_ori='v', 
-                  *args, 
-                  **kwargs):
+        x = [i for i in range(len(peaks))]
+        plotting.LazyBar(
+            x=ttp_labels,
+            y=peak_positions,
+            palette=colors,
+            sns_ori=ttp_ori,
+            axs=axs,
+            **kwargs)           
+
+    def plot_fwhm(
+        self, 
+        hrfs, 
+        axs=None, 
+        hrf_axs=None, 
+        fwhm_lines=False, 
+        fwhm_labels=None, 
+        figsize=(8,8), 
+        fwhm_ori='v', 
+        *args, 
+        **kwargs):
 
         if not hasattr(self, "color"):
             if not hasattr(self, "cmap"):
@@ -607,19 +619,21 @@ class NideconvFitter():
             tot = sum(list(np.abs(xlim)))
             for ix, ii in enumerate(fwhm_objs):
                 start = (ii.hmx[0]-xlim[0])/tot
-                hrf_axs.axhline(ii.half_max, 
-                                xmin=start, 
-                                xmax=start+ii.fwhm/tot, 
-                                color=colors[ix], 
-                                linewidth=0.5)
+                hrf_axs.axhline(
+                    ii.half_max, 
+                    xmin=start, 
+                    xmax=start+ii.fwhm/tot, 
+                    color=colors[ix], 
+                    linewidth=0.5)
         
         y_fwhm = [i.fwhm for i in fwhm_objs]
-        plotting.LazyBar(x=fwhm_labels,
-                         y=y_fwhm,
-                         palette=colors,
-                         sns_ori=fwhm_ori,
-                         axs=axs,
-                         **kwargs)           
+        plotting.LazyBar(
+            x=fwhm_labels,
+            y=y_fwhm,
+            palette=colors,
+            sns_ori=fwhm_ori,
+            axs=axs,
+            **kwargs)           
 
     def plot_average_per_voxel(self, add_offset=True, axs=None, n_cols=4, wspace=0, figsize=(30,15), make_figure=True, labels=None, save_as=None, **kwargs):
             
@@ -665,14 +679,15 @@ class NideconvFitter():
                 # plot all stimulus sizes for a voxel
                 if n_cols != None:
                     ax = fig.add_subplot(gs[ix])
-                    plotting.LazyPlot(self.voxel_in_events,
-                                      xx=self.time,
-                                      axs=ax,
-                                      title=col,
-                                      labels=set_labels,
-                                      font_size=16,
-                                      add_hline='default',
-                                      **kwargs)
+                    plotting.LazyPlot(
+                        self.voxel_in_events,
+                        xx=self.time,
+                        axs=ax,
+                        title=col,
+                        labels=set_labels,
+                        font_size=16,
+                        add_hline='default',
+                        **kwargs)
 
         if make_figure:
             if n_cols == None:
@@ -682,21 +697,23 @@ class NideconvFitter():
                     labels = None
                 
                 if axs != None:
-                    plotting.LazyPlot(self.all_voxels_in_event,
-                                      xx=self.time,
-                                      axs=axs,
-                                      labels=labels,
-                                      font_size=16,
-                                      add_hline='default',
-                                      **kwargs)
-                else:
-                    plotting.LazyPlot(self.all_voxels_in_event,
-                                      xx=self.time,
-                                      font_size=16,
-                                      labels=labels,
-                                      add_hline='default',
-                                      figsize=figsize,
-                                      **kwargs)
+                    plotting.LazyPlot(
+                        self.all_voxels_in_event,
+                        xx=self.time,
+                        axs=axs,
+                        labels=labels,
+                        font_size=16,
+                        add_hline='default',
+                        **kwargs)
+            else:
+                    plotting.LazyPlot(
+                        self.all_voxels_in_event,
+                        xx=self.time,
+                        font_size=16,
+                        labels=labels,
+                        add_hline='default',
+                        figsize=figsize,
+                        **kwargs)
 
         if save_as:
             fig.savefig(save_as)
@@ -718,13 +735,14 @@ class NideconvFitter():
         for ix, mark in enumerate(self.max_vals):
             axs.plot(cf.x[ix], mark, 'o', color=color_list[ix], alpha=ci_alpha)
 
-        plotting.LazyPlot(cf.y_pred_upsampled,
-                        xx=cf.x_pred_upsampled,
-                        axs=axs,
-                        error=cf.ci_upsampled,
-                        color=ci_color,
-                        font_size=16,
-                        **kwargs)
+        plotting.LazyPlot(
+            cf.y_pred_upsampled,
+            xx=cf.x_pred_upsampled,
+            axs=axs,
+            error=cf.ci_upsampled,
+            color=ci_color,
+            font_size=16,
+            **kwargs)
 
         if save_as:
             fig.savefig(save_as)
@@ -778,12 +796,13 @@ class NideconvFitter():
                 self.data_for_plot.append(col_data)
                 self.error_for_plot.append(col_error)
 
-            plotting.LazyPlot(self.data_for_plot,
-                              xx=self.time,
-                              error=self.error_for_plot,
-                              axs=ax,
-                              font_size=16,
-                              **kwargs)
+            plotting.LazyPlot(
+                self.data_for_plot,
+                xx=self.time,
+                error=self.error_for_plot,
+                axs=ax,
+                font_size=16,
+                **kwargs)
             if not axs:
                 if save_as:
                     fig.savefig(save_as)

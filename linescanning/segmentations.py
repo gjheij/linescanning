@@ -78,19 +78,20 @@ class Segmentations:
     Assumes your anatomical segmentation files have the *acq-MP2RAGE*-tag. This tag will be replaced by *1slice* in segmentation-to-slice images
     """
 
-    def __init__(self, 
-                 subject, 
-                 run=None,
-                 project_home=None, 
-                 trafo_file=None, 
-                 reference_slice=None, 
-                 reference_session=1, 
-                 target_session=2, 
-                 foldover="FH", 
-                 pickle_file=None,
-                 voxel_cutoff=300,
-                 verbose=False,
-                 **kwargs):
+    def __init__(
+        self, 
+        subject, 
+        run=None,
+        project_home=None, 
+        trafo_file=None, 
+        reference_slice=None, 
+        reference_session=1, 
+        target_session=2, 
+        foldover="FH", 
+        pickle_file=None,
+        voxel_cutoff=300,
+        verbose=False,
+        **kwargs):
 
         self.subject            = subject
         self.run                = run
@@ -190,11 +191,12 @@ class Segmentations:
                     else:
                         interp = "nn"
                 
-                    transform.ants_applytrafo(self.reference_slice, 
-                                              file, interp=interp, 
-                                              invert=invert,
-                                              trafo=self.trafo_file, 
-                                              output=new_file)
+                    transform.ants_applytrafo(
+                        self.reference_slice, 
+                        file, interp=interp, 
+                        invert=invert,
+                        trafo=self.trafo_file, 
+                        output=new_file)
 
                 # collect them in 'resampled' dictionary
                 self.resampled[tag[nr]] = new_file
@@ -265,15 +267,16 @@ class Segmentations:
         return utils.squeeze_generic(return_data, range(return_dimensions))
         
         
-    def plot_segmentations(self, 
-                           subj_df=None,
-                           include=['ref', 'cortex', 'layers'], 
-                           cmaps=['Greys_r', 'Greys_r', 'hot'], 
-                           cmap_color_line="#f0ff00", 
-                           max_val_ref=2400, 
-                           overlay_line=True, 
-                           figsize=(15,5), 
-                           save_as=None):
+    def plot_segmentations(
+        self, 
+        subj_df=None,
+        include=['ref', 'cortex', 'layers'], 
+        cmaps=['Greys_r', 'Greys_r', 'hot'], 
+        cmap_color_line="#f0ff00", 
+        max_val_ref=2400, 
+        overlay_line=True, 
+        figsize=(15,5), 
+        save_as=None):
 
         """plot_segmentations
 
@@ -356,14 +359,15 @@ class Segmentations:
         if save_as:
             fig.savefig(save_as)
 
-    def plot_line_segmentations(self, 
-                                subj_df=None,
-                                include=['ref', 'wm', 'gm', 'csf', 'cortex', 'layers', 'mask'], 
-                                cmap_color_mask="#08B2F0", 
-                                figsize=(8,4), 
-                                layout="vertical", 
-                                move_factor=None, 
-                                save_as=None):
+    def plot_line_segmentations(
+        self, 
+        subj_df=None,
+        include=['ref', 'wm', 'gm', 'csf', 'cortex', 'layers', 'mask'], 
+        cmap_color_mask="#08B2F0", 
+        figsize=(8,4), 
+        layout="vertical", 
+        move_factor=None, 
+        save_as=None):
 
         """plot_line_segmentations
 
