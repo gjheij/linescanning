@@ -813,8 +813,8 @@ def percent_change(ts, ax, nilearn=False, baseline=20):
         Axis over which to perform the conversion. If shape (n_voxels, n_timepoints), then ax=1. If shape (n_timepoints, n_voxels), then ax=0.
     nilearn: bool, optional
         Use nilearn method, by default False
-    baseline: int, optional
-        Use custom method where only the median of the baseline (instead of the full timecourse) is subtracted, by default 20. Length should be in `volumes`, not `seconds`.
+    baseline: int, list, np.ndarray optional
+        Use custom method where only the median of the baseline (instead of the full timecourse) is subtracted, by default 20. Length should be in `volumes`, not `seconds`. Can also be a list or numpy array (1d) of indices which are to be considered as baseline. The list of indices should be corrected for any deleted volumes at the beginning.
 
     Returns
     ----------
@@ -827,27 +827,41 @@ def percent_change(ts, ax, nilearn=False, baseline=20):
         If `ax` > 2
     """
     
+    if ts.ndim == 1:
+        ts = ts[:,np.newaxis]
+        ax = 0
+        
     if nilearn:
         if ax == 0:
-            return _standardize(ts, standardize='psc')
+            psc = _standardize(ts, standardize='psc')
         else:
-            return _standardize(ts.T, standardize='psc').T
+            psc = _standardize(ts.T, standardize='psc').T
     else:
+
         # first step of PSC; set NaNs to zero if dividing by 0 (in case of crappy timecourses)
-        ts *= np.expand_dims(np.nan_to_num((100/np.mean(ts, axis=ax))), ax)
+        ts_m = ts*np.expand_dims(np.nan_to_num((100/np.mean(ts, axis=ax))), ax)
 
         # get median of baseline
+        if isinstance(baseline, np.ndarray):
+            baseline = list(baseline)
+
         if ax == 0:
-            median_baseline = np.median(ts[:baseline,:], axis=1)
+            if isinstance(baseline, list):
+                median_baseline = np.median(ts_m[baseline,:], axis=0)
+            else:
+                median_baseline = np.median(ts_m[:baseline,:], axis=0)
         elif ax == 1:
-            median_baseline = np.median(ts[:,:baseline], axis=0)
+            if isinstance(baseline, list):
+                median_baseline = np.median(ts_m[:,baseline], axis=1)
+            else:
+                median_baseline = np.median(ts_m[:,:baseline], axis=1)
         else:
             raise ValueError("ax must be 0 or 1")
 
         # subtract
-        ts -= np.expand_dims(median_baseline,ax)
+        psc = ts_m-np.expand_dims(median_baseline,ax)
         
-        return ts
+    return psc
 
 def select_from_df(df, expression="run = 1", index=True, indices=None):
     """select_from_df
