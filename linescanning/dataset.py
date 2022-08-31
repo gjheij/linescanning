@@ -1252,11 +1252,11 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
     run: int, optional
         run number you'd like to have the onset times forpsc_nilearn: b
     baseline: float, int, optional
-        Duration of the baseline used to calculate the percent-signal change.
+        Duration of the baseline used to calculate the percent-signal change. This method is the default over `psc_nilearn`
     baseline_units: str, optional
         Units of the baseline. Use `seconds`, `sec`, or `s` to imply that `baseline` is in seconds. We'll convert it to volumes internally. If `deleted_first_timepoints` is specified, `baseline` will be corrected for that as well.
     psc_nilearn: bool, optional
-        Use nilearn method of calculating percent signal change. This method uses the mean of the entire timecourse, rather than the baseline period. Overwrites `baseline` and `baseline_units`.
+        Use nilearn method of calculating percent signal change. This method uses the mean of the entire timecourse, rather than the baseline period. Overwrites `baseline` and `baseline_units`. Default is False.
     standardize: str, optional
         method of standardization (e.g., "zscore" or "psc")
     low_pass: bool, optional
@@ -1341,7 +1341,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
         transpose=False,
         baseline=20,
         baseline_units="seconds",
-        psc_nilearn=True,
+        psc_nilearn=False,
         **kwargs):
 
         self.sub                        = subject
@@ -2179,7 +2179,8 @@ class Dataset(ParseFuncFile):
         verbose=False,         
         **kwargs):
 
-        if verbose:
+        self.verbose = verbose
+        if self.verbose:
             print("DATASET")
         
         self.read_attributes = [
@@ -2191,21 +2192,25 @@ class Dataset(ParseFuncFile):
             'blink_events']
 
         if isinstance(func_file, str) and func_file.endswith(".h5"):
-            print(f" Reading from {func_file}")
+            if self.verbose:
+                print(f" Reading from {func_file}")
             self.from_hdf(func_file)
         else:
             super().__init__(func_file, **kwargs)
 
-        if verbose:
+        if self.verbose:
             print("\nDATASET: created")
 
     def fetch_fmri(self, strip_index=False, dtype=None):
 
         if dtype == None:
-            if self.acompcor:
+            if hasattr(self, "acompcor"):
                 dtype = "acompcor"
             else:
-                dtype = self.standardization
+                if hasattr(self, "standardization"):
+                    dtype = self.standardization
+                else:
+                    dtype = "psc"
         
         if dtype == "psc":
             attr = 'df_func_psc'
@@ -2284,28 +2289,56 @@ class Dataset(ParseFuncFile):
         else:
             print("No eyetracking-data was provided")
 
-    def to_hdf(self, output_file):
-        
+    def to_hdf(self, output_file=None, overwrite=False):
+
+        if output_file == None:
+            if hasattr(self, "lsprep_full"):
+                self.h5_file = opj(self.lsprep_full, "dataset.h5")
+            else:
+                raise ValueError("No output file specified")
+        else:
+            self.h5_file = output_file
+
+        if overwrite:
+            if os.path.exists(self.h5_file):
+                store = pd.HDFStore(self.h5_file)
+                store.close()
+                os.remove(self.h5_file)
+
         if self.verbose:
-            print(f"Saving to {output_file}")
+            print(f"Saving to {self.h5_file}")
 
         for attr in self.read_attributes:
             if hasattr(self, attr):
                 
                 if self.verbose:
-                    print(f" Saving attribute: {attr}")
+                    print(f" Storing attribute: {attr}")
                     
                 add_df = getattr(self, attr)
-                if os.path.exists(output_file):
-                    add_df.to_hdf(output_file, key=attr, append=True, mode='r+', format='t')
+                if os.path.exists(self.h5_file):
+                    add_df.to_hdf(self.h5_file, key=attr, append=True, mode='r+', format='t')
                 else:
-                    add_df.to_hdf(output_file, key=attr, mode='w', format='t')
+                    store = pd.HDFStore(self.h5_file)
+                    store.close()
+                    add_df.to_hdf(self.h5_file, key=attr, mode='w', format='t')
         
         if self.verbose:
             print("Done")
 
-    def from_hdf(self, input_file):
-        hdf_store = pd.HDFStore(input_file)
+        store = pd.HDFStore(self.h5_file)
+        store.close()
+
+    def from_hdf(self, input_file=None):
+
+        if input_file == None:
+            if hasattr(self, "lsprep_full"):
+                self.h5_file = opj(self.lsprep_full, "dataset.h5")
+            else:
+                raise ValueError("No output file specified")
+        else:
+            self.h5_file = input_file
+
+        hdf_store = pd.HDFStore(self.h5_file)
         hdf_keys = hdf_store.keys()
         for key in hdf_keys:
             key = key.strip("/")
@@ -2314,6 +2347,8 @@ class Dataset(ParseFuncFile):
                 print(f" Setting attribute: {key}")
 
             setattr(self, key, hdf_store.get(key))
+
+        hdf_store.close()         
 
     def to4D(self, fname=None, desc=None, dtype=None, mask=None):
 
