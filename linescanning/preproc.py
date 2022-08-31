@@ -143,35 +143,45 @@ class aCompCor(Segmentations):
         self.acompcor_components    = []
         self.elbows                 = []
         self.pcas                   = []
+        self.tissue_pca             = {"wm": True, "csf": True}
         for tissue in ['csf', 'wm']:
             
             self.tissue_voxels  = getattr(self, f"{tissue}_voxels")
             self.tissue_tc      = utils.select_from_df(self.data, expression="ribbon", indices=self.tissue_voxels)
 
-            try:
-                self.pca        = decomposition.PCA(n_components=self.n_pca)
-                self.components = self.pca.fit_transform(self.tissue_tc)
+            if len(self.tissue_voxels) != 0:
+                try:
+                    self.pca        = decomposition.PCA(n_components=self.n_pca)
+                    self.components = self.pca.fit_transform(self.tissue_tc)
 
-                self.pcas.append(self.pca)
-                # find elbow with KneeLocator
-                self.xx     = np.arange(0, self.n_pca)
-                self.kn     = KneeLocator(self.xx, self.pca.explained_variance_, curve='convex', direction='decreasing')
-                self.elbow_ = self.kn.knee
-                
-                if self.verbose:
-                    print(f" Found {self.elbow_} component(s) in '{tissue}'-voxels with total explained variance of {round(sum(self.pca.explained_variance_ratio_[:self.elbow_]), 2)}%")
+                    self.pcas.append(self.pca)
+                    # find elbow with KneeLocator
+                    self.xx     = np.arange(0, self.n_pca)
+                    self.kn     = KneeLocator(self.xx, self.pca.explained_variance_, curve='convex', direction='decreasing')
+                    self.elbow_ = self.kn.knee
+                    
+                    if self.verbose:
+                        print(f" Found {self.elbow_} component(s) in '{tissue}'-voxels with total explained variance of {round(sum(self.pca.explained_variance_ratio_[:self.elbow_]), 2)}%")
 
-                self.pca_desc = f"""
+                    self.pca_desc = f"""
 Timecourses from these voxels were extracted and fed into a PCA. These components were used to clean the data from respiration/cardiac frequencies. """
 
-            except:
-                if self.verbose:
-                    print(f" PCA with {self.n_pca} was unsuccessful. Using WM/CSF timecourses")
-                    self.pca_desc = f"""
-PCA with {self.n_pca} was unsuccessful, so WM/CSF timecourses were used to clean the data from respiration/cardiac 
+                except:
+                    if self.verbose:
+                        print(f" PCA for '{tissue}' was unsuccessful. Using all un-PCA'd timecourses ({len(self.tissue_voxels)})")
+                        self.pca_desc = f"""
+PCA with {self.n_pca} was unsuccessful, so '{tissue}' timecourses were used to clean the data from respiration/cardiac 
 frequencies. """
 
+            else:
+
+                if self.verbose:
+                    print(f" PCA for '{tissue}' was unsuccessful because no voxels were found")
+                    self.pca_desc = f"""
+No voxels for '{tissue}' were found, so PCA was skipped. """
+
                 self.elbow_ = None
+                self.tissue_pca[tissue] = False
 
             self.elbows.append(self.elbow_)
 
@@ -234,7 +244,7 @@ direction) were assigned to this tissue type. This limited the possibility for p
 
         self.__desc__ += self.pca_desc
 
-        if self.do_pca:
+        if self.tissue_pca["wm"] or self.tissue_pca["csf"]:
             fig = plt.figure(figsize=(30, 7))
             gs = fig.add_gridspec(1, 4)
         else:
@@ -250,27 +260,30 @@ direction) were assigned to this tissue type. This limited the possibility for p
         if hasattr(self, "regressor_voxel_colors"):
             use_colors = self.regressor_voxel_colors
         else:
-            use_colors = None
+            use_colors = "#cccccc"
 
-        label = ["csf", "wm"]
-        if self.do_pca:
+        if self.tissue_pca["wm"] or self.tissue_pca["csf"]:
             ax1 = fig.add_subplot(gs[1])
-            for ix, ii in enumerate(self.elbows):
-                if use_colors != None:
-                    color = use_colors[ix]
-                else:
-                    color = "#cccccc"
+                
+            if self.tissue_pca["wm"] and self.tissue_pca["csf"]:
+                label = ["csf", "wm"]
+                colors = use_colors
+            elif self.tissue_pca["wm"] and not self.tissue_pca["csf"]:
+                label = ["wm"]
+                colors = use_colors[1]
+            elif self.tissue_pca["csf"] and not self.tissue_pca["wm"]:
+                label = ["csf"]
+                colors = use_colors[0]
 
+            # make dashed line for each tissue PCA
+            for ix, ii in enumerate(self.elbows):
                 if ii != None:
-                    ax1.axvline(ii, color=color, ls='dashed', lw=0.5, alpha=0.5)
-                    if any(v is None for v in self.elbows):
-                        use_colors = use_colors[ii]
-                        label = [label[ii]]
+                    ax1.axvline(ii, color=use_colors[ix], ls='dashed', lw=0.5, alpha=0.5)
 
             plotting.LazyPlot(
                 [self.pcas[ii].explained_variance_ratio_ for ii in range(len(self.pcas))],
                 xx=self.xx,
-                color=use_colors,
+                color=colors,
                 axs=ax1,
                 title=f"Scree-plot run-{self.run}",
                 x_label="nr of components",
