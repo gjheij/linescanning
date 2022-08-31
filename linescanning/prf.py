@@ -937,44 +937,81 @@ def create_line_prf_matrix(
         # check baseline first
         baseline_start = settings['design'].get('start_duration')
 
-        # find blank onsets; parse ranges into list of tuples and check if tr_in_sec falls in that range or not
-        # https://stackoverflow.com/a/6054040
-        blank_periods = trial_df.loc[(trial_df['event_type'] == 'blank')]['onset'].values
-        blank_duration = settings['design'].get('inter_sweep_blank')
-        blank_ranges = [(i,i+blank_duration) for i in blank_periods]
-
         if verbose:
             print("Creating design matrix (can take a few minutes with thousands of TRs)")
-        
-        for tr in range(nr_trs):
-            
-            # find time at the middle of TR
-            if stim_at_half_TR:
-                tr_in_sec = (tr * onsets.TR)+0.5*onsets.TR
-            else:
-                tr_in_sec = (tr * onsets.TR)
 
-            # start doing stuff if tr_in_sec is greater than baseline
-            if tr_in_sec > baseline_start:
+        # compatible with lineprf2
+        if "baseline" in np.unique(trial_df['event_type'].values):
+
+            # find blank onsets; parse ranges into list of tuples and check if tr_in_sec falls in that range or not
+            # https://stackoverflow.com/a/6054040
+            blank_periods = trial_df.loc[(trial_df['event_type'] == 'blank')]['onset'].values
+            blank_duration = settings['design'].get('inter_sweep_blank')
+            blank_ranges = [(i,i+blank_duration) for i in blank_periods]
+
+            for tr in range(nr_trs):
                 
-                # check blank area
-                if not any(lower <= tr_in_sec <= upper for (lower, upper) in blank_ranges):
+                # find time at the middle of TR
+                if stim_at_half_TR:
+                    tr_in_sec = (tr * onsets.TR)+0.5*onsets.TR
+                else:
+                    tr_in_sec = (tr * onsets.TR)
 
-                    # ix now represents the trial ID in the onset dataframe, which starts at the first 't'
-                    ix,_ = utils.find_nearest(trial_df['onset'].values, tr_in_sec)
-                    image_file = utils.get_file_from_substring(f"Screenshots{ix}.png", screenshot_path, return_msg=None)
+                # start doing stuff if tr_in_sec is greater than baseline
+                if tr_in_sec > baseline_start:
                     
-                    if image_file != None:
+                    # check blank area
+                    if not any(lower <= tr_in_sec <= upper for (lower, upper) in blank_ranges):
+
+                        # ix now represents the trial ID in the onset dataframe, which starts at the first 't'
+                        ix,_ = utils.find_nearest(trial_df['onset'].values, tr_in_sec)
+                        image_file = utils.get_file_from_substring(f"Screenshots{ix}.png", screenshot_path, return_msg=None)
                         
-                        img = (255*mpimg.imread(image_file)).astype('int')
+                        if image_file != None:
+                            
+                            img = (255*mpimg.imread(image_file)).astype('int')
 
-                        if img.shape[0] != img.shape[1]:
-                            offset = int((img.shape[1]-img.shape[0])/2)
-                            img = img[:, offset:(offset+img.shape[0])]
+                            if img.shape[0] != img.shape[1]:
+                                offset = int((img.shape[1]-img.shape[0])/2)
+                                img = img[:, offset:(offset+img.shape[0])]
 
-                        # binarize image into dm matrix; i use ranges because I have another cue in the screenshots
-                        design_matrix[..., tr][np.where(((img[..., 0] < 40) & (img[..., 1] < 40)) |
-                                                        ((img[..., 0] > 200) & (img[..., 1] > 200)))] = 1
+                            # binarize image into dm matrix; i use ranges because I have another cue in the screenshots
+                            design_matrix[..., tr][np.where(((img[..., 0] < 40) & (img[..., 1] < 40)) |
+                                                            ((img[..., 0] > 200) & (img[..., 1] > 200)))] = 1
+        else:
+
+            # backwards compatibility for older versions of lineprf
+            for tr in range(nr_trs):
+    
+                # find time at the middle of TR
+                if stim_at_half_TR:
+                    tr_in_sec = (tr * onsets.TR)+0.5*onsets.TR
+                else:
+                    tr_in_sec = (tr * onsets.TR)
+
+                # ix now represents the trial ID in the onset dataframe, which starts at the first 't'
+                ix,_ = utils.find_nearest(trial_df['onset'].values, tr_in_sec)
+                
+                # zero-pad number https://stackoverflow.com/questions/2189800/how-to-find-length-of-digits-in-an-integer
+                zfilling = len(str(len(os.listdir(screenshot_path))))
+                img_number = str(ix).zfill(zfilling)
+                try:
+                    image_file = utils.get_file_from_substring(f"{img_number}.png", screenshot_path)
+                except:
+                    image_file = None
+                
+                if image_file != None:
+                    
+                    img = (255*mpimg.imread(image_file)).astype('int')
+
+                    if img.shape[0] != img.shape[1]:
+                        offset = int((img.shape[1]-img.shape[0])/2)
+                        img = img[:, offset:(offset+img.shape[0])]
+
+                    # binarize image into dm matrix
+                    # assumes: standard RGB255 format; only colors present in image are black, white, grey, red, green.
+                    design_matrix[..., tr][np.where(((img[..., 0] < 40) & (img[..., 1] < 40)) |
+                                                    ((img[..., 0] > 200) & (img[..., 1] > 200)))] = 1
         
         #top, bottom, left, right
         design_matrix[:dm_edges_clipping[0], :, :] = 0
