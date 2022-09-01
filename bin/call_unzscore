@@ -26,19 +26,18 @@ docs for more information.
 Args:
     -s|--sub <subject>  subject ID (e.g., "008")
     -n|--ses <session>  session ID   
-    -f|--fprep <path>   path to fMRIPrep root folder (e.g., derivatives/fmriprep). Default is the
-                        environmental variable `DIR_DATA_DERIV/fmriprep`
-    -o|--out <path>     path to pybest output. Default is the environmental variable `DIR_DATA_DERIV
-                        /pybest`
+    -f|--fprep <path>   path to fMRIPrep root folder (e.g., derivatives/fmriprep). Default is the environmental variable `DIR_DATA_DERIV/fmriprep`
+    -o|--out <path>     path to pybest output. Default is the environmental variable `DIR_DATA_DERIV/pybest`
     -t|--task <task>    task ID
     -p|--space <space>  space ID. Default is `fsnative`
-    -h|--hemi <hemi>    hemi ID
+    --lh|--rh           Process a single hemisphere, default is to loop through both
     -q|--help           print help text
-    --pre               use this *before* pybest; calculates the standard deviation and average and 
-                        stores it in <out>/<subject>/<ses>/tmp
+    --pre               use this *before* pybest; calculates the standard deviation and average and  stores it in <out>/<subject>/<ses>/tmp
     --post              use this *after* pybest; undo the z-scoring using the output from `--tmp`
 
 Example:
+    call_unzscore -s 999 -n 1 --pre
+    call_unzscore -s 999 -n 1 --post
     call_unzscore -s 999 -n 1 -f $DIR_DATA_DERIV/fmriprep -f $DIR_DATA_DERIV/pybest --pre
 
 ---------------------------------------------------------------------------------------------------
@@ -51,11 +50,11 @@ Example:
     session     = None
     task        = None
     space       = "fsnative"
-    hemi        = None
+    hemi_list   = ['L', 'R']
     pre         = True
 
     try:
-        opts = getopt.getopt(argv,"qf:o:s:n:t:h:p:",["fprep=", "out=", "sub=", "ses=", "task=", "space=", "hemi=", "post", "pre", "help"])[0]
+        opts = getopt.getopt(argv,"qf:o:s:n:t:h:p:",["fprep=", "lh", "rh", "out=", "sub=", "ses=", "task=", "space=", "hemi=", "post", "pre", "help"])[0]
     except getopt.GetoptError:
         print(main.__doc__)
         sys.exit(2)
@@ -76,8 +75,10 @@ Example:
             task = arg
         elif opt in ("-p", "--space"):
             space = arg
-        elif opt in ("-h", "--hemi"):
-            hemi = arg                                          
+        elif opt in ("--lh"):
+            hemi_list = ["L"]
+        elif opt in ("--rh"):
+            hemi_list = ["R"]
         elif opt in ('--pre'):
             pre = True
         elif opt in ('--post'):
@@ -102,97 +103,105 @@ Example:
         search_for += [f'task-{task}']
 
     if space != None:
-        search_for += [f'space-{space}']    
+        search_for += [f'space-{space}']
 
-    if hemi != None:
-        search_for += [f'hemi-{hemi}']    
+    for hemi in hemi_list:
 
-    if pre:
-        # final func_dir
-        ffunc_dir = opj(fprep_dir, base_dir, 'func')
-        output_dir = opj(out_dir, base_dir, 'tmp')
+        if hemi != None:
+            search_hemi = search_for + [f'hemi-{hemi}']    
 
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir, exist_ok=True)
+        if pre:
 
-        # load data
-        funcs = utils.get_file_from_substring(search_for, ffunc_dir, exclude="json")
+            # final func_dir
+            ffunc_dir = opj(fprep_dir, base_dir, 'func')
+            output_dir = opj(out_dir, base_dir, 'tmp')
 
-        for func in funcs:
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir, exist_ok=True)
 
-            final_output = out_string
+            # load data
+            funcs = utils.get_file_from_substring(search_hemi, ffunc_dir, exclude="json")
 
-            # split into bids components to get run ID
-            comps = utils.split_bids_components(func)
+            for func in funcs:
 
-            for id in ['task', 'run', 'space', 'hemi']:
-                if id in list(comps.keys()):
-                    final_output = final_output+f"_{id}-{comps[id]}"
-            
-            # read in file
-            obj = dataset.Dataset(func, use_bids=True, filter_strategy='raw', standardization='raw')
+                final_output = out_string
 
-            # get raw data
-            raw = obj.fetch_fmri(dtype='raw')
+                # split into bids components to get run ID
+                comps = utils.split_bids_components(func)
 
-            # get standard deviation and mean
-            stdev = raw.values.std(axis=0, keepdims=True)
-            avg = raw.values.mean(axis=0, keepdims=True)
+                for id in ['task', 'run', 'space', 'hemi']:
+                    if id in list(comps.keys()):
+                        final_output = final_output+f"_{id}-{comps[id]}"
+                
+                # read in file
+                obj = dataset.Dataset(
+                    func, 
+                    use_bids=True, 
+                    filter_strategy='raw', 
+                    standardization='raw', 
+                    verbose=False)
 
-            # save in pickle
-            tmp_data = {'std': stdev,
-                        'avg': avg}
+                # get raw data
+                raw = obj.fetch_fmri(dtype='raw')
 
-            pkl_file = opj(output_dir, final_output+'_desc-avgstd.pkl')
-            # print(f"Writing {pkl_file}")
-            f = open(pkl_file, "wb")
-            pickle.dump(tmp_data, f)
-            f.close()
-    else:
-        # final func_dir
-        denoised_dir = opj(out_dir, base_dir, 'denoising')
-        avg_dir = opj(out_dir, base_dir, 'tmp')
-        output_dir = opj(out_dir, base_dir, 'unzscored')
+                # get standard deviation and mean
+                stdev = raw.values.std(axis=0, keepdims=True)
+                avg = raw.values.mean(axis=0, keepdims=True)
 
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir, exist_ok=True)
+                # save in pickle
+                tmp_data = {'std': stdev,
+                            'avg': avg}
 
-        # load data
-        full_search = search_for + ['run', 'denoised_bold']
-        funcs = utils.get_file_from_substring(full_search, denoised_dir, exclude="raw")
-        if isinstance(funcs, str):
-            funcs = [funcs]
+                pkl_file = opj(output_dir, final_output+'_desc-avgstd.pkl')
+                # print(f"Writing {pkl_file}")
+                f = open(pkl_file, "wb")
+                pickle.dump(tmp_data, f)
+                f.close()
+        else:
+            # final func_dir
+            denoised_dir = opj(out_dir, base_dir, 'denoising')
+            avg_dir = opj(out_dir, base_dir, 'tmp')
+            output_dir = opj(out_dir, base_dir, 'unzscored')
 
-        if len(funcs) == 0:
-            raise ValueError(f"No files with {full_search} in '{denoised_dir}'")
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir, exist_ok=True)
 
-        for func in funcs:
+            # load data
+            full_search = search_hemi + ['run', 'denoised_bold']
+            funcs = utils.get_file_from_substring(full_search, denoised_dir, exclude="raw")
+            if isinstance(funcs, str):
+                funcs = [funcs]
 
-            # read in file
-            obj = dataset.Dataset(func, use_bids=True, filter_strategy='raw', standardization='raw')
+            if len(funcs) == 0:
+                raise ValueError(f"No files with {full_search} in '{denoised_dir}'")
 
-            # get raw data
-            raw = obj.fetch_fmri(dtype='raw')
+            for func in funcs:
 
-            # split into bids components to get run ID
-            comps = utils.split_bids_components(func)
-            if "run" in list(comps.keys()):
-                run_search = search_for+[f"run-{comps['run']}_"]
-            else:
-                run_search = search_for
+                # read in file
+                obj = dataset.Dataset(func, use_bids=True, filter_strategy='raw', standardization='raw')
 
-            # get standard deviation and mean
-            match = utils.get_file_from_substring(run_search, avg_dir)
-            if isinstance(match, list):
-                raise ValueError(f"Found {len(match)} matches with filters {full_search}: {match}")
+                # get raw data
+                raw = obj.fetch_fmri(dtype='raw')
 
-            with open(match, 'rb') as input:
-                data = pickle.load(input)
+                # split into bids components to get run ID
+                comps = utils.split_bids_components(func)
+                if "run" in list(comps.keys()):
+                    run_search = search_hemi+[f"run-{comps['run']}_"]
+                else:
+                    run_search = search_hemi
 
-            unzscored = raw*data['std'].T+data['avg'].T
-            fname = opj(output_dir, os.path.basename(func))
-            # print(f"Writing {fname}")
-            np.save(fname, unzscored.T)
+                # get standard deviation and mean
+                match = utils.get_file_from_substring(run_search, avg_dir)
+                if isinstance(match, list):
+                    raise ValueError(f"Found {len(match)} matches with filters {full_search}: {match}")
+
+                with open(match, 'rb') as input:
+                    data = pickle.load(input)
+
+                unzscored = raw*data['std'].T+data['avg'].T
+                fname = opj(output_dir, os.path.basename(func))
+                # print(f"Writing {fname}")
+                np.save(fname, unzscored.T)
             
 if __name__ == "__main__":
     main(sys.argv[1:])
