@@ -1697,6 +1697,9 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                 TR=self.TR,
                 fit_hrf=self.fit_hrf)
 
+            if self.fix_bold_baseline:
+                self.settings['bounds']['bold_bsl'] = [0,0]           
+
             # overwrite rsq-threshold from settings file
             if self.rsq_threshold != None:
                 self.rsq = self.rsq_threshold
