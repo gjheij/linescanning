@@ -1107,7 +1107,7 @@ def distance_centers(prf1,prf2):
     return math.sqrt(math.pow(x2 - x1, 2) + math.pow(y2 - y1, 2) * 1.0)
  
 
-def generate_model_params(model='gauss', dm=None, TR=1.5, fit_hrf=False):
+def generate_model_params(model='gauss', dm=None, TR=1.5, fit_hrf=False, verbose=False):
 
     """generate_model_params
 
@@ -1137,6 +1137,9 @@ def generate_model_params(model='gauss', dm=None, TR=1.5, fit_hrf=False):
     
     if yml_file == None:
         yml_file = utils.get_file_from_substring("prf_analysis.yml", opj(os.path.dirname(os.path.dirname(utils.__file__)), 'misc'))
+
+    if verbose:
+        print(f"Reading settings from '{yml_file}'")
 
     with open(yml_file) as file:
         
@@ -1572,6 +1575,12 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         self.fix_bold_baseline  = fix_bold_baseline
         self.constraints        = constraints
         self.__dict__.update(kwargs)
+        
+        # read design matrix if needed
+        if isinstance(self.design_matrix, str):
+            if self.verbose:
+                print(f"Reading design matrix from '{self.design_matrix}'")
+            self.design_matrix = read_par_file(self.design_matrix)
 
         #----------------------------------------------------------------------------------------------------------------------------------------------------------
         # Fetch the settings
@@ -1579,7 +1588,8 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
             model=self.model, 
             dm=self.design_matrix, 
             TR=self.TR,
-            fit_hrf=self.fit_hrf)
+            fit_hrf=self.fit_hrf,
+            verbose=self.verbose)
 
         # overwrite bold baseline tuple if bold baseline should be fixed
         if self.fix_bold_baseline:
@@ -1695,7 +1705,8 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                 model=self.model, 
                 dm=self.design_matrix, 
                 TR=self.TR,
-                fit_hrf=self.fit_hrf)
+                fit_hrf=self.fit_hrf,
+                verbose=self.verbose)
 
             if self.fix_bold_baseline:
                 self.settings['bounds']['bold_bsl'] = [0,0]           
