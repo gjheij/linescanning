@@ -754,7 +754,8 @@ class Segmentations:
 
 class Align():
 
-    def __init__(self, moving_object, target_object, verbose=False, weights=None, save_as=None, axs=None):
+    def __init__(self, moving_object, target_object, verbose=False, weights=None, save_as=None, axs=None,
+    **kwargs):
 
         self.moving_object  = moving_object
         self.target_object  = target_object
@@ -762,18 +763,18 @@ class Align():
         self.weights        = weights
         self.save_as        = save_as
         self.axs            = axs
+        self.__dict__.update(kwargs)
 
         # fetch the segmentations in beam representation
         for obj in self.moving_object, self.target_object:
-            if isinstance(obj, dataset.Dataset) or isinstance(obj, Segmentations):
-                if not hasattr(obj, "segmentations_in_beam"):
-                    obj.segmentations_to_beam()
-            else:
-                raise TypeError(f"Input must be instance of linescanning.dataset.Dataset or linescanning.segmentations.Segmentations, not '{type(obj)}'")
+            try:
+                obj.segmentations_to_beam()
+            except:
+                allowed_types = ["linescanning.dataset.Dataset", "linescanning.segmentations.Segmentations", "linescanning.preproc.aCompCor"]
+                raise TypeError(f"Input must be one of {allowed_types}, or linescanning.segmentations.Segmentations, not '{type(obj)}'")
 
         # get the CRUISE segmentation
         self.moving_cortex  = self.moving_object.segmentations_in_beam[self.moving_object.subject]['cortex']
-
         self.target_cortex = self.target_object.segmentations_in_beam[self.target_object.subject]['cortex']
 
         # average across line
@@ -795,146 +796,201 @@ class Align():
             self.weights = weights_object.segmentations_in_beam[weights_object.subject]['mask'].mean(axis=-1)
 
         # get the shift, correlations, and more
-        self.aligner = get_voxel_shift(self.moving_cortex_line, 
-                                       self.target_cortex_line, 
-                                       weights=self.weights,
-                                       plot=self.verbose,
-                                       save_as=self.save_as,
-                                       axs=self.axs)
+        self.aligner = self.get_voxel_shift(
+            weights=self.weights,
+            plot=self.verbose,
+            save_as=self.save_as,
+            axs=self.axs,
+            **kwargs)
 
         # get GM voxels
-        self.moving_gm_voxels = get_gm_voxels(self.moving_cortex_line)
-        self.target_gm_voxels = get_gm_voxels(self.target_cortex_line)
+        self.moving_gm_voxels = self.get_gm_voxels(self.moving_cortex_line)
+        self.target_gm_voxels = self.get_gm_voxels(self.target_cortex_line)
+
+    def get_gm_voxels(self, cortex_img, threshold=1.75):
+        return np.where(cortex_img > threshold)[0]
     
-def get_gm_voxels(cortex_img, threshold=1.75):
-    return np.where(cortex_img > threshold)[0]
+    def get_voxel_shift(self,vox_range=[-15,15], plot=False, weights=None, save_as=None, axs=None, **kwargs):
+        """get_voxel_shift
 
-def get_voxel_shift(moving,target,vox_range=[-15,15], plot=False, weights=None, save_as=None, axs=None):
-    """get_voxel_shift
+        Obtain shift in line direction between 'real' and 'predicted' slice. If the output is positive, it means `moving` need to be shifted X-voxels to the right in order to maximally match `target`.
 
-    Obtain shift in line direction between 'real' and 'predicted' slice. If the output is positive, it means `moving` need to be shifted X-voxels to the right in order to maximally match `target`.
+        Parameters
+        ----------
+        moving: np.ndarray
+            array to be shifted ('moving')
+        target: np.ndarray
+            array to move to ('reference')
+        vox_range: list, optional
+            this list represents the possible voxel shifts that are being used to construct a list of correlations. Can be narrower when the arrays are already pretty well aligned. Default = [-15,15]
+        plot: bool, optional
+            plot the correlation coefficients
+        save_as: str, optional
+            save the plot (recommended to save as pdf for retaining resolution)
 
-    Parameters
-    ----------
-    moving: np.ndarray
-        array to be shifted ('moving')
-    target: np.ndarray
-        array to move to ('reference')
-    vox_range: list, optional
-        this list represents the possible voxel shifts that are being used to construct a list of correlations. Can be narrower when the arrays are already pretty well aligned. Default = [-15,15]
-    plot: bool, optional
-        plot the correlation coefficients
-    save_as: str, optional
-        save the plot (recommended to save as pdf for retaining resolution)
-
-    Returns:
-        voxel shift: int
-            shift in voxel dimensions, 
-        correlations across range: list
-            list of correlations across range
-        attempted voxel range: list
-            the range of voxels used for correlation
-    """
-    
-    corr_vals = []
-    range_vox = range(*vox_range)
-
-    # do some checking first
-    for arr in moving,target:
-        if not isinstance(arr, np.ndarray):
-            raise ValueError("Inputs must be numpy arrays (1D)")
-        else:
-            if arr.ndim > 1:
-                raise ValueError("Inputs must be 1D-arrays")
-    
-    if isinstance(weights, np.ndarray):
-        if weights.ndim > 1:
-            raise ValueError("Weights must be 1D-array")
-        else:
-            if weights.shape[0] != moving.shape[0] != target.shape[0]:
-                raise ValueError(f"Shape of weights ({weights.shape[0]}) does not match that of input array 1 ({moving.shape[0]}) and/or input array 2 ({target.shape[0]})")
-
-    # loop through the range of voxels
-    for ix,ii in enumerate(range_vox):
-
-        padding = np.zeros(abs(ii))
+        Returns:
+            voxel shift: int
+                shift in voxel dimensions, 
+            correlations across range: list
+                list of correlations across range
+            attempted voxel range: list
+                the range of voxels used for correlation
+        """
         
-        # shift to the right
-        if ii > 0:
-            padded_moving = np.append(padding, moving)
-            padded_moving = padded_moving[:moving.shape[0]]
+        corr_vals = []
+        range_vox = range(*vox_range)
 
-            # shift the weights with the profiles
-            if isinstance(weights, np.ndarray):
-                padded_weights = np.append(padding, weights)
-                padded_weights = padded_weights[:moving.shape[0]]
+        if not hasattr(self, "font_size"):
+            self.font_size = 18
+
+        if not hasattr(self, "label_size"):
+            self.label_size = 14
+
+        if not hasattr(self, "tick_width"):
+            self.tick_width = 0.5
         
-        # shift to the left
-        else:
-            padded_moving = np.append(moving, padding)
-            padded_moving = padded_moving[abs(ii):]
+        if not hasattr(self, "tick_length"):
+            self.tick_length = 7
 
-            # shift the weights with the profiles
-            if isinstance(weights, np.ndarray):
-                padded_weights = np.append(weights, padding)
-                padded_weights = padded_weights[abs(ii):]
+        if not hasattr(self, "axis_width"):
+            self.axis_width = 0.5
 
+        # do some checking first
+        target = self.target_cortex_line
+        moving = self.moving_cortex_line
+        for arr in target, moving:
+            if not isinstance(arr, np.ndarray):
+                raise ValueError(f"Inputs must be numpy arrays (1D), not {type(target)} and {type(moving)}")
+            else:
+                if arr.ndim > 1:
+                    raise ValueError("Inputs must be 1D-arrays")
+        
         if isinstance(weights, np.ndarray):
-            # use weighted correlation
-            corr_array  = np.hstack((target[...,np.newaxis], padded_moving[...,np.newaxis]))
-            descr       = stats.DescrStatsW(corr_array, weights=padded_weights)
-            corr        = descr.corrcoef[0,1]
-        else:
-            corr = np.corrcoef(target,padded_moving)[0,1]
+            print("im here")
+            if weights.ndim > 1:
+                raise ValueError("Weights must be 1D-array")
+            else:
+                if weights.shape[0] != moving.shape[0] != target.shape[0]:
+                    raise ValueError(f"Shape of weights ({weights.shape[0]}) does not match that of input array 1 ({moving.shape[0]}) and/or input array 2 ({target.shape[0]})")
+
+        # loop through the range of voxels
+        for ix,ii in enumerate(range_vox):
+
+            padding = np.zeros(abs(ii))
             
-        corr_vals.append(corr)
+            # shift to the right
+            if ii > 0:
+                padded_moving = np.append(padding, moving)
+                padded_moving = padded_moving[:moving.shape[0]]
 
-    max_corr = np.amax(corr_vals)
-    vox_pad_ix = utils.find_nearest(corr_vals, max_corr)[0]
-    print(f"max correlation = {max_corr.round(2)}; padding of {range_vox[vox_pad_ix]} voxels")
+                # shift the weights with the profiles
+                if isinstance(weights, np.ndarray):
+                    padded_weights = np.append(padding, weights)
+                    padded_weights = padded_weights[:moving.shape[0]]
+            
+            # shift to the left
+            else:
+                padded_moving = np.append(moving, padding)
+                padded_moving = padded_moving[abs(ii):]
 
-    if plot:
-        fig = plt.figure(figsize=(20,5))
-        gs = fig.add_gridspec(1,2, width_ratios=[3,1])
+                # shift the weights with the profiles
+                if isinstance(weights, np.ndarray):
+                    padded_weights = np.append(weights, padding)
+                    padded_weights = padded_weights[abs(ii):]
 
-        ax1 = fig.add_subplot(gs[0])
+            if isinstance(weights, np.ndarray):
+                # use weighted correlation
+                corr_array = np.hstack((target[...,np.newaxis], padded_moving[...,np.newaxis]))
+                descr = stats.DescrStatsW(corr_array, weights=padded_weights)
+                corr = descr.corrcoef[0,1]
+            else:
+                corr = np.corrcoef(target,padded_moving)[0,1]
+                
+            corr_vals.append(corr)
 
-        if isinstance(weights, np.ndarray):
-            inputs = [moving, target, weights]
-            labels = ['moving array', 'target array', 'mask']
-            colors = ["#1B9E77", "#D95F02", '#cccccc']
-        else:
-            inputs = [moving, target]
-            labels = ['moving array', 'target array']
-            colors = ["#1B9E77", "#D95F02"]
+        max_corr = np.amax(corr_vals)
+        vox_pad_ix = utils.find_nearest(corr_vals, max_corr)[0]
+        print(f"max correlation = {max_corr.round(2)}; padding of {range_vox[vox_pad_ix]} voxels")
 
-        plotting.LazyPlot(inputs, 
-                          axs=ax1, 
-                          color=colors,
-                          labels=labels, 
-                          x_label="voxels along line",
-                          y_label="amplitude (a.u.)",
-                          title="Line profiles",
-                          font_size=16)
+        if plot:
+            fig = plt.figure(figsize=(20,5))
+            gs = fig.add_gridspec(1,4, width_ratios=[0.5,0.5,3,1], wspace=0.3)
 
-        # get the shift in line-direction
-        ax2 = fig.add_subplot(gs[1])
-        plotting.LazyPlot(np.array(corr_vals),
-                          xx=range_vox,
-                          axs=ax2, 
-                          color="#D01B47", 
-                          x_label="# voxels padded",
-                          y_label="correlation coefficient",
-                          title=f"Max correlation with {range_vox[vox_pad_ix]} voxel shift",
-                          font_size=16,
-                          set_xlim_zero=False,
-                          line_width=1.5)
+            # imshow of line-profile fixed image
+            ax1 = fig.add_subplot(gs[0])
+            ax1.imshow(
+                np.tile(self.target_cortex_line[:,np.newaxis],10), 
+                cmap='Greys_r', 
+                aspect=1/3)
+            for axis in ['top', 'bottom', 'left', 'right']:
+                ax1.spines[axis].set_linewidth(self.axis_width)
 
-        ax2.axvline(range_vox[vox_pad_ix], lw=0.5, ls='--', color='k')
+            ax1.set_title("Target", fontsize=self.font_size)
+            ax1.axes.get_xaxis().set_visible(False)
+            ax1.tick_params(
+                width=self.tick_width, 
+                length=self.tick_length,
+                labelsize=self.label_size)
+            ax1.set_ylabel("position", fontsize=self.font_size)
+            
+            # imshow of line-profile moving image
+            ax2 = fig.add_subplot(gs[1])
+            ax2.imshow(
+                np.tile(self.moving_cortex_line[:, np.newaxis],10),
+                cmap='Greys_r', 
+                aspect=1/3)
+            ax2.set_title("Moving", fontsize=self.font_size)
+            ax2.axis('off')
 
-        plt.show()
+            if isinstance(weights, np.ndarray):
+                inputs = [moving, target, weights]
+                labels = ['moving array', 'target array', 'mask']
+                colors = ["#1B9E77", "#D95F02", '#cccccc']
+            else:
+                inputs = [moving, target]
+                labels = ['moving array', 'target array']
+                colors = ["#1B9E77", "#D95F02"]
 
-    if save_as:
-        fig.savefig(save_as)
+            ax3 = fig.add_subplot(gs[2])
+            plotting.LazyPlot(
+                inputs, 
+                axs=ax3, 
+                color=colors,
+                labels=labels, 
+                x_label="voxels along line",
+                y_label="amplitude (a.u.)",
+                title="Line profiles",
+                **dict(
+                    kwargs, 
+                    font_size=self.font_size,
+                    label_size=self.label_size,
+                    tick_width=self.tick_width,
+                    tick_length=self.tick_length,
+                    axis_width=self.axis_width))
 
-    return range_vox[vox_pad_ix],corr_vals,range_vox
+            # get the shift in line-direction
+            ax4 = fig.add_subplot(gs[3])
+            plotting.LazyPlot(
+                np.array(corr_vals),
+                xx=range_vox,
+                axs=ax4, 
+                color="#D01B47", 
+                x_label="<< L   padding    R >>",
+                y_label="correlation coefficient",
+                title=f"Correlation across range",
+                x_lim=vox_range,
+                **dict(
+                    kwargs, 
+                    font_size=self.font_size,
+                    label_size=self.label_size,
+                    tick_width=self.tick_width,
+                    tick_length=self.tick_length,
+                    axis_width=self.axis_width))
+            ax4.axvline(range_vox[vox_pad_ix], lw=0.5, ls='--', color='k')
+
+            plt.show()
+
+        if save_as:
+            fig.savefig(save_as, bbox_inches="tight")
+
+        return range_vox[vox_pad_ix],corr_vals,range_vox
