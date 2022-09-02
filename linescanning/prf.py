@@ -1107,7 +1107,7 @@ def distance_centers(prf1,prf2):
     return math.sqrt(math.pow(x2 - x1, 2) + math.pow(y2 - y1, 2) * 1.0)
  
 
-def generate_model_params(model='gauss', dm=None, TR=1.5, fit_hrf=False):
+def generate_model_params(model='gauss', dm=None, TR=1.5, fit_hrf=False, verbose=False):
 
     """generate_model_params
 
@@ -1137,6 +1137,9 @@ def generate_model_params(model='gauss', dm=None, TR=1.5, fit_hrf=False):
     
     if yml_file == None:
         yml_file = utils.get_file_from_substring("prf_analysis.yml", opj(os.path.dirname(os.path.dirname(utils.__file__)), 'misc'))
+
+    if verbose:
+        print(f"Reading settings from '{yml_file}'")
 
     with open(yml_file) as file:
         
@@ -1232,7 +1235,7 @@ def generate_model_params(model='gauss', dm=None, TR=1.5, fit_hrf=False):
                                  'size': [float(item) for item in norm_bounds[2]], 
                                  'prf_ampl': norm_bounds[3], 
                                  'bold_bsl': norm_bounds[4],
-                                 'surr_ampl': norm_bounds[4],
+                                 'surr_ampl': norm_bounds[5],
                                  'surr_size': [float(item) for item in norm_bounds[6]],
                                  'neur_bsl': list(norm_bounds[7]),
                                  'surr_bsl': [float(item) for item in norm_bounds[8]]}}
@@ -1572,6 +1575,12 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         self.fix_bold_baseline  = fix_bold_baseline
         self.constraints        = constraints
         self.__dict__.update(kwargs)
+        
+        # read design matrix if needed
+        if isinstance(self.design_matrix, str):
+            if self.verbose:
+                print(f"Reading design matrix from '{self.design_matrix}'")
+            self.design_matrix = read_par_file(self.design_matrix)
 
         #----------------------------------------------------------------------------------------------------------------------------------------------------------
         # Fetch the settings
@@ -1579,7 +1588,8 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
             model=self.model, 
             dm=self.design_matrix, 
             TR=self.TR,
-            fit_hrf=self.fit_hrf)
+            fit_hrf=self.fit_hrf,
+            verbose=self.verbose)
 
         # overwrite bold baseline tuple if bold baseline should be fixed
         if self.fix_bold_baseline:
@@ -1695,7 +1705,11 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                 model=self.model, 
                 dm=self.design_matrix, 
                 TR=self.TR,
-                fit_hrf=self.fit_hrf)
+                fit_hrf=self.fit_hrf,
+                verbose=self.verbose)
+
+            if self.fix_bold_baseline:
+                self.settings['bounds']['bold_bsl'] = [0,0]           
 
             # overwrite rsq-threshold from settings file
             if self.rsq_threshold != None:
@@ -2514,6 +2528,8 @@ class CollectSubject(pRFmodelFitting):
         resolution of pRF to resample to. For instance, if you've used a low-resolution design matrix, but you'd like a prettier image, you can set `resize` to something higher than the original (54 >> 270, for example). By default not used.
     best_vertex: bool, optional
         Signifies that we should load in the parameters of the target vertex used in line-scanning experiments. If *True*, the 'best_vertex'-parameters given `model` will be read in. If *False*, the iterative fit parameters from `model` will be read in.
+    filter_list: list, optional
+        Extra filters to search for particular design matrix. By default, we'll look for a file with ["design", "mat"], but if you have multiple files that correspond to this list you can add extra elements to pick the file you need, e.g., `filter_list=["acq-3DEPI"]`
 
     Example
     ----------
@@ -2533,6 +2549,7 @@ class CollectSubject(pRFmodelFitting):
         correct_screen=False, 
         verbose=True, 
         best_vertex=False,
+        filter_list=[],
         **kwargs):
 
         self.subject        = subject
@@ -2545,7 +2562,7 @@ class CollectSubject(pRFmodelFitting):
         self.correct_screen = correct_screen
         self.verbose        = verbose
         self.best_vertex    = best_vertex
-
+        self.filter_list    = filter_list
         self.__dict__.update(kwargs)
 
         if self.hemi == "lh" or self.hemi.lower() == "l" or self.hemi.lower() == "left":
@@ -2562,13 +2579,19 @@ class CollectSubject(pRFmodelFitting):
                 
         # get design matrix, vertex info, and analysis file
         if self.prf_dir != None:
-            self.design_fn      = utils.get_file_from_substring(["design", ".mat"], self.prf_dir)
+            self.design_fn      = utils.get_file_from_substring(["design", ".mat"]+self.filter_list, self.prf_dir)
             self.design_matrix  = read_par_file(self.design_fn) # read_par_file doesn't care whether it's a npy-/mat-/pkl-file
-            self.func_data_lr   = np.load(utils.get_file_from_substring(["hemi-LR_", "avg_bold", ".npy"], self.prf_dir))
-            self.func_data_l    = np.load(utils.get_file_from_substring(["hemi-L_", "avg_bold", ".npy"], self.prf_dir))
-            self.func_data_r    = np.load(utils.get_file_from_substring(["hemi-R_", "avg_bold", ".npy"], self.prf_dir))
 
-        print(utils.get_file_from_substring(["hemi-LR_", "avg_bold", ".npy"], self.prf_dir))
+            try:
+                self.func_data_lr   = np.load(utils.get_file_from_substring(["hemi-LR_", "avg_bold", ".npy"], self.prf_dir))
+                self.func_data_l    = np.load(utils.get_file_from_substring(["hemi-L_", "avg_bold", ".npy"], self.prf_dir))
+                self.func_data_r    = np.load(utils.get_file_from_substring(["hemi-R_", "avg_bold", ".npy"], self.prf_dir))
+            except:
+                try:
+                    self.func_data_lr = np.load(utils.get_file_from_substring(["desc-data.npy"]+self.filter_list, self.prf_dir))
+                except:
+                    print("WARNING: could not load functional data")
+
         # try to read iterative fit parameters
         allowed_models = ['gauss', 'css', 'dog', 'norm']
         for model in allowed_models:
@@ -2615,20 +2638,24 @@ class CollectSubject(pRFmodelFitting):
             else:
                 print(f"WARNING: Could not find '{self.model}_iter_pars' attribute")
 
-            self.data = self.func_data_lr.T
+            if hasattr(self, "func_data_lr"):
+                self.data = self.func_data_lr.T
 
         # initialize the model
-        super().__init__(
-            self.data,
-            design_matrix=self.design_matrix,
-            verbose=self.verbose)
+        if hasattr(self, "data"):
+            super().__init__(
+                self.data,
+                design_matrix=self.design_matrix,
+                verbose=self.verbose)
 
-        if hasattr(self, "pars"):
-            self.load_params(
-                self.pars, 
-                model=self.model, 
-                stage="iter", 
-                hemi=self.hemi_tag)
+            if hasattr(self, "pars"):
+                self.load_params(
+                    self.pars, 
+                    model=self.model, 
+                    stage="iter", 
+                    hemi=self.hemi_tag)
+        else:
+            print("WARNING: could not initiate model due to missing data. Some functions may not work.")
 
     def return_prf_params(self, hemi="lh"):
         """return pRF parameters from :class:`linescanning.utils.VertexInfo`"""

@@ -2196,7 +2196,7 @@ class Dataset(ParseFuncFile):
                 print(f" Reading from {func_file}")
             self.from_hdf(func_file)
         else:
-            super().__init__(func_file, **kwargs)
+            super().__init__(func_file, verbose=self.verbose, **kwargs)
 
         if self.verbose:
             print("\nDATASET: created")
