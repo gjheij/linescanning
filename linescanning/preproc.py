@@ -128,14 +128,15 @@ class aCompCor(Segmentations):
         self.__dict__.update(kwargs)
 
         if self.wm_voxels == None and self.csf_voxels == None:
-            super().__init__(self.subject,
-                             run=self.run,
-                             reference_slice=self.reference_slice,
-                             target_session=self.trg_session,
-                             foldover=self.foldover,
-                             verbose=self.verbose,
-                             trafo_file=self.trafo_list,
-                             **kwargs)
+            super().__init__(
+                self.subject,
+                run=self.run,
+                reference_slice=self.reference_slice,
+                target_session=self.trg_session,
+                foldover=self.foldover,
+                verbose=self.verbose,
+                trafo_file=self.trafo_list,
+                **kwargs)
 
         if self.verbose:
             print(f" Using {self.n_pca} components for aCompCor (WM/CSF separately)")
