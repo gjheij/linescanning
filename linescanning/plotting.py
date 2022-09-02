@@ -118,9 +118,9 @@ class LazyPRF():
         if self.save_as:
             if isinstance(self.save_as, list):
                 for ii in self.save_as:
-                    plt.savefig(ii, transparant=True)
+                    plt.savefig(ii, transparent=True, dpi=300, bbox_inches='tight')
             elif isinstance(self.save_as, str):
-                plt.savefig(self.save_as, transparant=True)
+                plt.savefig(self.save_as, transparent=True, dpi=300, bbox_inches='tight')
             else:
                 raise ValueError(f"Unknown input '{self.save_as}' for 'save_as'")
 
@@ -383,9 +383,9 @@ class LazyPlot():
         if self.save_as:
             if isinstance(self.save_as, list):
                 for ii in self.save_as:
-                    plt.savefig(ii, transparant=True)
+                    plt.savefig(ii, transparent=True, dpi=300, bbox_inches='tight')
             elif isinstance(self.save_as, str):
-                plt.savefig(self.save_as, transparant=True)
+                plt.savefig(self.save_as, transparent=True, dpi=300, bbox_inches='tight')
             else:
                 raise ValueError(f"Unknown input '{self.save_as}' for 'save_as'")
 
@@ -483,9 +483,10 @@ class LazyPlot():
         if self.title:
             axs.set_title(self.title, fontname=self.fontname, fontsize=self.font_size)
 
-        axs.tick_params(width=self.tick_width, 
-                        length=self.tick_length,
-                        labelsize=self.label_size)
+        axs.tick_params(
+            width=self.tick_width, 
+            length=self.tick_length,
+            labelsize=self.label_size)
 
         for axis in ['top', 'bottom', 'left', 'right']:
             axs.spines[axis].set_linewidth(self.axis_width)
@@ -497,15 +498,17 @@ class LazyPlot():
 
             if isinstance(self.add_vline['pos'], list) or isinstance(self.add_vline['pos'], np.ndarray):
                 for line in self.add_vline['pos']:
-                    axs.axvline(line, 
-                                color=self.add_vline['color'], 
-                                lw=self.add_vline['lw'], 
-                                ls=self.add_vline['ls'])
+                    axs.axvline(
+                        line, 
+                        color=self.add_vline['color'], 
+                        lw=self.add_vline['lw'], 
+                        ls=self.add_vline['ls'])
             else:
-                axs.axvline(self.add_vline['pos'], 
-                            color=self.add_vline['color'],
-                            lw=self.add_vline['lw'], 
-                            ls=self.add_vline['ls'])
+                axs.axvline(
+                    self.add_vline['pos'], 
+                    color=self.add_vline['color'],
+                    lw=self.add_vline['lw'], 
+                    ls=self.add_vline['ls'])
 
 
         # give priority to specify x-lims rather than seaborn's xlim
@@ -645,9 +648,9 @@ class LazyCorr():
         if self.save_as:
             if isinstance(self.save_as, list):
                 for ii in self.save_as:
-                    plt.savefig(ii, transparant=True)
+                    plt.savefig(ii, transparent=True, dpi=300, bbox_inches='tight')
             elif isinstance(self.save_as, str):
-                plt.savefig(self.save_as, transparant=True)
+                plt.savefig(self.save_as, transparent=True, dpi=300, bbox_inches='tight')
             else:
                 raise ValueError(f"Unknown input '{self.save_as}' for 'save_as'")
 
@@ -755,7 +758,7 @@ class LazyBar():
             self.plot()
         
         if save_as:
-            plt.savefig(self.save_as, transparent=True)
+            plt.savefig(self.save_as, transparent=True, dpi=300, bbox_inches='tight')
 
     def plot(self):
 
