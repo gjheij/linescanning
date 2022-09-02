@@ -167,6 +167,8 @@ class aCompCor(Segmentations):
 Timecourses from these voxels were extracted and fed into a PCA. These components were used to clean the data from respiration/cardiac frequencies. """
 
                 except:
+                    self.elbow_ = None
+                    self.tissue_pca[tissue] = False
                     if self.verbose:
                         print(f" PCA for '{tissue}' was unsuccessful. Using all un-PCA'd timecourses ({len(self.tissue_voxels)})")
                         self.pca_desc = f"""
@@ -198,7 +200,7 @@ No voxels for '{tissue}' were found, so PCA was skipped. """
                 self.do_pca = False
                 self.info = "timecourses"
                 # raise ValueError("Found 0 components surviving the elbow-plot. Turn on verbose and inspect the plot")
-                self.acompcor_components.append(self.tissue_tc)
+                self.acompcor_components.append(self.tissue_tc.mean(axis=1)[:,np.newaxis])
 
         # concatenate components into an array
         self.acompcor_components = np.concatenate(self.acompcor_components, axis=1)
@@ -307,6 +309,7 @@ direction) were assigned to this tissue type. This limited the possibility for p
             ax2 = fig.add_subplot(gs[2])
         else:
             ax2 = fig.add_subplot(gs[1])
+            
         plotting.LazyPlot(
             self.nuisance_spectra,
             xx=self.nuisance_freqs[0],
