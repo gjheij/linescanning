@@ -254,23 +254,51 @@ class NideconvFitter():
         # # fit
         self.fit()
 
+        # some plotting defaults
+        if not hasattr(self, "font_size"):
+            self.font_size = 18
+
+        if not hasattr(self, "label_size"):
+            self.label_size = 14
+
+        if not hasattr(self, "tick_width"):
+            self.tick_width = 0.5
+
+        if not hasattr(self, "tick_length"):
+            self.tick_length = 7
+
+        if not hasattr(self, "axis_width"):
+            self.axis_width = 0.5
+
     def timecourses_condition(self):
 
         # get the condition-wise timecourses
         if self.fit_type == "ols":
+            # averaged runs
             self.tc_condition = self.model.get_conditionwise_timecourses()
-            
-            # get the standard error of mean
-            self.tc_sem = self.model.get_subjectwise_timecourses().groupby(level=['event type', 'covariate', 'time']).sem()
 
-            self.tc_std = self.model.get_subjectwise_timecourses().groupby(level=['event type', 'covariate', 'time']).std()
+            # full timecourses of subjects
+            self.tc_subjects = self.model.get_timecourses()
+            self.obj_grouped = self.tc_subjects.groupby(level=["subject", "event type", "covariate", "time"])
+            
+            # get the standard error of mean & standard deviation
+            self.tc_sem = self.obj_grouped.sem()
+            self.tc_std = self.obj_grouped.std()
+            self.tc_mean = self.obj_grouped.mean()
 
             # rename 'event type' to 'event_type'
-            tmp = self.tc_std.reset_index().rename(columns={"event type": "event_type"})
-            self.tc_std = tmp.set_index(['event_type', 'covariate', 'time'])
-
             tmp = self.tc_sem.reset_index().rename(columns={"event type": "event_type"})
-            self.tc_sem = tmp.set_index(['event_type', 'covariate', 'time'])
+            self.tc_sem = tmp.set_index(["subject", "event_type", "covariate",  "time"])
+            
+            tmp = self.tc_std.reset_index().rename(columns={"event type": "event_type"})
+            self.tc_std = tmp.set_index(["subject", "event_type", "covariate", "time"])
+
+            tmp = self.tc_mean.reset_index().rename(columns={"event type": "event_type"})
+            self.tc_mean = tmp.set_index(["subject", "event_type", "covariate", "time"])            
+
+            self.sem_condition = self.tc_sem.groupby(level=["event_type", "covariate", "time"]).mean()
+
+            self.std_condition = self.tc_std.groupby(level=["event_type", "covariate", "time"]).mean()
 
             # get r2
             self.rsq_ = self.model.get_rsq()
@@ -463,8 +491,20 @@ class NideconvFitter():
             error=self.use_error,
             title=title,
             save_as=save_as,
-            **kwargs)
-        
+            **dict(
+                kwargs,
+                font_size=self.font_size,
+                label_size=self.label_size,
+                tick_width=self.tick_width,
+                tick_length=self.tick_length,
+                axis_width=self.axis_width))
+
+        if hasattr(self, "font_size"):
+            self.old_font_size = self.font_size
+            self.old_label_size = self.label_size
+            self.font_size = self.font_size/reduction_factor
+            self.label_size = self.label_size/reduction_factor
+
         if ttp:
 
             # add insets with time-to-peak
@@ -478,14 +518,7 @@ class NideconvFitter():
             if isinstance(ttp_labels, list) or isinstance(ttp_labels, np.ndarray):
                 ttp_labels = ttp_labels
             else:
-                ttp_labels = events
-
-            # check for fontsize
-            if hasattr(self, "font_size"):
-                fontsize = self.font_size/reduction_factor
-                kwargs.pop('font_size', None) # remove font_size from kwargs to avoid double keywording
-            else:
-                fontsize = 16/reduction_factor # = 16-2 (as per default of `plotting.LazyPlot`)   
+                ttp_labels = events  
 
             self.plot_ttp(
                 self.event_avg, 
@@ -493,8 +526,13 @@ class NideconvFitter():
                 hrf_axs=axs, 
                 ttp_labels=ttp_labels, 
                 ttp_lines=ttp_lines,
-                font_size=fontsize, 
-                **kwargs)
+                **dict(
+                    kwargs,
+                    font_size=self.font_size,
+                    label_size=self.label_size,
+                    tick_width=self.tick_width,
+                    tick_length=self.tick_length,
+                    axis_width=self.axis_width))
 
         if fwhm:
 
@@ -511,21 +549,25 @@ class NideconvFitter():
             else:
                 fwhm_labels = events
 
-            # check for fontsize
-            if hasattr(self, "font_size"):
-                fontsize = self.font_size - reduction_factor
-                kwargs.pop('font_size', None) # remove font_size from kwargs to avoid double keywording
-            else:
-                fontsize = 16/reduction_factor # = 16-2 (as per default of `plotting.LazyPlot`)                
-
             self.plot_fwhm(
                 self.event_avg, 
                 axs=ax2, 
                 hrf_axs=axs, 
                 fwhm_labels=fwhm_labels, 
                 fwhm_lines=fwhm_lines,
-                font_size=fontsize, 
-                **kwargs)
+                **dict(
+                    kwargs,
+                    font_size=self.font_size,
+                    label_size=self.label_size,
+                    tick_width=self.tick_width,
+                    tick_length=self.tick_length,
+                    axis_width=self.axis_width))
+
+        if hasattr(self, "old_font_size"):
+            self.font_size = self.old_font_size
+
+        if hasattr(self, "old_label_size"):
+            self.label_size = self.old_label_size
 
     def plot_ttp(
         self, 
@@ -582,7 +624,13 @@ class NideconvFitter():
             palette=colors,
             sns_ori=ttp_ori,
             axs=axs,
-            **kwargs)           
+            **dict(
+                kwargs,
+                font_size=self.font_size,
+                label_size=self.label_size,
+                tick_width=self.tick_width,
+                tick_length=self.tick_length,
+                axis_width=self.axis_width))          
 
     def plot_fwhm(
         self, 
@@ -625,7 +673,7 @@ class NideconvFitter():
                     xmax=start+ii.fwhm/tot, 
                     color=colors[ix], 
                     linewidth=0.5)
-        
+
         y_fwhm = [i.fwhm for i in fwhm_objs]
         plotting.LazyBar(
             x=fwhm_labels,
@@ -633,14 +681,23 @@ class NideconvFitter():
             palette=colors,
             sns_ori=fwhm_ori,
             axs=axs,
-            **kwargs)           
+            **dict(
+                kwargs,
+                font_size=self.font_size,
+                label_size=self.label_size,
+                tick_width=self.tick_width,
+                tick_length=self.tick_length,
+                axis_width=self.axis_width))          
 
-    def plot_average_per_voxel(self, add_offset=True, axs=None, n_cols=4, wspace=0, figsize=(30,15), make_figure=True, labels=None, save_as=None, **kwargs):
-            
+    def plot_average_per_voxel(self, add_offset=True, axs=None, n_cols=4, wspace=0, figsize=(30,15), make_figure=True, labels=None, save_as=None, sharey=False, **kwargs):
+        
+        self.__dict__.update(kwargs)
+
         if not hasattr(self, "tc_condition"):
             self.timecourses_condition()
 
         cols = list(self.tc_condition.columns)
+        cols_id = np.arange(0, len(cols))
         if n_cols != None:
 
             # initiate figure
@@ -651,12 +708,15 @@ class NideconvFitter():
             gs = fig.add_gridspec(n_rows, n_cols, wspace=wspace)
 
         self.all_voxels_in_event = []
+        self.all_error_in_voxels = []
         for ix, col in enumerate(cols):
 
             # fetch data from specific voxel for each stimulus size
             self.voxel_in_events = []
+            self.error_in_voxels = []
             for idc,stim in enumerate(self.cond):
                 col_data = self.tc_condition[col][stim].values
+                err_data = self.sem_condition[col][stim].values
                 
                 if add_offset:
                     if col_data[0] > 0:
@@ -664,51 +724,91 @@ class NideconvFitter():
                     else:
                         col_data += abs(col_data[0])
 
-                self.voxel_in_events.append(col_data)
+                self.voxel_in_events.append(col_data[np.newaxis,:])
+                self.error_in_voxels.append(err_data[np.newaxis,:])
 
             # this one is in case we want the voxels in 1 figure
-            self.all_voxels_in_event.append(self.voxel_in_events[0])
+            self.all_voxels_in_event.append(np.concatenate(self.voxel_in_events, axis=0)[np.newaxis,:])
+            self.all_error_in_voxels.append(np.concatenate(self.error_in_voxels, axis=0)[np.newaxis,:])
 
-            # draw legend once
-            if ix == 0:
-                set_labels = labels
-            else:
-                set_labels = None
-
-            if make_figure:
-                # plot all stimulus sizes for a voxel
-                if n_cols != None:
-                    ax = fig.add_subplot(gs[ix])
-                    plotting.LazyPlot(
-                        self.voxel_in_events,
-                        xx=self.time,
-                        axs=ax,
-                        title=col,
-                        labels=set_labels,
-                        add_hline='default',
-                        **kwargs)
-
+        self.arr_voxels_in_event = np.concatenate(self.all_voxels_in_event, axis=0)
+        self.arr_error_in_event = np.concatenate(self.all_error_in_voxels, axis=0)
+        
+        top = self.arr_voxels_in_event + self.arr_error_in_event
+        bottom = self.arr_voxels_in_event - self.arr_error_in_event
+        
         if make_figure:
             if n_cols == None:
                 if labels:
                     labels = cols.copy()
                 else:
                     labels = None
+
+                vox_data = [self.arr_voxels_in_event[ii,0,:] for ii in range(self.arr_voxels_in_event.shape[0])]
+                vox_error = [self.arr_error_in_event[ii, 0, :]
+                             for ii in range(self.arr_voxels_in_event.shape[0])]
                 
                 if axs != None:
                     plotting.LazyPlot(
-                        self.all_voxels_in_event,
+                        vox_data,
                         xx=self.time,
+                        error=vox_error,
                         axs=axs,
                         labels=labels,
                         add_hline='default',
-                        **kwargs)
+                        **dict(
+                            kwargs,
+                            font_size=self.font_size,
+                            label_size=self.label_size,
+                            tick_width=self.tick_width,
+                            tick_length=self.tick_length,
+                            axis_width=self.axis_width))
 
+            else:
+                for ix, col in enumerate(cols):
+                    axs = fig.add_subplot(gs[ix])
+                    if ix == 0:
+                        label = labels
+                    else:
+                        label = None
+
+                    vox_data = [self.arr_voxels_in_event[ix,ii,:] for ii in range(len(self.cond))]
+                    vox_error = [self.arr_error_in_event[ix,ii,:] for ii in range(len(self.cond))]                    
+
+                    if sharey:
+                        ylim = [bottom.min(), top.max()]
+                    else:
+                        ylim = None
+
+                    plotting.LazyPlot(
+                        vox_data,
+                        xx=self.time,
+                        error=vox_error,
+                        axs=axs,
+                        labels=label,
+                        add_hline='default',
+                        y_lim=ylim,
+                        title=col,
+                        **dict(
+                            kwargs, 
+                            font_size=self.font_size,
+                            label_size=self.label_size,
+                            tick_width=self.tick_width,
+                            tick_length=self.tick_length,
+                            axis_width=self.axis_width))
+
+                    if ix in cols_id[::n_cols]:
+                        axs.set_ylabel("Magnitude (%change)", fontsize=self.font_size)
+                    
+                    if ix in np.arange(n_rows*n_cols)[-n_cols:]:
+                        axs.set_xlabel("Time (s)", fontsize=self.font_size)
+        
+                plt.tight_layout()
         if save_as:
-            fig.savefig(save_as)
+            fig.savefig(save_as, dpi=300, bbox_inches='tight')
 
 
-    def plot_hrf_across_depth(self, axs=None, figsize=(8,8), markers_cmap='viridis', ci_color="#cccccc", ci_alpha=0.6, order=2, save_as=None, **kwargs):
+    def plot_hrf_across_depth(self, axs=None, figsize=(8,8), cmap='viridis', ci_color="#cccccc", ci_alpha=0.6, order=2, save_as=None, **kwargs):
 
         if not hasattr(self, "all_voxels_in_event"):
             self.plot_timecourses(make_figure=False)
@@ -720,7 +820,7 @@ class NideconvFitter():
             
             fig,axs = plt.subplots(figsize=figsize)
 
-        color_list = sns.color_palette(markers_cmap, len(self.max_vals))
+        color_list = sns.color_palette(cmap, len(self.max_vals))
         for ix, mark in enumerate(self.max_vals):
             axs.plot(cf.x[ix], mark, 'o', color=color_list[ix], alpha=ci_alpha)
 
@@ -730,10 +830,17 @@ class NideconvFitter():
             axs=axs,
             error=cf.ci_upsampled,
             color=ci_color,
-            **kwargs)
+            x_label="CSF                        voxels                       WM",
+            **dict(
+                kwargs,
+                font_size=self.font_size,
+                label_size=self.label_size,
+                tick_width=self.tick_width,
+                tick_length=self.tick_length,
+                axis_width=self.axis_width))
 
         if save_as:
-            fig.savefig(save_as)
+            fig.savefig(save_as, dpi=300, bbox_inches='tight')
 
     def plot_areas_per_event(self, colors=None, save_as=None, add_offset=True, error_type="sem", axs=None, **kwargs):
 
@@ -789,10 +896,17 @@ class NideconvFitter():
                 xx=self.time,
                 error=self.error_for_plot,
                 axs=ax,
-                **kwargs)
+                **dict(
+                    kwargs,
+                    font_size=self.font_size,
+                    label_size=self.label_size,
+                    tick_width=self.tick_width,
+                    tick_length=self.tick_length,
+                    axis_width=self.axis_width))
+
             if not axs:
                 if save_as:
-                    fig.savefig(save_as)
+                    fig.savefig(save_as, dpi=300, bbox_inches='tight')
 
 
 class FWHM():
