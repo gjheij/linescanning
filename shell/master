@@ -46,12 +46,13 @@ GDH_FLAG=""           # spinoza_mgdm
 REG_TYPE=""           # spinoza_registration
 DRAW_SAG="itk"        # spinzoa_sagittalsinus
 SES_TYPE=""           # spinoza_scanner2bids
+ADD_INV=""            # spinoza_scanner2bids
 UPs=""                # spinoza_qmrimaps
 NO_BIAS=""            # spinoza_qmrimaps
 
 # use long options in bash:
 # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options
-declare -a opts=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs")
+declare -a opts=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv")
 while getopts :-:wjqom:s:h:n:t:l:v:p:x:u:r:e:i:c: arg
 do
   case ${arg} in
@@ -150,6 +151,9 @@ do
         bgfs)
           use_constr="--bgfs"
           ;;          
+        inv)
+          ADD_INV="--inv"
+          ;;               
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}, possible options are:"
@@ -536,7 +540,7 @@ if [[ $? -eq 0 ]]; then
   echo "[${module}] Convert raw files to nifti"
 
 
-  ${job} spinoza_scanner2bids ${SES_TYPE} ${SUBJECT} ${SESSION} ${OW} ${DIR_DATA_HOME} ${DIR_DATA_SOURCE}
+  ${job} spinoza_scanner2bids ${SES_TYPE} ${SUBJECT} ${SESSION} ${OW} ${ADD_INV} ${DIR_DATA_HOME} ${DIR_DATA_SOURCE}
 
   echo "[${module}] DONE" && echo
 

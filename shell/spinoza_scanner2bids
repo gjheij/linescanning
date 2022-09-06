@@ -25,6 +25,7 @@ Input options:
   <sourcedata>        directory containing to be converted data
   --lines             flag to tell we're dealing with a line-scanning session. By default 'regular',
                       which means standard whole-brain acquisitions.
+  --inv               add individual inversion files from anatomies in 'anat' folder
 
 Example:
   spinoza_scanner2bids /path/to/project_root /path/to/your/project/sourcedata     # regular
@@ -62,6 +63,7 @@ EOF
 # Check for subject & session flags
 OW=0
 SES_TYPE="regular"
+ADD_INV=0
 while getopts :-:os:n: argument
 do
   case ${argument} in
@@ -70,6 +72,9 @@ do
         lines)
           SES_TYPE="lines"
           ;;
+        inv)
+          ADD_INV=1
+          ;;          
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}, did you mean \"--lines\"?"
@@ -194,7 +199,7 @@ for subID in ${search}; do
     else
 
 
-      if [[ ! -d ${bids_dir}/anat && ! -d ${bids_dir}/func ]]; then
+      if [[ ! -d ${bids_dir}/anat || ! -d ${bids_dir}/func ]]; then
 
         echo
         echo "**************************************** Processing ${sub_name} ***************************************"
@@ -243,6 +248,35 @@ for subID in ${search}; do
           echo " low resolution MP2RAGE exists"
         fi
 
+        if [[ ${ADD_INV} -eq 1 ]]; then
+          inv_img=`find "${output_dir}" -type f \( -name "*T1w_*" -and -name "*_t10*" -or -name "*_t29*" -or -name "*_t30*" \) 2>/dev/null`
+          IFS=$'\n' invs=($(sort <<<"${inv_img[*]}"))
+          unset IFS
+
+          for ff in ${invs[@]}; do
+            if [[ ${ff} == *"_ph_"* ]]; then
+              rec_tag="part-phase"
+            else
+              rec_tag="part-mag"
+            fi
+
+            if [[ ${ff} == *"t10"* ]]; then
+              inv_tag="inv-1"
+            else
+              inv_tag="inv-2"
+            fi
+
+            ext=`fetch_extension ${ff}`
+            if [[ ${ext} == "gz" ]]; then
+              ext="nii.gz"
+            fi
+            out_fn=${bids_dir}/anat/${base}_acq-${DATA}_${inv_tag}_${rec_tag}.${ext}
+            if [[ ! -f ${out_fn} ]]; then
+              cp ${ff} ${out_fn}
+            fi
+          done
+        fi
+
         ## Multi-slice files
         motion_img=`find "${output_dir}" -type f \( -name "*motion*" -and -name "*.nii.gz" \) 2>/dev/null`
         IFS=$'\n' motion_img=($(sort <<<"${motion_img[*]}"))
@@ -253,7 +287,7 @@ for subID in ${search}; do
           
           run=`get_id ${i} motion`
           if [[ -z ${run} ]]; then
-            run=i
+            run=${i}
           fi
 
           fname=${bids_dir}/anat/${base}_acq-MP2RAGE_rec-motion${run}.nii.gz
@@ -402,7 +436,7 @@ for subID in ${search}; do
             func=`find "${output_dir}" -type f \( -name "*acq-3DEPI*" -and -name "*run-${run}*" -and -name "*bold.nii.gz" \) 2>/dev/null`
             fmap=`find "${output_dir}" -type f \( -name "*acq-3DEPI*" -and -name "*run-${run}*" -and -name "*epi.nii.gz" \) 2>/dev/null`
             phase=`find "${output_dir}" -type f \( -name "*acq-3DEPI*" -and -name "*run-${run}*" -and -name "*bold_ph.nii.gz" \) 2>/dev/null`
-            task=`task_id ${func}`
+            task=`task_id ${bold}`
 
             # -acq needs to be after task to be compatible with fMRIprep
             tmp_dir=$(dirname ${output_dir})/func
