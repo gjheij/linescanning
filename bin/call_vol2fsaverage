@@ -76,10 +76,10 @@ else
   fsaverage_dir=${out_dir}
 fi
 
-if [[ -z ${SUBJECT_PREFIX} ]]; then
-  PREF="${SUBJECT}"
+if [[ -z ${prefix} ]]; then
+  PREF=${SUBJECT}
 else
-  PREF="${SUBJECT_PREFIX}"
+  PREF=${prefix}
 fi
 
 if [[ "${@}" == *"-t"* ]]; then
