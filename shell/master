@@ -294,6 +294,10 @@ Args:
   --grid            maps to '-g' in spinoza_fitprfs; runs gridfit only
   --hrf             also fit the HRF during pRF-fitting (spinoza_fitprfs)
   --itk             use ITK-Snap to draw sinus mask (spinoza_sagittalsinus) [default]
+  --inv             in case a session contains line-scanning data but also high resolution anatomical
+                    data that you'd like to process as per usual, use this flag to also copy in the
+                    INV1/INV2 images into the 'anat'-folder of the session. This will allow you to 
+                    run spinoza_qmrimaps as usual.
   --lines           specifies that we're dealing with a line-scanning session (spinoza_scanner2bids). 
                     Uses a custom pipeline for converting the files in a veeery specific way. If not
                     specified, we'll assume a regular scan-session of whole-brain data.
@@ -328,7 +332,7 @@ Args:
                     DoG, CSS, or DN). By default, we'll use trust-constr minimization for both. It's
                     recommended to at least to Gaussian fitting with trust-constr, and potential ex-
                     tended models with L-BGFS. For this, see '-x' flag  
-  --verbose         turn on verbose
+  --verbose         turn on verbose for pRF-fitting (spinoza_fitprfs)
   --warp_only       spinoza_fmriprep; skip full processing, but make new 'boldref'-images and copy bold-
                     to-T1w registration files
 
@@ -337,7 +341,11 @@ Usage:
   master -m 01,02,03,04 (comma-separated for running multiple modules in succession)
   master -m 00 -q   (print help-text of module 00)
   master -l mgdm    (fetch module number mgdm-module)
-  master -m 02 -n prf -x 2
+  master -m 02 -n 2 --lines (line-scanning session)
+  master -m 02 -n 2 --lines --inv (line-scanning session + high resolution anatomies)
+  master -m 15 -t func (run fMRIPrep on available tasks)
+  master -m 15 -t scenes (run fMRIPrep on scenes-task only)
+  master -m 17 -p norm (run pRF-fitting with Normalization model)
 
 Additional options:
   - Specify a subject to run (for certain modules):   master -m <module> -s <subj-ID>
