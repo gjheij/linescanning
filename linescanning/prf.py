@@ -2077,7 +2077,6 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                 x_axis = None
                 x_label = "volumes"
 
-            print(self.prediction.shape)
             ax2 = fig.add_subplot(gs00[1])
             plotting.LazyPlot(
                 [tc, self.prediction],
