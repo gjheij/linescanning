@@ -373,8 +373,12 @@ class SurfaceCalc(object):
         self.subject = subject
         self.ctx_path = opj(cortex.database.default_filestore, self.subject)
 
+        # check if we need to reload kernel to activate changes to filestore
+        if os.environ.get("PROJECT") not in self.ctx_path:
+            raise TypeError(f"Project '{os.environ.get('PROJECT')}' not found in '{self.ctx_path}'. This can happen if you changed the filestore, but haven't reloaded the kernel. Please do so to make changes to the filestore available.")
+            
         if fs_dir == None:
-            self.fs_dir = os.environ['SUBJECTS_DIR']
+            self.fs_dir = os.environ.get("SUBJECTS_DIR")
         else:
             self.fs_dir = fs_dir
 
@@ -687,6 +691,10 @@ class CalcBestVertex():
         self.deriv      = deriv
         self.prf_file   = prf_file
         self.fs_label   = fs_label
+
+        # set default derivatives
+        if self.deriv == None:
+            self.deriv = os.environ.get("DIR_DATA_DERIV")
 
         # set default freesurfer directory
         self.fs_dir = opj(self.deriv, 'freesurfer')
