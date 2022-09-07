@@ -1296,12 +1296,18 @@ class GaussianModel():
         elapsed = (time.time() - start)
 
         self.gauss_grid = utils.filter_for_nans(self.gaussian_fitter.gridsearch_params)
+        mean_rsq = np.mean(self.gauss_grid[self.gauss_grid[:, -1]>self.rsq, -1])
         if self.verbose:
-            print("Completed Gaussian gridfit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+
-                    ". voxels/vertices above "+str(self.rsq)+": "+str(np.sum(self.gauss_grid[:, -1]>self.rsq))+" out of "+
-                    str(self.gaussian_fitter.data.shape[0]))
+            print("Completed Gaussian gridfit at {start_time}. Voxels/vertices above {rsq}: {nr}/{total}".format(
+                start_time=datetime.now().strftime('%Y/%m/%d %H:%M:%S'),
+                rsq=str(self.rsq),
+                nr=str(np.sum(self.gauss_grid[:, -1]>self.rsq)),
+                total=str(self.gaussian_fitter.data.shape[0])))
+                
             print(f"Gridfit took {str(timedelta(seconds=elapsed))}")
-            print("Mean rsq>"+str(self.rsq)+": "+str(round(np.nanmean(self.gauss_grid[self.gauss_grid[:, -1]>self.rsq, -1]),2)))
+            print("Mean rsq>{rsq}: {m_rsq}".format(
+                rsq=self.rsq,
+                m_rsq=str(round(mean_rsq,2))))
         
         if self.write_files:
             self.save_params(model="gauss", stage="grid") 
@@ -1333,7 +1339,12 @@ class GaussianModel():
         elapsed = (time.time() - start)              
         self.gauss_iter = utils.filter_for_nans(self.gaussian_fitter.iterative_search_params)
         if self.verbose:
-            print("Completed Gaussian iterfit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+". Mean rsq>"+str(self.rsq)+": "+str(round(np.nanmean(self.gauss_iter[self.gaussian_fitter.rsq_mask, -1]),2)))
+            mean_rsq = np.nanmean(self.gauss_iter[self.gaussian_fitter.rsq_mask, -1])
+            print("Completed gauss iterfit at {start_time}. Mean rsq>{rsq}: {m_rsq}".format(
+                start_time=datetime.now().strftime('%Y/%m/%d %H:%M:%S'),
+                rsq=self.rsq,
+                m_rsq=str(round(mean_rsq,2))))
+
             print(f"Iterfit took {str(timedelta(seconds=elapsed))}")
 
         # save intermediate files
@@ -1364,7 +1375,7 @@ class ExtendedModel():
                     previous_gaussian_fitter=self.gaussian_fitter)
             else:
                 # we might have manually injected parameters
-                self.tmp_fitter = self.active_fitter(self.active_model, self.data)
+                self.tmp_fitter = self.active_fitter(self.active_model, self.data, fit_hrf=self.fit_hrf)
         else:
             # inject existing-model object > advised when fitting the HRF
             self.tmp_fitter = self.active_fitter(
@@ -1401,7 +1412,7 @@ class ExtendedModel():
                                    np.array(self.settings['norm']['surround_baseline_grid'], dtype='float32')]
             self.grid_bounds    = [tuple(self.settings['bounds']['prf_ampl']),
                                    tuple(self.settings['bounds']['neur_bsl'])]
-    
+
         # grid fit
         self.tmp_fitter.grid_fit(
             *self.grid_list,
@@ -1413,9 +1424,16 @@ class ExtendedModel():
         elapsed = (time.time() - start)
 
         ### save grid parameters
-        setattr(self, f"{self.model}_grid", utils.filter_for_nans(self.tmp_fitter.gridsearch_params))
+        filtered_ = utils.filter_for_nans(self.tmp_fitter.gridsearch_params)
+        setattr(self, f"{self.model}_grid", filtered_)
         if self.verbose:
-            print(f"Completed {self.model} gridfit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+". Mean rsq>"+str(self.rsq)+": "+str(round(np.nanmean(self.tmp_fitter.gridsearch_params[self.tmp_fitter.gridsearch_rsq_mask, -1]),2)))
+            mean_rsq = np.nanmean(filtered_[self.tmp_fitter.gridsearch_rsq_mask, -1])
+            print("Completed {model} gridfit at {start_time}. Mean rsq>{rsq}: {m_rsq}".format(
+                model=self.model,
+                start_time=datetime.now().strftime('%Y/%m/%d %H:%M:%S'),
+                rsq=str(self.rsq),
+                m_rsq=str(round(mean_rsq,2))))
+                
             print(f"Gridfit took {str(timedelta(seconds=elapsed))}")
 
         if self.write_files:
@@ -1451,10 +1469,17 @@ class ExtendedModel():
         elapsed = (time.time() - start)  
 
         ### save iterative parameters
-        setattr(self, f"{self.model}_iter", utils.filter_for_nans(self.tmp_fitter.iterative_search_params))
+        filtered_ = utils.filter_for_nans(self.tmp_fitter.iterative_search_params)
+        setattr(self, f"{self.model}_iter", filtered_)
 
         if self.verbose:
-            print(f"Completed {self.model} iterfit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S')+". Mean rsq>"+str(self.rsq)+": "+str(round(np.mean(self.tmp_fitter.iterative_search_params[self.tmp_fitter.rsq_mask, -1]),2)))
+            mean_rsq = np.nanmean(filtered_[self.tmp_fitter.rsq_mask, -1])
+            print("Completed {model} iterfit at {start_time}. Mean rsq>{rsq}: {m_rsq}".format(
+                model=self.model,
+                start_time=datetime.now().strftime('%Y/%m/%d %H:%M:%S'),
+                rsq=self.rsq,
+                m_rsq=str(round(mean_rsq,2))))
+
             print(f"Iterfit took {str(timedelta(seconds=elapsed))}")
 
         if self.write_files:
@@ -1880,37 +1905,24 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         if hasattr(self, f"{model}_{stage}"):
             params = getattr(self, f"{model}_{stage}")
             if params.ndim == 1:
-                if vox_nr != None:
-                    if vox_nr == "best":
-                        vox,_ = utils.find_nearest(params[...,-1], np.amax(params[...,-1]))
-                    else:
-                        vox = vox_nr
+                params = params[np.newaxis,...]
 
-                try:
-                    params = params[vox,...]
-                except:
-                    params = params
-
-                return use_model.return_prediction(*params[:-1]).T, params, vox
-
-            elif params.ndim == 2:
-                if vox_nr != None:
-                    if vox_nr == "best":
-                        vox,_ = utils.find_nearest(params[...,-1], np.amax(params[...,-1]))
-                    else:
-                        vox = vox_nr                    
-                    params = params[vox,...]
-                    return use_model.return_prediction(*params[:-1]).T, params, vox
+            if vox_nr != None:
+                if vox_nr == "best":
+                    vox,_ = utils.find_nearest(params[...,-1], np.amax(params[...,-1]))
                 else:
-                    predictions = []
-                    for vox in range(params.shape[0]):
-                        pars = params[vox,...]
-                        predictions.append(use_model.return_prediction(*pars[:-1]).T)
+                    vox = vox_nr
                     
-                    return np.squeeze(np.array(predictions), axis=-1)
-
+                params = params[vox,...]
+                return use_model.return_prediction(*params[:-1]).T, params, vox
             else:
-                raise ValueError(f"No parameters found..")
+                predictions = []
+                for vox in range(params.shape[0]):
+                    pars = params[vox,...]
+                    predictions.append(use_model.return_prediction(*pars[:-1]).T)
+                
+                return np.squeeze(np.array(predictions), axis=-1)
+
         else:
             raise ValueError(f"Could not find {stage} parameters for {model}")
 
@@ -2063,6 +2075,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                 x_axis = None
                 x_label = "volumes"
 
+            print(self.prediction.shape)
             ax2 = fig.add_subplot(gs00[1])
             plotting.LazyPlot(
                 [tc, self.prediction],
@@ -2121,16 +2134,13 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
             # save HRFs if applicable
             if self.fit_hrf:
                 
-                # get correct model
-                used_model = getattr(self, f"{self.model}_model")
+                if stage != "grid":
+                    try:
+                        self.hrfs = [self.hrf.create_spm_hrf(hrf_params=[1,*params[ii,-3:-1]], TR=self.TR, force=True).values.T for ii in range(self.data.shape[0])]
+                    except:
+                        raise IOError(f"Could not create HRFs")
 
-                # HRFs
-                try:
-                    self.hrfs = [used_model.create_hrf(hrf_params=[1,*params[ii,-3:-1]]).T for ii in range(self.data.shape[0])]
-                except:
-                    raise IOError(f"Could not create HRFs from '{used_model}'")
-
-                out_dict['hrf'] = self.hrfs
+                    out_dict['hrf'] = self.hrfs
 
             if self.verbose:
                 print(f"Save {stage}-fit parameters in {pkl_file}")
@@ -2550,6 +2560,7 @@ class CollectSubject(pRFmodelFitting):
         verbose=True, 
         best_vertex=False,
         filter_list=[],
+        fit_hrf=False,
         **kwargs):
 
         self.subject        = subject
@@ -2563,6 +2574,7 @@ class CollectSubject(pRFmodelFitting):
         self.verbose        = verbose
         self.best_vertex    = best_vertex
         self.filter_list    = filter_list
+        self.fit_hrf        = fit_hrf
         self.__dict__.update(kwargs)
 
         if self.hemi == "lh" or self.hemi.lower() == "l" or self.hemi.lower() == "left":
@@ -2594,8 +2606,13 @@ class CollectSubject(pRFmodelFitting):
 
         # try to read iterative fit parameters
         allowed_models = ['gauss', 'css', 'dog', 'norm']
+        look_for = [f"model-{model}", "stage-iter", "params.pkl"]
+        
+        if self.fit_hrf:
+            look_for += ["hrf-true_"]
+
         for model in allowed_models:
-            par_file = utils.get_file_from_substring([f"model-{model}", "stage-iter", "params.pkl"], self.prf_dir, return_msg=None)
+            par_file = utils.get_file_from_substring(look_for, self.prf_dir, return_msg=None)
             if isinstance(par_file, str):
                 setattr(self, f'{model}_iter_pars', read_par_file(par_file))
         
@@ -2646,7 +2663,8 @@ class CollectSubject(pRFmodelFitting):
             super().__init__(
                 self.data,
                 design_matrix=self.design_matrix,
-                verbose=self.verbose)
+                verbose=self.verbose,
+                model=self.model)
 
             if hasattr(self, "pars"):
                 self.load_params(
@@ -2667,17 +2685,13 @@ class CollectSubject(pRFmodelFitting):
 
     def target_prediction_prf(self, xkcd=False, freq_spectrum=None, save_as=None, make_figure=True, **kwargs):
         
-        if not hasattr(self, "target_vertex"):
-            raise ValueError(f"Option not available with model='{self.model}', initialize with model='best' or use 'plot_vox()' from '<obj_name>.modelling'")
-
         self.targ_pars, self.targ_prf, self.targ_tc, self.targ_pred = self.plot_vox(
-            vox_nr=self.target_vertex, 
+            vox_nr=0, 
             model=self.model, 
             stage='iter', 
             make_figure=make_figure, 
             xkcd=xkcd,
             title='pars',
-            transpose=True, 
             freq_spectrum=freq_spectrum, 
             freq_type="fft",
             save_as=save_as,
