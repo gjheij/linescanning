@@ -1869,9 +1869,9 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                     params_file['prf_size'][hemi],
                     params_file['A'][hemi],
                     params_file['bold_bsl'][hemi],
-                    params_file['B'][hemi],
                     params_file['C'][hemi],
                     params_file['surr_size'][hemi],
+                    params_file['B'][hemi],
                     params_file['D'][hemi],
                     params_file['r2'][hemi]))
             else:
@@ -1881,9 +1881,9 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                     params_file['prf_size'],
                     params_file['A'],
                     params_file['bold_bsl'],
-                    params_file['B'],
                     params_file['C'],
                     params_file['surr_size'],
+                    params_file['B'],
                     params_file['D'],
                     params_file['r2']))
 
@@ -1912,9 +1912,11 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                     vox,_ = utils.find_nearest(params[...,-1], np.amax(params[...,-1]))
                 else:
                     vox = vox_nr
-                    
+                
+
                 params = params[vox,...]
-                return use_model.return_prediction(*params[:-1]).T, params, vox
+                pred = use_model.return_prediction(*params[:-1]).T
+                return pred, params, vox
             else:
                 predictions = []
                 for vox in range(params.shape[0]):
@@ -2637,7 +2639,8 @@ class CollectSubject(pRFmodelFitting):
 
             # find the csv file with parameters (generally available with 'norm')
             try:
-                self.normalization_params_df = pd.read_csv(utils.get_file_from_substring([f"model-{self.model}", "desc-params.csv"], self.cx_dir), index_col=0)            
+                self.params_fn = utils.get_file_from_substring([f"model-{self.model}", "desc-params.csv"], self.cx_dir)
+                self.normalization_params_df = pd.read_csv(self.params_fn, index_col=0)            
                 self.pars = self.normalization_params_df.copy()
             except:
                 self.pars = np.array(self.target_params)[np.newaxis,...]
