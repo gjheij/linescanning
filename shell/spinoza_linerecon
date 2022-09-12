@@ -133,8 +133,10 @@ for subID in ${search}; do
   # collect subject name
   if [[ ! -z ${sub} ]]; then
     sub_name=${SUBJECT_PREFIX}${subID}
+    sub_id=${subID}
   else
     sub_name=$(basename ${subID})
+    sub_id=`get_id ${sub_name} ${SUBJECT_PREFIX}`
   fi
 
   if [[ ! -z ${ses} ]]; then
@@ -192,8 +194,6 @@ for subID in ${search}; do
         fi
 
         if [[ ! -f ${outputbase}.mat ]]; then
-          
-          IDnr=`basename ${dir} | cut -d'-' -f2`
 
           # find corresponding LSD-image
           lsd=`find "${lab_func}" -type f \( -name "*run-${run}*" -and -name "*desc-recon*" -and -name "*.lab" \) 2>/dev/null`
@@ -209,14 +209,14 @@ for subID in ${search}; do
           fi
           
           if [[ ${SGE} -eq 1 ]]; then
-            job="qsub -N recon_${IDnr}_${run} -wd ${OUTPUT}/${base_path}"
+            job="qsub -N recon_${sub_id}_${run} -wd ${OUTPUT}/${base_path}"
           else
             echo "Running recon for run-${run} (task-${task})"
             job="bash"
           fi
 
           ${job} ${DIR_SCRIPTS}/bin/call_linerecon -r ${run} ${echo_flag} ${bold} ${lsd} ${outputbase}
-
+          exit 1
           # set variable with which we can retrieve old LSD-image in case we don't have run-specific LSD-images
           old_lsd=${lsd}
 
