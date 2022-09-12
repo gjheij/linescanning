@@ -413,9 +413,6 @@ def make_stimulus_vector(onset_df, scan_length=None, TR=0.105, osf=None, type='e
                         
         elif type == 'block':
 
-            if not isinstance(block_length, int):
-                raise ValueError("Please specify the length of the block in seconds (integer)")
-
             for rr, ii in enumerate(onset_df['onset']):
                 if onset_df['event_type'][rr] == condition:
                     Y[int(ii*osf):int((ii+block_length)*osf)] = ampl
