@@ -198,14 +198,15 @@ No voxels for '{tissue}' were found, so PCA was skipped. """
 
                 self.acompcor_components.append(self.include_components)
             else:
-                self.do_pca = False
-                self.info = "timecourses"
-                # raise ValueError("Found 0 components surviving the elbow-plot. Turn on verbose and inspect the plot")
-                self.acompcor_components.append(self.tissue_tc.mean(axis=1)[:,np.newaxis])
+                if self.tissue_pca[tissue]:
+                    self.do_pca = False
+                    self.info = "timecourses"
+                    # raise ValueError("Found 0 components surviving the elbow-plot. Turn on verbose and inspect the plot")
+                    self.acompcor_components.append(self.tissue_tc.mean(axis=1)[:,np.newaxis])
 
         # concatenate components into an array
         self.acompcor_components = np.concatenate(self.acompcor_components, axis=1)
-
+        
         # get frequency spectra for components
         self.nuisance_spectra, self.nuisance_freqs = [], []
         for ii in range(self.acompcor_components.shape[-1]):
