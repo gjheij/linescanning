@@ -1453,21 +1453,21 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                     self.ses = None
                 
                 # make LSprep output directory
-                if self.save_as == None:
-                    try:
-                        self.lsprep_dir = opj(os.environ.get("DIR_DATA_DERIV"), 'lsprep')
-                    except:
-                        raise ValueError(f"Please specify an output directory with 'save_as='")
-                else:
-                    self.lsprep_dir = save_as
-
-                if self.ses != None:
-                    self.lsprep_full = opj(self.lsprep_dir, f'sub-{self.sub}', f'ses-{self.ses}')
-                else:
-                    self.lsprep_full = opj(self.lsprep_dir, f'sub-{self.sub}')
-                    
-                # make figure directory
                 if self.report:
+                    if self.save_as == None:
+                        try:
+                            self.lsprep_dir = opj(os.environ.get("DIR_DATA_DERIV"), 'lsprep')
+                        except:
+                            raise ValueError(f"Please specify an output directory with 'save_as='")
+                    else:
+                        self.lsprep_dir = save_as
+
+                    if self.ses != None:
+                        self.lsprep_full = opj(self.lsprep_dir, f'sub-{self.sub}', f'ses-{self.ses}')
+                    else:
+                        self.lsprep_full = opj(self.lsprep_dir, f'sub-{self.sub}')
+                        
+                    # make figure directory
                     self.run_uuid = f"{strftime('%Y%m%d-%H%M%S')}_{uuid4()}"
                     self.lsprep_figures = opj(self.lsprep_dir, f'sub-{self.sub}', 'figures')
                     self.lsprep_runid = opj(self.lsprep_dir, f'sub-{self.sub}', 'log', self.run_uuid)
@@ -1806,8 +1806,7 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
             if acompcor:
 
                 self.desc_filt += f"""Data was then z-scored and fed into a custom implementation of `aCompCor` 
-(https://github.com/gjheij/linescanning/blob/main/linescanning/preproc.py), which is tailored 
-for line-scanning data: """
+(https://github.com/gjheij/linescanning/blob/main/linescanning/preproc.py), which is tailored for line-scanning data: """
 
                 # do some checks beforehand
                 if reference_slice != None:
@@ -1894,8 +1893,7 @@ for line-scanning data: """
                 
                 self.desc_filt += self.acomp.__desc__
                 self.desc_filt += """
-Output from aCompCor was then converted back to un-zscored data by multipying by the standard deviation and adding 
-the mean back. """
+Output from aCompCor was then converted back to un-zscored data by multipying by the standard deviation and adding the mean back. """
 
                 # get the image
                 # img = opj(self.lsprep_figures, f"{self.base_name}_run-{self.run}_desc-acompcor.{self.save_ext}")
