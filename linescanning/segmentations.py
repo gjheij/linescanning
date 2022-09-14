@@ -109,11 +109,11 @@ class Segmentations:
         if self.pickle_file == None:
 
             # try default project_home if none is specified
-            if self.project_home == None:
-                try:
-                    self.project_home = os.environ.get('DIR_DATA_HOME')
-                except Exception:
-                    print("Please specify the project's root directory (where 'derivatives' lives)")
+            if not isinstance(self.project_home, str):
+                self.project_home = os.environ.get('DIR_DATA_HOME')
+                
+                if self.project_home == None:
+                    raise ValueError("Could not read DIR_DATA_DERIV-variable. Please specify the project's root directory (where 'derivatives' lives) with the 'project_home' argument.")
 
             # specify nighres directory
             self.nighres_source     = opj(self.project_home, 'derivatives', 'nighres', self.subject, f'ses-{self.reference_session}') 
