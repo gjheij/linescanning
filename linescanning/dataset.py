@@ -2202,7 +2202,7 @@ class Dataset(ParseFuncFile):
     def fetch_fmri(self, strip_index=False, dtype=None):
 
         if dtype == None:
-            if hasattr(self, "acompcor"):
+            if self.acompcor:
                 dtype = "acompcor"
             else:
                 if hasattr(self, "standardization"):
