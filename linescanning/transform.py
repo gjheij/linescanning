@@ -438,6 +438,7 @@ def ctx2tkr(subject, img=None, coord=None, correct=True, hm=True, ret=True, pad_
     >>> corr_nifti = ctx2trk('sub-001', img=input.nii.gz, correct=True)
     """
 
+    single = False
     offset = pycortex.get_ctxsurfmove(subject)
     if hm == True:
         # make homogenous matrix
@@ -459,26 +460,32 @@ def ctx2tkr(subject, img=None, coord=None, correct=True, hm=True, ret=True, pad_
             new_aff = offset@nb_img.affine
             return nb.Nifti1Image(nb_img.get_fdata(), affine=new_aff)
 
-    if coord != None:
-        corr = []
-        if len(ctx_offset) != 1:
-            try:
-                offset = ctx_offset[:3,-1]
-            except:
-                raise ValueError(f"Got input with unhashable dimensions. Could either be a (3,) or (4,4) matrix, not {ctx_offset.shape}")
+    if isinstance(coord, np.ndarray):
+        coord = [coord]
+        single = True
+
+    corr = []
+    if len(ctx_offset) != 1:
+        try:
+            offset = ctx_offset[:3,-1]
+        except:
+            raise ValueError(f"Got input with unhashable dimensions. Could either be a (3,) or (4,4) matrix, not {ctx_offset.shape}")
+    else:
+        offset = ctx_offset
+
+    for i in coord:
+        tkr_coords = i-offset
+
+        if pad_ones == True:
+            if len(tkr_coords) == 3:
+                tkr_coords = np.append(tkr_coords,1)
+
+        corr.append(tkr_coords)
+
+    if ret == True:
+        if single:
+            return corr[0]
         else:
-            offset = ctx_offset
-
-        for i in coord:
-            tkr_coords = i-offset
-
-            if pad_ones == True:
-                if len(tkr_coords) == 3:
-                    tkr_coords = np.append(tkr_coords,1)
-
-            corr.append(tkr_coords)
-
-        if ret == True:
             return corr
 
     if not img and not coord:
