@@ -47,7 +47,9 @@ Options:
   --tc            use trust-constr minimization for both the Gaussian as well as the extended model. Use the
                   -x flag if you want different minimizers for both stages
   --bgfs          use L-BGFS minimization for both the Gaussian as well as the extended model. Use the -x 
-                  flag if you want different minimizers for both stages                  
+                  flag if you want different minimizers for both stages   
+  --no_fit        Stop the process before fitting, right after saving out averaged data. This was useful for me
+                  to switch to percent-signal change without requiring a re-fit.               
   -s <subject>    subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
   -n <session>    session ID (e.g., 1, 2, or none)
   -m <model>      one of ['gauss','dog','css','norm'] is accepted, default = "gauss"
@@ -98,6 +100,7 @@ verb_flag=""
 clip_flag=""
 clip=1
 use_constr="--tc"
+fit_flag=""
 while getopts :-:los:n:m:t:x:c: argument
 do
   case ${argument} in
@@ -129,7 +132,10 @@ do
           ;;
         bgfs)
           use_constr="--bgfs"
-          ;;                           
+          ;;    
+        no_fit)
+          fit_flag="--no_fit"
+          ;;                                   
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}"
@@ -284,7 +290,7 @@ for subID in ${search}; do
       fi
 
       # run stuff if file doesn't exist
-      if [[ ! -f ${prf_params} ]]; then
+      if [[ ! -f ${prf_params} ]] || [[ ! -z ${fit_flag} ]]; then
 
         # exclude rest as task
         if [[ ${task} != "rest" ]]; then
@@ -381,7 +387,8 @@ for subID in ${search}; do
             ${zscore_flag} \
             ${verb_flag} \
             ${OW_flag} \
-            ${use_constr}
+            ${use_constr} \
+            ${fit_flag}
           
           if [[ $? -ne 0 ]]; then
             echo "ERROR in `basename ${0}`: call_prf did not execute cleanly"

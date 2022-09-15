@@ -37,6 +37,7 @@ FIT_HRF=""            # spinoza_fitprfs
 psc_flag=""           # spinoza_fitprfs
 zscore_flag=""        # spinoza_fitprfs
 use_constr=""         # spinoza_fitprfs
+fit_flag=""           # spinoza_fitprfs
 use_bbr=""            # spinoza_fmriprep
 WARP_ONLY=""          # spinoza_fmriprep
 REMOVE_WF=""          # spinoza_fmriprep
@@ -52,7 +53,7 @@ NO_BIAS=""            # spinoza_qmrimaps
 
 # use long options in bash:
 # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options
-declare -a opts=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv")
+declare -a opts=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv" "--no_fit")
 while getopts :-:wjqom:s:h:n:t:l:v:p:x:u:r:e:i:c: arg
 do
   case ${arg} in
@@ -153,7 +154,10 @@ do
           ;;          
         inv)
           ADD_INV="--inv"
-          ;;               
+          ;;        
+        no_fit)
+          fit_flag="--no_fit"
+          ;;                   
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}, possible options are:"
@@ -310,7 +314,9 @@ Args:
   --no_bbr          maps to '--force-no-bbr' in call_fmriprep
   --no_biascorr     maps to '-b' in spinoza_biassanlm; don't perform bias correction after denoising
   --no_clip         spinoza_fitprfs; ensures that the design matrix is NOT clipped, despite the possible
-                    presence of screen delimiter files  
+                    presence of screen delimiter files
+  --no_fit          spinoza_fitprfs; stop right after saving out averaged data. This was useful for me 
+                    to switch to percent-signal change without requiring a re-fit.                    
   --no_freeview     disable FreeView during vertex selection (spinoza_bestvertex)
   --ups             maps to '-u' in spinoza_qmrimaps; turn on Universal Pulses
   --remove_wf       maps to '-r all' in spinoza_fmriprep; removes full fmriprep_wf folder. Be careful
@@ -1128,7 +1134,7 @@ if [[ $? -eq 0 ]]; then
     use_constr="-x ${KWARGS}"
   fi
 
-  ${job} spinoza_fitprfs ${use_constr} ${CLIP} ${CLIP_FLAG} ${verb_flag} ${zscore_flag} ${TASK_ID} ${FIT_HRF} ${run_local} ${GRID} ${MULTIPLE_DESIGNS} ${SUBJECT} ${SESSION} ${OW} ${MODEL} ${PRF_INPUT} ${DIR_DATA_DERIV}/prf ${PNG_DIR}
+  ${job} spinoza_fitprfs ${use_constr} ${CLIP} ${CLIP_FLAG} ${verb_flag} ${zscore_flag} ${fit_flag} ${TASK_ID} ${FIT_HRF} ${run_local} ${GRID} ${MULTIPLE_DESIGNS} ${SUBJECT} ${SESSION} ${OW} ${MODEL} ${PRF_INPUT} ${DIR_DATA_DERIV}/prf ${PNG_DIR}
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_fitprfs exited with non-zero status"
