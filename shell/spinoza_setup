@@ -111,6 +111,7 @@ if [[ $1 == "setup" ]]; then
         git checkout new_hrf
       fi
       python setup.py develop
+      cd ..
     else
       echo "Found ${package} installation"
     fi
@@ -145,12 +146,12 @@ export BOLD_T1W_INIT="register"                                                 
 # PYBEST
 export PYBEST_SPACE="fsnative"
 export PYBEST_NORM="zscore"
-export PYBEST_ENV="ls"
+export PYBEST_ENV="slowpy"
 
 # PROJECT
-export DIR_PROJECTS="/mnt/d/FSL/shared/spinoza/projects"
-export PROJECT="WB-pRF"
-export TASK_SES1="pRF"
+export DIR_PROJECTS="/data1/projects/MicroFunc/Jurjen/projects"
+export PROJECT="VE-pRF"
+export TASK_SES1=("2R")
 export TASK_SES2="LR"
 export SUBJECT_PREFIX="sub-"
 export COMBINE_SEGMENTATIONS="weighted"
