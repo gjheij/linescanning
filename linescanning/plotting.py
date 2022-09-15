@@ -847,3 +847,123 @@ class LazyBar():
 
         if self.title2:
             axs.set_title(self.title2, fontname=self.fontname, fontsize=self.font_size)                    
+
+class LazyHist():
+    """LazyHist
+
+    Wrapper around seaborn's histogram plotter
+
+    Parameters
+    ----------
+    data: numpy.ndarray, pandas.DataFrame
+        Input for histogram. Can be either numpy array or pandas dataframe. In case of the latter, `x` and `y` need to be column names to put the correct data on the axes.
+    save_as: str, optional
+        file path to save the image (*.pdf is recommended for quality and compatibility with Inkscape)
+    axs: <AxesSubplot:>, optional
+        Matplotlib axis to store the figure on
+    cmap: str, optional
+        Colormap for imshow; accepts output from :func:`linescanning.utils.make_binary_cm`. Defaults to 'magma'
+    alpha: float, optional
+        Opacity for imshow
+    xkcd: bool, optional
+        Plot in cartoon-format
+    label_size: int, optional
+        Set the font size of the labels (i.e., axes). Default = 10
+    tick_width: float, optional
+        Set the thickness of the ticks. Larger value means thicker tick. Default = 0.5 (thin'ish)
+    tick_length: int, optional
+        Set the length of the ticks. Larger values mean longer ticks. Default = 7 (long'ish)
+    axis_width: float, optional
+        Set the thickness of the spines of the plot. Larger values mean thicker spines. Default = 0.5 (thin'ish)
+    sns_trim: bool, optional
+        If `True`, limit spines to the smallest and largest major tick on each non-despined axis. Maps to `sns.despine(trim=sns_trim)`
+    sns_offset: int, optional
+        Offset in the origin of the plot. Maps to `sns.despine(offset=sns_offset)`. Default is 10
+    line_width: float, optional
+        Width of the outer border of the visual field if `cmap` is not *viridis* or *magma* (these color maps are quite default, and do not require an extra border like :func:`linescanning.utils.make_binary_cm`-objects do). Default is 0.5.
+
+    Returns
+    ----------
+    matplotlib.pyplot plot
+    """
+
+    def __init__(
+        self, 
+        data, 
+        x=None,
+        y=None,
+        save_as=None, 
+        axs=None, 
+        cmap='magma', 
+        alpha=None,
+        xkcd=False,
+        font_size=None,
+        title=None,
+        figsize=(8,8),
+        label_size=10,
+        tick_width=0.5,
+        tick_length=7,
+        axis_width=0.5,
+        sns_trim=True,
+        sns_offset=10,
+        line_width=0.5,
+        **kwargs):
+        
+        self.data           = data
+        self.x              = x
+        self.y              = y
+        self.save_as        = save_as
+        self.axs            = axs
+        self.cmap           = cmap
+        self.alpha          = alpha
+        self.xkcd           = xkcd
+        self.title          = title
+        self.font_size      = font_size
+        self.figsize        = figsize
+        self.label_size     = label_size
+        self.tick_width     = tick_width
+        self.tick_length    = tick_length
+        self.axis_width     = axis_width 
+        self.sns_trim       = sns_trim
+        self.sns_offset     = sns_offset
+        self.line_width     = line_width
+        self.__dict__.update(kwargs)      
+
+        if self.xkcd:
+            with plt.xkcd():
+                self.plot()
+        else:
+            self.plot()
+
+        if self.save_as:
+            if isinstance(self.save_as, list):
+                for ii in self.save_as:
+                    plt.savefig(ii, transparent=True, dpi=300, bbox_inches='tight')
+            elif isinstance(self.save_as, str):
+                plt.savefig(self.save_as, transparent=True, dpi=300, bbox_inches='tight')
+            else:
+                raise ValueError(f"Unknown input '{self.save_as}' for 'save_as'")
+
+    def plot(self, **kwargs):
+
+        if self.axs == None:
+            _,self.axs = plt.subplots(figsize=self.figsize)
+
+        if self.alpha == None:
+            self.alpha = 1
+
+        if isinstance(self.x, str) and isinstance(self.x, str):
+            sns.histplot(self.data, x=self.x, y=self.y, ax=self.axs, **kwargs)
+        else:
+            sns.histplot(self.data, ax=self.axs,**kwargs)
+
+        self.axs.tick_params(
+            width=self.tick_width, 
+            length=self.tick_length,
+            labelsize=self.label_size)
+
+        for axis in ['top', 'bottom', 'left', 'right']:
+            self.axs.spines[axis].set_linewidth(self.axis_width)
+
+        if self.sns_trim:
+            sns.despine(offset=self.sns_offset, trim=self.sns_trim)
