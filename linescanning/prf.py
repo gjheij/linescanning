@@ -2132,16 +2132,16 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
             out_dict['settings'] = self.settings
             out_dict['predictions'] = self.make_predictions(model=model, stage=stage)
 
-            # save HRFs if applicable
-            if self.fit_hrf:
+            # # save HRFs if applicable
+            # if self.fit_hrf:
                 
-                if stage != "grid":
-                    try:
-                        self.hrfs = [self.hrf.create_spm_hrf(hrf_params=[1,*params[ii,-3:-1]], TR=self.TR, force=True).values.T for ii in range(self.data.shape[0])]
-                    except:
-                        raise IOError(f"Could not create HRFs")
+            #     if stage != "grid":
+            #         try:
+            #             self.hrfs = [self.hrf.create_spm_hrf(hrf_params=[1,*params[ii,-3:-1]], TR=self.TR, force=True).values.T for ii in range(self.data.shape[0])]
+            #         except:
+            #             raise IOError(f"Could not create HRFs")
 
-                    out_dict['hrf'] = self.hrfs
+            #         out_dict['hrf'] = self.hrfs
 
             if self.verbose:
                 print(f"Save {stage}-fit parameters in {pkl_file}")
@@ -2593,6 +2593,11 @@ class CollectSubject(pRFmodelFitting):
         # get design matrix, vertex info, and analysis file
         if self.prf_dir != None:
             self.design_fn      = utils.get_file_from_substring(["design", ".mat"]+self.filter_list, self.prf_dir)
+
+            # error message in case multiple files are found
+            if isinstance(self.design_fn, list):
+                raise ValueError(f"Found multiple files matching the criteria: ['design', 'mat']; {self.design_fn}")
+
             self.design_matrix  = read_par_file(self.design_fn) # read_par_file doesn't care whether it's a npy-/mat-/pkl-file
 
             try:
@@ -2603,7 +2608,7 @@ class CollectSubject(pRFmodelFitting):
                 try:
                     self.func_data_lr = np.load(utils.get_file_from_substring(["desc-data.npy"]+self.filter_list, self.prf_dir))
                 except:
-                    print("WARNING: could not load functional data")
+                    print(f"WARNING: could not load functional data from '{self.prf_dir}'")
 
         # try to read iterative fit parameters
         allowed_models = ['gauss', 'css', 'dog', 'norm']
@@ -2644,9 +2649,9 @@ class CollectSubject(pRFmodelFitting):
             except:
                 self.pars = np.array(self.target_params)[np.newaxis,...]
             
-            if hemi == "lh":
+            if self.hemi_tag == "L":
                 tmp_data = self.func_data_l.copy()
-            elif hemi == "rh":
+            else:
                 tmp_data = self.func_data_r.copy()
             
             self.data = tmp_data[...,self.target_vertex][np.newaxis,...]
