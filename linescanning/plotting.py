@@ -270,6 +270,10 @@ class LazyPlot():
         Also remove the bottom (x) spine of the plot
     markers: str, list, optional
         Use markers during plotting. If `ts` is a list, a list of similar length should be specified. If one array in `ts` should not have markers, use `None`. E.g., if `len(ts) == 3`, and we want only the first timecourse to have markers use: `markers=['.',None,None]
+    x_ticks: list, optional
+        Locations where to put the ticks on the x-axis
+    y_ticks: list, optional
+        Locations where to put the ticks on the y-axis
 
     Example
     ----------
@@ -339,6 +343,8 @@ class LazyPlot():
         sns_rm_bottom=False,
         set_xlim_zero=True,
         markers=None,
+        x_ticks=None,
+        y_ticks=None,
         **kwargs):
 
         self.array              = ts
@@ -370,6 +376,8 @@ class LazyPlot():
         self.sns_bottom         = sns_rm_bottom
         self.set_xlim_zero      = set_xlim_zero
         self.markers            = markers
+        self.x_ticks            = x_ticks
+        self.y_ticks            = y_ticks
         self.__dict__.update(kwargs)
 
         if self.xkcd:
@@ -557,6 +565,12 @@ class LazyPlot():
                     lw=self.add_hline['lw'], 
                     ls=self.add_hline['ls'],
                     xmax=set_xlim)
+
+        if isinstance(self.x_ticks, list):
+            self.axs.set_xticks(self.x_ticks)
+
+        if isinstance(self.y_ticks, list):
+            self.axs.set_yticks(self.y_ticks)
 
 class LazyCorr():
     """LazyCorr
