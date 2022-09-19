@@ -247,11 +247,11 @@ Example
             stim_ix = utils.find_nearest(SR.stims_fill_sizes, ii)[0]
             cmap_blue = utils.make_binary_cm((8,178,240))
 
+            ax.axvline(0, color='k', linestyle='dashed', lw=0.5)
+            ax.axhline(0, color='k', linestyle='dashed', lw=0.5)
             im = ax.imshow(
                 SR.stims_fill[stim_ix], 
                 extent=SI_.settings['vf_extent']+SI_.settings['vf_extent'], cmap=cmap_blue)
-            ax.axvline(0, color='k', linestyle='dashed', lw=0.5)
-            ax.axhline(0, color='k', linestyle='dashed', lw=0.5)
             ax.axis('off')
             patch = patches.Circle((0,0), radius=SI_.settings['vf_extent'][-1], transform=ax.transData)
             im.set_clip_path(patch)
