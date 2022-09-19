@@ -212,7 +212,7 @@ def create_circular_mask(h, w, center=None, radius=None):
     return mask
 
 
-def make_stims(n_pix, prf_object, dim_stim=2, factr=4, concentric=False, concentric_size=0.65):
+def make_stims(x, dim_stim=2, factor=4, concentric=False, concentric_size=0.65):
 
     """make_stims
 
@@ -220,13 +220,13 @@ def make_stims(n_pix, prf_object, dim_stim=2, factr=4, concentric=False, concent
 
     Parameters
     ----------
-    n_pix: int
-        number of pixels in the grid to use
+    x: array
+        visual field delineation
     prf_object: prfpy.stimulus.PRFStimulus2D
         representation the pRF in visual space
     dim_stim: int
         number of dimensions to use: 2 for circle, 1 for bar
-    factr: int
+    factor: int
         factor with which to increase stimulus size
     concentric: boolean
         If true, concentric stimuli will be made. For that, the next argument is required
@@ -239,14 +239,10 @@ def make_stims(n_pix, prf_object, dim_stim=2, factr=4, concentric=False, concent
         list of numpy.ndarrays with meshgrid-size containing the stimuli. Can be plotted with :func:`linescanning.prf.plot_stims`
     """
 
-    ss_deg = 2.0 * np.degrees(np.arctan(prf_object.screen_size_cm /(2.0*prf_object.screen_distance_cm)))
-    x = np.linspace(-ss_deg/2, ss_deg/2, n_pix)
-
     if dim_stim == 1:
-        stims = [np.zeros_like(n_pix) for n in range(int(n_pix/4))]
+        stims = [np.zeros_like(x) for n in range(int(x.shape[-1]/factor))]
     else:
-        factr=4
-        stims = [np.zeros((n_pix, n_pix)) for n in range(int(n_pix/(2*factr)))]
+        stims = [np.zeros((x.shape[0],x.shape[0])) for n in range(int(x.shape[-1]/(2*factor)))]
         stim_sizes=[]
 
     for pp, stim in enumerate(stims):
@@ -257,8 +253,8 @@ def make_stims(n_pix, prf_object, dim_stim=2, factr=4, concentric=False, concent
         else:
             #2d circle
             xx,yy = np.meshgrid(x,x)
-            stim[((xx**2+yy**2)**0.5)<(x.max()*pp/(len(stims)*factr))] = 1
-            stim_sizes.append(2*(x.max()*pp/(len(stims)*factr)))
+            stim[((xx**2+yy**2)**0.5)<(x.max()*pp/(len(stims)*factor))] = 1
+            stim_sizes.append(2*(x.max()*pp/(len(stims)*factor)))
 
             # make concentric rings
             if concentric:
@@ -1133,8 +1129,12 @@ def generate_model_params(model='gauss', dm=None, TR=1.5, fit_hrf=False, verbose
     """
     
     # check if we have project-specific template; otherwise take linescanning-repo template
-    yml_file = utils.get_file_from_substring("prf_analysis.yml", opj(os.environ.get("DIR_DATA_HOME"), 'code'), return_msg=None)
-    
+    # it's in a try-except loop because sometimes os.environ.get fails, causing a premature error..
+    try:
+        yml_file = utils.get_file_from_substring("prf_analysis.yml", opj(os.environ.get("DIR_DATA_HOME"), 'code'), return_msg=None)
+    except:
+        yml_file = None
+
     if yml_file == None:
         yml_file = utils.get_file_from_substring("prf_analysis.yml", opj(os.path.dirname(os.path.dirname(utils.__file__)), 'misc'))
 
@@ -2293,13 +2293,14 @@ class SizeResponse():
 
         # define visual field in degree of visual angle
         self.ss_deg = 2*np.degrees(np.arctan(self.prf_stim.screen_size_cm /(2.0*self.prf_stim.screen_distance_cm)))
-        self.x = np.linspace(-self.ss_deg/2, self.ss_deg/2, self.n_pix)
+        self.x = np.linspace(-self.ss_deg/2, self.ss_deg/2, 1000)
+        self.dx = self.n_pix/len(self.x)
 
 
     def make_stimuli(self, factor=4):
         """create stimuli for Size-Response curve simulation. See :func:`linescanning.prf.make_stims`"""
         # create stimuli
-        self.stims_fill, self.stims_fill_sizes = make_stims(self.n_pix, self.prf_stim, factr=factor)
+        self.stims_fill, self.stims_fill_sizes = make_stims(self.x, factor=factor)
     
     @staticmethod
     def parse_normalization_parameters(params, save_as=None):
@@ -2367,7 +2368,18 @@ class SizeResponse():
         else:
             prf_size = self.params_df['prf_size'][0]
 
-        func = norm_2d_sr_function(self.params_df['A'][0], self.params_df['B'][0], self.params_df['C'][0], self.params_df['D'][0], prf_size, self.params_df['surr_size'][0], self.x, self.x, self.stims_fill, mu_x=mu_x, mu_y=mu_y)
+        func = norm_2d_sr_function(
+            self.params_df['A'][0], 
+            self.params_df['B'][0], 
+            self.params_df['C'][0], 
+            self.params_df['D'][0], 
+            prf_size, 
+            self.params_df['surr_size'][0], 
+            self.x, 
+            self.x, 
+            self.stims_fill, 
+            mu_x=mu_x, 
+            mu_y=mu_y)
 
         if normalize:
             return func / func.max()
