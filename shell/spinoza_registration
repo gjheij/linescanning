@@ -169,7 +169,13 @@ for subID in ${search}; do
     base=${sub_name}
   fi
 
-  input_dir=${INPUT}/${base_path}
+  # check if input directory was pymp2rage or not
+  if [[ ${INPUT} != *"pymp2rage"* ]]; then
+    input_dir=${INPUT}/${base_path}/anat
+  else
+    input_dir=${INPUT}/${base_path}
+  fi
+  
   output_dir=${OUTPUT}/${base_path}
 
   if [[ ${TYPE,,} == ${ACQ[0],,} ]]; then

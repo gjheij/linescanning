@@ -640,6 +640,14 @@ if [[ $? -eq 0 ]]; then
   echo "[${module}] Register T1 from memp2rage to T1 from mp2rage"
 
   if [[ ${DATA:u} == "AVERAGE" ]]; then
+
+    # check where inputs live
+    if [[ -d ${DIR_DATA_DERIV}/pymp2rage ]]; then
+      INPUT_DIR=${DIR_DATA_DERIV}/pymp2rage
+    else
+      INPUT_DIR=${DIR_DATA_HOME}
+    fi
+
     ${job} spinoza_registration ${REG_TYPE} ${SUBJECT} ${OW} ${SESSION} ${SGE} ${DIR_DATA_DERIV}/pymp2rage ${DIR_DATA_DERIV}/ants
 
     if [[ $? -ne 0 ]]; then
