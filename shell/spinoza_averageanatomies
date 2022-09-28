@@ -105,7 +105,13 @@ for subID in ${search}; do
     base=${sub_name}
   fi
 
-  input_dir=${INPUT}/${base_path}
+  # check if input directory was pymp2rage or not
+  if [[ ${INPUT} != *"pymp2rage"* ]]; then
+    input_dir=${INPUT}/${base_path}/anat
+  else
+    input_dir=${INPUT}/${base_path}
+  fi
+  
   output_dir=${OUTPUT}/${base_path}
 
   if [ ! -d ${input_dir} ]; then
@@ -139,12 +145,20 @@ for subID in ${search}; do
 
       in_1=`find "${input_dir}" -type f \( -name "*acq-${ACQ[0]^^}_*" -and -name "*${i}.nii.gz" \) 2>/dev/null`
       in_2=`find "${input_dir}" -type f \( -name "*space-${ACQ[0]^^}*" -and -name "*acq-${ACQ[1]^^}_*" -and -name "*${i}.nii.gz" \) 2>/dev/null`
+      
+      in_3=""
+      if [[ ${#ACQ[@]} -gt 2 ]]; then
+        in_3=`find "${input_dir}" -type f \( -name "*space-${ACQ[0]^^}*" -and -name "*acq-${ACQ[2]^^}_*" -and -name "*${i}.nii.gz" \) 2>/dev/null`
+      fi
 
       if [[ ! -z ${in_1} && ! -z ${in_2} ]]; then
-
-        echo "Calculate mean over `basename ${in_1}` and `basename ${in_2}`"
-        call_calculatemean ${in_1} ${in_2} ${out}
-
+        if [[ ! -z ${in_3} ]]; then
+          echo "Calculate mean over `basename ${in_1}`, `basename ${in_2}`, and `basename ${in_3}`"
+          call_calculatemean ${in_1} ${in_2} ${in_3} ${out}
+        else
+        echo "Calculate mean over `basename ${in_1}` & `basename ${in_2}`"
+          call_calculatemean ${in_1} ${in_2} ${out}
+        fi
       else
         if [[ -z ${in_1} ]]; then
           echo "ERROR in `basename ${0}`: Couldn't find ANTs registered ${i} image"
@@ -153,7 +167,6 @@ for subID in ${search}; do
         else
           echo "ERROR in `basename ${0}`: Missing both ANTs registered and pymp2rage image"
         fi
-        continue
       fi
 
       if [[ ${i} == "T1w" ]] || [[ ${i} == "T1map" ]]; then
