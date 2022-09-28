@@ -714,21 +714,15 @@ if [[ $? -eq 0 ]]; then
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Calculate averages of the T1-weighted image and T1map"
 
-  if [[ -z ${SES} ]]; then
-    # Going to assume ses-1 here
-    SESSION="-n 1"
-  else
-    SESSION="-n ${SES}"
-  fi
-
-  if [[ -z ${SUB} ]]; then
-    SUBJECT=""
-  else
-    SUBJECT="-s ${SUB}"
-  fi
-
   if [[ ${DATA^^} == "AVERAGE" ]]; then
-    spinoza_averageanatomies ${SUBJECT} ${SESSION} ${DIR_DATA_DERIV}/pymp2rage ${DIR_DATA_DERIV}/pymp2rage
+
+    if [[ -d ${DIR_DATA_DERIV}/pymp2rage ]]; then
+      INPUT_DIR=${DIR_DATA_DERIV}/pymp2rage
+    else
+      INPUT_DIR=${DIR_DATA_HOME}
+    fi  
+
+    spinoza_averageanatomies ${SUBJECT} ${SESSION} ${INPUT_DIR} ${DIR_DATA_DERIV}/pymp2rage
 
     if [[ $? -ne 0 ]]; then
       echo "ERROR in master: spinoza_averageanatomies exited with non-zero status"
