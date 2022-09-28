@@ -167,6 +167,7 @@ for subID in ${search}; do
         else
           echo "ERROR in `basename ${0}`: Missing both ANTs registered and pymp2rage image"
         fi
+        continue
       fi
 
       if [[ ${i} == "T1w" ]] || [[ ${i} == "T1map" ]]; then
