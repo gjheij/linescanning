@@ -182,7 +182,9 @@ for filename in os.listdir(nifti_output_folder):
             bids_output_folder = bids_fmap
             split_name[3] = "inv-2_part-mag" + split_name[4][5:]
             del(split_name[-1:]) 
-
+        else:
+            pass
+        
         #only copy t1w and t1map
         new_filename = "_".join(split_name)
         # print(new_filename)
