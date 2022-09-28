@@ -648,7 +648,7 @@ if [[ $? -eq 0 ]]; then
       INPUT_DIR=${DIR_DATA_HOME}
     fi
 
-    ${job} spinoza_registration ${REG_TYPE} ${SUBJECT} ${OW} ${SESSION} ${SGE} ${DIR_DATA_DERIV}/pymp2rage ${DIR_DATA_DERIV}/ants
+    ${job} spinoza_registration ${REG_TYPE} ${SUBJECT} ${OW} ${SESSION} ${SGE} ${INPUT_DIR} ${DIR_DATA_DERIV}/ants
 
     if [[ $? -ne 0 ]]; then
       echo "ERROR in master: spinoza_registration exited with non-zero status"
