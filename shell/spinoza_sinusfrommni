@@ -144,7 +144,7 @@ for dir in ${search}; do
             rm $(dirname ${t2})/tmp_$(basename ${t2}) 2>/dev/null
           else
             echo "Creating T1w/T2w + thresholded image"
-            call_t12ratio --t1 ${t1} --t2 ${t2} -o ${pn_anat}/${base}_acq-${space^^}
+            call_t12ratio --t1 ${t1} --t2 ${t2} -o ${pn_anat}/${base}_acq-${DATA^^}
           fi
 
           if [[ $? -ne 0 ]]; then
