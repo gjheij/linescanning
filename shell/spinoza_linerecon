@@ -209,14 +209,14 @@ for subID in ${search}; do
           fi
           
           if [[ ${SGE} -eq 1 ]]; then
-            job="qsub -N recon_${sub_id}_${run} -wd ${OUTPUT}/${base_path}"
+            job="qsub -N rec${sub_id}_${run} -wd ${OUTPUT}/${base_path}"
           else
             echo "Running recon for run-${run} (task-${task})"
             job="bash"
           fi
 
           ${job} ${DIR_SCRIPTS}/bin/call_linerecon -r ${run} ${echo_flag} ${bold} ${lsd} ${outputbase}
-          exit 1
+
           # set variable with which we can retrieve old LSD-image in case we don't have run-specific LSD-images
           old_lsd=${lsd}
 
