@@ -746,13 +746,13 @@ function make_cat_script {
     echo "Turning off bias/intensity correction & sanlm-filtering"
     bias_reg=0
     bias_fhwm="Inf"
-    app=2
-    sanlm=2
+    app=0
+    sanlm=0
   else
     bias_reg=0.001
     bias_fhwm=60
-    app=0
-    sanlm=0
+    app=2
+    sanlm=2
   fi
 
   if [[ ${VER} == "1113" ]]; then
