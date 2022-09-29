@@ -331,10 +331,10 @@ for subID in ${search}; do
           if [[ ! -f ${brainmask} ]]; then
 
             echo "CAT12 was selected, using following parameters:"
-            echo " -input     = `basename ${input}`"
-            echo " -output    = `basename ${brainmask}`"
+            echo " -input  = `basename ${input}`"
+            echo " -output = `basename ${brainmask}`"
             
-            call_cat12 -s ${SPM_PATH} -m ${mode} ${input} ${BET}
+            call_cat12 ${mode} -s ${SPM_PATH} ${input} ${BET}
 
             if [[ $? != 0 ]]; then
               echo
