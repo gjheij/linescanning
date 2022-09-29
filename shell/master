@@ -751,28 +751,23 @@ if [[ $? -eq 0 ]]; then
     exit 1
   fi
 
-  if [[ ${DATA^^} != "AVERAGE" ]]; then
-    echo "---------------------------------------------------------------------------------------------------"
-    echo "[${module}] Create sagittal sinus mask using the MNI-mask & T1w/T2w-ratio"
+  echo "---------------------------------------------------------------------------------------------------"
+  echo "[${module}] Create sagittal sinus mask using the MNI-mask & T1w/T2w-ratio"
 
-    if [[ -d ${DIR_DATA_DERIV}/pymp2rage ]]; then
-      INPUT_DIR=${DIR_DATA_DERIV}/pymp2rage
-    else
-      INPUT_DIR=${DIR_DATA_HOME}
-    fi
-
-    ${job} spinoza_sinusfrommni ${SUBJECT} ${SESSION} ${OW} ${INPUT_DIR} ${DIR_DATA_DERIV}/ants ${DIR_DATA_DERIV}/manual_masks
-
-    if [[ $? -ne 0 ]]; then
-      echo "ERROR in `basename ${0}`: spinoza_sinusfrommni exited with non-zero status"
-      exit 1
-    fi
-
-    echo "[${module}] DONE" && echo
-
+  if [[ -d ${DIR_DATA_DERIV}/pymp2rage ]]; then
+    INPUT_DIR=${DIR_DATA_DERIV}/pymp2rage
   else
-    echo "DATA-variable \"${DATA^^}\" not compatible with this function"
+    INPUT_DIR=${DIR_DATA_HOME}
   fi
+
+  ${job} spinoza_sinusfrommni ${SUBJECT} ${SESSION} ${OW} ${INPUT_DIR} ${DIR_DATA_DERIV}/ants ${DIR_DATA_DERIV}/manual_masks
+
+  if [[ $? -ne 0 ]]; then
+    echo "ERROR in `basename ${0}`: spinoza_sinusfrommni exited with non-zero status"
+    exit 1
+  fi
+
+  echo "[${module}] DONE" && echo
 
 fi
 
