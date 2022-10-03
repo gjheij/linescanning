@@ -4,7 +4,7 @@
 # check if there's is a setup file containing the major paths and source it if it exists
 source ${DIR_SCRIPTS}/shell/spinoza_setup
 echo "Project         : ${PROJECT}"
-echo "Nr acquisitions : ${#ACQ[@]}"
+echo "Nr acquisitions : ${#ACQ[@]} (${ACQ[@]})"
 echo "Output type     : ${DATA}"
 echo "Task ID ses-1   : ${TASK_SES1}"
 echo "Subject prefix  : ${SUBJECT_PREFIX}"
