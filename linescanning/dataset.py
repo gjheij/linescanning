@@ -1939,8 +1939,123 @@ order={self.poly_order}). """
         else:
             self.desc_filt = ""
 
+        # get basic qualities
+        self.basic_qa(
+            self.ts_corrected, 
+            run=run, 
+            make_figure=self.report,
+            acompcor=acompcor)
+
         # final
         self.desc_func = self.func_pre_desc + self.desc_trim + self.desc_filt
+    
+    def basic_qa(self, data, run=1, make_figure=False, acompcor=False):
+        
+        # tsnr
+        tsnr_pre = utils.calculate_tsnr(data, -1)
+        mean_tsnr_pre = float(np.nanmean(np.ravel(tsnr_pre)))
+
+        # variance
+        var_pre = np.var(data, axis=-1)
+        mean_var_pre = float(var_pre.mean())
+
+        tsnr_inputs = [tsnr_pre]
+        var_inputs = [var_pre]
+        colors = ["#1B9E77"]
+        tsnr_lbl = None
+        var_lbl = None
+        tsnr_lines = {
+            "pos": mean_tsnr_pre,
+            "color": colors
+        }
+
+        var_lines = {
+            "pos": mean_tsnr_pre,
+            "color": colors
+        }
+        if self.verbose:
+            print(f" tSNR [before aCompCor]: {round(mean_tsnr_pre,2)}\t| variance: {round(mean_var_pre,2)}")
+
+        if acompcor:
+            # get aCompCor'ed tSNR
+            tsnr_post = utils.calculate_tsnr(self.hp_acomp_raw,-1)
+            mean_tsnr_post = float(np.nanmean(np.ravel(tsnr_post)))
+
+            # variance
+            var_post = np.var(self.hp_acomp_raw, axis=-1)
+            mean_var_post = float(var_post.mean())
+
+            # sort out plotting stuff
+            tsnr_inputs += [tsnr_post]
+            var_inputs += [var_post]
+            colors += ["#D95F02"]
+            tsnr_lbl = [f'no aCompCor [{round(mean_tsnr_pre,2)}]', f'aCompCor [{round(mean_tsnr_post,2)}]']
+            var_lbl = [f'no aCompCor [{round(mean_var_pre,2)}]', f'aCompCor [{round(mean_var_post,2)}]']            
+            tsnr_lines = {
+                "pos": [mean_tsnr_pre,mean_tsnr_post],
+                "color": colors
+            }
+
+            var_lines = {
+                "pos": [mean_var_pre,mean_var_post],
+                "color": colors
+            }
+
+            if self.verbose:
+                print(f" tSNR [after aCompCor]:  {round(mean_tsnr_post,2)}\t| variance: {round(mean_var_post,2)}")
+
+        if make_figure:
+            # initiate figure
+            fig = plt.figure(figsize=(24,7))
+            gs = fig.add_gridspec(1,3, width_ratios=[10,10,10])
+
+            # imshow for apparent motion
+            ax1 = fig.add_subplot(gs[0])
+            ax1.imshow(np.rot90(data.T), aspect=8/1)
+            ax1.set_xlabel("volumes", fontsize=16)
+            ax1.set_ylabel("voxels", fontsize=16)
+            ax1.set_title("Stability of position", fontsize=16)
+            
+            ax1.tick_params(
+                width=0.5, 
+                length=7,
+                labelsize=10)
+
+            for axis in ['top', 'bottom', 'left', 'right']:
+                ax1.spines[axis].set_linewidth(0.5)
+
+            # line plot for tSNR over voxels
+            ax2 = fig.add_subplot(gs[1])
+            plotting.LazyPlot(
+                tsnr_inputs,
+                axs=ax2,
+                title=f"tSNR across the line",
+                font_size=16,
+                linewidth=2,
+                color=colors,
+                x_label="voxels",
+                y_label="tSNR (a.u.)",
+                labels=tsnr_lbl,
+                add_hline=tsnr_lines,
+                line_width=2)
+
+            ax3 = fig.add_subplot(gs[2])
+            plotting.LazyPlot(
+                var_inputs,
+                axs=ax3,
+                title=f"Variance across the line",
+                font_size=16,
+                linewidth=2,
+                color=colors,
+                x_label="voxels",
+                y_label="Variance",
+                labels=var_lbl,
+                add_hline=var_lines,
+                line_width=2)            
+
+            if self.report:
+                fname = opj(self.lsprep_figures, f"sub-{self.sub}_ses-{self.ses}_run-{run}_desc-qa.{self.save_ext}")
+                fig.savefig(fname, bbox_inches='tight', dpi=300)
 
     def select_voxels_across_runs(self):
 
@@ -1992,7 +2107,7 @@ order={self.poly_order}). """
 
         if self.report:
             fname = opj(self.lsprep_figures, f"sub-{self.sub}_ses-{self.ses}_desc-tissue_classification.{self.save_ext}")
-            fig.savefig(fname)        
+            fig.savefig(fname, bbox_inches='tight', dpi=300)
                                    
     # def apply_retroicor(self, run=1, **kwargs):
 
