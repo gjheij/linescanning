@@ -51,7 +51,7 @@ def set_threshold(name=None, borders=None, set_default=None):
     # set threshold for 'name'
     while True:
         try:
-            val = float(input(f" {name} [def = {int(set_default)}]: \t") or set_default)
+            val = float(input(f" {name} [def = {set_default}]: \t") or set_default)
         except ValueError:
             print(" Please enter a number")
             continue
@@ -185,11 +185,11 @@ def target_vertex(
                 print("Set thresholds (leave empty and press [ENTER] to not use a particular property):")
                 # get user input with set_threshold > included the possibility to have only pRF or structure only!
                 if hasattr(BV_, 'prf'):
-                    size_val    = set_threshold(name="pRF size (beta)", borders=(0,5), set_default=round(min(BV_.prf.size)))
-                    r2_val      = set_threshold(name="r2 (variance)", borders=(0,1), set_default=round(max(BV_.prf.r2)))
-                    ecc_val     = set_threshold(name="eccentricity", borders=(0,15), set_default=round(min(BV_.prf.ecc)))
-                    pol_val_lh  = set_threshold(name="polar angle lh", borders=(0,np.pi), set_default=round(np.pi))
-                    pol_val_rh  = set_threshold(name="polar angle rh", borders=(-np.pi,0), set_default=round(-np.pi))
+                    size_val    = set_threshold(name="pRF size (beta)", borders=(0,5), set_default=round(min(BV_.prf.size),2))
+                    r2_val      = set_threshold(name="r2 (variance)", borders=(0,1), set_default=round(max(BV_.prf.r2),2))
+                    ecc_val     = set_threshold(name="eccentricity", borders=(0,15), set_default=round(min(BV_.prf.ecc),2))
+                    pol_val_lh  = set_threshold(name="polar angle lh", borders=(0,np.pi), set_default=round(np.pi,2))
+                    pol_val_rh  = set_threshold(name="polar angle rh", borders=(-np.pi,0), set_default=round(-np.pi,2))
                     pol_val     = [pol_val_lh,pol_val_rh]
                 else:
                     size_val    = 0
@@ -297,6 +297,16 @@ def target_vertex(
                 outF.writelines(textList)
                 outF.close()
                 check = True
+
+            else:
+                if use_prf:
+                    svgs = utils.get_file_from_substring(["svg", "vox-", f"model-{model}"], os.path.dirname(prf_file))
+                    if isinstance(svgs, str):
+                        svgs = [svgs]
+
+                    if len(svgs) != 0:
+                        for svg in svgs:
+                            os.remove(svg)
 
         BV_.write_line_pycortex(save_as=out)
         print(" writing {file}".format(file=out))
@@ -832,7 +842,14 @@ class CalcBestVertex():
                 val = list(curv_dict.values())
 
                 if len(val) == 0:
-                    raise ValueError("Could not find a vertex with these parameters")
+                    raise ValueError("Could not find a vertex with these parameters. Try lowering your r2-criteria if used.")
+                else:
+                    if len(val) < 10:
+                        add_txt = f": {list(vv)}"
+                    else:
+                        add_txt = ""
+                    print(f"{i}: {len(val)} voxels matched criteria{add_txt}")
+
                 # print("list of curvatures: \n",val)
 
                 # find curvature closest to zero
