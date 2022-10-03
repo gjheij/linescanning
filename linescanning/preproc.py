@@ -378,7 +378,7 @@ direction) were assigned to this tissue type. This limited the possibility for p
                 self.base_name = f"{self.subject}_ses-{self.trg_session}"
 
             fname = opj(self.save_as, f"{self.base_name}_run-{self.run}_desc-acompcor.{self.save_ext}")
-            fig.savefig(fname)
+            fig.savefig(fname, bbox_inches='tight', dpi=300)
 
 class RegressOut():
 
