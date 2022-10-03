@@ -36,8 +36,10 @@ MULTIPLE_DESIGNS=""   # spinoza_fitprfs
 FIT_HRF=""            # spinoza_fitprfs
 psc_flag=""           # spinoza_fitprfs
 zscore_flag=""        # spinoza_fitprfs
+raw_flag=""           # spinoza_fitprfs
 use_constr=""         # spinoza_fitprfs
 fit_flag=""           # spinoza_fitprfs
+fprep_input=0         # spinoza_fitprfs
 use_bbr=""            # spinoza_fmriprep
 WARP_ONLY=""          # spinoza_fmriprep
 REMOVE_WF=""          # spinoza_fmriprep
@@ -53,7 +55,12 @@ NO_BIAS=""            # spinoza_qmrimaps
 
 # use long options in bash:
 # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options
-declare -a opts=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv" "--no_fit")
+declare -a array=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv" "--no_fit" "--fmriprep" "--fprep")
+
+# sort options array
+IFS=$'\n' opts=($(sort <<<"${array[*]}"))
+unset IFS
+
 while getopts :-:wjqom:s:h:n:t:l:v:p:x:u:r:e:i:c: arg
 do
   case ${arg} in
@@ -130,7 +137,10 @@ do
           ;;                    
         psc)
           psc_flag="--psc"
-          ;;           
+          ;;      
+        raw)
+          raw_flag="--raw"
+          ;;                 
         no_raw)
           raw_flag="--no_raw"
           ;;        
@@ -157,7 +167,13 @@ do
           ;;        
         no_fit)
           fit_flag="--no_fit"
-          ;;                   
+          ;;         
+        fprep)
+          fprep_input=1
+          ;;
+        fmriprep)
+          fprep_input=1
+          ;;          
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}, possible options are:"
@@ -286,6 +302,8 @@ Args:
                     recommended to at least to Gaussian fitting with trust-constr, and potential ex-
                     tended models with L-BGFS. For this, see '-x' flag
   --comb_only       skip nighres, only do combination of segmentations. Works with '-o' flag. 
+  --f(mri)prep      use output from fMRIPrep as input for pRF-fitting. Default is the output fro py-
+                    best
   --full            Do full processing with CAT12, assuming module 8 was skipped. This does itera-
                     tive SANLM-filtering, bias correction, and intensity normalization. Can some-
                     times be overkill, so generally we use CAT12 for the additional segmentations
@@ -1110,9 +1128,8 @@ if [[ $? -eq 0 ]]; then
   fi
 
   # set input directory depending on the presence of pybest output
-  if [[ -d ${DIR_DATA_DERIV}/pybest ]]; then
-    PRF_INPUT=${DIR_DATA_DERIV}/pybest
-  else
+  PRF_INPUT=${DIR_DATA_DERIV}/pybest
+  if [[ ${fprep_input} -eq 1 ]]; then
     PRF_INPUT=${DIR_DATA_DERIV}/fmriprep
   fi
 
@@ -1131,7 +1148,7 @@ if [[ $? -eq 0 ]]; then
     use_constr="-x ${KWARGS}"
   fi
 
-  ${job} spinoza_fitprfs ${use_constr} ${CLIP} ${CLIP_FLAG} ${verb_flag} ${zscore_flag} ${fit_flag} ${TASK_ID} ${FIT_HRF} ${run_local} ${GRID} ${MULTIPLE_DESIGNS} ${SUBJECT} ${SESSION} ${OW} ${MODEL} ${PRF_INPUT} ${DIR_DATA_DERIV}/prf ${PNG_DIR}
+  ${job} spinoza_fitprfs ${use_constr} ${CLIP} ${CLIP_FLAG} ${verb_flag} ${zscore_flag} ${raw_flag} ${fit_flag} ${TASK_ID} ${FIT_HRF} ${run_local} ${GRID} ${MULTIPLE_DESIGNS} ${SUBJECT} ${SESSION} ${OW} ${MODEL} ${PRF_INPUT} ${DIR_DATA_DERIV}/prf ${PNG_DIR}
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_fitprfs exited with non-zero status"

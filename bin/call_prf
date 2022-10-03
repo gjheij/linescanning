@@ -5,7 +5,11 @@
 
 import ast
 import getopt
-from linescanning import prf,utils,dataset
+from linescanning import (
+    prf,
+    utils,
+    dataset
+)
 import numpy as np
 import nibabel as nb
 import os
@@ -30,8 +34,8 @@ Currently compatible with output from pybest (ending with "*desc-denoised_bold.n
 Prep (ending with "*bold.func.gii"). It will throw an error if neither of these conditions are met.
 If you have a different case (e.g., nifti's), please open an issue so we can deal with that. We'll 
 select files from the input directory based on 'space-' (check spinoza_setup)/'run-'/'task-IDs. They
-are then paired into left+right hemisphere. Finally, the median over all runs is calculated and inser-
-ted in the model-fitting object.
+are then paired into left+right hemisphere. Finally, the median over all runs is calculated and in-
+serted in the model-fitting object.
 
 Usage:
   call_prf [arguments] [options]
@@ -83,13 +87,15 @@ Options:
     --overwrite     If specified, we'll overwrite existing Gaussian parameters. If not, we'll look
                     for a file with ['model-gauss', 'stage-iter', 'params.npy'] in *outputdir* and,
                     if it exists, inject it in the normalization model (if `model=norm`)  
-    --tc            use trust-constr minimization for both the Gaussian as well as the extended model. 
+    --tc            use trust-constr minimization for both the Gaussian as well as the extended mo-
+                    del. 
                     Use the -x flag if you want different minimizers for both stages
     --bgfs          use L-BGFS minimization for both the Gaussian as well as the extended model. Use 
                     the -x flag if you want different minimizers for both stages                      
     --no_fit        Stop the process before fitting, right after saving out averaged data. This was 
                     useful for me to switch to percent-signal change without requiring a re-fit.
-                    
+    --raw           use unzscore'd data from pybest; do not percent-signal change.
+
 Example:
   call_prf -s 001 -n 1 -t 2R -o /path/derivatives/prf -i /path/to/pybest/sub-001 -p /path/png
   call_prf --sub 001 --ses 1 --task 2R --out /path/derivatives/prf --in /path/to/pybest/sub-001
@@ -119,8 +125,9 @@ Example:
     do_fit      = True
 
     try:
-        opts = getopt.getopt(argv,"ghs:n:t:o:i:p:m:x:u:c:",["help", "sub=", "model=", "ses=", "task=", "out=", "in=", "png=", "params=", "grid", "space=", "hrf", "n_pix=", "clip=", "verbose", "file_ending=", "zscore", "overwrite", "constr=", "tc", "bgfs", "no_fit"])[0]
+        opts = getopt.getopt(argv,"ghs:n:t:o:i:p:m:x:u:c:",["help", "sub=", "model=", "ses=", "task=", "out=", "in=", "png=", "params=", "grid", "space=", "hrf", "n_pix=", "clip=", "verbose", "file_ending=", "zscore", "overwrite", "constr=", "tc", "bgfs", "no_fit", "raw"])[0]
     except getopt.GetoptError:
+        print("ERROR while reading arguments; did you specify an illegal argument?")
         print(main.__doc__)
         sys.exit(2)
     
@@ -158,6 +165,8 @@ Example:
             file_ending = arg
         elif opt in ("--zscore"):
             psc = False
+        elif opt in ("--raw"):
+            psc = False            
         elif opt in ("--overwrite"):
             overwrite = True
         elif opt in ("--tc"):
@@ -292,17 +301,19 @@ Example:
         if verbose:
             print("Converting to percent signal change and fix baseline")
 
-        # first step of PSC; set NaNs to zero if dividing by 0 (in case of crappy timecourses)
-        m_prf_tc_data *= np.nan_to_num((100/np.mean(m_prf_tc_data, axis=0)))
+        # # first step of PSC; set NaNs to zero if dividing by 0 (in case of crappy timecourses)
+        # m_prf_tc_data *= np.nan_to_num((100/np.mean(m_prf_tc_data, axis=0)))
 
-        # get timepoints without stimulus
-        timepoints_no_stim = prf.baseline_from_dm(design_matrix[list(design_matrix.keys())[-1]])
+        # # get timepoints without stimulus
+        # timepoints_no_stim = prf.baseline_from_dm(design_matrix[list(design_matrix.keys())[-1]])
 
-        # get median
-        median_baseline = np.median(m_prf_tc_data[timepoints_no_stim,:], axis=0)
+        # # get median
+        # median_baseline = np.median(m_prf_tc_data[timepoints_no_stim,:], axis=0)
 
-        # subtract
-        m_prf_tc_data -= median_baseline
+        # # subtract
+        # m_prf_tc_data -= median_baseline
+
+        m_prf_tc_data = utils.percent_change(m_prf_tc_data, 0, baseline=20)
 
     # save files
     if verbose:

@@ -18,62 +18,65 @@ Wrapper for call_prf that does the pRF-fitting using the output from pybest and 
 There's several options for design matrix cases (in order of priority):
   - Place a design-matrix file called 'vis_design.mat' in DIR_DATA_HOME/code
   - A directory with log-directories. A global search for a directory containing "Screenshots" is 
-    done. If more directories are found and '--one_design' is specified, we'll take the first direc-
-    tory
-  - A directory with log-directories, but '--one_design' is NOT specified, meaning that each run will
-    get a separate design matrix. This can be useful if you have multiple conditions that have dif-
-    ferent designs.
+    done. If more directories are found and '--one_design' is specified, we'll take the first dir
+    ectory
+  - A directory with log-directories, but '--one_design' is NOT specified, meaning that each run 
+    will get a separate design matrix. This can be useful if you have multiple conditions that have 
+    different designs.
 
 Usage:
   spinoza_fitprfs [options] <input dir> <output dir> <png dir>
 
 Options:
+  -c              list of values used for clipping of design matrix. Format must be [<top>,<bottom>,
+                  <left>,<right>]  
+  -m <model>      one of ['gauss','dog','css','norm'] is accepted, default = "gauss"
+  -n <session>    session ID (e.g., 1, 2, or none)
+  -o              delete existing file and re-run analysis fully. Even if 'model=norm', we'll over-
+                  write the Gaussian parameters. If not specified, and 'model=norm' while Gaussian 
+                  parameters already exist, we'll inject them into the DN-model.
+  -s <subject>    subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
+  -t <task ID>    If you have mutiple tasks specified in TASK_SES1 or you just have multiple tasks and 
+                  you want to run only one, specify the task name here ('task-rest' is ignored).
+                  You can also specify multiple tasks if you want to bypass the setup file completely. 
+                  In that case, use the format '-t <task1>,<task2>,<task3>'
+  -x <constr>     String or list of constraints to use for the gaussian and extended stage. By default, 
+                  we'll use trust-constr minimization for both stages, but you can speed up the exten-
+                  ded models with L-BGFS. Note that if you want the same minimizer for both stages, you 
+                  can use the '--tc' or '--bgfs' tags. This input specifically allows you to specify a 
+                  list of different minimizers for each stage, e.g., trust-constr for Gaussian model, 
+                  and L-BGFS for extended model. The format should be '-x "tc,bgfs"'
+  --bgfs          use L-BGFS minimization for both the Gaussian as well as the extended model. Use 
+                  the '-x'flag if you want different minimizers for both stages   
   --grid          only run grid fit, skip iterative fit
-  -o              delete existing file and re-run analysis fully. Even if 'model=norm', we'll overwrite the
-                  Gaussian parameters. If not specified, and 'model=norm' while Gaussian parameters already
-                  exist, we'll inject them into the DN-model.
-  -c              list of values used for clipping of design matrix. Format must be 
-                  [<top>,<bottom>,<left>,<right>]  
-  --multi_design  specifies that for all runs in the dataset have run-/task-specific screenshot direc-
-                  tories. This requires that the directory names you saved must match your naming 
-                  scheme of functional files as we'll match on run-/task-ID
   --hrf           fit the HRF during pRF-fitting. See 'call_prf' for more information
   --local         run locally even though we have SGE available.
-  --no_clip       ensures that the design matrix is NOT clipped, despite the possible presence of screen 
-                  delimiter files    
-  --zscore        use the zscore'd output from pybest, rather than percent signal change. If not specified, 
-                  percent signal change is implemented as follows:
+  --multi_design  specifies that for all runs in the dataset have run-/task-specific screenshot di-
+                  rectories. This requires that the directory names you saved must match your naming 
+                  scheme of functional files as we'll match on run-/task-ID
+  --no_clip       ensures that the design matrix is NOT clipped, despite the possible presence of 
+                  screen delimiter files
+  --no_fit        Stop the process before fitting, right after saving out averaged data. This was use-
+                  ful for me to switch to percent-signal change without requiring a re-fit.               
+  --raw           use the raw, un-zscore'd output from pybest, rather than percent signal change
+  --tc            use trust-constr minimization for both the Gaussian as well as the extended model. 
+                  Use the '-x' flag if you want different minimizers for both stages
+  --zscore        use the zscore'd output from pybest, rather than percent signal change. If not spe-
+                  cified, percent signal change is implemented as follows:
                     psc = signals*100/(mean(signals)) - median(signals_without_stimulus)
-  --tc            use trust-constr minimization for both the Gaussian as well as the extended model. Use the
-                  -x flag if you want different minimizers for both stages
-  --bgfs          use L-BGFS minimization for both the Gaussian as well as the extended model. Use the -x 
-                  flag if you want different minimizers for both stages   
-  --no_fit        Stop the process before fitting, right after saving out averaged data. This was useful for me
-                  to switch to percent-signal change without requiring a re-fit.               
-  -s <subject>    subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
-  -n <session>    session ID (e.g., 1, 2, or none)
-  -m <model>      one of ['gauss','dog','css','norm'] is accepted, default = "gauss"
-  -t <task ID>    If you have mutiple tasks specified in TASK_SES1 or you just have multiple tasks and 
-                  you want to run only one, specify the task name here ('task-rest' is ignored by default!).
-                  You can also specify multiple tasks if you want to bypass the setup file completely. In
-                  that case, use the format '-t <task1>,<task2>,<task3>'
-  -x <constr>     String or list of constraints to use for the gaussian and extended stage. By default, we'll
-                  use trust-constr minimization for both stages, but you can speed up the extended models with
-                  L-BGFS. Note that if you want the same minimizer for both stages, you can use the '--tc' or 
-                  '--bgfs' tags. This input specifically allows you to specify a list of different minimizers
-                  for each stage, e.g., trust-constr for Gaussian model, and L-BGFS for extended model. The 
-                  format should be '-x "tc,bgfs"'
 
 Arguments:
-  <input dir>     base input directory with pybest data (e.g., 'DIR_DATA_DERIV/pybest')
+  <input dir>     base input directory with pybest data (e.g., 'DIR_DATA_DERIV/pybest'). You can also 
+                  point to the fmriprep-folder, in which case the gifti's of 'fsnative' will be used.
   <output dir>    base output directory for prf data (e.g., 'DIR_DATA_DERIV/prf')
   <png dir>       base path of where sourcedata of subjects live. In any case, the subject ID will be
                   appended to this path (if applicable, so will session ID). Inside THAT directory, 
                   we'll search for directories with 'Screenshots'. So, if you specify DIR_DATA_SOURCE 
-                  for 'sub-005' and 'ses-1', we'll search in DIR_DATA_SOURCE/sub-005/ses-1/* for direc-
-                  tories with "Screenshots". If multiple directories are found, it depends on the options
-                  which directory is used: if --multi_design is specified, each directory will be matched
-                  with its corresponding functional run. If not, we'll take the 1st directory in the list.
+                  for 'sub-005' and 'ses-1', we'll search in DIR_DATA_SOURCE/sub-005/ses-1/* for di-
+                  rectories with "Screenshots". If multiple directories are found, it depends on the 
+                  options which directory is used: if --multi_design is specified, each directory will 
+                  be matched with its corresponding functional run. If not, we'll take the 1st direc-
+                  tory in the list.
 
 Eample:
   spinoza_fitprfs DIR_DATA_DERIV/prf DIR_DATA_DERIV/pybest DIR_DATA_SOURCE
@@ -96,6 +99,7 @@ grid_flag=""
 multi_design=0
 fit_hrf=""
 zscore_flag=""
+raw_flag=""
 verb_flag=""
 clip_flag=""
 clip=1
@@ -115,6 +119,9 @@ do
         zscore)
           zscore_flag="--zscore"
           ;;  
+        raw)
+          raw_flag="--raw"
+          ;;   
         verbose)
           verb_flag="--verbose"
           ;;
@@ -385,6 +392,7 @@ for subID in ${search}; do
             -m ${use_model} \
             -u ${PYBEST_SPACE} \
             ${zscore_flag} \
+            ${raw_flag} \
             ${verb_flag} \
             ${OW_flag} \
             ${use_constr} \
