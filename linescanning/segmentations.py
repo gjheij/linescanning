@@ -39,6 +39,8 @@ class Segmentations:
         When using surface coils, the signal that you pick up drops off rapidly with increasing distance from the coil. With this flag we can set as of which voxel we should ignore signal, which is relevant for selecting of WM/CSF voxels
     verbose: bool, optional
         Print details to the terminal, default is False        
+    overwite: bool, optional
+        Overwrite existing segmentations file. Default is False
 
     Raises
     ----------
@@ -105,37 +107,50 @@ class Segmentations:
         self.voxel_cutoff       = voxel_cutoff
         self.verbose            = verbose
         self.__dict__.update(kwargs)
-    
-        if self.pickle_file == None:
 
-            # try default project_home if none is specified
-            if not isinstance(self.project_home, str):
-                self.project_home = os.environ.get('DIR_DATA_HOME')
-                
-                if self.project_home == None:
-                    raise ValueError("Could not read DIR_DATA_DERIV-variable. Please specify the project's root directory (where 'derivatives' lives) with the 'project_home' argument.")
+        # check overwrite key
+        if not hasattr(self, "overwrite"):
+            self.overwrite = False
 
-            # specify nighres directory
-            self.nighres_source     = opj(self.project_home, 'derivatives', 'nighres', self.subject, f'ses-{self.reference_session}') 
-            self.nighres_target     = opj(os.path.dirname(self.nighres_source), f'ses-{self.target_session}') 
-            self.mask_dir           = opj(self.project_home, 'derivatives', 'manual_masks', self.subject, f'ses-{self.reference_session}')
-            self.cortex_dir         = opj(self.project_home, 'derivatives', 'pycortex', self.subject)
+        # try default project_home if none is specified
+        if not isinstance(self.project_home, str):
+            self.project_home = os.environ.get('DIR_DATA_HOME')
+            
+            if self.project_home == None:
+                raise ValueError("Could not read DIR_DATA_DERIV-variable. Please specify the project's root directory (where 'derivatives' lives) with the 'project_home' argument.")
+
+        # define derivatives folder
+        self.deriv_dir = opj(self.project_home, "derivatives")
+
+        # specify nighres directory
+        self.nighres_source = opj(self.deriv_dir, 'nighres', self.subject, f'ses-{self.reference_session}') 
+        self.nighres_target = opj(os.path.dirname(self.nighres_source), f'ses-{self.target_session}') 
+        self.mask_dir = opj(self.deriv_dir, 'manual_masks', self.subject, f'ses-{self.reference_session}')
+        self.cortex_dir = opj(self.deriv_dir, 'pycortex', self.subject)
+
+        # check run
+        if self.run != None:
+            self.pickle_file = opj(self.nighres_target, f'{subject}_ses-{self.target_session}_run-{self.run}_desc-segmentations.pkl')
+        else:
+            self.pickle_file = opj(self.nighres_target, f'{subject}_ses-{self.target_session}_desc-segmentations.pkl')
+
+        if not os.path.exists(self.pickle_file) or self.overwrite:
 
             if not os.path.exists(self.nighres_target):
                 os.makedirs(self.nighres_target, exist_ok=True)
 
             # fetch segmentations, assuming default directory layout
-            nighres_layout          = BIDSLayout(self.nighres_source, validate=False).get(extension=['nii.gz'], return_type='file')
-            self.wb_cruise          = utils.get_file_from_substring("cruise_cortex", nighres_layout)
-            self.wb_layers          = utils.get_file_from_substring("layering_layers", nighres_layout)
-            self.wb_depth           = utils.get_file_from_substring("layering_depth", nighres_layout)
+            nighres_layout = BIDSLayout(self.nighres_source, validate=False).get(extension=['nii.gz'], return_type='file')
+            self.wb_cruise = utils.get_file_from_substring("cruise_cortex", nighres_layout)
+            self.wb_layers = utils.get_file_from_substring("layering_layers", nighres_layout)
+            self.wb_depth = utils.get_file_from_substring("layering_depth", nighres_layout)
 
             # fetch mask and tissue probabilities
-            mask_layout             = BIDSLayout(self.mask_dir, validate=False).get(extension=['nii.gz'], return_type='file')
-            self.wb_wm              = utils.get_file_from_substring("label-WM", mask_layout)
-            self.wb_gm              = utils.get_file_from_substring("label-GM", mask_layout)
-            self.wb_csf             = utils.get_file_from_substring("label-CSF", mask_layout)
-            self.wb_brainmask       = utils.get_file_from_substring("brainmask", mask_layout)
+            mask_layout = BIDSLayout(self.mask_dir, validate=False).get(extension=['nii.gz'], return_type='file')
+            self.wb_wm = utils.get_file_from_substring("label-WM", mask_layout)
+            self.wb_gm = utils.get_file_from_substring("label-GM", mask_layout)
+            self.wb_csf = utils.get_file_from_substring("label-CSF", mask_layout)
+            self.wb_brainmask = utils.get_file_from_substring("brainmask", mask_layout)
 
             # check if reference slice and transformation file actually exist
             if not os.path.exists(self.reference_slice):
@@ -202,19 +217,19 @@ class Segmentations:
                 self.resampled[tag[nr]] = new_file
                 self.resampled_data[tag[nr]] = nb.load(new_file).get_fdata()
 
+            # add reference and beam images
             self.resampled['ref'] = self.reference_slice; self.resampled_data['ref'] = nb.load(self.reference_slice).get_fdata()
             self.resampled['line'] = image.create_line_from_slice(self.reference_slice, fold=self.foldover); self.resampled_data['line'] = nb.load(self.reference_slice).get_fdata()
 
-            if self.run != None:
-                self.pickle_file = opj(self.nighres_target, f'{subject}_ses-{self.target_session}_run-{self.run}_desc-segmentations.pkl')
-            else:
-                self.pickle_file = opj(self.nighres_target, f'{subject}_ses-{self.target_session}_desc-segmentations.pkl')
-                
+            # save pickle
             pickle_file = open(self.pickle_file, "wb")
             pickle.dump(self.resampled, pickle_file)
             pickle_file.close()
 
         else:
+            
+            if self.verbose:
+                print(f" Reading {self.pickle_file}")
 
             with open(self.pickle_file, 'rb') as pf:
                 self.resampled = pickle.load(pf)
