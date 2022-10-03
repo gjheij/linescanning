@@ -1,7 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
-from matplotlib.ticker import MaxNLocator
 import seaborn as sns
 
 class LazyPRF():
@@ -51,6 +50,10 @@ class LazyPRF():
         Width of the outer border of the visual field if `cmap` is not *viridis* or *magma* (these color maps are quite default, and do not require an extra border like :func:`linescanning.utils.make_binary_cm`-objects do). Default is 0.5.
     cross_width: float, optional
         Width of the cross denoting the x/y axis. Default is 0.5, but can be increased if `cmap` is not *viridis* or *magma* to enhance visibility 
+    z_lines: int, optional
+        Set the order of the vertical/horizontal lines. Default is **on top** of the pRF (1)
+    z_prf: int, optional
+        Set the order of the pRF imshow. Default is below the axis lines, but can be changed to be on top of them. Default = 0
 
     Returns
     ----------
@@ -82,6 +85,9 @@ class LazyPRF():
         vf_only=False,
         line_width=0.5,
         cross_width=0.5,
+        concentric=None,
+        z_lines=1,
+        z_prf=0,
         **kwargs):
         
         self.prf            = prf
@@ -107,7 +113,13 @@ class LazyPRF():
         self.vf_only        = vf_only
         self.line_width     = line_width
         self.cross_width    = cross_width
-        self.__dict__.update(kwargs)      
+        self.concentric     = concentric
+        self.z_lines        = z_lines
+        self.z_prf          = z_prf
+        self.__dict__.update(kwargs)
+
+        if not hasattr(self, "edge_color"):
+            self.edge_color = self.cross_color
 
         if self.xkcd:
             with plt.xkcd():
@@ -140,14 +152,16 @@ class LazyPRF():
             0, 
             color=self.cross_color, 
             linestyle='dashed', 
-            lw=self.cross_width)
+            lw=self.cross_width,
+            zorder=self.z_lines)
 
         # line on y-axis
         self.ax.axhline(
             0, 
             color=self.cross_color, 
             linestyle='dashed', 
-            lw=self.cross_width)
+            lw=self.cross_width,
+            zorder=self.z_lines)
 
         if not self.vf_only:
             plot_obj = self.prf
@@ -158,7 +172,8 @@ class LazyPRF():
             plot_obj, 
             extent=self.vf_extent+self.vf_extent, 
             cmap=self.cmap, 
-            alpha=self.alpha)
+            alpha=self.alpha,
+            zorder=self.z_prf)
         
         # In case of a white background, the circle for the visual field is cut off, so we need to make an adjustment:
         if self.cmap != 'magma' and self.cmap != 'viridis':
@@ -173,7 +188,7 @@ class LazyPRF():
             (0, 0),
             radius=radius,
             transform=self.ax.transData,
-            edgecolor=self.cross_color,
+            edgecolor=self.edge_color,
             facecolor="None",
             linewidth=self.line_width)
 
@@ -400,7 +415,7 @@ class LazyPlot():
     def plot(self):
 
         if self.axs == None:
-            fig, axs = plt.subplots(figsize=self.figsize)
+            _, axs = plt.subplots(figsize=self.figsize)
         else:
             axs = self.axs
 
@@ -461,12 +476,13 @@ class LazyPlot():
                     lbl = None
 
                 # plot
-                axs.plot(x, el, color=self.color_list[idx], label=lbl, lw=use_width, marker=self.markers[idx])
-
-                # check if our x-axis is all integers so we set the MajorTicks to integers
-                # https://www.scivision.dev/matplotlib-force-integer-labeling-of-axis/
-                if all(isinstance(ii, np.int64) for ii in x):
-                    axs.xaxis.set_major_locator(MaxNLocator(integer=True))
+                axs.plot(
+                    x, 
+                    el, 
+                    color=self.color_list[idx], 
+                    label=lbl, 
+                    lw=use_width, 
+                    marker=self.markers[idx])
 
                 # plot shaded error bars
                 if isinstance(self.error, list) or isinstance(self.error, np.ndarray):
@@ -499,16 +515,38 @@ class LazyPlot():
         for axis in ['top', 'bottom', 'left', 'right']:
             axs.spines[axis].set_linewidth(self.axis_width)
 
+        # defaults for ax?lines
+        default_dict = {
+            'color': 'k', 
+            'ls': 'dashed', 
+            'lw': 0.5}
+
         # add vertical lines
-        if self.add_vline:
-            if self.add_vline == "default":
-                self.add_vline = {'pos': 0, 'color': 'k', 'ls': 'dashed', 'lw': 0.5}
+        add_vline = True
+        if self.add_vline == "default":
+            self.add_vline = {'pos': 0}
+        elif isinstance(self.add_vline, int) or isinstance(self.add_vline, list) or isinstance(self.add_vline, np.ndarray):
+            self.add_vline = {"pos": self.add_vline}
+        elif isinstance(self.add_vline, dict):
+            add_vline = True            
+        else:
+            add_vline = False
+
+        if add_vline:
+            for key in list(default_dict.keys()):
+                if key not in list(self.add_vline.keys()):
+                    self.add_vline[key] = default_dict[key]
 
             if isinstance(self.add_vline['pos'], list) or isinstance(self.add_vline['pos'], np.ndarray):
-                for line in self.add_vline['pos']:
+                for ix,line in enumerate(self.add_vline['pos']):
+                    if isinstance(self.add_vline['color'], list):
+                        color = self.add_vline['color'][ix]
+                    else:
+                        color = self.add_vline['color']
+
                     axs.axvline(
                         line, 
-                        color=self.add_vline['color'], 
+                        color=color, 
                         lw=self.add_vline['lw'], 
                         ls=self.add_vline['ls'])
             else:
@@ -517,7 +555,6 @@ class LazyPlot():
                     color=self.add_vline['color'],
                     lw=self.add_vline['lw'], 
                     ls=self.add_vline['ls'])
-
 
         # give priority to specify x-lims rather than seaborn's xlim
         if self.x_lim:
@@ -530,31 +567,52 @@ class LazyPlot():
             axs.set_ylim(self.y_lim)
 
         # despine the axis
+        if isinstance(self.x_ticks, list):
+            axs.set_xticks(self.x_ticks)
+
+        if isinstance(self.y_ticks, list):
+            axs.set_yticks(self.y_ticks)
+
         old_xlim = axs.get_xlim()[-1]
         sns.despine(offset=self.sns_offset, trim=self.sns_trim, bottom=self.sns_bottom)
 
-        # add horizontal lines
-        if self.add_hline:
-            # correct for axis shortening induced by trimming with sns.despine
-            if self.sns_trim:
-                set_xlim = x[-1]/old_xlim
-            else:
-                set_xlim = 1
+        # correct for axis shortening induced by trimming with sns.despine
+        if self.sns_trim:
+            set_xlim = x[-1]/old_xlim
+        else:
+            set_xlim = 1
 
-            if self.add_hline == "default":
-                self.add_hline = {'pos': 0, 'color': 'k', 'ls': 'dashed', 'lw': 0.5}
-            elif self.add_hline == "mean" or self.add_hline == "average":
-                if isinstance(self.array, list):
-                    if len(self.array) > 1:
-                        raise ValueError("This option can't be used with multiple inputs..")
-                    
-                self.add_hline = {'pos': np.array(self.array).mean(), 'color': 'k', 'ls': 'dashed', 'lw': 0.5}
+        add_hline = True
+        if self.add_hline == "default":
+            self.add_hline = {'pos': 0}
+        elif self.add_hline == "mean" or self.add_hline == "average":
+            if isinstance(self.array, list):
+                if len(self.array) > 1:
+                    raise ValueError("This option can't be used with multiple inputs..")
+                
+            self.add_hline = {'pos': np.array(self.array).mean()}
+        elif isinstance(self.add_hline, int) or isinstance(self.add_hline, list) or isinstance(self.add_hline, np.ndarray) or isinstance(self.add_hline, float):
+            self.add_hline = {"pos": self.add_hline}
+        elif isinstance(self.add_hline, dict):
+            add_hline = True
+        else:
+            add_hline = False
+
+        if add_hline:
+            for key in list(default_dict.keys()):
+                if key not in list(self.add_hline.keys()):
+                    self.add_hline[key] = default_dict[key]
 
             if isinstance(self.add_hline['pos'], list) or isinstance(self.add_hline['pos'], np.ndarray):
-                for line in self.add_hline['pos']:
+                for ix,line in enumerate(self.add_hline['pos']):
+                    if isinstance(self.add_hline['color'], list):
+                        color = self.add_hline['color'][ix]
+                    else:
+                        color = self.add_hline['color']
+
                     axs.axhline(
                         line,
-                        color=self.add_hline['color'], 
+                        color=color, 
                         lw=self.add_hline['lw'], 
                         ls=self.add_hline['ls'],
                         xmax=set_xlim)
@@ -566,11 +624,6 @@ class LazyPlot():
                     ls=self.add_hline['ls'],
                     xmax=set_xlim)
 
-        if isinstance(self.x_ticks, list):
-            self.axs.set_xticks(self.x_ticks)
-
-        if isinstance(self.y_ticks, list):
-            self.axs.set_yticks(self.y_ticks)
 
 class LazyCorr():
     """LazyCorr
@@ -780,9 +833,12 @@ class LazyBar():
             fig, axs = plt.subplots(figsize=self.figsize)
         else:
             axs = self.axs
+        
+        if isinstance(self.palette, list):
+            self.palette = sns.color_palette(palette=self.palette)
 
-        if not self.palette:
-            self.palette = sns.color_palette(self.cmap, len(self.x))       
+        if not isinstance(self.palette, sns.palettes._ColorPalette):
+            self.palette = sns.color_palette(self.cmap, len(self.x))
 
         if self.sns_ori == "h":
             xx = self.y
