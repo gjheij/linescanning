@@ -19,7 +19,14 @@ opj = os.path.join
 pd.options.mode.chained_assignment = None # disable warning thrown by string2float
 warnings.filterwarnings("ignore")
 
+def calculate_tsnr(data,ax):
+    mean_d = np.mean(data,axis=ax)
+    std_d = np.std(data,axis=ax)
+    tsnr = mean_d/std_d
+    tsnr[np.where(np.isinf(tsnr))] = np.nan
 
+    return tsnr
+    
 def copy_hdr(source_img,dest_img):
     """copy_hdr
 
@@ -969,13 +976,14 @@ def split_bids_components(fname):
     comp_list = fname.split('_')
     comps = {}
     
-    ids = ['sub', 'ses', 'task', 'acq', 'rec', 'run', 'space', 'hemi', 'model', 'stage', 'desc']
+    ids = ['sub', 'ses', 'task', 'acq', 'rec', 'run', 'space', 'hemi', 'model', 'stage', 'desc', 'vox']
     for el in comp_list:
         for i in ids:
             if i in el:
                 comp = el.split('-')[-1]
                 if i == "run":
-                    comp = int(comp)
+                    if comp != "avg":
+                        comp = int(comp)
 
                 comps[i] = comp
 
