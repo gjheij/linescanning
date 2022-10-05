@@ -151,33 +151,38 @@ Notes:
         if inputdir == None:
             inputdir = os.path.dirname(select_fn[0])
 
-    print("Loading all images to the mp2rage object")
-    if not ups:
-        mp2rage = MP2RAGE(
-            MPRAGE_tr=5.5,
-            invtimesAB=[0.8,2.7],
-            flipangleABdegree=[6,6],
-            nZslices=200,
-            FLASH_tr=[0.0062, 0.0062],
-            inv1=select_fn[0],
-            inv1ph=select_fn[1],
-            inv2=select_fn[2],
-            inv2ph=select_fn[3]
-            )
-    else:
-        # UPs
+    # set default 0.7 MP2RAGE Phillips parameters
+    pars = {
+        "TR": 5.5,
+        "inv_times": [0.8,2.7],
+        "fa": [6,6],
+        "nZ": 200,
+        "FLASH_tr": [0.0062,0.0062]
+    }
+
+    # UPs
+    if ups:
         print("Using parameters for Universal Pulses (UPs)")
-        mp2rage = MP2RAGE(
-            MPRAGE_tr=6.778,
-            invtimesAB=[0.67,3.754],
-            flipangleABdegree=[4,4],
-            nZslices=150,
-            FLASH_tr=[0.0062, 0.031273],
-            inv1=select_fn[0],
-            inv1ph=select_fn[1],
-            inv2=select_fn[2],
-            inv2ph=select_fn[3]
-            )
+        pars = {
+            "TR": 6.778,
+            "inv_times": [0.67,3.754],
+            "fa": [4,4],
+            "nZ": 150,
+            "FLASH_tr": [0.0062,0.031273]
+        }
+
+    print("Loading all images to the mp2rage object")
+    mp2rage = MP2RAGE(
+        MPRAGE_tr=pars["TR"],
+        invtimesAB=pars["inv_times"],
+        flipangleABdegree=pars["fa"],
+        nZslices=pars["nZ"],
+        FLASH_tr=pars["FLASH_tr"],
+        inv1=select_fn[0],
+        inv1ph=select_fn[1],
+        inv2=select_fn[2],
+        inv2ph=select_fn[3]
+        )
 
     # make output directory
     pathlib.Path(outputdir).mkdir(parents=True, exist_ok=True)
