@@ -37,45 +37,50 @@ and a quantitative T1 map, based on the magnitude and phase-information of the t
 MP2RAGE-sequence (Marques et al., 2010).
 
 Args:
-    -i (--inputdir=)    input directory     project root directory with the subject-directories on
-                                            which we need to run the script. <subject> will be ap-
-                                            pended, as well as the session nr if specified
-
-    -o (--outputdir=)   output directory    path to output directory; you should specify <subject>/
-                                            <ses-?> yourself
-
-    -b (--outputbase=)  output basename     if you don't want <subject_ID>_ses-<session>_acq-MP2RAGE,
-                                            specify a different prefix for output files
-
-    -c                  make INV2 mask      no input required
-    -u                  use UP-parameters   no input required; there's different MP2RAGE-parameters for universal pulses
+    -i|--inputdir <dir>     project root directory with the subject-directories on which we need 
+                            to run the script. <subject> will be appended, as well as the session 
+                            nr if specified
+    -o|--outputdir <dir>    path to output directory; you should specify <subject>/<ses-?> yourself
+    -b|--outputbase <name>  if you don't want <subject_ID>_ses-<session>_acq-MP2RAGE, specify a dif-
+                            ferent prefix for output files
+    -c|--mask               make INV2 mask with SPM+FSL to remove background noise induced by the 
+                            combination of INV-images. Note that not doing this will results in pat-
+                            terns of noise around the brain which will confuse automated segmentation 
+                            softwares 
+    -u|--ups                use UP-parameters; there's different MP2RAGE-parameters for universal 
+                            pulses
 
 Optional args:
     Instead of an input directory, you can also specify the paths to the individual files. The files
-    we need are;
+    we need are (see also notes below);
 
-    --inv1              first inversion magnitude image (usually something with INV1)
-    --inv1ph            first inversion phase (usually something with INV1ph)
-    --inv2              second inversion magnitude image (usually something with INV2)
-    --inv2ph            second inversion phase image (usually something with INV2ph)
+    --inv1      first inversion magnitude image (usually something with INV1)
+    --inv1ph    first inversion phase (usually something with INV1ph)
+    --inv2      second inversion magnitude image (usually something with INV2)
+    --inv2ph    second inversion phase image (usually something with INV2ph)
 
     There's no short flag option for this kind of input, so use these flags to specify the paths to
     the files, otherwise it will through an error.
 
 Outputs:
     T1map   (Nifti1Image): Quantitative T1 map
-    T1w     (Nifti1Image): Bias-field corrected T1-weighted image
+    T1w     (Nifti1Image): Unified T1-weighted image
 
 Example:
     call_mp2rage -i $DIR_DATA_HOME/sub-005/ses-1 -o $DIR_DATA_DERIV/pymp2rage/sub-005/ses-1 -b 
-                 sub-005_ses-1_acq-MP2RAGE
+                 sub-005_ses-1_acq-MP2RAGE --mask
     call_mp2rage --inv1 inv1.nii.gz --inv1ph inv1ph.nii.gz --inv2 inv2.nii.gz --inv2ph
                  inv2ph.nii.gz -o derivatives/pymp2rage/sub-06 -b sub-005_
 
 Notes:
-    - Assumes you ran spinoza_scanner2bids before. If not, change the required filenames in the
-      script
+    Assumes you ran spinoza_scanner2bids before. If not, change the required filenames in the
+    script; by default, we'll look for files with 'acq-MP2RAGE' and 'inv' in the filename. In to-
+    tal, there must be 4 files:
 
+    - INV1      ('inv-1_part-mag')
+    - INV1ph    ('inv-1_part-phase')
+    - INV2      ('inv-2_part-mag')
+    - INV2ph    ('inv-2_part-phase')
 ---------------------------------------------------------------------------------------------------
     """
     inputdir    = None
@@ -89,16 +94,17 @@ Notes:
     do_stuff    = False
 
     try:
-        opts = getopt.getopt(argv, "huci:o:b:", ["inputdir=", "outputdir=", "outputbase=", "inv1=", "inv1ph=", "inv2=", "inv2ph="])[0]
+        opts = getopt.getopt(argv, "huci:o:b:", ["help", "inputdir=", "outputdir=", "outputbase=", "inv1=", "inv1ph=", "inv2=", "inv2ph=", "mask", "ups"])[0]
     except getopt.GetoptError:
+        print("ERROR while handling arguments; did you specify an illegal/non-defined argument?")
         print(main.__doc__)
         sys.exit(2)
 
     for opt, arg in opts:
-        if opt == '-h':
+        if opt in ("-h", "--help"):
             print(main.__doc__)
             sys.exit()
-        elif opt in ("-u"):
+        elif opt in ("-u", "--ups"):
             ups = True              
         elif opt in ("-i", "--inputdir"):
             inputdir = arg
@@ -106,7 +112,7 @@ Notes:
             outputdir = arg
         elif opt in ("-b", "--outputbase"):
             outputbase = arg
-        elif opt in ("-c"):
+        elif opt in ("-c", "--mask"):
             do_stuff = True
         elif opt in ("--inv1"):
             inv1 = arg
@@ -124,8 +130,8 @@ Notes:
 
     if inputdir != None:
         # we got an input directory; look for files with "acq-MP2RAGE"
-        bids_fn     = BIDSLayout(opj(inputdir), validate=False).get(datatype='anat', extension=['nii.gz'], return_type='file')
-        select_fn   = get_file_from_substring(['acq-MP2RAGE_', 'inv'], bids_fn)
+        bids_fn = BIDSLayout(opj(inputdir), validate=False).get(datatype='anat', extension=['nii.gz'], return_type='file')
+        select_fn = get_file_from_substring(['acq-MP2RAGE_', 'inv'], bids_fn)
     else:
         select_fn = []
         # we did not get an input directory; check if separate files have been specified
@@ -147,37 +153,41 @@ Notes:
 
     print("Loading all images to the mp2rage object")
     if not ups:
-        mp2rage = MP2RAGE(MPRAGE_tr=5.5,
-                          invtimesAB=[0.8,2.7],
-                          flipangleABdegree=[6,6],
-                          nZslices=200,
-                          FLASH_tr=[0.0062, 0.0062],
-                          inv1=select_fn[0],
-                          inv1ph=select_fn[1],
-                          inv2=select_fn[2],
-                          inv2ph=select_fn[3]
-                          )
+        mp2rage = MP2RAGE(
+            MPRAGE_tr=5.5,
+            invtimesAB=[0.8,2.7],
+            flipangleABdegree=[6,6],
+            nZslices=200,
+            FLASH_tr=[0.0062, 0.0062],
+            inv1=select_fn[0],
+            inv1ph=select_fn[1],
+            inv2=select_fn[2],
+            inv2ph=select_fn[3]
+            )
     else:
         # UPs
         print("Using parameters for Universal Pulses (UPs)")
-        mp2rage = MP2RAGE(MPRAGE_tr=6.778,
-                          invtimesAB=[0.67,3.754],
-                          flipangleABdegree=[4,4],
-                          nZslices=150,
-                          FLASH_tr=[0.0062, 0.031273],
-                          inv1=select_fn[0],
-                          inv1ph=select_fn[1],
-                          inv2=select_fn[2],
-                          inv2ph=select_fn[3]
-                          )
+        mp2rage = MP2RAGE(
+            MPRAGE_tr=6.778,
+            invtimesAB=[0.67,3.754],
+            flipangleABdegree=[4,4],
+            nZslices=150,
+            FLASH_tr=[0.0062, 0.031273],
+            inv1=select_fn[0],
+            inv1ph=select_fn[1],
+            inv2=select_fn[2],
+            inv2ph=select_fn[3]
+            )
 
-    # We can also put the ME-MP2RAGE data in BIDS-format. That will look something like this:
-    # memp2rage = MEMP2RAGE.from_bids('D:\FSL\shared\spinoza\projects\ANAT_SEG-Raw', subject)
-
+    # make output directory
     pathlib.Path(outputdir).mkdir(parents=True, exist_ok=True)
 
     # Calculate and right multiparametric maps to outputdir
-    OUTPUT = {'t1w_uni': opj(outputdir, f'{outputbase}_T1w.nii.gz'),'t1map': opj(outputdir, f'{outputbase}_T1map.nii.gz')}
+    OUTPUT = {
+        't1w_uni': opj(outputdir, f'{outputbase}_T1w.nii.gz'),
+        't1map': opj(outputdir, f'{outputbase}_T1map.nii.gz')}
+    
+    # for json file
     TAG = ["MP2RAGE unified T1-weighted image", "MP2RAGE T1 map"]
 
     print("Creating output files")
@@ -186,9 +196,12 @@ Notes:
         if not os.path.exists(OUTPUT[p]):
 
             print(" writing {}-image: {}".format(p, os.path.basename(OUTPUT[p])))
-            tmp = getattr(mp2rage, p).get_fdata()
-            tmp = np.nan_to_num(tmp)
-            nb.Nifti1Image(tmp.astype('float32'), affine=getattr(mp2rage, p).affine, header=getattr(mp2rage, p).header).to_filename(OUTPUT[p])
+            tmp = getattr(mp2rage, p)
+            data = np.nan_to_num(tmp.get_fdata())
+            nb.Nifti1Image(
+                data.astype('float32'),
+                affine=tmp.affine, 
+                header=tmp.header).to_filename(OUTPUT[p])
             
             try:
                 os.system('fslorient -setqformcode 1 {}'.format(OUTPUT[p]))
@@ -206,27 +219,29 @@ Notes:
             
             sp = select_fn[0].split(os.sep)
             for i in sp:
-                if i.startswith('sub-') and not i.endswith('.nii.gz'):
+
+                # try to read prefix
+                try:
+                    pref = os.environ.get("SUBJECT_PREFIX")
+                except:
+                    pref = "sub-"
+
+                if i.startswith(pref) and not i.endswith('.nii.gz'):
                     base_path = os.sep.join(sp[sp.index(i)+1:-1])
+                    break
             
             if not base_path:
                 base_path = os.path.dirname(select_fn[0])
 
             params = {
-                    'BasedOn':
-                        [
-                        os.path.join(base_path, os.path.basename(select_fn[0])),
-                        os.path.join(base_path, os.path.basename(select_fn[1])),
-                        os.path.join(base_path, os.path.basename(select_fn[2])),
-                        os.path.join(base_path, os.path.basename(select_fn[3]))
-                        ],
-                    'EstimationReference': 'Marques et al., 2010',
-                    "EstimationAlgorithm": f'{TAG[r]}',
-                    "EstimationSoftwareName": "pymp2rage",
-                    "EstimationSoftwareVer": "v0.1",
-                    "EstimationSoftwareLang": "python {}".format(platform.python_version()),
-                    "EstimationSoftwareEnv": "{}".format(platform.platform())
-                    }
+                "BasedOn": [opj(base_path, opb(select_fn[i])) for i in range(4)],
+                "EstimationReference": 'Marques et al., 2010',
+                "EstimationAlgorithm": f'{TAG[r]}',
+                "EstimationSoftwareName": "pymp2rage",
+                "EstimationSoftwareVer": "v0.1",
+                "EstimationSoftwareLang": "python {}".format(platform.python_version()),
+                "EstimationSoftwareEnv": "{}".format(platform.platform())
+            }
 
             with open(json_file, "w+") as file:
                 json.dump(params, file, indent=4)

@@ -65,11 +65,11 @@ Example:
 
     mask = image.math_img('(t1w_mask > 0)', t1w_mask=mask)
 
-    new_t1w = image.math_img('t1w * t1w_mask * np.mean(inv2[t1w_mask == 1]/np.max(inv2))'
-                                '+ t1w * inv2/np.max(inv2) * (1-t1w_mask)',
-                                t1w=t1w_fn,
-                                t1w_mask=mask,
-                                inv2=inv2)
+    new_t1w = image.math_img(
+        't1w * t1w_mask * np.mean(inv2[t1w_mask == 1]/np.max(inv2)) + t1w * inv2/np.max(inv2) * (1-t1w_mask)',
+        t1w=t1w_fn,
+        t1w_mask=mask,
+        inv2=inv2)
 
     new_t1w.to_filename(output)
 

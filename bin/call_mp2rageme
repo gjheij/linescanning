@@ -26,6 +26,8 @@ import numpy as np
 from linescanning.utils import get_file_from_substring, remove_files
 warnings.filterwarnings("ignore")
 opj = os.path.join
+osj = os.sep.join
+opb = os.path.basename
 
 def main(argv):
 
@@ -33,22 +35,24 @@ def main(argv):
 ---------------------------------------------------------------------------------------------------
 call_mp2rageme
 
-This script is a wrapper for the memp2rage object that can calculate a Unified T1-weighted
-image and a quantitative T1 map, based on the magnitude and phase-information of the two
-volumes of a MP2RAGE-sequence (Marques et al., 2010). It can also further correct this map
-for B1 inhomogenieties using a B1 map (Marques et al., 2014) and calculated several para-
-metric maps (R2*, t1map, t2*)
+This script is a wrapper for the memp2rage object that can calculate a Unified T1-weighted image and 
+a quantitative T1 map, based on the magnitude and phase-information of the two volumes of a MP2RAGE-
+sequence (Marques et al., 2010). It can also further correct this map for B1 inhomogenieties using 
+a B1 map (Marques et al., 2014) and calculated several parametric maps (R2*, t1map, t2*)
 
 Args:
-    -s (--subject=)     subject number      (i was a bit lazy in programming this, given that regexp
-                                            are kind of annoying in python, I think. So just input
-                                            the subject number as specified in the paths)
-    -n (--session=)     session number      session number, needed for extraction of the right files
-    -i (--inputdir=)    input directory     project root directory with the subject-directories on
-                                            which we need to run the script. <subject> will be ap-
-                                            pended, as well as the session nr if specified
-    -o (--outputdir=)   output directory    path to pymp2rage. <subject> and <ses-x> (optional), will be appended
-    -c                  make INV2 mask      no input required
+    -s|--subject <sub>      subject ID (in digits; 'sub-' is appended) [default = '999']. Needed to 
+                            for the json-files
+    -i|--inputdir <dir>     project root directory with the subject-directories on which we need 
+                            to run the script. <subject> will be appended, as well as the session 
+                            nr if specified
+    -o|--outputdir <dir>    path to output directory; you should specify <subject>/<ses-?> yourself
+    -b|--outputbase <name>  if you don't want <subject_ID>_ses-<session>_acq-MP2RAGE, specify a dif-
+                            ferent prefix for output files
+    -c|--mask               make INV2 mask with SPM+FSL to remove background noise induced by the 
+                            combination of INV-images. Note that not doing this will results in pat-
+                            terns of noise around the brain which will confuse automated segmentation 
+                            softwares 
 
 Outputs:
     r2star (Nifti1Image):       Relaxation map (1/T2*)
@@ -58,28 +62,21 @@ Outputs:
     t1w_uni (Nifti1Image):      Bias-field corrected T1-weighted image
     s0 (Nifti1Image):           Residual (S0) map
 
-
 Example:
-    call_memp2rage -s sub-999 -n 1 -i $DIR_DATA_HOME -o $DIR_DATA_DERIV/pymp2rage
+    call_mp2rageme -s sub-999 -i $DIR_DATA_HOME -o $DIR_DATA_DERIV/pymp2rage -b sub-999_acq-MP2-
+    RAGME
+    call_mp2rageme -s sub-999 -i $DIR_DATA_HOME -o $DIR_DATA_DERIV/pymp2rage -b sub-999_acq-MP2-
+    RAGME -c
 
 Notes:
-    - Assumes you ran spinoza_scanner2bids before. If not, change the required filenames in the
-      script
-    - This deals with pseudo-BIDSified data structure. It does, however, assume you have only 1 run.
-    - The input directory should be the directory where your "to-be-processed" data is, where all
-      your sub's are located could be in the main branch of "Project X" or under "sourcedata"
-
-    > project Y
-    > Project X
-        > sourcedata
-        > derivatives
-          >pymp2rage  << This is the output folder!
-        > 001
-            > anat
-            > func
-
+    Assumes you ran spinoza_scanner2bids before. If not, change the required filenames in the
+    script; by default, we'll look for files with 'acq-MP2RAGEME' and 'inv' in the filename. In to-
+    tal, there must be 10 files: 2x INV1, 8x INV2 (mag/phase for different echo times 1,2,3,4):
+    - INV1          ('inv-1_part-mag')
+    - INV1ph        ('inv-1_part-phase')
+    - INV2 e1-4,    ('inv-2_echo-[1-4]_part-mag')
+    - INV2ph e1-4   ('inv-2_echo-[1-4]_part-phase')
 ---------------------------------------------------------------------------------------------------
-
     """
 
     inputdir    = ''
@@ -89,13 +86,14 @@ Notes:
     do_stuff    = False
 
     try:
-        opts = getopt.getopt(argv,"hci:s:n:o:b:",["inputdir=", "subject=", "outputdir=", "outputbase="])[0]
+        opts = getopt.getopt(argv,"hci:s:n:o:b:",["help", "inputdir=", "subject=", "outputdir=", "outputbase=", "ups", "mask"])[0]
     except getopt.GetoptError:
+        print("ERROR while handling arguments; did you specify an illegal/non-defined argument?")
         print(main.__doc__)
         sys.exit(2)
 
     for opt, arg in opts:
-        if opt == '-h':
+        if opt in ("-h", "--help"):
             print(main.__doc__)
             sys.exit()
         elif opt in ("-i", "--inputdir"):
@@ -106,8 +104,8 @@ Notes:
             subject = arg
         elif opt in ("-b", "--outputbase"):
             outputbase = arg
-        elif opt in ("-c"):
-            do_stuff = True            
+        elif opt in ("-c", "--mask"):
+            do_stuff = True
 
     if len(argv) < 6:
         print("NOT ENOUGH ARGUMENTS SPECIFIED")
@@ -124,17 +122,18 @@ Notes:
         sys.exit(1)
 
     print("Loading all images to the memp2rage object")
-    memp2rage = MEMP2RAGE(echo_times=[0.006, 0.0145, 0.023, 0.0315], # TEs of second inversion in seconds
-                          MPRAGE_tr=6.723,
-                          invtimesAB=[0.67, 3.68],
-                          flipangleABdegree=[4,4],
-                          nZslices=150,
-                          FLASH_tr=[0.0062, 0.031246], # TRs of the first and second GRE block are
-                          inv1      = select_fn[0],
-                          inv1ph    = select_fn[1],
-                          inv2      = [select_fn[2],select_fn[4],select_fn[6],select_fn[8]],
-                          inv2ph    = [select_fn[3],select_fn[5],select_fn[7],select_fn[9]]
-                          )
+    memp2rage = MEMP2RAGE(
+        echo_times=[0.006, 0.0145, 0.023, 0.0315], # TEs of second inversion in seconds
+        MPRAGE_tr=6.723,
+        invtimesAB=[0.67, 3.68],
+        flipangleABdegree=[4,4],
+        nZslices=150,
+        FLASH_tr=[0.0062, 0.031246], # TRs of the first and second GRE block are
+        inv1=select_fn[0],
+        inv1ph=select_fn[1],
+        inv2=[select_fn[2],select_fn[4],select_fn[6],select_fn[8]],
+        inv2ph=[select_fn[3],select_fn[5],select_fn[7],select_fn[9]]
+        )
 
     # create output directory
     pathlib.Path(outputdir).mkdir(parents=True, exist_ok=True)
@@ -151,90 +150,83 @@ Notes:
 
     def write_nifti(FILE, DESC):
         if os.path.isfile(FILE):
-            print(" {} already exists".format(os.path.basename(FILE)))
+            print(" {} already exists".format(opb(FILE)))
         else:
-            print(" writing " + os.path.basename(FILE))
+            print(" writing " + opb(FILE))
+
+            base_path = None
+            sp = select_fn[0].split(os.sep)
+            for i in sp:
+
+                # try to read prefix
+                try:
+                    pref = os.environ.get("SUBJECT_PREFIX")
+                except:
+                    pref = "sub-"
+
+                if i.startswith(pref) and not i.endswith('.nii.gz'):
+                    base_path = osj(sp[sp.index(i)+1:-1])
+                    break
 
             if DESC == 'r2starmap':
                 memp2rage.r2starmap.to_filename(FILE)
-                params =    {
-                            'BasedOn':
-                                [
-                                os.sep.join(select_fn[2].split(os.sep)[-(len(select_fn[2].split(os.sep))-select_fn[2].split(os.sep).index(subject)-1):]),
-                                os.sep.join(select_fn[4].split(os.sep)[-(len(select_fn[4].split(os.sep))-select_fn[4].split(os.sep).index(subject)-1):]),
-                                os.sep.join(select_fn[6].split(os.sep)[-(len(select_fn[6].split(os.sep))-select_fn[6].split(os.sep).index(subject)-1):]),
-                                os.sep.join(select_fn[8].split(os.sep)[-(len(select_fn[8].split(os.sep))-select_fn[8].split(os.sep).index(subject)-1):]),
-                                ],
-                            'EstimationReference': 'Caan et al., 2019',
-                            "EstimationAlgorithm": "Ordinary Least Squares in Log-space",
-                            "EstimationSoftwareName": "pymp2rage",
-                            "EstimationSoftwareVer": "v0.1",
-                            "EstimationSoftwareLang": "python {}".format(platform.python_version()),
-                            "EstimationSoftwareEnv": "{}".format(platform.platform())
-                            }
+                params = {
+                    "BasedOn": [opj(base_path, opb(select_fn[i])) for i in np.arange(2,10,2)],
+                    "EstimationReference": "Caan et al., 2019",
+                    "EstimationAlgorithm": "Ordinary Least Squares in Log-space",
+                    "EstimationSoftwareName": "pymp2rage",
+                    "EstimationSoftwareVer": "v0.1",
+                    "EstimationSoftwareLang": "python {}".format(platform.python_version()),
+                    "EstimationSoftwareEnv": "{}".format(platform.platform())
+                }
 
                 JSON_FILE = FILE.split('.')[0]+'.json'
-
                 if os.path.isfile(JSON_FILE):
-                    print(f" {os.path.basename(JSON_FILE)} already exists")
+                    print(f" {opb(JSON_FILE)} already exists")
                 else:
-                    print(" writing " + os.path.basename(JSON_FILE))
+                    print(f" writing {opb(JSON_FILE)}")
 
                 with open(JSON_FILE, "w+") as file:
                     json.dump(params, file, indent=4)
 
             elif DESC == 't1w_uni':
                 memp2rage.t1w_uni.to_filename(FILE)
-                params =    {
-                            'BasedOn':
-                                [
-                                os.sep.join(select_fn[0].split(os.sep)[-(len(select_fn[0].split(os.sep))-select_fn[0].split(os.sep).index(subject)-1):]),
-                                os.sep.join(select_fn[1].split(os.sep)[-(len(select_fn[1].split(os.sep))-select_fn[1].split(os.sep).index(subject)-1):]),
-                                os.sep.join(select_fn[2].split(os.sep)[-(len(select_fn[2].split(os.sep))-select_fn[2].split(os.sep).index(subject)-1):]),
-                                os.sep.join(select_fn[3].split(os.sep)[-(len(select_fn[3].split(os.sep))-select_fn[3].split(os.sep).index(subject)-1):]),
-                                ],
-                            'EstimationReference': 'Caan et al., 2019',
-                            "EstimationAlgorithm": "memp2rage unified T1-weighted image",
-                            "EstimationSoftwareName": "pymp2rage",
-                            "EstimationSoftwareVer": "v0.1",
-                            "EstimationSoftwareLang": "python {}".format(platform.python_version()),
-                            "EstimationSoftwareEnv": "{}".format(platform.platform())
-                            }
+                params = {
+                    "BasedOn": [opj(base_path, opb(select_fn[i])) for i in range(4)],
+                    "EstimationReference": "Caan et al., 2019",
+                    "EstimationAlgorithm": "memp2rage unified T1-weighted image",
+                    "EstimationSoftwareName": "pymp2rage",
+                    "EstimationSoftwareVer": "v0.1",
+                    "EstimationSoftwareLang": "python {}".format(platform.python_version()),
+                    "EstimationSoftwareEnv": "{}".format(platform.platform())
+                }
 
                 JSON_FILE = FILE.split('.')[0]+'.json'
-
                 if os.path.isfile(JSON_FILE):
-                    print(f" {os.path.basename(JSON_FILE)} already exists")
+                    print(f" {opb(JSON_FILE)} already exists")
                 else:
-                    print(" writing " + os.path.basename(JSON_FILE))
+                    print(f" writing {opb(JSON_FILE)}")
 
                 with open(JSON_FILE, "w+") as file:
                     json.dump(params, file, indent=4)
 
             elif DESC == 't1map':
                 memp2rage.t1map.to_filename(FILE)
-                params =    {
-                            'BasedOn':
-                                [
-                                os.sep.join(select_fn[0].split(os.sep)[-(len(select_fn[0].split(os.sep))-select_fn[0].split(os.sep).index(subject)-1):]),
-                                os.sep.join(select_fn[1].split(os.sep)[-(len(select_fn[1].split(os.sep))-select_fn[1].split(os.sep).index(subject)-1):]),
-                                os.sep.join(select_fn[2].split(os.sep)[-(len(select_fn[2].split(os.sep))-select_fn[2].split(os.sep).index(subject)-1):]),
-                                os.sep.join(select_fn[3].split(os.sep)[-(len(select_fn[3].split(os.sep))-select_fn[3].split(os.sep).index(subject)-1):]),
-                                ],
-                            'EstimationReference': 'Caan et al., 2019',
-                            "EstimationAlgorithm": "memp2rage T1 map",
-                            "EstimationSoftwareName": "pymp2rage",
-                            "EstimationSoftwareVer": "v0.1",
-                            "EstimationSoftwareLang": "python {}".format(platform.python_version()),
-                            "EstimationSoftwareEnv": "{}".format(platform.platform())
-                            }
+                params = {
+                    "BasedOn": [opj(base_path, opb(select_fn[i])) for i in range(4)],
+                    "EstimationReference": "Caan et al., 2019",
+                    "EstimationAlgorithm": "memp2rage T1 map",
+                    "EstimationSoftwareName": "pymp2rage",
+                    "EstimationSoftwareVer": "v0.1",
+                    "EstimationSoftwareLang": "python {}".format(platform.python_version()),
+                    "EstimationSoftwareEnv": "{}".format(platform.platform())
+                }
 
                 JSON_FILE = FILE.split('.')[0]+'.json'
-
                 if os.path.isfile(JSON_FILE):
-                    print(" " + os.path.basename(JSON_FILE) + " already exists" )
+                    print(f" {opb(JSON_FILE)} already exists")
                 else:
-                    print(" writing " + os.path.basename(JSON_FILE))
+                    print(f" writing {opb(JSON_FILE)}")
 
                 with open(JSON_FILE, "w+") as file:
                     json.dump(params, file, indent=4)
@@ -242,56 +234,42 @@ Notes:
             elif DESC == 't2starw':
                 pass
                 memp2rage.t2starw.to_filename(FILE)
-                params =    {
-                            'BasedOn':
-                                [
-                                os.sep.join(select_fn[2].split(os.sep)[-(len(select_fn[2].split(os.sep))-select_fn[2].split(os.sep).index(subject)-1):]),
-                                os.sep.join(select_fn[4].split(os.sep)[-(len(select_fn[4].split(os.sep))-select_fn[4].split(os.sep).index(subject)-1):]),
-                                os.sep.join(select_fn[6].split(os.sep)[-(len(select_fn[6].split(os.sep))-select_fn[6].split(os.sep).index(subject)-1):]),
-                                os.sep.join(select_fn[8].split(os.sep)[-(len(select_fn[8].split(os.sep))-select_fn[8].split(os.sep).index(subject)-1):]),
-                                ],
-                            'EstimationReference': 'Caan et al., 2019',
-                            "EstimationAlgorithm": "Ordinary Least Squares in Log-space",
-                            "EstimationSoftwareName": "pymp2rage",
-                            "EstimationSoftwareVer": "v0.1",
-                            "EstimationSoftwareLang": "python {}".format(platform.python_version()),
-                            "EstimationSoftwareEnv": "{}".format(platform.platform())
-                            }
+                params = {
+                    "BasedOn": [opj(base_path, opb(select_fn[i])) for i in np.arange(2,10,2)],
+                    "EstimationReference": "Caan et al., 2019",
+                    "EstimationAlgorithm": "Ordinary Least Squares in Log-space",
+                    "EstimationSoftwareName": "pymp2rage",
+                    "EstimationSoftwareVer": "v0.1",
+                    "EstimationSoftwareLang": "python {}".format(platform.python_version()),
+                    "EstimationSoftwareEnv": "{}".format(platform.platform())
+                }
 
                 JSON_FILE = FILE.split('.')[0]+'.json'
-
                 if os.path.isfile(JSON_FILE):
-                    print(f" {os.path.basename(JSON_FILE)} already exists")
+                    print(f" {opb(JSON_FILE)} already exists")
                 else:
-                    print(" writing " + os.path.basename(JSON_FILE))
+                    print(" writing " + opb(JSON_FILE))
 
                 with open(JSON_FILE, "w+") as file:
                     json.dump(params, file, indent=4)
 
             elif DESC == 't2starmap':
                 memp2rage.t2starmap.to_filename(FILE)
-                params =    {
-                            'BasedOn':
-                                [
-                                os.sep.join(select_fn[0].split(os.sep)[-(len(select_fn[0].split(os.sep))-select_fn[0].split(os.sep).index(subject)-1):]),
-                                os.sep.join(select_fn[1].split(os.sep)[-(len(select_fn[1].split(os.sep))-select_fn[1].split(os.sep).index(subject)-1):]),
-                                os.sep.join(select_fn[2].split(os.sep)[-(len(select_fn[2].split(os.sep))-select_fn[2].split(os.sep).index(subject)-1):]),
-                                os.sep.join(select_fn[3].split(os.sep)[-(len(select_fn[3].split(os.sep))-select_fn[3].split(os.sep).index(subject)-1):]),
-                                ],
-                            'EstimationReference': 'Caan et al., 2019',
-                            "EstimationAlgorithm": "MP2RAGE unified T1-weighted image",
-                            "EstimationSoftwareName": "pymp2rage",
-                            "EstimationSoftwareVer": "v0.1",
-                            "EstimationSoftwareLang": "python {}".format(platform.python_version()),
-                            "EstimationSoftwareEnv": "{}".format(platform.platform())
-                            }
+                params = {
+                    "BasedOn": [opj(base_path, opb(select_fn[i])) for i in range(4)],
+                    "EstimationReference": "Caan et al., 2019",
+                    "EstimationAlgorithm": "MP2RAGE unified T1-weighted image",
+                    "EstimationSoftwareName": "pymp2rage",
+                    "EstimationSoftwareVer": "v0.1",
+                    "EstimationSoftwareLang": "python {}".format(platform.python_version()),
+                    "EstimationSoftwareEnv": "{}".format(platform.platform())
+                }
 
                 JSON_FILE = FILE.split('.')[0]+'.json'
-
                 if os.path.isfile(JSON_FILE):
-                    print(f" {os.path.basename(JSON_FILE)} already exists")
+                    print(f" {opb(JSON_FILE)} already exists")
                 else:
-                    print(" writing " + os.path.basename(JSON_FILE))
+                    print(f" writing {opb(JSON_FILE)}")
 
                 with open(JSON_FILE, "w+") as file:
                     json.dump(params, file, indent=4)
@@ -299,28 +277,21 @@ Notes:
             elif DESC == 's0':
                 pass
                 memp2rage.s0.to_filename(FILE)
-                params =    {
-                            'BasedOn':
-                                [
-                                os.sep.join(select_fn[2].split(os.sep)[-(len(select_fn[2].split(os.sep))-select_fn[2].split(os.sep).index(subject)-1):]),
-                                os.sep.join(select_fn[4].split(os.sep)[-(len(select_fn[4].split(os.sep))-select_fn[4].split(os.sep).index(subject)-1):]),
-                                os.sep.join(select_fn[6].split(os.sep)[-(len(select_fn[6].split(os.sep))-select_fn[6].split(os.sep).index(subject)-1):]),
-                                os.sep.join(select_fn[8].split(os.sep)[-(len(select_fn[8].split(os.sep))-select_fn[8].split(os.sep).index(subject)-1):]),
-                                ],
-                            'EstimationReference': 'Caan et al., 2019',
-                            "EstimationAlgorithm": "Ordinary Least Squares in Log-space",
-                            "EstimationSoftwareName": "pymp2rage",
-                            "EstimationSoftwareVer": "v0.1",
-                            "EstimationSoftwareLang": "python {}".format(platform.python_version()),
-                            "EstimationSoftwareEnv": "{}".format(platform.platform())
-                            }
+                params = {
+                    "BasedOn": [opj(base_path, opb(select_fn[i])) for i in np.arange(2,10,2)],
+                    "EstimationReference": "Caan et al., 2019",
+                    "EstimationAlgorithm": "Ordinary Least Squares in Log-space",
+                    "EstimationSoftwareName": "pymp2rage",
+                    "EstimationSoftwareVer": "v0.1",
+                    "EstimationSoftwareLang": "python {}".format(platform.python_version()),
+                    "EstimationSoftwareEnv": "{}".format(platform.platform())
+                }
 
                 JSON_FILE = FILE.split('.')[0]+'.json'
-
                 if os.path.isfile(JSON_FILE):
-                    print(f" {os.path.basename(JSON_FILE)} already exists")
+                    print(f" {opb(JSON_FILE)} already exists")
                 else:
-                    print(" writing " + os.path.basename(JSON_FILE))
+                    print(f" writing {opb(JSON_FILE)}")
 
                 with open(JSON_FILE, "w+") as file:
                     json.dump(params, file, indent=4)
@@ -328,11 +299,7 @@ Notes:
     print("Creating output files")
     for p in OUTPUT:
         write_nifti(OUTPUT[p], p)
-
-        # tmp = getattr(memp2rage, p).get_fdata()
-        # tmp = np.nan_to_num(tmp)
-        # nb.Nifti1Image(tmp.astype('float32'), affine=getattr(memp2rage, p).affine, header=getattr(memp2rage, p).header).to_filename(OUTPUT[p])
-
+        
     if do_stuff:
         brainmask = opj(outputdir, f'{outputbase}_desc-spm_mask.nii.gz')
         print(brainmask)
