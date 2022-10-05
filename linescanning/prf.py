@@ -1188,12 +1188,12 @@ def generate_model_params(model='gauss', dm=None, TR=1.5, fit_hrf=False, verbose
         max_ecc_size = ss/2.0
 
         # define grids
-        sizes = max_ecc_size * np.linspace(0.1, 1, settings['grid_nr'])**2
+        sizes = max_ecc_size * np.linspace(0.25, 1, settings['grid_nr'])**2
         eccs = max_ecc_size * np.linspace(0.1, 1, settings['grid_nr'])**2
         polars = np.linspace(0, 2*np.pi, settings['grid_nr'])
 
         coord_bounds = (-1.5*max_ecc_size, 1.5*max_ecc_size)
-        prf_size = (settings['eps'], 1.5*ss)
+        prf_size = (0.2, 1.5*ss)
 
         grids = {'screensize_degrees': float(ss), 
                  'grids': {'sizes': [float(item) for item in sizes], 
@@ -1330,17 +1330,17 @@ class GaussianModel():
         elapsed = (time.time() - start)
 
         self.gauss_grid = utils.filter_for_nans(self.gaussian_fitter.gridsearch_params)
-        mean_rsq = np.mean(self.gauss_grid[self.gauss_grid[:, -1]>self.rsq, -1])
+        mean_rsq = np.mean(self.gauss_grid[self.gauss_grid[:, -1]>self.settings['rsq_threshold'], -1])
         if self.verbose:
             print("Completed Gaussian gridfit at {start_time}. Voxels/vertices above {rsq}: {nr}/{total}".format(
                 start_time=datetime.now().strftime('%Y/%m/%d %H:%M:%S'),
-                rsq=str(self.rsq),
-                nr=str(np.sum(self.gauss_grid[:, -1]>self.rsq)),
+                rsq=str(self.settings['rsq_threshold']),
+                nr=str(np.sum(self.gauss_grid[:, -1]>self.settings['rsq_threshold'])),
                 total=str(self.gaussian_fitter.data.shape[0])))
                 
             print(f"Gridfit took {str(timedelta(seconds=elapsed))}")
             print("Mean rsq>{rsq}: {m_rsq}".format(
-                rsq=self.rsq,
+                rsq=self.settings['rsq_threshold'],
                 m_rsq=str(round(mean_rsq,2))))
         
         if self.write_files:
@@ -1373,7 +1373,7 @@ class GaussianModel():
             raise ValueError(f"Unknown optimizer '{self.constraints[0]}'. Must be one of ['tc', 'bgfs']")
 
         self.gaussian_fitter.iterative_fit(
-            rsq_threshold=self.rsq, 
+            rsq_threshold=self.settings['rsq_threshold'], 
             bounds=self.gauss_bounds,
             constraints=constr,
             xtol=self.settings['xtol'],
@@ -1386,7 +1386,7 @@ class GaussianModel():
             mean_rsq = np.nanmean(self.gauss_iter[self.gaussian_fitter.rsq_mask, -1])
             print("Completed gauss iterfit at {start_time}. Mean rsq>{rsq}: {m_rsq}".format(
                 start_time=datetime.now().strftime('%Y/%m/%d %H:%M:%S'),
-                rsq=self.rsq,
+                rsq=self.settings['rsq_threshold'],
                 m_rsq=str(round(mean_rsq,2))))
 
             print(f"Iterfit took {str(timedelta(seconds=elapsed))}")
@@ -1461,7 +1461,7 @@ class ExtendedModel():
             self.tmp_fitter.grid_fit(
                 *self.grid_list,
                 n_batches=self.nr_jobs,
-                rsq_threshold=self.rsq,
+                rsq_threshold=self.settings['rsq_threshold'],
                 fixed_grid_baseline=self.fix_grid_baseline,
                 grid_bounds=self.grid_bounds)
 
@@ -1475,7 +1475,7 @@ class ExtendedModel():
                 print("Completed {model} gridfit at {start_time}. Mean rsq>{rsq}: {m_rsq}".format(
                     model=self.model,
                     start_time=datetime.now().strftime('%Y/%m/%d %H:%M:%S'),
-                    rsq=str(self.rsq),
+                    rsq=str(self.settings['rsq_threshold']),
                     m_rsq=str(round(mean_rsq,2))))
                     
                 print(f"Gridfit took {str(timedelta(seconds=elapsed))}")
@@ -1519,7 +1519,7 @@ class ExtendedModel():
             raise ValueError(f"Unknown optimizer '{self.constraints[0]}'. Must be one of {self.allowed_optimizers}")        
 
         self.tmp_fitter.iterative_fit(
-            rsq_threshold=self.rsq, 
+            rsq_threshold=self.settings['rsq_threshold'], 
             bounds=self.tmp_bounds,
             constraints=constr,
             xtol=self.settings['xtol'],
@@ -1536,7 +1536,7 @@ class ExtendedModel():
             print("Completed {model} iterfit at {start_time}. Mean rsq>{rsq}: {m_rsq}".format(
                 model=self.model,
                 start_time=datetime.now().strftime('%Y/%m/%d %H:%M:%S'),
-                rsq=self.rsq,
+                rsq=self.settings['rsq_threshold'],
                 m_rsq=str(round(mean_rsq,2))))
 
             print(f"Iterfit took {str(timedelta(seconds=elapsed))}")
@@ -1590,6 +1590,8 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         Specify optimizers. Use `tc` for trust-constrained minimization (= slower, but less local. I.e., can move away from the grid), or `bfgs` for L-BFGS-B minimization (lot faster, but more local. I.e., stays closer to the grid). If `tc` or `bgfs`, this minimizer is used for both stages. You can also specify a list where the first element is for *Gaussian*-model and second element is for extended model, e.g., `['tc', 'bgfs']`. Generally, the extended model has more parameters so the fit is slower, while the Gaussian-model runs fine with slow optimization (`tc`). Default = `tc` for both stages as it leads to improved *r2*. 
     save_grid: bool, optional
         Save grid-parameters; can save clogging up of directories. Default = True
+    any: optional
+        You can also provide a value for any key/item present in the default settings-file, e.g., `screen_size_cm`, `rsq_threshold`, `TR`, you name it. This will overwrite the default setting, without the requirement of specifying a new file. Allows for quick tests/adaptations to the default settings. This is especially useful in cases where - pls no.. - you have different screen distances in one dataset.
 
     Returns
     ----------
@@ -1634,7 +1636,6 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         fit_hrf=False,
         settings=None,
         nr_jobs=1000,
-        rsq_threshold=None,
         prf_stim=None,
         model_obj=None,
         fix_bold_baseline=False,
@@ -1659,7 +1660,6 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         self.nr_jobs            = nr_jobs
         self.prf_stim           = prf_stim
         self.model_obj          = model_obj
-        self.rsq_threshold      = rsq_threshold
         self.fit_hrf            = fit_hrf
         self.fix_bold_baseline  = fix_bold_baseline
         self.fix_parameters     = fix_parameters
@@ -1681,12 +1681,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
 
         #----------------------------------------------------------------------------------------------------------------------------------------------------------
         # Fetch the settings
-        self.settings, self.prf_stim_ = generate_model_params(
-            model=self.model, 
-            dm=self.design_matrix, 
-            TR=self.TR,
-            fit_hrf=self.fit_hrf,
-            verbose=self.verbose)
+        self.define_settings()
 
         # overwrite bold baseline tuple if bold baseline should be fixed
         if self.fix_bold_baseline:
@@ -1696,14 +1691,6 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                 print(f"Fixing baseline at {self.settings['bounds']['bold_bsl']}")
         else:
             self.fix_grid_baseline = None
-
-        # overwrite rsq-threshold from settings file
-        if self.rsq_threshold != None:
-            if self.verbose:
-                print(f"Setting rsq-threshold to user-defined value: {self.rsq_threshold}")
-            self.rsq = self.rsq_threshold
-        else:
-            self.rsq = self.settings['rsq_threshold']
 
         # check if we got a pRF-stim object
         if self.prf_stim != None:
@@ -1716,6 +1703,46 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         self.allowed_models = ["gauss", "css", "dog", "norm"]
         if self.model.lower() not in self.allowed_models:
             raise ValueError(f"Model specification needs to be one of {self.allowed_models}; got {model}.")
+
+        # sort out HRF
+        self.define_hrf()
+
+        # update settings
+        self.update_settings()
+
+        # check validity of constraints
+        self.allowed_optimizers = ['tc', 'bgfs']
+        if isinstance(self.constraints, str):
+            self.constraints = [self.constraints, self.constraints]
+
+        for optimizer in self.constraints:
+            if optimizer not in self.allowed_optimizers:
+                raise ValueError(f"Unknown optimizer '{optimizer}'. Must be one of {self.allowed_optimizers}")
+
+        #----------------------------------------------------------------------------------------------------------------------------------------------------------
+        # whichever model you run, run the Gaussian first
+
+        ## Define models
+        self.gauss_model    = Iso2DGaussianModel(stimulus=self.prf_stim, hrf=self.hrf)
+        self.css_model      = CSS_Iso2DGaussianModel(stimulus=self.prf_stim, hrf=self.hrf)
+        self.dog_model      = DoG_Iso2DGaussianModel(stimulus=self.prf_stim, hrf=self.hrf)
+        self.norm_model     = Norm_Iso2DGaussianModel(stimulus=self.prf_stim, hrf=self.hrf)
+
+        if self.model_obj != None:
+            if self.verbose:
+                print(f"Setting {self.model_obj} as '{model}_model'-attribute")
+            setattr(self, f'{model}_model', self.model_obj)
+
+    def define_settings(self):
+
+        self.settings, self.prf_stim_ = generate_model_params(
+            model=self.model, 
+            dm=self.design_matrix, 
+            TR=self.TR,
+            fit_hrf=self.fit_hrf,
+            verbose=self.verbose)
+
+    def define_hrf(self):
 
         # make compatible with prfpy's HRF-class?
         if isinstance(self.hrf, np.ndarray):
@@ -1756,31 +1783,22 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
             except:
                 self.hrf = hrf_pars.copy()
 
-        if self.verbose:
-            print(f"HRF: {self.hrf}")
+    def update_settings(self):
 
-        # check validity of constraints
-        self.allowed_optimizers = ['tc', 'bgfs']
-        if isinstance(self.constraints, str):
-            self.constraints = [self.constraints, self.constraints]
+        # overwrite settings with custom settings
+        for setting in list(self.settings.keys()):
+            if hasattr(self, setting):
 
-        for optimizer in self.constraints:
-            if optimizer not in self.allowed_optimizers:
-                raise ValueError(f"Unknown optimizer '{optimizer}'. Must be one of {self.allowed_optimizers}")
+                # hrf separate because it can be a list or object depending on prfpy-version
+                if setting != "hrf":
 
-        #----------------------------------------------------------------------------------------------------------------------------------------------------------
-        # whichever model you run, run the Gaussian first
+                    # only update if different
+                    if getattr(self, setting) != self.settings[setting]:
 
-        ## Define models
-        self.gauss_model    = Iso2DGaussianModel(stimulus=self.prf_stim, hrf=self.hrf)
-        self.css_model      = CSS_Iso2DGaussianModel(stimulus=self.prf_stim, hrf=self.hrf)
-        self.dog_model      = DoG_Iso2DGaussianModel(stimulus=self.prf_stim, hrf=self.hrf)
-        self.norm_model     = Norm_Iso2DGaussianModel(stimulus=self.prf_stim, hrf=self.hrf)
+                        if self.verbose:
+                            print(f"Setting '{setting}' to user-defined value: {getattr(self, setting)} (was: {self.settings[setting]})")
 
-        if self.model_obj != None:
-            if self.verbose:
-                print(f"Setting {self.model_obj} as '{model}_model'-attribute")
-            setattr(self, f'{model}_model', self.model_obj)
+                        self.settings[setting] = getattr(self, setting)
 
     def fit(self):
 
@@ -1818,21 +1836,13 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         if self.model.lower() != "gauss":            
             
             ## Define settings/grids/fitter/bounds etcs
-            self.settings, self.prf_stim_ = generate_model_params(
-                model=self.model, 
-                dm=self.design_matrix, 
-                TR=self.TR,
-                fit_hrf=self.fit_hrf,
-                verbose=self.verbose)
+            self.define_settings()
 
             if self.fix_bold_baseline:
                 self.settings['bounds']['bold_bsl'] = [0,0]
 
-            # overwrite rsq-threshold from settings file
-            if self.rsq_threshold != None:
-                self.rsq = self.rsq_threshold
-            else:
-                self.rsq = self.settings['rsq_threshold']
+            # overwrite settings with custom settings
+            self.update_settings
 
             # initiate and do grid fit
             ExtendedModel.__init__(self)
