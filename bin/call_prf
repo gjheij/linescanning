@@ -67,7 +67,7 @@ Options:
     --clip          clip the edges of design matrix in the space of 'n_pix' (by default = 100). 
                     You will need to calculate how many pixels are to be set to zero given the vi-
                     sual field of the subject in the scanner (with a screensize of [1920,1080]px
-                    and height of 70cm). Format needs to be '--clip "a,b,c,d"' or --clip [a,b,c,d]
+                    and height of 39.3cm). Format needs to be '--clip "a,b,c,d"' or --clip [a,b,c,d]
                     to ensure it's read in like a list
     -g|--grid       only run a grid-fit with the specified model
     -v|--verbose    print some stuff to a log-file
@@ -195,7 +195,19 @@ Example:
                 raise ValueError(f"Length of given list for clipping must be 4, not '{len(clip_dm)}': {clip_dm}")
             else:
                 # make integer
-                clip_dm = clip_dm.astype(int)        
+                clip_dm = clip_dm.astype(int)
+        elif clip_dm.endswith("yml"):
+            with open(clip_dm, 'rb') as input:
+                settings = pickle.load(input)
+
+            if "screen_delim" in list(settings.keys()):
+                screen_set = settings["screen_delim"]
+                clip_dm = [
+                    screen_set["top"],
+                    screen_set["bottom"],
+                    screen_set["left"],
+                    screen_set["right"]
+                ]
 
     out = f"sub-{sub}"
     if ses != None:

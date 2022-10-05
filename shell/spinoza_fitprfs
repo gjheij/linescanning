@@ -352,13 +352,30 @@ for subID in ${search}; do
 
           # check if we have screen delimiter file (should be json file) if clip=1 (can be set to 0 by --no_clip)
           if [[ ${clip} -eq 1 ]]; then
+
+            # check if we got manual clip information
             if [[ -z ${clipper} ]]; then
+
               if [[ -d ${use_pngdir} ]]; then
-                screen_json=`find $(dirname ${use_pngdir}) -type f \( -name "*.json" \) 2>/dev/null`
-                if [[ -f ${screen_json} ]]; then
-                  clip_flag="--clip ${screen_json}"
+                # check first if we have a json file
+                screen_=`find $(dirname ${use_pngdir}) -type f \( -name "*screen.json" \) 2>/dev/null`
+                if [[ -f ${screen_} ]]; then
+                  clip_flag="--clip ${screen_}"
                 else
-                  clip_flag=""
+                  # if not, check if we have yml file (should contain "screen_delim"-key)
+                  screen_=`find $(dirname ${use_pngdir}) -type f \( -name "*.yml" \) 2>/dev/null`
+                  if [[ -f ${screen_} ]]; then
+
+                    # check if we have "screen_delim"-key in yml file
+                    if [[ ! -z `grep "screen_delim" ${screen_}` ]]; then
+                      clip_flag="--clip ${screen_}"
+                    else
+                      clip_flag=""
+                    fi
+                    
+                  else
+                    clip_flag=""
+                  fi
                 fi
               fi
             else
