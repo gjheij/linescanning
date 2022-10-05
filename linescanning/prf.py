@@ -101,7 +101,7 @@ def get_prfdesign(screenshot_path, n_pix=40, dm_edges_clipping=[0,0,0,0]):
     n_pix: int
         size of the design matrix (basically resolution). The larger the number, the more demanding for the CPU. It's best to have some value which can be divided with 1080, as this is easier to downsample. Default is 40, but 270 seems to be a good trade-off between resolution and CPU-demands
     dm_edges_clipping: list, dict, optional
-        people don't always see the entirety of the screen so it's important to check what the subject can actually see by showing them the cross of for instance the BOLD-screen (the matlab one, not the linux one) and clip the image accordingly
+        people don't always see the entirety of the screen so it's important to check what the subject can actually see by showing them the cross of for instance the BOLD-screen (the matlab one, not the linux one) and clip the image accordingly. This is a list of 4 values, which are the number of pixels to clip from the left, right, top and bottom of the image. Default is [0,0,0,0], which means no clipping. Negative values will be set to 0.
 
     Returns
     ----------
@@ -149,6 +149,9 @@ def get_prfdesign(screenshot_path, n_pix=40, dm_edges_clipping=[0,0,0,0]):
             dm_edges_clipping['bottom'],
             dm_edges_clipping['left'],
             dm_edges_clipping['right']]
+
+    # ensure absolute values; should be a list by now anyway
+    dm_edges_clipping = [abs(ele) for ele in dm_edges_clipping]
 
     design_matrix[:dm_edges_clipping[0], :, :] = 0
     design_matrix[(design_matrix.shape[0]-dm_edges_clipping[1]):, :, :] = 0

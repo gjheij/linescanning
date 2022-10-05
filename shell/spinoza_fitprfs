@@ -29,7 +29,8 @@ Usage:
 
 Options:
   -c              list of values used for clipping of design matrix. Format must be [<top>,<bottom>,
-                  <left>,<right>]  
+                  <left>,<right>]. Negative values will be set to zero within 'linescanning.prf.
+                  get_prfdesign'
   -m <model>      one of ['gauss','dog','css','norm'] is accepted, default = "gauss"
   -n <session>    session ID (e.g., 1, 2, or none)
   -o              delete existing file and re-run analysis fully. Even if 'model=norm', we'll over-

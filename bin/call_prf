@@ -68,7 +68,8 @@ Options:
                     You will need to calculate how many pixels are to be set to zero given the vi-
                     sual field of the subject in the scanner (with a screensize of [1920,1080]px
                     and height of 39.3cm). Format needs to be '--clip "a,b,c,d"' or --clip [a,b,c,d]
-                    to ensure it's read in like a list
+                    to ensure it's read in like a list. Negative values will be set to zero within
+                    `linescanning.prf.get_prfdesign`
     -g|--grid       only run a grid-fit with the specified model
     -v|--verbose    print some stuff to a log-file
     --file_ending   Overwrite default search-targets from pybest/fMRIPrep output. E.g., for fMRI-
@@ -179,7 +180,6 @@ Example:
             constraints = utils.string2list(arg)
 
     if len(argv) < 2:
-        print("\nNOT ENOUGH ARGUMENTS SPECIFIED")
         print(main.__doc__)
         sys.exit()
 
