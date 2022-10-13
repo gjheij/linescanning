@@ -76,6 +76,10 @@ fn_exists dcm2niix
 # overwrite version?
 if [[ ${version} == "2019" ]]; then
   cmd="/packages/mricrogl/20190902/Resources/dcm2niix"
+elif [[ ${version} == "2021" ]]; then
+  cmd="/packages/mricrogl/20211006/Resources/dcm2niix"
+elif [[ ${version} == "2022" ]]; then
+  cmd="/packages/mricrogl/20220720/Resources/dcm2niix"  
 else
   cmd="dcm2niix"
 fi
