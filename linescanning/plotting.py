@@ -1,9 +1,37 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+import pandas as pd
 import seaborn as sns
+from typing import Union
 
-class LazyPRF():
+class Defaults():
+    def __init__(self):
+        self.pad_title = 20
+        self.font_size = 18
+        self.label_size = 14
+        self.tick_width = 0.5
+        self.tick_length = 0
+        self.axis_width = 0.5
+        self.line_width = 1
+        self.sns_offset = None
+        self.sns_trim = False
+        self.sns_bottom = False
+        self.xkcd = False
+        self.return_obj = False
+        self.ylim_bottom = None
+        self.ylim_top = None
+        self.xlim_left = 0
+        self.xlim_right = None
+        self.set_xlim_zero=False
+
+        if self.xkcd:
+            self.fontname = "Arial"
+        else:
+            self.fontname = "Humor Sans"
+        
+
+class LazyPRF(Defaults):
     """LazyPRF
 
     Plot the geometric location of the Gaussian pRF.
@@ -71,19 +99,11 @@ class LazyPRF():
         alpha=None,
         shrink_factor=1, 
         xkcd=False,
-        font_size=None,
         title=None,
         axis_off=True,
         figsize=(8,8),
-        label_size=10,
-        tick_width=0.5,
-        tick_length=7,
-        axis_width=0.5,
         full_axis=False,
-        sns_trim=True,
-        sns_offset=10,
         vf_only=False,
-        line_width=0.5,
         cross_width=0.5,
         concentric=None,
         z_lines=1,
@@ -100,22 +120,16 @@ class LazyPRF():
         self.xkcd           = xkcd
         self.shrink_factor  = shrink_factor
         self.title          = title
-        self.font_size      = font_size
         self.axis_off       = axis_off
         self.figsize        = figsize
-        self.label_size     = label_size
-        self.tick_width     = tick_width
-        self.tick_length    = tick_length
-        self.axis_width     = axis_width 
         self.full_axis      = full_axis
-        self.sns_trim       = sns_trim
-        self.sns_offset     = sns_offset
         self.vf_only        = vf_only
-        self.line_width     = line_width
         self.cross_width    = cross_width
         self.concentric     = concentric
         self.z_lines        = z_lines
         self.z_prf          = z_prf
+
+        super().__init__()
         self.__dict__.update(kwargs)
 
         if not hasattr(self, "edge_color"):
@@ -182,7 +196,11 @@ class LazyPRF():
             radius = self.vf_extent[-1]
 
         if self.title != None:
-            self.ax.set_title(self.title, fontsize=self.font_size, fontname="Arial")
+            self.ax.set_title(
+                self.title, 
+                fontsize=self.font_size, 
+                fontname="Arial",
+                pad=self.pad_title)
             
         self.patch = patches.Circle(
             (0, 0),
@@ -213,8 +231,11 @@ class LazyPRF():
 
             if self.sns_trim:
                 sns.despine(offset=self.sns_offset, trim=self.sns_trim)
+        
+        if self.return_obj:
+            return self
 
-class LazyPlot():
+class LazyPlot(Defaults):
     """LazyPlot
 
     Class for plotting because I'm lazy and I don't want to go through the `matplotlib` motion everything I quickly want to visualize something. This class makes that a lot easier. It allows single inputs, lists with multiple timecourses, labels, error shadings, and much more.
@@ -281,7 +302,7 @@ class LazyPlot():
         If `True`, limit spines to the smallest and largest major tick on each non-despined axis. Maps to `sns.despine(trim=sns_trim)`
     sns_offset: int, optional
         Offset in the origin of the plot. Maps to `sns.despine(offset=sns_offset)`. Default is 10
-    sns_rm_bottom: bool, optional
+    sns_bottom: bool, optional
         Also remove the bottom (x) spine of the plot
     markers: str, list, optional
         Use markers during plotting. If `ts` is a list, a list of similar length should be specified. If one array in `ts` should not have markers, use `None`. E.g., if `len(ts) == 3`, and we want only the first timecourse to have markers use: `markers=['.',None,None]
@@ -342,21 +363,11 @@ class LazyPlot():
         cmap='viridis',
         save_as=None,
         labels=None,
-        font_size=12,
-        label_size=10,
-        tick_width=0.5,
-        tick_length=7,
-        axis_width=0.5,
         add_hline=None,
         add_vline=None,
-        line_width=1,
         axs=None,
         y_lim=None,
         x_lim=None,
-        sns_offset=10,
-        sns_trim=True,
-        sns_rm_bottom=False,
-        set_xlim_zero=True,
         markers=None,
         x_ticks=None,
         y_ticks=None,
@@ -375,24 +386,16 @@ class LazyPlot():
         self.cmap               = cmap
         self.save_as            = save_as
         self.labels             = labels
-        self.font_size          = font_size
-        self.label_size         = label_size
-        self.tick_width         = tick_width
-        self.tick_length        = tick_length
         self.add_hline          = add_hline
         self.add_vline          = add_vline
         self.axs                = axs
-        self.axis_width         = axis_width
-        self.line_width         = line_width
         self.y_lim              = y_lim
         self.x_lim              = x_lim
-        self.sns_offset         = sns_offset
-        self.sns_trim           = sns_trim
-        self.sns_bottom         = sns_rm_bottom
-        self.set_xlim_zero      = set_xlim_zero
         self.markers            = markers
         self.x_ticks            = x_ticks
         self.y_ticks            = y_ticks
+
+        super().__init__()
         self.__dict__.update(kwargs)
 
         if self.xkcd:
@@ -499,13 +502,23 @@ class LazyPlot():
             axs.legend(frameon=False, fontsize=self.label_size)
 
         if self.x_label:
-            axs.set_xlabel(self.x_label, fontname=self.fontname, fontsize=self.font_size)
+            axs.set_xlabel(
+                self.x_label, 
+                fontname=self.fontname, 
+                fontsize=self.font_size)
 
         if self.y_label:
-            axs.set_ylabel(self.y_label, fontname=self.fontname, fontsize=self.font_size)
+            axs.set_ylabel(
+                self.y_label, 
+                fontname=self.fontname, 
+                fontsize=self.font_size)
 
         if self.title:
-            axs.set_title(self.title, fontname=self.fontname, fontsize=self.font_size)
+            axs.set_title(
+                self.title, 
+                fontname=self.fontname, 
+                fontsize=self.font_size,
+                pad=self.pad_title)
 
         axs.tick_params(
             width=self.tick_width, 
@@ -514,13 +527,60 @@ class LazyPlot():
 
         for axis in ['top', 'bottom', 'left', 'right']:
             axs.spines[axis].set_linewidth(self.axis_width)
+        
+        # give priority to specify x-lims rather than seaborn's xlim
+        if not self.x_lim:
+
+            if isinstance(self.xlim_left, float) or isinstance(self.xlim_left, int):
+                axs.set_xlim(left=self.xlim_left)
+            
+            if self.xlim_right:
+                axs.set_xlim(right=self.xlim_right)
+        else:
+            axs.set_xlim(self.x_lim)
+
+        if not self.y_lim:
+            if isinstance(self.ylim_bottom, float) or isinstance(self.ylim_bottom, int):
+                axs.set_ylim(bottom=self.ylim_bottom)
+            
+            if self.ylim_top:
+                axs.set_ylim(top=self.ylim_top)
+        else:
+            axs.set_ylim(self.y_lim)      
+
+        # despine the axis
+        if isinstance(self.x_ticks, list):
+            axs.set_xticks(self.x_ticks)
+
+        if isinstance(self.y_ticks, list):
+            axs.set_yticks(self.y_ticks)
+     
+        old_xlim = axs.get_xlim()[-1]
+        old_ylim = axs.get_ylim()
+        sns.despine(
+            offset=self.sns_offset, 
+            trim=self.sns_trim, 
+            bottom=self.sns_bottom)
+
+        # correct for axis shortening induced by trimming with sns.despine
+        set_xlim = 1
+        set_ylim = 1
+        if self.sns_trim:
+            set_xlim = x[-1]/old_xlim
+            
+            if len(self.array) > 1:
+                y_max = np.amax(np.array(self.array))
+            else:
+                y_max = max(self.array)
+
+            set_ylim = y_max/old_ylim[1]
 
         # defaults for ax?lines
         default_dict = {
             'color': 'k', 
             'ls': 'dashed', 
             'lw': 0.5}
-
+        
         # add vertical lines
         add_vline = True
         if self.add_vline == "default":
@@ -548,39 +608,15 @@ class LazyPlot():
                         line, 
                         color=color, 
                         lw=self.add_vline['lw'], 
-                        ls=self.add_vline['ls'])
+                        ls=self.add_vline['ls'],
+                        ymax=set_ylim)
             else:
                 axs.axvline(
                     self.add_vline['pos'], 
                     color=self.add_vline['color'],
                     lw=self.add_vline['lw'], 
-                    ls=self.add_vline['ls'])
-
-        # give priority to specify x-lims rather than seaborn's xlim
-        if self.x_lim:
-            axs.set_xlim(self.x_lim)
-        else:
-            if self.set_xlim_zero:
-                axs.set_xlim(0)
-
-        if self.y_lim:
-            axs.set_ylim(self.y_lim)
-
-        # despine the axis
-        if isinstance(self.x_ticks, list):
-            axs.set_xticks(self.x_ticks)
-
-        if isinstance(self.y_ticks, list):
-            axs.set_yticks(self.y_ticks)
-
-        old_xlim = axs.get_xlim()[-1]
-        sns.despine(offset=self.sns_offset, trim=self.sns_trim, bottom=self.sns_bottom)
-
-        # correct for axis shortening induced by trimming with sns.despine
-        if self.sns_trim:
-            set_xlim = x[-1]/old_xlim
-        else:
-            set_xlim = 1
+                    ls=self.add_vline['ls'],
+                    ymax=set_ylim)
 
         add_hline = True
         if self.add_hline == "default":
@@ -624,8 +660,10 @@ class LazyPlot():
                     ls=self.add_hline['ls'],
                     xmax=set_xlim)
 
+        if self.return_obj:
+            return self
 
-class LazyCorr():
+class LazyCorr(Defaults):
     """LazyCorr
 
     Wrapper around seaborn's regplot. Plot data and a linear regression model fit.
@@ -673,43 +711,33 @@ class LazyCorr():
         y_label=None, 
         figsize=(8,8),
         xkcd=False,
-        font_size=20,
-        label_size=10,
-        tick_width=0.5,
-        tick_length=7,
-        axis_width=0.5,
-        sns_despine=5,
         sns_trim=True,
         y_lim=None,
         x_lim=None,                 
-        save_as=None):
+        save_as=None,
+        **kwargs):
 
         self.x              = x
         self.y              = y
         self.axs            = axs
         self.x_label        = x_label
         self.y_label        = y_label
-        self.font_size      = font_size
         self.xkcd           = xkcd
-        self.sns_despine    = sns_despine
         self.sns_trim       = sns_trim
         self.color          = color
-        self.figsize        = figsize
-        self.label_size     = label_size
-        self.tick_width     = tick_width
-        self.axis_width     = axis_width        
-        self.tick_length    = tick_length        
+        self.figsize        = figsize     
         self.title          = title
         self.y_lim          = y_lim
         self.x_lim          = x_lim        
         self.save_as        = save_as
 
+        super().__init__()
+        self.__dict__.update(kwargs)
+
         if self.xkcd:
             with plt.xkcd():
-                self.fontname = "Humor Sans"
                 self.plot()
         else:
-            self.fontname = "Arial"
             self.plot()
 
         if self.save_as:
@@ -724,7 +752,7 @@ class LazyCorr():
     def plot(self):
 
         if self.axs == None:
-            fig, axs = plt.subplots(figsize=self.figsize)
+            _, axs = plt.subplots(figsize=self.figsize)
         else:
             axs = self.axs        
 
@@ -759,54 +787,48 @@ class LazyCorr():
         if self.y_lim:
             axs.set_ylim(self.y_lim)
 
-        sns.despine(offset=self.sns_despine, trim=self.sns_trim)
+        sns.despine(offset=self.sns_offset, trim=self.sns_trim)
+
+        if self.return_obj:
+            return self
 
 class LazyBar():
 
     def __init__(
         self, 
-        x=None, 
-        y=None, 
+        data: pd.DataFrame=None,
+        x: Union[str,np.ndarray]=None, 
+        y: Union[str,np.ndarray]=None, 
         axs=None,
-        sns_ori='h', 
-        sns_trim=2, 
-        labels=None,
-        font_size=14,
-        label_size=10,
-        tick_width=0.5,
-        tick_length=7,
-        axis_width=0.5,
-        sns_rot=None,
-        palette=None,
-        cmap='viridis',
-        save_as=None,
-        xkcd=False,
-        title=None,
-        add_labels=False,
-        add_axis=True,
-        lim=None,
-        ticks=None,
-        x_label2=None,
-        y_label2=None,
-        title2=None,
+        sns_ori: str='h', 
+        labels: list=None,
+        sns_rot: Union[int,float]=None,
+        palette: Union[list,sns.palettes._ColorPalette]=None,
+        cmap: str="inferno",
+        save_as: str=None,
+        title: str=None,
+        add_labels: bool=False,
+        add_axis: bool=True,
+        lim: list=None,
+        ticks: list=None,
+        x_label2: str=None,
+        y_label2: str=None,
+        title2: str=None,
+        add_points: bool=False,
+        points_color: Union[str,tuple]="#cccccc",
+        error: str="sem",
         **kwargs):
 
+        self.data               = data
         self.x                  = x
         self.y                  = y
         self.sns_ori            = sns_ori
         self.labels             = labels
-        self.font_size          = font_size
-        self.label_size         = label_size
-        self.tick_width         = tick_width
-        self.tick_length        = tick_length
         self.axs                = axs
-        self.axis_width         = axis_width
         self.sns_rot            = sns_rot
         self.palette            = palette
         self.cmap               = cmap
-        self.xkcd               = xkcd
         self.title              = title
-        self.sns_trim           = sns_trim
         self.add_labels         = add_labels
         self.add_axis           = add_axis
         self.lim                = lim
@@ -814,31 +836,44 @@ class LazyBar():
         self.x_label2           = x_label2
         self.y_label2           = y_label2
         self.title2             = title2
-        self.__dict__.update(kwargs)
+        self.add_points         = add_points
+        self.points_color       = points_color
+        self.error              = error
+
+        self.kw_defaults = Defaults()
+
+        # avoid that these kwargs are passed down to matplotlib.bar.. Throws errors
+        ignore_kwargs = [
+            "x_label",
+            "y_label",
+            "add_hline",
+            "add_vline",
+            "y_lim"
+        ]
+
+        kw_sns = {}
+        for ii in kwargs:
+            if ii not in list(self.kw_defaults.__dict__.keys())+ignore_kwargs:
+                kw_sns[ii] = kwargs[ii]
+
+        self.__dict__.update(**self.kw_defaults.__dict__)
+        self.__dict__.update(**kwargs)
 
         if self.xkcd:
             with plt.xkcd():
-                self.fontname = "Humor Sans"
-                self.plot()
+                self.plot(**kw_sns)
         else:
-            self.fontname = "Arial"
-            self.plot()
+            self.plot(**kw_sns)
         
         if save_as:
             plt.savefig(self.save_as, transparent=True, dpi=300, bbox_inches='tight')
 
-    def plot(self):
+    def plot(self, **kw_sns):
 
         if self.axs == None:
-            fig, axs = plt.subplots(figsize=self.figsize)
+            _, axs = plt.subplots(figsize=self.figsize)
         else:
             axs = self.axs
-        
-        if isinstance(self.palette, list):
-            self.palette = sns.color_palette(palette=self.palette)
-
-        if not isinstance(self.palette, sns.palettes._ColorPalette):
-            self.palette = sns.color_palette(self.cmap, len(self.x))
 
         if self.sns_ori == "h":
             xx = self.y
@@ -852,73 +887,135 @@ class LazyBar():
             trim_left   = False            
         else:
             raise ValueError(f"sns_ori must be 'v' or 'h', not '{self.sns_ori}'")
+        
+        if "color" in list(kw_sns.keys()):
+            if isinstance(kw_sns["color"], (str,tuple)):
+                self.palette = None
+                self.cmap = None
+                self.color = kw_sns["color"]
+        else:
+            self.color = None
+            if isinstance(self.palette, list):
+                self.palette = sns.color_palette(palette=self.palette)
 
-        sns.barplot(
+            if not isinstance(self.palette, sns.palettes._ColorPalette):
+                self.palette = sns.color_palette(self.cmap, len(self.x))
+
+        # check if we can do sem
+        self.sem = None
+        if self.error == "sem":
+            if isinstance(self.data, pd.DataFrame):
+                self.sem = self.data.groupby(self.x).sem()[self.y].values
+        else:
+            self.sem = None
+        
+        self.ff = sns.barplot(
+            data=self.data,
             x=xx, 
             y=yy, 
             ax=axs, 
-            palette=self.palette, 
-            orient=self.sns_ori)
+            orient=self.sns_ori,
+            ci=None,
+            **dict(
+                kw_sns,
+                color=self.color,
+                palette=self.palette,
+                yerr=self.sem
+            ))
+
+        if self.add_points:
+            sns.stripplot(
+                data=self.data, 
+                x=xx, 
+                y=yy, 
+                dodge=True, 
+                ax=self.ff,
+                color=self.points_color
+            )
 
         # axis labels and titles
         if self.title:
-            axs.set_title(self.title, fontname=self.fontname, fontsize=self.font_size)                    
+            self.ff.set_title(
+                self.title, 
+                fontname=self.fontname, 
+                fontsize=self.font_size)                    
         
-        axs.tick_params(width=self.tick_width, length=self.tick_length,
-                labelsize=self.label_size)
+        self.ff.tick_params(
+            width=self.tick_width, 
+            length=self.tick_length,
+            labelsize=self.label_size)
 
         for axis in ['top', 'bottom', 'left', 'right']:
-            axs.spines[axis].set_linewidth(self.axis_width)
+            self.ff.spines[axis].set_linewidth(self.axis_width)
 
         if not self.add_labels:
             if self.sns_ori == 'h':
-                axs.set_yticks([])
+                self.ff.set_yticks([])
             elif self.sns_ori == "v":                
-                axs.set_xticks([])
+                self.ff.set_xticks([])
             else:
                 raise ValueError(f"sns_ori must be 'v' or 'h', not '{self.sns_ori}'")
             
         if not self.add_axis:
             if self.sns_ori == 'h':
-                self.axs.set_xticklabels(self.axs.get_xticklabels(), rotation=self.sns_rot)
+                self.ff.set_xticklabels(self.ff.get_xticklabels(), rotation=self.sns_rot)
             elif self.sns_ori == "v":
-                self.axs.set_yticklabels(self.axs.get_xticklabels(), rotation=self.sns_rot)
+                self.ff.set_yticklabels(self.ff.get_xticklabels(), rotation=self.sns_rot)
             else:
                 raise ValueError(f"sns_ori must be 'v' or 'h', not '{self.sns_ori}'")
 
         if isinstance(self.lim, list):
             if self.sns_ori == 'h':
-                self.axs.set_xlim(self.lim)
+                self.ff.set_xlim(self.lim)
             elif self.sns_ori == "v":
-                self.axs.set_ylim(self.lim)
+                self.ff.set_ylim(self.lim)
             else:
                 raise ValueError(f"sns_ori must be 'v' or 'h', not '{self.sns_ori}'")     
         
         if isinstance(self.ticks, list):
             if self.sns_ori == 'h':
-                self.axs.set_xticks(self.ticks)
+                self.ff.set_xticks(self.ticks)
             elif self.sns_ori == "v":
-                self.axs.set_yticks(self.ticks)
+                self.ff.set_yticks(self.ticks)
             else:
                 raise ValueError(f"sns_ori must be 'v' or 'h', not '{self.sns_ori}'")
 
+        if isinstance(self.x, str) and not isinstance(self.x_label2, str):
+            self.ff.set(xlabel=None)
+
+        if isinstance(self.y, str) and not isinstance(self.y_label2, str):
+            self.ff.set(ylabel=None)            
+
         if self.x_label2:
-            axs.set_xlabel(self.x_label2, fontname=self.fontname, fontsize=self.font_size)
+            self.ff.set_xlabel(
+                self.x_label2, 
+                fontname=self.fontname, 
+                fontsize=self.font_size)
 
         if self.y_label2:
-            axs.set_ylabel(self.y_label2, fontname=self.fontname, fontsize=self.font_size)
+            self.ff.set_ylabel(
+                self.y_label2, 
+                fontname=self.fontname,
+                fontsize=self.font_size)
 
         sns.despine(
-            offset=self.sns_trim, 
-            trim=True,
+            offset=self.sns_offset, 
+            trim=self.sns_trim,
             left=trim_left, 
             bottom=trim_bottom, 
-            ax=self.axs)
+            ax=self.ff)
 
         if self.title2:
-            axs.set_title(self.title2, fontname=self.fontname, fontsize=self.font_size)                    
+            self.ff.set_title(
+                self.title2, 
+                fontname=self.fontname, 
+                fontsize=self.font_size,
+                pad=self.pad_title)                    
 
-class LazyHist():
+        if self.return_obj:
+            return self
+
+class LazyHist(Defaults):
     """LazyHist
 
     Wrapper around seaborn's histogram plotter
@@ -970,13 +1067,6 @@ class LazyHist():
         font_size=None,
         title=None,
         figsize=(8,8),
-        label_size=10,
-        tick_width=0.5,
-        tick_length=7,
-        axis_width=0.5,
-        sns_trim=True,
-        sns_offset=10,
-        line_width=0.5,
         **kwargs):
         
         self.data           = data
@@ -990,13 +1080,8 @@ class LazyHist():
         self.title          = title
         self.font_size      = font_size
         self.figsize        = figsize
-        self.label_size     = label_size
-        self.tick_width     = tick_width
-        self.tick_length    = tick_length
-        self.axis_width     = axis_width 
-        self.sns_trim       = sns_trim
-        self.sns_offset     = sns_offset
-        self.line_width     = line_width
+
+        super().__init__()
         self.__dict__.update(kwargs)      
 
         if self.xkcd:
@@ -1037,3 +1122,6 @@ class LazyHist():
 
         if self.sns_trim:
             sns.despine(offset=self.sns_offset, trim=self.sns_trim)
+
+        if self.return_obj:
+            return self
