@@ -1260,7 +1260,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
     standardize: str, optional
         method of standardization (e.g., "zscore" or "psc")
     low_pass: bool, optional
-        Temporally smooth the data. It's a bit of a shame if this is needed. The preferred option is to use aCompCor with `filter_pca=0.2`
+        Temporally smooth the data. It's a bit of a shame if this is needed. The preferred option is to use aCompCor with `filter_confs=0.2`
     lb: float, optional
         lower bound for signal filtering
     TR: float, optional
@@ -1279,11 +1279,11 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
         Print details to the terminal, default is False
     retroicor: bool, optional
         WIP: implementation of retroicor, requires the specification of `phys_file` and `phys_mat` containing the output from the PhysIO-toolbox
-    n_pca: int, optional
+    n_components: int, optional
         Number of components to use for WM/CSF PCA during aCompCor
     select_component: int, optional
-        If `verbose=True` and `aCompcor=True`, we'll create a scree-plot of the PCA components. With this flag, you can re-run this call but regress out only this particular component. [Deprecated: `filter_pca` is much more effective]
-    filter_pca: float, optional
+        If `verbose=True` and `aCompcor=True`, we'll create a scree-plot of the PCA components. With this flag, you can re-run this call but regress out only this particular component. [Deprecated: `filter_confs` is much more effective]
+    filter_confs: float, optional
         High-pass filter the components from the PCA during aCompCor. This seems to be pretty effective. Default is 0.2Hz.
     ses1_2_ls: str, optional:
         Transformation mapping `ses-1` anatomy to current linescanning-session, ideally the multi-slice image that is acquired directly before the first `1slice`-image. Default is None.
@@ -1326,11 +1326,12 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
         verbose=True,
         retroicor=False,
         acompcor=False,
-        n_pca=5,
+        ica=False,
+        n_components=5,
         func_tag=None,
         select_component=None,
         standardization="psc",
-        filter_pca=0.2,
+        filter_confs=0.2,
         ses1_2_ls=None,
         run_2_run=None,
         save_as=None,
@@ -1366,9 +1367,9 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
         self.acompcor                   = acompcor
         self.foldover                   = "FH"
         self.func_tag                   = func_tag
-        self.n_pca                      = n_pca
+        self.n_components               = n_components
         self.select_component           = select_component
-        self.filter_pca                 = filter_pca
+        self.filter_confs               = filter_confs
         self.standardization            = standardization
         self.ses1_2_ls                  = ses1_2_ls
         self.run_2_run                  = run_2_run
@@ -1382,6 +1383,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
         self.baseline                   = baseline
         self.baseline_units             = baseline_units
         self.psc_nilearn                = psc_nilearn
+        self.ica                        = ica
         self.__dict__.update(kwargs)
 
         # sampling rate and nyquist freq
@@ -1420,15 +1422,17 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
         if isinstance(self.func_file, list):
 
             # initiate some dataframes
-            self.df_psc      = []    # psc-data (filtered or not)
-            self.df_raw      = []    # raw-data (filtered or not)
-            self.df_retro    = []    # z-score data (retroicor'ed, `if retroicor=True`)
-            self.df_r2       = []    # r2 for portions of retroicor-regressors (e.g., 'all', 'cardiac', etc)
-            self.df_acomp    = []    # aCompCor'ed data
-            self.df_zscore   = []    # zscore-d data
-            self.acomp_objs  = []    # keep track of all aCompCor elements
-            self.df_gm_only  = []    # aCompCor'ed data, only GM voxels
-            self.gm_per_run  = []    # keep track of GM-voxel indices
+            self.df_psc     = []    # psc-data (filtered or not)
+            self.df_raw     = []    # raw-data (filtered or not)
+            self.df_retro   = []    # z-score data (retroicor'ed, `if retroicor=True`)
+            self.df_r2      = []    # r2 for portions of retroicor-regressors (e.g., 'all', 'cardiac', etc)
+            self.df_acomp   = []    # aCompCor'ed data
+            self.df_zscore  = []    # zscore-d data
+            self.df_ica     = []    # ica'ed data    
+            self.ica_objs   = []    # keep track of all ICA objects
+            self.acomp_objs = []    # keep track of all aCompCor elements
+            self.df_gm_only = []    # aCompCor'ed data, only GM voxels
+            self.gm_per_run = []    # keep track of GM-voxel indices
 
             # reports
             for run_id, func in enumerate(self.func_file):
@@ -1514,19 +1518,42 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                     **kwargs)
                 
                 if self.standardization == "psc":
-                    self.df_psc.append(self.get_data(index=False, filter_strategy=self.filter_strategy, dtype='psc', acompcor=self.acompcor))
+                    self.df_psc.append(
+                        self.get_data(
+                            index=False, 
+                            filter_strategy=self.filter_strategy, 
+                            dtype='psc', 
+                            acompcor=self.acompcor, 
+                            ica=self.ica))
+
                 elif self.standardization == "zscore":
                     if not self.acompcor:
-                        self.df_zscore.append(self.get_data(index=False, filter_strategy=self.filter_strategy, dtype='zscore', acompcor=self.acompcor))
+                        self.df_zscore.append(
+                            self.get_data(
+                                index=False, 
+                                filter_strategy=self.filter_strategy, 
+                                dtype='zscore',
+                                acompcor=False, 
+                                ica=False))
 
-                self.df_raw.append(self.get_data(index=False, filter_strategy=None, dtype='raw'))
+                self.df_raw.append(
+                    self.get_data(
+                        index=False, 
+                        filter_strategy=None, 
+                        dtype='raw'))
 
                 if self.retroicor:
                     self.df_retro.append(self.get_retroicor(index=False))
                     self.df_r2.append(self.r2_physio_df)
 
                 if self.acompcor:
-                    acomp_data = self.get_acompcor(index=False, filter_strategy=self.filter_strategy, dtype=self.standardization)
+                    acomp_data = self.get_data(
+                        index=False, 
+                        filter_strategy=self.filter_strategy, 
+                        dtype=self.standardization,
+                        acompcor=True,
+                        ica=False)
+
                     self.df_acomp.append(acomp_data)
                     
                     # append the linescanning.preproc.aCompCor object in case we have multiple runs
@@ -1539,9 +1566,20 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                     # fetch the data
                     self.df_gm_only.append(utils.select_from_df(acomp_data, expression='ribbon', indices=self.select_gm_voxels))
 
+                if self.ica:
+                    self.df_ica.append(
+                        self.get_data(
+                            index=False, 
+                            filter_strategy=self.filter_strategy, 
+                            dtype=self.standardization, 
+                            acompcor=False, 
+                            ica=True))
+
+                    self.ica_objs.append(self.ica_obj)
+
             # check for standardization method
             if self.standardization == "psc":
-                self.df_func_psc    = pd.concat(self.df_psc)
+                self.df_func_psc = pd.concat(self.df_psc)
             elif self.standardization == "zscore":
                 if not self.acompcor:
                     self.df_func_zscore = pd.concat(self.df_zscore)
@@ -1582,6 +1620,17 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                         indices=self.ribbon_voxels)
                 else:
                     self.gm_df = self.df_gm_only[0].copy()
+
+            if self.ica:           
+                
+                # check if elements of list contain dataframes
+                if all(elem is None for elem in self.df_ica):
+                    print("WARNING: ICA did not execute properly. All runs have 'None'")
+                else:
+                    try:
+                        self.df_func_ica = pd.concat(self.df_ica).set_index(['subject', 'run', 't'])
+                    except:
+                        self.df_func_ica = pd.concat(self.df_ica)                    
 
         # now that we have nicely formatted functional data, initialize the ParseExpToolsFile-class
         if self.tsv_file != None: 
@@ -1755,7 +1804,7 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
 
         #----------------------------------------------------------------------------------------------------------------------------------------------------
         # HIGH PASS FILTER
-
+        self.clean_tag = None
         if self.filter_strategy != "raw":
 
             self.desc_filt = f"""DCT-high pass filter [removes low frequencies <{self.lb} Hz] was applied. """
@@ -1801,6 +1850,12 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
             self.zscore_SD = self.hp_raw.std(axis=-1, keepdims=True)
             self.zscore_M = self.hp_raw.mean(axis=-1, keepdims=True)
 
+            # don't save figures if report=False
+            if self.report:
+                save_as = self.lsprep_figures
+            else:
+                save_as = None
+
             #----------------------------------------------------------------------------------------------------------------------------------------------------
             # ACOMPCOR AFTER HIGH-PASS FILTERING
             if acompcor:
@@ -1833,70 +1888,107 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                 else:
                     self.trafos = self.ses1_2_ls            
 
-                # don't save figures if report=False
-                if self.report:
-                    save_as = self.lsprep_figures
-                else:
-                    save_as = None
-
                 # aCompCor implemented in `preproc` module
                 self.acomp = preproc.aCompCor(
                     self.hp_zscore_df,
-                    subject=self.subject,
+                    subject=f"sub-{self.sub}",
                     run=self.run,
                     trg_session=self.target_session,
                     reference_slice=reference_slice,
                     trafo_list=self.trafos,
-                    n_pca=self.n_pca,
-                    filter_pca=self.filter_pca,
+                    n_components=self.n_components,
+                    filter_confs=self.filter_confs,
                     save_as=save_as,
                     select_component=self.select_component, 
-                    summary_plot=self.verbose,
+                    summary_plot=self.report,
                     TR=self.TR,
                     foldover=self.foldover,
                     verbose=self.verbose,
                     save_ext=self.save_ext,
                     **kwargs)
                 
-                self.hp_acomp_df = self.index_func(
-                    self.acomp.acomp_data,
-                    columns=self.vox_cols, 
-                    subject=self.sub, 
-                    run=run, 
+                self.clean_tag = "acompcor"
+                self.clean_data = self.acomp.acomp_data
+
+                if self.ica:
+                    raise TypeError("ICA cannot be used in conjunction with aCompCor. Please set 'ica=False'")
+
+            if self.ica:
+                if acompcor:
+                    raise TypeError("aCompCor cannot be used in conjunction with ICA. Please set 'acompcor=False'")
+
+                if self.verbose:
+                    print(f" Running FastICA with {self.n_components}")
+
+                self.ica_obj = preproc.ICA(
+                    self.hp_zscore_df,
+                    subject=f"sub-{self.sub}",
+                    run=self.run,
+                    n_components=self.n_components,
                     TR=self.TR,
-                    set_index=True)
-                
-                # multiply by SD and add mean
-                self.hp_acomp_raw = (self.acomp.acomp_data * self.zscore_SD) + self.zscore_M
-                self.hp_acomp_raw_df = self.index_func(
-                    self.hp_acomp_raw,
+                    filter_confs=self.filter_confs,
+                    verbose=self.verbose,
+                    summary_plot=self.report,
+                    melodic_plot=self.report,
+                    ribbon=tuple(self.gm_range),
+                    save_as=save_as,
+                    save_ext=self.save_ext
+                )
+
+                self.clean_tag = "ica"
+                self.clean_data = self.ica_obj.ica_data
+
+            if hasattr(self, "clean_data"):
+                self.tmp_df = self.index_func(
+                    self.clean_data,
                     columns=self.vox_cols, 
                     subject=self.sub, 
                     run=run, 
                     TR=self.TR,
                     set_index=True)
 
+                setattr(self, f"hp_{self.clean_tag}_df", self.tmp_df)
+                
+                # multiply by SD and add mean
+                self.tmp_raw = (self.clean_data * self.zscore_SD) + self.zscore_M
+                setattr(self, f"hp_{self.clean_tag}_raw", self.tmp_raw)
+
+                self.tmp_raw_df = self.index_func(
+                    self.tmp_raw,
+                    columns=self.vox_cols, 
+                    subject=self.sub, 
+                    run=run, 
+                    TR=self.TR,
+                    set_index=True)
+
+                setattr(self, f"hp_{self.clean_tag}_raw_df", self.tmp_raw)
+
                 # make percent signal
-                self.hp_acomp_psc = np.nan_to_num(utils.percent_change(
-                    self.hp_acomp_raw,
+                self.hp_tmp_psc = np.nan_to_num(utils.percent_change(
+                    self.tmp_raw,
                     1, 
                     baseline=baseline_vols,
                     nilearn=self.psc_nilearn))
 
-                self.hp_acomp_psc_df = self.index_func(
-                    self.hp_acomp_psc,
+                setattr(self, f"hp_{self.clean_tag}_psc", self.hp_tmp_psc)
+
+                self.hp_tmp_psc_df = self.index_func(
+                    self.hp_tmp_psc,
                     columns=self.vox_cols, 
                     subject=self.sub, 
                     run=run, 
                     TR=self.TR,
                     set_index=True)            
                 
-                self.desc_filt += self.acomp.__desc__
-                self.desc_filt += """
-Output from aCompCor was then converted back to un-zscored data by multipying by the standard deviation and adding the mean back. """
+                setattr(self, f"hp_{self.clean_tag}_psc_df", self.hp_tmp_psc_df)
 
-                # get the image
-                # img = opj(self.lsprep_figures, f"{self.base_name}_run-{self.run}_desc-acompcor.{self.save_ext}")
+                if self.clean_tag == "acompcor":
+                    self.desc_filt += self.acomp.__desc__
+                elif self.clean_tag == "ica":
+                    self.desc_filt += self.ica_obj.__desc__
+
+                self.desc_filt += f"""
+Output from {self.clean_tag} was then converted back to un-zscored data by multipying by the standard deviation and adding the mean back. """
 
             #----------------------------------------------------------------------------------------------------------------------------------------------------
             # LOW PASS FILTER
@@ -1906,9 +1998,9 @@ Output from aCompCor was then converted back to un-zscored data by multipying by
 The data was then low-pass filtered using a Savitsky-Golay filter [removes high frequences] (window={self.window_size}, 
 order={self.poly_order}). """
 
-                if acompcor:
-                    info = " Using aCompCor-data for low-pass filtering"
-                    data_for_filtering = self.get_acompcor(index=True, filter_strategy="hp", dtype=self.standardization).T.values
+                if acompcor or self.ica:
+                    info = f" Using {self.clean_tag}-data for low-pass filtering"
+                    data_for_filtering = self.get_data(index=True, filter_strategy="hp", dtype=self.standardization, acompcor=acompcor, ica=self.ica).T.values
                     out_attr = f"lp_acomp_{self.standardization}"
                 elif hasattr(self, f"hp_{self.standardization}"):
                     info = " Using high-pass filtered data for low-pass filtering"
@@ -1938,18 +2030,18 @@ order={self.poly_order}). """
 
         else:
             self.desc_filt = ""
+            self.clean_tag = None
 
         # get basic qualities
         self.basic_qa(
             self.ts_corrected, 
             run=run, 
-            make_figure=self.report,
-            acompcor=acompcor)
+            make_figure=True)
 
         # final
         self.desc_func = self.func_pre_desc + self.desc_trim + self.desc_filt
     
-    def basic_qa(self, data, run=1, make_figure=False, acompcor=False):
+    def basic_qa(self, data, run=1, make_figure=False):
         
         # tsnr
         tsnr_pre = utils.calculate_tsnr(data, -1)
@@ -1961,7 +2053,7 @@ order={self.poly_order}). """
 
         tsnr_inputs = [tsnr_pre]
         var_inputs = [var_pre]
-        colors = ["#1B9E77"]
+        colors = "#1B9E77"
         tsnr_lbl = None
         var_lbl = None
         tsnr_lines = {
@@ -1970,27 +2062,33 @@ order={self.poly_order}). """
         }
 
         var_lines = {
-            "pos": mean_tsnr_pre,
+            "pos": mean_var_pre,
             "color": colors
         }
         if self.verbose:
-            print(f" tSNR [before aCompCor]: {round(mean_tsnr_pre,2)}\t| variance: {round(mean_var_pre,2)}")
+            if self.clean_tag == None:
+                info = "no cleaning"
+            else:
+                info = f"before {self.clean_tag}"
 
-        if acompcor:
-            # get aCompCor'ed tSNR
-            tsnr_post = utils.calculate_tsnr(self.hp_acomp_raw,-1)
+            print(f" tSNR [{info}]: {round(mean_tsnr_pre,2)}\t| variance: {round(mean_var_pre,2)}")
+
+        if self.clean_tag == "acompcor" or self.clean_tag == "ica":
+
+            # get aCompCor/ICA'ed tSNR
+            tsnr_post = utils.calculate_tsnr(getattr(self, f"hp_{self.clean_tag}_raw"),-1)
             mean_tsnr_post = float(np.nanmean(np.ravel(tsnr_post)))
 
             # variance
-            var_post = np.var(self.hp_acomp_raw, axis=-1)
+            var_post = np.var(getattr(self, f"hp_{self.clean_tag}_raw"), axis=-1)
             mean_var_post = float(var_post.mean())
 
             # sort out plotting stuff
             tsnr_inputs += [tsnr_post]
             var_inputs += [var_post]
-            colors += ["#D95F02"]
-            tsnr_lbl = [f'no aCompCor [{round(mean_tsnr_pre,2)}]', f'aCompCor [{round(mean_tsnr_post,2)}]']
-            var_lbl = [f'no aCompCor [{round(mean_var_pre,2)}]', f'aCompCor [{round(mean_var_post,2)}]']            
+            colors = [colors, "#D95F02"]
+            tsnr_lbl = [f'no {self.clean_tag} [{round(mean_tsnr_pre,2)}]', f'{self.clean_tag} [{round(mean_tsnr_post,2)}]']
+            var_lbl = [f'no {self.clean_tag} [{round(mean_var_pre,2)}]', f'{self.clean_tag} [{round(mean_var_post,2)}]']            
             tsnr_lines = {
                 "pos": [mean_tsnr_pre,mean_tsnr_post],
                 "color": colors
@@ -2002,7 +2100,7 @@ order={self.poly_order}). """
             }
 
             if self.verbose:
-                print(f" tSNR [after aCompCor]:  {round(mean_tsnr_post,2)}\t| variance: {round(mean_var_post,2)}")
+                print(f" tSNR [after '{self.clean_tag}']:  {round(mean_tsnr_post,2)}\t| variance: {round(mean_var_post,2)}")
 
         if make_figure:
             # initiate figure
@@ -2016,10 +2114,15 @@ order={self.poly_order}). """
             ax1.set_ylabel("voxels", fontsize=16)
             ax1.set_title("Stability of position", fontsize=16)
             
+            defs = plotting.Defaults()
             ax1.tick_params(
-                width=0.5, 
-                length=7,
-                labelsize=10)
+                width=defs.tick_width, 
+                length=defs.tick_length,
+                labelsize=defs.label_size)
+
+            vox_ticks = [0,data.shape[0]//2,data.shape[0]]
+            ax1.set_xticks([0,data.shape[-1]])
+            ax1.set_yticks(vox_ticks)
 
             for axis in ['top', 'bottom', 'left', 'right']:
                 ax1.spines[axis].set_linewidth(0.5)
@@ -2037,6 +2140,7 @@ order={self.poly_order}). """
                 y_label="tSNR (a.u.)",
                 labels=tsnr_lbl,
                 add_hline=tsnr_lines,
+                x_ticks=vox_ticks,
                 line_width=2)
 
             ax3 = fig.add_subplot(gs[2])
@@ -2051,6 +2155,7 @@ order={self.poly_order}). """
                 y_label="Variance",
                 labels=var_lbl,
                 add_hline=var_lines,
+                x_ticks=vox_ticks,
                 line_width=2)            
 
             if self.report:
@@ -2059,8 +2164,8 @@ order={self.poly_order}). """
 
     def select_voxels_across_runs(self):
 
-        fig = plt.figure(figsize=(20,10))
-        gs = fig.add_gridspec(3,1, hspace=0.4)
+        fig = plt.figure(figsize=(24,12))
+        gs = fig.add_gridspec(3,1, hspace=0.6)
 
         self.voxel_classification = {}
         self.tissue_probabilities = {}
@@ -2071,7 +2176,7 @@ order={self.poly_order}). """
         else:
             use_color = "#0062C7"
 
-        for ix, seg in enumerate(['wm', 'csf', 'gm']):
+        for ix, (t_type, seg) in enumerate(zip(["white matter","csf","gray matter"], ["wm","csf","gm"])):
             
             self.tissue_probabilities[seg] = []
             for compcor in self.acomp_objs:
@@ -2084,12 +2189,17 @@ order={self.poly_order}). """
             # avg_err     = stats.sem(avg_runs, axis=-1)
             avg_err     = img.mean(axis=-1).std(axis=-1)
 
+            # add indication for new classification
+            self.voxel_classification[seg] = np.where(avg_runs > self.tissue_thresholds[ix])[0]
+
             if self.verbose:
                 ax = fig.add_subplot(gs[ix])
-                add_hline = {'pos': self.tissue_thresholds[ix], 'color': 'k', 'ls': '--', 'lw': 1}
+                add_hline = {
+                    'pos': self.tissue_thresholds[ix], 
+                    'color': 'k', 
+                    'ls': '--', 
+                    'lw': 1}
 
-                # add indication for new classification
-                self.voxel_classification[seg] = np.where(avg_runs > self.tissue_thresholds[ix])[0]
                 for ii in self.voxel_classification[seg]:
                     ax.axvline(ii, alpha=0.3, color="#cccccc")
 
@@ -2097,106 +2207,19 @@ order={self.poly_order}). """
                     avg_runs,
                     axs=ax,
                     error=avg_err,
-                    title=f'Average probability of {seg.upper()}',
-                    font_size=16,
-                    linewidth=2,
+                    title=f"tissue probabilities '{t_type}'",
                     color=use_color,
-                    sns_trim=True,
                     line_width=2,
+                    y_ticks=[0,1],
+                    x_ticks=[0,avg_runs.shape[0]//2,avg_runs.shape[0]],
+                    x_lim=[0,avg_runs.shape[0]],
                     add_hline=add_hline)
 
         if self.report:
             fname = opj(self.lsprep_figures, f"sub-{self.sub}_ses-{self.ses}_desc-tissue_classification.{self.save_ext}")
             fig.savefig(fname, bbox_inches='tight', dpi=300)
-                                   
-    # def apply_retroicor(self, run=1, **kwargs):
 
-    #     # we should have df_physio dataframe from ParsePhysioFile
-    #     if hasattr(self, "df_physio"):
-    #         try:
-    #             # select subset of df_physio. Run IDs must correspond!
-    #             self.confs = utils.select_from_df(self.df_physio, expression=f"run = {self.run}")
-    #         except:
-    #             raise ValueError(f"Could not extract dataframe from 'df_physio' with expression: 'run = {self.run}'")
-
-    #         if hasattr(self, f"data_zscore"):
-
-    #             self.z_score = getattr(self, f"{data_type}_zscore").copy()
-
-    #             for trace in ['hr', 'rvt']:
-    #                 if trace in list(self.confs.columns):
-    #                     self.confs = self.confs.drop(columns=[trace])
-
-    #             # regress out the confounds with clean
-    #             if self.verbose:
-    #                 print(f" RETROICOR on '{data_type}_zscore'")
-
-    #             cardiac     = utils.select_from_df(self.confs, expression='ribbon', indices=(0,self.orders[0]))
-    #             respiration = utils.select_from_df(self.confs, expression='ribbon', indices=(self.orders[0],self.orders[0]+self.orders[1]))
-    #             interaction = utils.select_from_df(self.confs, expression='ribbon', indices=(self.orders[0]+self.orders[1],len(list(self.confs.columns))))
-
-    #             self.clean_all          = clean(self.z_score.T, standardize=False, confounds=self.confs.values).T
-    #             self.clean_resp         = clean(self.z_score.T, standardize=False, confounds=respiration.values).T
-    #             self.clean_cardiac      = clean(self.z_score.T, standardize=False, confounds=cardiac.values).T
-    #             self.clean_interaction  = clean(self.z_score.T, standardize=False, confounds=interaction.values).T
-
-    #             # create the dataframes
-    #             self.z_score_df    = self.index_func(self.z_score, columns=self.vox_cols, subject=self.sub, run=run, TR=self.TR)
-
-    #             self.z_score_retroicor_df    = self.index_func(self.clean_all, columns=self.vox_cols, subject=self.sub, run=run, TR=self.TR)
-
-    #             print(self.z_score.shape)
-    #             self.r2_all          = 1-(np.var(self.clean_all, -1) / np.var(self.z_score, -1))
-    #             self.r2_resp         = 1-(np.var(self.clean_resp, -1) / np.var(self.z_score, -1))
-    #             self.r2_cardiac      = 1-(np.var(self.clean_cardiac, -1) / np.var(self.z_score, -1))
-    #             self.r2_interaction  = 1-(np.var(self.clean_interaction, -1) / np.var(self.z_score, -1))
-                
-    #             # save in a subject X run X voxel manner
-    #             self.r2_physio = {'all': self.r2_all,   
-    #                               'respiration': self.r2_resp, 
-    #                               'cardiac': self.r2_cardiac, 
-    #                               'interaction': self.r2_interaction}
-
-    #             self.r2_physio_df = pd.DataFrame(self.r2_physio)
-    #             self.r2_physio_df['subject'], self.r2_physio_df['run'], self.r2_physio_df['vox'] = self.sub, run, np.arange(0,self.r2_all.shape[0])
-
-    #             setattr(self, f"data_zscore_retroicor", self.z_score_retroicor_df)
-    #             setattr(self, f"data_zscore_retroicor_r2", self.r2_physio_df)
-
-    def get_retroicor(self, index=False):
-        if hasattr(self, 'z_score_retroicor_df'):
-            if index:
-                return self.z_score_retroicor_df.set_index(['subject', 'run', 't'])
-            else:
-                return self.z_score_retroicor_df
-
-    def get_acompcor(self, index=False, filter_strategy=None, dtype=None):
-
-        if dtype == None or dtype == "zscore":
-            tag = "_"
-        else:
-            tag = f"_{dtype}_"
-
-        if filter_strategy == None:
-            attr = f"acomp{tag}df"
-        elif filter_strategy == "lp":
-            attr = f"lp_acomp{tag}df"
-        elif filter_strategy == "hp":
-            attr = f"hp_acomp{tag}df"
-        else:
-            raise ValueError(f"Invalid filter strategy '{filter_strategy}'. Must be None, 'hp', or 'lp'")
-
-        if hasattr(self, attr):
-            data = getattr(self, attr)
-            if index:
-                try:
-                    return data.set_index(['subject', 'run', 't'])
-                except:
-                    return data
-            else:
-                return data
-
-    def get_data(self, filter_strategy=None, index=False, dtype="psc", acompcor=False):
+    def get_data(self, filter_strategy=None, index=False, dtype="psc", acompcor=False, ica=False):
 
         if dtype != "psc" and dtype != "zscore" and dtype != "raw":
             raise ValueError(f"Requested data type '{dtype}' is not supported. Use 'psc', 'zscore', or 'raw'")
@@ -2204,8 +2227,8 @@ order={self.poly_order}). """
         return_data = None
         allowed = [None, "raw", "hp", "lp"]
 
-        if acompcor:
-            tag = f"acomp_{dtype}"
+        if acompcor or ica:
+            tag = f"{self.clean_tag}_{dtype}"
         else:
             tag = dtype
 
@@ -2221,14 +2244,14 @@ order={self.poly_order}). """
         if hasattr(self, attr):
             # print(f" Fetching attribute: {attr}")
             return_data = getattr(self, attr)
+        else:
+            raise ValueError(f"{self} does not have an attribute called '{attr}'")
 
         if isinstance(return_data, pd.DataFrame):
             if index:
                 return return_data.set_index(['subject', 'run', 't'])
             else:
                 return return_data
-        else:
-            raise ValueError(f"No dataframe was found with search term: '{filter_strategy}' and standardization method '{dtype}'")
 
     @staticmethod
     def index_func(array, columns=None, subject=1, run=1, TR=0.105, set_index=False):
@@ -2320,10 +2343,13 @@ class Dataset(ParseFuncFile):
             if self.acompcor:
                 dtype = "acompcor"
             else:
-                if hasattr(self, "standardization"):
-                    dtype = self.standardization
+                if self.ica:
+                    dtype = "ica"
                 else:
-                    dtype = "psc"
+                    if hasattr(self, "standardization"):
+                        dtype = self.standardization
+                    else:
+                        dtype = "psc"
         
         if dtype == "psc":
             attr = 'df_func_psc'
@@ -2335,6 +2361,8 @@ class Dataset(ParseFuncFile):
             attr = 'df_func_zscore'
         elif dtype == "acompcor":
             attr = 'df_func_acomp'
+        elif dtype == "ica":
+            attr = 'df_func_ica'
         else:
             raise ValueError(f"Unknown option '{dtype}'. Must be 'psc', 'retroicor', 'acompcor', or 'zscore'")
 
