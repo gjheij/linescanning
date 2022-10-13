@@ -18,7 +18,6 @@ opj = os.path.join
 pd.options.mode.chained_assignment = None # disable warning thrown by string2float
 warnings.filterwarnings("ignore")
 
-
 class aCompCor(Segmentations):
     """aCompCor
 
@@ -36,11 +35,11 @@ class aCompCor(Segmentations):
         List of voxel IDs that are classified as white matter, by default None. Can be specified if you don't have a line-scanning session and, therefore, no :class:`linescanning.segmentations.Segmentation` object
     csf_voxels: list, optional
         List of voxel IDs that are classified as CSF, by default None. Can be specified if you don't have a line-scanning session and, therefore, no :class:`linescanning.segmentations.Segmentations` object
-    n_pca: int, optional
+    n_components: int, optional
         Number of PCA-components to extract for each of the WM/CSF voxels, by default 5
     select_component: int, optional
         Select one particular component to regress out rather than all extracted components, by default None because high-pass filtering the PCAs is much more effective
-    filter_pca: float, optional
+    filter_confs: float, optional
         Cut-off frequency for high-pass filter of PCA-components that survived the scree-plot, by default None but ~0.2Hz generally leaves in task-related frequencies while removing garbage
     save_ext: str, optional
         Extension to use for saved figures (default = 'pdf')
@@ -80,9 +79,9 @@ class aCompCor(Segmentations):
     >>>     subject="sub-003",
     >>>     run=1,
     >>>     trg_session=4,
-    >>>     n_pca=5,
+    >>>     n_components=5,
     >>>     trafo_list=['ses_to_motion.mat', 'run_to_run.mat'],
-    >>>     filter_pca=0.2,
+    >>>     filter_confs=0.2,
     >>>     TR=0.105,
     >>>     verbose=True)
     """
@@ -94,9 +93,9 @@ class aCompCor(Segmentations):
         subject=None, 
         wm_voxels=None,
         csf_voxels=None,
-        n_pca=5, 
+        n_components=5, 
         select_component=None, 
-        filter_pca=None, 
+        filter_confs=None, 
         save_as=None, 
         save_ext="pdf",
         summary_plot=True, 
@@ -113,9 +112,9 @@ class aCompCor(Segmentations):
         self.run                = run
         self.wm_voxels          = wm_voxels
         self.csf_voxels         = csf_voxels
-        self.n_pca              = n_pca
+        self.n_components       = n_components
         self.select_component   = select_component
-        self.filter_pca         = filter_pca
+        self.filter_confs       = filter_confs
         self.save_as            = save_as
         self.save_ext           = save_ext
         self.summary_plot       = summary_plot
@@ -139,7 +138,7 @@ class aCompCor(Segmentations):
                 **kwargs)
 
         if self.verbose:
-            print(f" Using {self.n_pca} components for aCompCor (WM/CSF separately)")
+            print(f" Using {self.n_components} components for aCompCor (WM/CSF separately)")
 
         self.acompcor_components    = []
         self.elbows                 = []
@@ -152,12 +151,12 @@ class aCompCor(Segmentations):
 
             if len(self.tissue_voxels) != 0:
                 try:
-                    self.pca        = decomposition.PCA(n_components=self.n_pca)
+                    self.pca        = decomposition.PCA(n_components=self.n_components)
                     self.components = self.pca.fit_transform(self.tissue_tc)
 
                     self.pcas.append(self.pca)
                     # find elbow with KneeLocator
-                    self.xx     = np.arange(0, self.n_pca)
+                    self.xx     = np.arange(0, self.n_components)
                     self.kn     = KneeLocator(self.xx, self.pca.explained_variance_, curve='convex', direction='decreasing')
                     self.elbow_ = self.kn.knee
                     
@@ -173,7 +172,7 @@ Timecourses from these voxels were extracted and fed into a PCA. These component
                     if self.verbose:
                         print(f" PCA for '{tissue}' was unsuccessful. Using all un-PCA'd timecourses ({len(self.tissue_voxels)})")
                         self.pca_desc = f"""
-PCA with {self.n_pca} was unsuccessful, so '{tissue}' timecourses were used to clean the data from respiration/cardiac 
+PCA with {self.n_components} was unsuccessful, so '{tissue}' timecourses were used to clean the data from respiration/cardiac 
 frequencies. """
 
             else:
@@ -222,25 +221,19 @@ No voxels for '{tissue}' were found, so PCA was skipped. """
                 print(f" Only regressing out component {select_component}")
             self.confs = self.acompcor_components[:, self.select_component-1]
 
-        if self.filter_pca != None:
+        if self.filter_confs != None:
             if self.verbose:
-                print(f" DCT high-pass filter on components [removes low frequencies <{filter_pca} Hz]")
+                print(f" DCT high-pass filter on components [removes low frequencies <{filter_confs} Hz]")
 
             if self.confs.ndim >= 2:
-                self.confs, _ = highpass_dct(self.confs.T, self.filter_pca, TR=self.TR)
+                self.confs, _ = highpass_dct(self.confs.T, self.filter_confs, TR=self.TR)
                 self.confs = self.confs.T
             else:
-                self.confs, _ = highpass_dct(self.confs, self.filter_pca, TR=self.TR)
+                self.confs, _ = highpass_dct(self.confs, self.filter_confs, TR=self.TR)
 
         # outputs (timepoints, voxels) array (RegressOut is also usable, but this is easier in linescanning.dataset.Dataset)
         self.acomp_data = clean(self.data.values, standardize=False, confounds=self.confs).T
 
-        # make summary plot of aCompCor effect
-        if self.summary_plot:
-            self.summary()
-
-    def summary(self, **kwargs):
-        
         self.__desc__ = """
 Nighres segmentations were transformed to the individual slices of each run using antsApplyTransforms with `MultiLabel` interpolation. 
 White matter and CSF voxels were selected based on the CRUISE-segmentation if all voxels across the beam (in *phase-enconding* 
@@ -248,11 +241,17 @@ direction) were assigned to this tissue type. This limited the possibility for p
 
         self.__desc__ += self.pca_desc
 
+        # make summary plot of aCompCor effect
+        if self.summary_plot:
+            self.summary()
+
+    def summary(self, **kwargs):
+
         if self.tissue_pca["wm"] or self.tissue_pca["csf"]:
-            fig = plt.figure(figsize=(30, 7))
-            gs = fig.add_gridspec(1, 4)
+            fig = plt.figure(figsize=(30,7))
+            gs = fig.add_gridspec(1,4)
         else:
-            fig = plt.figure(figsize=(24, 7))
+            fig = plt.figure(figsize=(24,7))
             gs = fig.add_gridspec(1, 3)
 
         ax = fig.add_subplot(gs[0])
@@ -293,14 +292,12 @@ direction) were assigned to this tissue type. This limited the possibility for p
                 x_label="nr of components",
                 y_label="variance explained (%)",
                 labels=label,
-                font_size=16,
                 line_width=line_width,
-                sns_trim=True,
                 **kwargs)
 
         # create dashed line on cut-off frequency if specified
-        if self.filter_pca != None:
-            add_vline = {'pos': self.filter_pca, 
+        if self.filter_confs != None:
+            add_vline = {'pos': self.filter_confs, 
                          'color': 'k',
                          'ls': 'dashed', 
                          'lw': 0.5}
@@ -321,10 +318,8 @@ direction) were assigned to this tissue type. This limited the possibility for p
             x_label="frequency (Hz)",
             y_label="power (a.u.)",
             x_lim=[0, 1.5],
-            font_size=16,
             line_width=line_width,
             add_vline=add_vline,
-            sns_trim=True,
             **kwargs)
 
         # plot power spectra from non-aCompCor'ed vs aCompCor'ed data
@@ -350,26 +345,30 @@ direction) were assigned to this tissue type. This limited the possibility for p
             title="Power spectra of average GM-voxels",
             labels=['no aCompCor', 'aCompCor'],
             axs=ax3,
-            font_size=16,
             x_lim=[0, 1.5],
             line_width=2,
-            sns_trim=True,
             **kwargs)
 
-        # add insets with time-to-peak
+        # add insets with non-cleaned vs cleaned timeseries of average gm-voxels
+        x_axis = np.array(list(np.arange(0,tc1.shape[0])*self.TR))
         left, bottom, width, height = [0.2, 0.5, 0.8, 0.4]
         inset = ax3.inset_axes([left, bottom, width, height])
         plotting.LazyPlot(
             [tc1, tc2],
-            xx=np.array(list(np.arange(0,tc1.shape[0])*self.TR)),
+            xx=x_axis,
             color=["#1B9E77", "#D95F02"],
             y_label="magnitude",
             axs=inset,
-            font_size=12,
+            add_hline=0,
+            x_lim=[0,x_axis[-1]],
+            font_size=14,
             **kwargs)
             
         inset.set_xticks([])
-        sns.despine(offset=5, bottom=True, trim=True, ax=inset)
+        sns.despine(
+            offset=None, 
+            bottom=True, 
+            ax=inset)
 
         if self.save_as != None:
             if self.trg_session == None:
@@ -559,3 +558,254 @@ def get_freq(func, TR=0.105, spectrum_type='psd', clip_power=None):
             power[power>clip_power] = clip_power
 
         return freq, power
+
+class ICA():
+
+    def __init__(
+        self,
+        data,
+        n_components=10,
+        filter_confs=0.02,
+        verbose=False,
+        TR=0.105,
+        save_as=None,
+        session=1,
+        run=1,
+        summary_plot=False,
+        melodic_plot=False,
+        ribbon=(356,363),
+        save_ext="svg",
+        **kwargs):
+        
+        self.data           = data
+        self.n_components   = n_components
+        self.filter_confs   = filter_confs
+        self.verbose        = verbose
+        self.TR             = TR
+        self.save_as        = save_as
+        self.session        = session
+        self.run            = run
+        self.summary_plot   = summary_plot
+        self.melodic_plot   = melodic_plot
+        self.gm_voxels      = ribbon
+        self.save_ext       = save_ext
+        self.__dict__.update(kwargs)
+
+        # sort out gm_voxels format
+        if not isinstance(self.gm_voxels, list):
+            if isinstance(self.gm_voxels, tuple):
+                self.gm_voxels = list(np.arange(*self.gm_voxels))
+            else:
+                self.gm_voxels = [ii for ii in self.gm_voxels]
+
+        # check data format
+        if isinstance(self.data, pd.DataFrame):
+            self.add_index = True
+            self.data_array = self.data.values
+        else:
+            self.data_array = self.data.copy()
+
+        # initiate ica
+        self.ica = decomposition.FastICA(n_components=self.n_components)
+        self.S_ = self.ica.fit_transform(self.data)
+        self.A_ = self.ica.mixing_
+        
+        # transform the sources back to the mixed data (apply mixing matrix)
+        self.I_ = np.dot(self.S_, self.A_.T)
+
+        if self.filter_confs != None:
+            if self.verbose:
+                print(f" DCT high-pass filter on components [removes low frequencies <{filter_confs} Hz]")
+
+            if self.S_.ndim >= 2:
+                self.S_filt, _ = highpass_dct(self.S_.T, self.filter_confs, TR=self.TR)
+                self.S_filt = self.S_filt.T
+            else:
+                self.S_filt, _ = highpass_dct(self.S_, self.filter_confs, TR=self.TR)
+
+        # outputs (timepoints, voxels) array (RegressOut is also usable, but this is easier in linescanning.dataset.Dataset)
+        self.ica_data = clean(self.data.values, standardize=False, confounds=self.S_filt).T
+
+        # make summary plot of aCompCor effect
+        if self.summary_plot:
+            self.summary()
+
+        if self.melodic_plot:
+            self.melodic()
+
+    def summary(self, **kwargs):
+        
+        self.__desc__ = f"""
+Sklearn's implementation of 'FastICA' was used to decompose the signal into {self.n_components} components.
+ """
+
+        if not hasattr(self, 'line_width'):
+            self.line_width = 2
+
+        # initiate figure
+        fig = plt.figure(figsize=(24, 6))
+        gs = fig.add_gridspec(1,3, width_ratios=[30,30,100])
+        ax1 = fig.add_subplot(gs[0])
+
+        # collect power spectra
+        self.freqs = []
+        for ii in range(self.n_components):
+
+            # freq
+            tc = self.S_[:,ii]
+            tc_freq = get_freq(tc, TR=self.TR, spectrum_type='fft')
+
+            # append
+            self.freqs.append(tc_freq)
+
+        # create dashed line on cut-off frequency if specified
+        if self.filter_confs != None:
+            add_vline = {'pos': self.filter_confs}
+            self.__desc__ += f"""
+Resulting components from the ICA were high-pass filtered using discrete cosine sets (DCT) with a cut off frequency of {self.filter_confs} Hz.
+"""
+        else:
+            add_vline = None            
+
+        plotting.LazyPlot(
+            [self.freqs[ii][1] for ii in range(self.n_components)],
+            xx=self.freqs[ii][0],
+            x_label="frequency (Hz)",
+            y_label="power (a.u.)",
+            cmap="inferno",
+            title="ICA components",
+            axs=ax1,
+            x_lim=[0,1.5],
+            add_vline=add_vline,
+            line_width=self.line_width)  
+        
+        # plot power spectra from non-aCompCor'ed vs aCompCor'ed data
+        tc1 = utils.select_from_df(self.data, expression='ribbon', indices=self.gm_voxels).mean(axis=1).values
+        tc2 = self.ica_data[self.gm_voxels,:].mean(axis=0)
+
+        ax2 = fig.add_subplot(gs[1])
+        # add insets with power spectra
+        tc1_freq = get_freq(tc1, TR=self.TR, spectrum_type='fft')
+        tc2_freq = get_freq(tc2, TR=self.TR, spectrum_type='fft')
+
+        plotting.LazyPlot(
+            [tc1_freq[1],tc2_freq[1]],
+            xx=tc1_freq[0],
+            color=["#1B9E77", "#D95F02"],
+            x_label="frequency (Hz)",
+            title="Average ribbon-voxels",
+            labels=['no ICA', 'ICA'],
+            axs=ax2,
+            line_width=2,
+            x_lim=[0,1.5],
+            **kwargs)
+
+        x_axis = np.array(list(np.arange(0,tc1.shape[0])*self.TR))
+        ax3 = fig.add_subplot(gs[2])
+        plotting.LazyPlot(
+            [tc1,tc2],
+            xx=x_axis,
+            color=["#1B9E77", "#D95F02"],
+            x_label="time (s)",
+            y_label="magnitude",
+            title="Timeseries of average GM-voxels ICA'd vs non-ICA'd",
+            labels=['no ICA', 'ICA'],
+            axs=ax3,
+            line_width=2,
+            x_lim=[0,x_axis[-1]],
+            **kwargs)
+
+        if self.save_as != None:
+            if self.session == None:
+                self.base_name = self.subject
+            else:
+                self.base_name = f"{self.subject}_ses-{self.session}"
+
+            fname = opj(self.save_as, f"{self.base_name}_run-{self.run}_desc-ica.{self.save_ext}")
+            fig.savefig(
+                fname, 
+                bbox_inches="tight", 
+                dpi=300, 
+                facecolor="white")
+
+    def melodic(self, color="#6495ED", **kwargs):
+
+        # initiate figure
+        fig = plt.figure(figsize=(24, self.n_components*6))
+        subfigs = fig.subfigures(nrows=self.n_components, hspace=0.4)    
+
+        # get plotting defaults
+        self.defaults = plotting.Defaults()
+
+        for comp in range(self.n_components):
+            
+            # make subfigure for each component
+            axs = subfigs[comp].subplots(ncols=3, gridspec_kw={'width_ratios': [0.3,0.3, 1]})
+
+            # axis for spatial profile
+            ax_spatial = axs[0]
+
+            vox_ticks = [0,self.A_.shape[0]//2,self.A_.shape[0]]
+            plotting.LazyPlot(
+                self.A_[:,comp],
+                color=color,
+                x_label="voxels",
+                y_label="magnitude",
+                title="spatial profile",
+                axs=ax_spatial,
+                line_width=2,
+                add_hline=0,
+                x_ticks=vox_ticks,
+                **kwargs)
+
+            # axis for power spectra of component
+            ax_freq = axs[1]
+            tc = self.S_[:,comp]
+            
+            # get frequency/power
+            freq = get_freq(tc, TR=self.TR, spectrum_type="fft")
+
+            plotting.LazyPlot(
+                freq[1],
+                xx=freq[0],
+                color=color,
+                x_label="frequency (Hz)",
+                y_label="power (a.u.)",
+                title="power spectra",
+                axs=ax_freq,
+                line_width=2,
+                x_lim=[0,1.5],
+                **kwargs)
+
+            # axis for timecourse of component
+            ax_tc = axs[2]
+            x_axis = np.array(list(np.arange(0,tc.shape[0])*self.TR))
+            plotting.LazyPlot(
+                tc,
+                xx=x_axis,
+                color=color,
+                x_label="time (s)",
+                y_label="magnitude",
+                title="timecourse",
+                axs=ax_tc,
+                line_width=2,
+                x_lim=[0,x_axis[-1]],
+                add_hline=0,
+                **kwargs)
+
+            subfigs[comp].suptitle(f"component {comp+1}", fontsize=self.defaults.font_size*1.4, y=1.02)
+
+        fig.suptitle("Independent component analyis (ICA)", fontsize=self.defaults.font_size*1.8, y=1.012)
+
+        if self.save_as != None:
+            if self.session == None:
+                self.base_name = self.subject
+            else:
+                self.base_name = f"{self.subject}_ses-{self.session}"
+
+            fname = opj(self.save_as, f"{self.base_name}_run-{self.run}_desc-melodic.{self.save_ext}")
+            fig.savefig(
+                fname, 
+                bbox_inches="tight", 
+                dpi=300, 
+                facecolor="white")
