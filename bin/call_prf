@@ -17,6 +17,7 @@ from scipy import io
 import sys
 import warnings
 import json
+import pickle
 warnings.filterwarnings('ignore')
 opj = os.path.join
 
@@ -58,6 +59,9 @@ Arguments:
                                     tion fitting by using L-BGFS ('bgfs'). To specify a list, use 
                                     the format '-c [tc,bgfs]'. Use --tc or --bgfs to sync the mini-
                                     mizers across stages
+    --cut_vols <volumes>            Number of volumes to remove at the beginning of the timeseries. 
+                                    Default is 0, but sometimes it's good to get rid of the initial
+                                    transient
 
 Options:                                  
     --hrf           Fit the HRF during pRF-fitting. If `True`, the fitting will consist of two 
@@ -124,9 +128,10 @@ Example:
     overwrite   = False
     constraints = "tc"
     do_fit      = True
+    cut_vols    = 0
 
     try:
-        opts = getopt.getopt(argv,"ghs:n:t:o:i:p:m:x:u:c:",["help", "sub=", "model=", "ses=", "task=", "out=", "in=", "png=", "params=", "grid", "space=", "hrf", "n_pix=", "clip=", "verbose", "file_ending=", "zscore", "overwrite", "constr=", "tc", "bgfs", "no_fit", "raw"])[0]
+        opts = getopt.getopt(argv,"ghs:n:t:o:i:p:m:x:u:c:v:",["help", "sub=", "model=", "ses=", "task=", "out=", "in=", "png=", "params=", "grid", "space=", "hrf", "n_pix=", "clip=", "verbose", "file_ending=", "zscore", "overwrite", "constr=", "tc", "bgfs", "no_fit", "raw", "cut_vols="])[0]
     except getopt.GetoptError:
         print("ERROR while reading arguments; did you specify an illegal argument?")
         print(main.__doc__)
@@ -178,7 +183,9 @@ Example:
             do_fit = False
         elif opt in ("--constr"):
             constraints = utils.string2list(arg)
-
+        elif opt in ("--cut_vols"):
+            cut_vols = int(arg)
+            
     if len(argv) < 2:
         print(main.__doc__)
         sys.exit()
@@ -301,31 +308,28 @@ Example:
         # check if this matches with FreeSurfer surfaces
         n_verts_fs = []
         for i in ['lh', 'rh']:
-            surf = opj(os.environ['SUBJECTS_DIR'], f"sub-{sub}", 'surf', f'{i}.white')
+            surf = opj(os.environ.get('SUBJECTS_DIR'), f"sub-{sub}", 'surf', f'{i}.white')
             verts = nb.freesurfer.io.read_geometry(surf)[0].shape[0]
             n_verts_fs.append(verts)
 
         if n_verts_fs != n_verts:
             raise ValueError(f"Mismatch between number of vertices in pRF-analysis ({n_verts}) and FreeSurfer ({n_verts_fs})..?\nYou're probably using an older surface reconstruction. Check if you've re-ran fMRIprep again with new FreeSurfer-segment")
-    
-    # shift timeseries so they have the same average value in proper baseline periods across conditions
+
+    # cut volumes at the beginning of the timeseries. Also subtract number of volumes from baseline
+    if verbose:
+        print(f"Cutting {cut_vols} from beginning of timeseries")
+        
+    m_prf_tc_data = m_prf_tc_data[cut_vols:,:]
+
+    # default baseline is 15 volumes
+    baseline = 15-cut_vols 
+
+    # convert to psc according to baseline (as per Serge Dumoulin).
     if psc:
         if verbose:
             print("Converting to percent signal change and fix baseline")
 
-        # # first step of PSC; set NaNs to zero if dividing by 0 (in case of crappy timecourses)
-        # m_prf_tc_data *= np.nan_to_num((100/np.mean(m_prf_tc_data, axis=0)))
-
-        # # get timepoints without stimulus
-        # timepoints_no_stim = prf.baseline_from_dm(design_matrix[list(design_matrix.keys())[-1]])
-
-        # # get median
-        # median_baseline = np.median(m_prf_tc_data[timepoints_no_stim,:], axis=0)
-
-        # # subtract
-        # m_prf_tc_data -= median_baseline
-
-        m_prf_tc_data = utils.percent_change(m_prf_tc_data, 0, baseline=20)
+        m_prf_tc_data = utils.percent_change(m_prf_tc_data, 0, baseline=baseline)
 
     # save files
     if verbose:
@@ -345,7 +349,7 @@ Example:
         else:
             if verbose:
                 print("Could not find func-file, setting TR to 1.5; CHECK THIS!")
-            tr = 1.5
+            tr = 1.5        
 
         # plop everything if pRFmodelFitting object
         if grid_only:

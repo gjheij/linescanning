@@ -106,7 +106,8 @@ clip_flag=""
 clip=1
 use_constr="--tc"
 fit_flag=""
-while getopts :-:los:n:m:t:x:c: argument
+cut_vols=""
+while getopts :-:los:n:m:t:x:c:v: argument
 do
   case ${argument} in
     -)
@@ -165,7 +166,9 @@ do
     c)  clipper=${OPTARG}
           ;;     
     x)  use_constr="--constr [${OPTARG[@]}]"
-          ;;                       
+          ;;
+    v)  cut_vols="--cut_vols ${OPTARG[@]}"
+          ;;          
   esac
 done
 
@@ -414,7 +417,8 @@ for subID in ${search}; do
             ${verb_flag} \
             ${OW_flag} \
             ${use_constr} \
-            ${fit_flag}
+            ${fit_flag} \
+            ${cut_vols}
           
           if [[ $? -ne 0 ]]; then
             echo "ERROR in `basename ${0}`: call_prf did not execute cleanly"
