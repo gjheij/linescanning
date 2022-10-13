@@ -9,7 +9,6 @@ import math
 import matplotlib.image as mpimg
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
-import matplotlib as mpl
 import numpy as np
 import os
 import pandas as pd
@@ -433,7 +432,7 @@ def make_prf(prf_object, mu_x=0, mu_y=0, size=None, resize_pix=None, **kwargs):
     return prf
 
 
-# From Marco's https://github.com/VU-Cog-Sci/prfpy_tools/blob/master/utils/postproc_utils.py
+# From Marco's https://github.com/VU-Cog-Sci/prfpytools/blob/master/prfpytools/postproc_utils.py
 def norm_2d_sr_function(a,b,c,d,s_1,s_2,x,y,stims,mu_x=0,mu_y=0):
     """create size/response function given set of parameters and stimuli"""
 
@@ -442,8 +441,14 @@ def norm_2d_sr_function(a,b,c,d,s_1,s_2,x,y,stims,mu_x=0,mu_y=0):
     sr_function = (a*np.sum(np.exp(-((xx-mu_x)**2+(yy-mu_y)**2)/(2*s_1**2))*stims, axis=(-1,-2)) + b) / (c*np.sum(np.exp(-((xx-mu_x)**2+(yy-mu_y)**2)/(2*s_2**2))*stims, axis=(-1,-2)) + d) - b/d
     return sr_function
 
+# from https://github.com/mdaghlian/MD_toy_dn_scotoma/blob/2d0c208307536fd1853a6befdc38be7fe0d969fb/dn_scripts/RF.py
+def gauss_1d_function(x, mu, sigma):
+    """Create 1d gaussian from parameters"""
+    gauss1d = np.exp(-((x-mu)**2) /(2*(sigma**2)))
+    
+    return gauss1d
 
-# From Marco's https://github.com/VU-Cog-Sci/prfpy_tools/blob/master/utils/postproc_utils.py
+# From Marco's https://github.com/VU-Cog-Sci/prfpytools/blob/master/prfpytools/postproc_utils.py
 def norm_1d_sr_function(a,b,c,d,s_1,s_2,x,stims,mu_x=0):
     """Create size/response function for 1D stimuli"""
 
@@ -2041,14 +2046,13 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         make_figure=True, 
         xkcd=False, 
         title=None, 
-        font_size=18,
         transpose=False,
         freq_spectrum=False,
         freq_type='fft',
         clip_power=None,
         save_as=None,
-        axis_type="volumes",
-        resize_pix=None,
+        axis_type="time",
+        resize_pix=270,
         add_tc={"tc": None},
         axs=None,
         **kwargs):    
@@ -2214,7 +2218,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                 x_label = "time (s)"
                 x_axis = np.array(list(np.arange(0,self.prediction.shape[0])*self.TR))
             else:
-                x_axis = None
+                x_axis = np.array(list(np.arange(0,self.prediction.shape[0])))
                 x_label = "volumes"
 
             # add additional timecourse
@@ -2251,9 +2255,10 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                 axs=ax2,
                 title=set_title,
                 xkcd=xkcd,
-                font_size=font_size,
                 line_width=lw_list,
                 markers=marker_list,
+                x_lim=[0,x_axis[-1]],
+                x_ticks=[0,x_axis[-1]],
                 **kwargs)
 
             if freq_spectrum:
@@ -2276,7 +2281,6 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                     axs=ax3,
                     title=freq_type,
                     xkcd=xkcd,
-                    font_size=font_size,
                     x_lim=[0,0.5],
                     line_width=2,
                     **kwargs)
