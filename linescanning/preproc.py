@@ -12,6 +12,7 @@ import pandas as pd
 from scipy import signal
 import seaborn as sns
 from sklearn import decomposition
+from typing import Union
 import warnings
 
 opj = os.path.join
@@ -560,23 +561,82 @@ def get_freq(func, TR=0.105, spectrum_type='psd', clip_power=None):
         return freq, power
 
 class ICA():
+        
+    """ICA
+
+    Wrapper around :class:`sklearn.decomposition.FastICA`, with a few visualization options. The basic input needs to be a `pandas.DataFrame` or `numpy.ndarray` describing a 2D dataset (e.g., the output of :class:`linescanning.dataset.Dataset` or :class:`linescanning.dataset.ParseFuncFile`). :function:`linescanning.preproc.ICA.summary()` outputs a figure describing the effects of ICA denoising on the input data (similar to :function:`linescanning.preproc.aCompCor.summary()`). 
+
+    Parameters
+    ----------
+    subject: str, optional
+        Subject ID to use when saving figures (e.g., `sub-001`)
+    data: Union[pd.DataFrame,np.ndarray]
+        Dataset to be ICA'd in the format if `<time,voxels>`
+    n_components: int, optional
+        Number of components to use, by default 10
+    filter_confs: float, optional
+        Specify a high-pass frequency cut off to retain task-related frequencies, by default 0.02. If you do not want to high-pass filter the components, set `filter_confs=None` and `keep_comps` to the the components you want to retain (e.g., `keep_comps=[0,1]` to retain the first two components)
+    keep_comps: list, optional
+        Specify a list of components to keep from the data, rather than all high-pass components. If `filter_confs` == None, but `keep_comps` is given, no high-pass filtering is applied to the components. If `filter_confs` & `keep_comps` == None, an error will be thrown. You must either specify `filter_confs` and/or `keep_comps`
+    verbose: bool, optional
+        Turn on verbosity; prints some stuff to the terminal, by default False
+    TR: float, optional
+        Repetition time or sampling rate, by default 0.105
+    save_as: str, optional
+        Path pointing to the location where to save the figures. `sub-<subject>_run-{self.run}_desc-ica.{self.save_ext}"), by default None
+    session: int, optional
+        Session ID to use when saving figures (e.g., `1`), by default 1
+    run: int, optional
+        Run ID to use when saving figures (e.g., `1`), by default 1
+    summary_plot: bool, optional
+        Make a figure regarding the efficacy of the ICA denoising, by default False
+    melodic_plot: bool, optional
+        Make a figure regarding the information about the components themselves, by default False
+    ribbon: tuple, optional
+        Range of gray matter voxels. If `None`, we'll check the efficacy of ICA denoising over the average across the data, by default None
+    save_ext: str, optional
+        Extension to use when saving figures, by default "svg"
+
+    Example
+    ----------
+    >>> from linescanning.preproc import ICA
+    >>> ica_obj = ICA(
+    >>>     data_obj.hp_zscore_df,
+    >>>     subject=f"sub-{sub}",
+    >>>     session=ses,
+    >>>     run=3,
+    >>>     n_components=10,
+    >>>     TR=data_obj.TR,
+    >>>     filter_confs=0.18,
+    >>>     keep_comps=1,
+    >>>     verbose=True,
+    >>>     ribbon=None
+    >>> )
+    >>> # regress components from data. if `filter_confs` & `keep_comps` != None, we'll take the high-passed `keep_comps`components
+    >>> # if `filter_confs` == None, but `keep_comps` is given, no high-pass filtering is applied to the components
+    >>> # 
+    >>> ica_obj.regress()
+    """
 
     def __init__(
         self,
-        data,
-        n_components=10,
-        filter_confs=0.02,
-        verbose=False,
-        TR=0.105,
-        save_as=None,
-        session=1,
-        run=1,
-        summary_plot=False,
-        melodic_plot=False,
-        ribbon=(356,363),
-        save_ext="svg",
+        data:Union[pd.DataFrame,np.ndarray],
+        subject:str=None,
+        n_components:int=10,
+        filter_confs:float=0.02,
+        keep_comps:Union[int,list,tuple]=[0,1],
+        verbose:bool=False,
+        TR:float=0.105,
+        save_as:str=None,
+        session:int=1,
+        run:int=1,
+        summary_plot:bool=False,
+        melodic_plot:bool=False,
+        ribbon:Union[list,tuple]=None,
+        save_ext:str="svg",
         **kwargs):
         
+        self.subject        = subject
         self.data           = data
         self.n_components   = n_components
         self.filter_confs   = filter_confs
@@ -589,14 +649,16 @@ class ICA():
         self.melodic_plot   = melodic_plot
         self.gm_voxels      = ribbon
         self.save_ext       = save_ext
+        self.keep_comps     = keep_comps
         self.__dict__.update(kwargs)
+        
+        self.__desc__ = f"""
+Sklearn's implementation of 'FastICA' was used to decompose the signal into {self.n_components} components.
+ """
 
         # sort out gm_voxels format
-        if not isinstance(self.gm_voxels, list):
-            if isinstance(self.gm_voxels, tuple):
-                self.gm_voxels = list(np.arange(*self.gm_voxels))
-            else:
-                self.gm_voxels = [ii for ii in self.gm_voxels]
+        if isinstance(self.gm_voxels, tuple):
+            self.gm_voxels = list(np.arange(*self.gm_voxels))
 
         # check data format
         if isinstance(self.data, pd.DataFrame):
@@ -615,30 +677,63 @@ class ICA():
 
         if self.filter_confs != None:
             if self.verbose:
-                print(f" DCT high-pass filter on components [removes low frequencies <{filter_confs} Hz]")
+                print(f" DCT high-pass filter on components [removes low frequencies <{self.filter_confs} Hz]")
 
             if self.S_.ndim >= 2:
                 self.S_filt, _ = highpass_dct(self.S_.T, self.filter_confs, TR=self.TR)
                 self.S_filt = self.S_filt.T
             else:
                 self.S_filt, _ = highpass_dct(self.S_, self.filter_confs, TR=self.TR)
+        
+        # results from ICA
+        if self.melodic_plot:
+            self.melodic()
+
+    def regress(self):
+
+        if isinstance(self.keep_comps, int):
+            self.keep_comps = [self.keep_comps]
+        elif isinstance(self.keep_comps, tuple):
+            self.keep_comps = list(np.arange(*self.keep_comps))
+            
+        if isinstance(self.keep_comps, list):
+
+            if len(self.keep_comps) > self.S_.shape[-1]:
+                raise ValueError(f"Length of 'keep_comps' is larger ({len(self.keep_comps)}) than number of components ({self.S_.shape[-1]})")
+
+            if self.verbose:
+                print(f" Keeping components: {self.keep_comps}")
+
+            if self.filter_confs != None:
+                use_data = self.S_filt.copy()
+            else:
+                use_data = self.S_.copy()
+
+            self.confounds = use_data[:,[i for i in range(use_data.shape[-1]) if i not in self.keep_comps]]
+        else:
+            if self.filter_confs == None:
+                raise ValueError("Not sure what to do. Please specify either list of components to keep (e.g., 'keep_comps=[1,2]' or specify a high-pass cut off frequency (e.g., 'filter_confs=0.18')")
+
+            self.__desc__ += f"""
+Resulting components from the ICA were high-pass filtered using discrete cosine sets (DCT) with a cut off frequency of {self.filter_confs} Hz.
+"""
+            # this is pretty hard core: regress out all high-passed components
+            if self.verbose:
+                print(f" Regressing out all high-passed components [>{self.filter_confs} Hz]")
+                
+            self.confounds = self.S_filt.copy()
 
         # outputs (timepoints, voxels) array (RegressOut is also usable, but this is easier in linescanning.dataset.Dataset)
-        self.ica_data = clean(self.data.values, standardize=False, confounds=self.S_filt).T
+        self.ica_data = clean(self.data.values, standardize=False, confounds=self.confounds).T
 
         # make summary plot of aCompCor effect
         if self.summary_plot:
             self.summary()
 
-        if self.melodic_plot:
-            self.melodic()
-
     def summary(self, **kwargs):
-        
-        self.__desc__ = f"""
-Sklearn's implementation of 'FastICA' was used to decompose the signal into {self.n_components} components.
- """
 
+        """Create a plot containing the power spectra of all components, the power spectra of the average GM-voxels (or all voxels, depending on the presence of `gm_voxels` before and after ICA, as well as the averaged timecourses before and after ICA"""
+        
         if not hasattr(self, 'line_width'):
             self.line_width = 2
 
@@ -661,9 +756,6 @@ Sklearn's implementation of 'FastICA' was used to decompose the signal into {sel
         # create dashed line on cut-off frequency if specified
         if self.filter_confs != None:
             add_vline = {'pos': self.filter_confs}
-            self.__desc__ += f"""
-Resulting components from the ICA were high-pass filtered using discrete cosine sets (DCT) with a cut off frequency of {self.filter_confs} Hz.
-"""
         else:
             add_vline = None            
 
@@ -680,9 +772,15 @@ Resulting components from the ICA were high-pass filtered using discrete cosine 
             line_width=self.line_width)  
         
         # plot power spectra from non-aCompCor'ed vs aCompCor'ed data
-        tc1 = utils.select_from_df(self.data, expression='ribbon', indices=self.gm_voxels).mean(axis=1).values
-        tc2 = self.ica_data[self.gm_voxels,:].mean(axis=0)
-
+        if isinstance(self.gm_voxels, (tuple,list)):
+            tc1 = utils.select_from_df(self.data, expression='ribbon', indices=self.gm_voxels).mean(axis=1).values
+            tc2 = self.ica_data[self.gm_voxels,:].mean(axis=0)
+            txt = "GM-voxels"
+        else:
+            tc1 = self.data.values.mean(axis=-1)
+            tc2 = self.ica_data.mean(axis=0)
+            txt = "all voxels"
+        
         ax2 = fig.add_subplot(gs[1])
         # add insets with power spectra
         tc1_freq = get_freq(tc1, TR=self.TR, spectrum_type='fft')
@@ -708,7 +806,7 @@ Resulting components from the ICA were high-pass filtered using discrete cosine 
             color=["#1B9E77", "#D95F02"],
             x_label="time (s)",
             y_label="magnitude",
-            title="Timeseries of average GM-voxels ICA'd vs non-ICA'd",
+            title=f"Timeseries of average {txt} ICA'd vs non-ICA'd",
             labels=['no ICA', 'ICA'],
             axs=ax3,
             line_width=2,
@@ -728,19 +826,58 @@ Resulting components from the ICA were high-pass filtered using discrete cosine 
                 dpi=300, 
                 facecolor="white")
 
-    def melodic(self, color="#6495ED", **kwargs):
+    def melodic(
+        self, 
+        color:Union[str,tuple]="#6495ED", 
+        zoom_freq:bool=False,
+        task_freq:float=0.05,
+        zoom_lim:list=[0,0.5],
+        plot_comps:int=10,
+        **kwargs):
+
+        """melodic
+
+        Plot information about the components from the ICA. For each component until `plot_comps`, plot the 2D spatial profile of the component, its timecourse, and its power spectrum. If `zoom_freq=True`, we'll add an extra subplot next to the power spectrum which contains a zoomed in version of the power spectrum with `zoom_lim` as limits.
+
+        Parameters
+        ----------
+        color: Union[str,tuple], optional
+            Color for all subplots, by default "#6495ED"
+        zoom_freq: bool, optional
+            Add a zoomed in version of the power spectrum, by default False
+        task_freq: float, optional
+            If `zoom_freq=True`, add a vertical line where the *task-frequency* (`task_freq`) should be, by default 0.05
+        zoom_lim: list, optional
+            Limits for the zoomed in power spectrum, by default [0,0.5]
+        plot_comps: int, optional
+            Limit the number of plots being produced in case you have a lot of components, by default 10
+
+        Example
+        ----------
+        >>> ica_obj.melodic(
+        >>>     # color="r",
+        >>>     zoom_freq=True, 
+        >>>     zoom_lim=[0,0.25])
+        """
+
+        # check how many components to plot
+        if plot_comps <= self.n_components:
+            plot_comps = self.n_components
 
         # initiate figure
-        fig = plt.figure(figsize=(24, self.n_components*6))
-        subfigs = fig.subfigures(nrows=self.n_components, hspace=0.4)    
+        fig = plt.figure(figsize=(24, plot_comps*6))
+        subfigs = fig.subfigures(nrows=plot_comps, hspace=0.4)    
 
         # get plotting defaults
         self.defaults = plotting.Defaults()
 
-        for comp in range(self.n_components):
+        for comp in range(plot_comps):
             
             # make subfigure for each component
-            axs = subfigs[comp].subplots(ncols=3, gridspec_kw={'width_ratios': [0.3,0.3, 1]})
+            if zoom_freq:
+                axs = subfigs[comp].subplots(ncols=4, gridspec_kw={'width_ratios': [0.3,1,0.3,0.2], "wspace": 0.3})
+            else:
+                axs = subfigs[comp].subplots(ncols=3, gridspec_kw={'width_ratios': [0.3,1,0.3]})
 
             # axis for spatial profile
             ax_spatial = axs[0]
@@ -758,9 +895,26 @@ Resulting components from the ICA were high-pass filtered using discrete cosine 
                 x_ticks=vox_ticks,
                 **kwargs)
 
-            # axis for power spectra of component
-            ax_freq = axs[1]
+            # axis for timecourse of component
+            ax_tc = axs[1]
+
             tc = self.S_[:,comp]
+            x_axis = np.array(list(np.arange(0,tc.shape[0])*self.TR))
+            plotting.LazyPlot(
+                tc,
+                xx=x_axis,
+                color=color,
+                x_label="time (s)",
+                y_label="magnitude",
+                title="timecourse",
+                axs=ax_tc,
+                line_width=2,
+                x_lim=[0,x_axis[-1]],
+                add_hline=0,
+                **kwargs)
+
+            # axis for power spectra of component
+            ax_freq = axs[2]
             
             # get frequency/power
             freq = get_freq(tc, TR=self.TR, spectrum_type="fft")
@@ -777,21 +931,25 @@ Resulting components from the ICA were high-pass filtered using discrete cosine 
                 x_lim=[0,1.5],
                 **kwargs)
 
-            # axis for timecourse of component
-            ax_tc = axs[2]
-            x_axis = np.array(list(np.arange(0,tc.shape[0])*self.TR))
-            plotting.LazyPlot(
-                tc,
-                xx=x_axis,
-                color=color,
-                x_label="time (s)",
-                y_label="magnitude",
-                title="timecourse",
-                axs=ax_tc,
-                line_width=2,
-                x_lim=[0,x_axis[-1]],
-                add_hline=0,
-                **kwargs)
+            if zoom_freq:
+                # axis for power spectra of component
+                ax_zoom = axs[3]
+                plotting.LazyPlot(
+                    freq[1],
+                    xx=freq[0],
+                    color=color,
+                    x_label="frequency (Hz)",
+                    title="zoomed in",
+                    axs=ax_zoom,
+                    line_width=2,
+                    x_lim=zoom_lim,
+                    add_vline={
+                        "pos": task_freq,
+                        "color": "r",
+                        "lw": 2},
+                    x_ticks=zoom_lim,
+                    sns_left=True,
+                    **kwargs)
 
             subfigs[comp].suptitle(f"component {comp+1}", fontsize=self.defaults.font_size*1.4, y=1.02)
 
