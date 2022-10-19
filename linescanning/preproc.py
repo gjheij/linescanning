@@ -861,7 +861,7 @@ Resulting components from the ICA were high-pass filtered using discrete cosine 
         """
 
         # check how many components to plot
-        if plot_comps <= self.n_components:
+        if plot_comps >= self.n_components:
             plot_comps = self.n_components
 
         # initiate figure
