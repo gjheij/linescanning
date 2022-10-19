@@ -863,7 +863,7 @@ Resulting components from the ICA were high-pass filtered using discrete cosine 
         # check how many components to plot
         if plot_comps >= self.n_components:
             plot_comps = self.n_components
-
+            
         # initiate figure
         fig = plt.figure(figsize=(24, plot_comps*6))
         subfigs = fig.subfigures(nrows=plot_comps, hspace=0.4)    
@@ -954,6 +954,8 @@ Resulting components from the ICA were high-pass filtered using discrete cosine 
             subfigs[comp].suptitle(f"component {comp+1}", fontsize=self.defaults.font_size*1.4, y=1.02)
 
         fig.suptitle("Independent component analyis (ICA)", fontsize=self.defaults.font_size*1.8, y=1.012)
+
+        plt.tight_layout()
 
         if self.save_as != None:
             if self.session == None:
