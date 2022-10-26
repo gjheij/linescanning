@@ -928,7 +928,7 @@ Resulting components from the ICA were high-pass filtered using discrete cosine 
                 title="power spectra",
                 axs=ax_freq,
                 line_width=2,
-                x_lim=[0,1.5],
+                x_lim=[0,1/(2*self.TR)],
                 **kwargs)
 
             if zoom_freq:
