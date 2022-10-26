@@ -1332,6 +1332,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
         select_component=None,
         standardization="psc",
         filter_confs=0.2,
+        keep_comps=None,
         ses1_2_ls=None,
         run_2_run=None,
         save_as=None,
@@ -1384,6 +1385,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
         self.baseline_units             = baseline_units
         self.psc_nilearn                = psc_nilearn
         self.ica                        = ica
+        self.keep_comps                 = keep_comps
         self.__dict__.update(kwargs)
 
         # sampling rate and nyquist freq
@@ -1918,7 +1920,7 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                     raise TypeError("aCompCor cannot be used in conjunction with ICA. Please set 'acompcor=False'")
 
                 if self.verbose:
-                    print(f" Running FastICA with {self.n_components}")
+                    print(f" Running FastICA with {self.n_components} components")
 
                 self.ica_obj = preproc.ICA(
                     self.hp_zscore_df,
@@ -1927,6 +1929,7 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                     n_components=self.n_components,
                     TR=self.TR,
                     filter_confs=self.filter_confs,
+                    keep_comps=self.keep_comps,
                     verbose=self.verbose,
                     summary_plot=self.report,
                     melodic_plot=self.report,
@@ -1934,6 +1937,9 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                     save_as=save_as,
                     save_ext=self.save_ext
                 )
+
+                # regress
+                self.ica_obj.regress()
 
                 self.clean_tag = "ica"
                 self.clean_data = self.ica_obj.ica_data
@@ -2069,7 +2075,7 @@ order={self.poly_order}). """
             if self.clean_tag == None:
                 info = "no cleaning"
             else:
-                info = f"before {self.clean_tag}"
+                info = f"before '{self.clean_tag}'"
 
             print(f" tSNR [{info}]: {round(mean_tsnr_pre,2)}\t| variance: {round(mean_var_pre,2)}")
 
@@ -2158,10 +2164,11 @@ order={self.poly_order}). """
                 x_ticks=vox_ticks,
                 line_width=2)            
 
+            plt.close(fig)
             if self.report:
                 fname = opj(self.lsprep_figures, f"sub-{self.sub}_ses-{self.ses}_run-{run}_desc-qa.{self.save_ext}")
                 fig.savefig(fname, bbox_inches='tight', dpi=300)
-
+                
     def select_voxels_across_runs(self):
 
         fig = plt.figure(figsize=(24,12))
