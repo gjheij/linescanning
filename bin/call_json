@@ -65,29 +65,42 @@ Example
         raise ValueError(f"Length ({len(add_key)}) of key list does not match length of message list ({len(add_msg)})")          
 
     # check if file exists
-    if not os.path.exists(json_file):
-        raise FileNotFoundError(f"Could not find file {json_file}")
-
-    # open json
-    with open(json_file) as f:
-        data = json.load(f)
-
-    # create dictionary of new key
     add_dict = {}
-    for ix,key in enumerate(add_key):
-        # check if message is a number
-        if add_msg[ix].isdigit():
-            add_msg[ix] = int(add_msg[ix])
-        elif add_msg[ix].replace('.','',1).isdigit() and add_msg[ix].count('.') < 2:
-            add_msg[ix] = float(add_msg[ix])
-        add_dict[key] = add_msg[ix]
+    if os.path.exists(json_file):
 
-    data.update(add_dict)
+        # open json
+        with open(json_file) as f:
+            data = json.load(f)
 
-    # write
-    with open(json_file, 'w') as f:
-        json.dump(data, f, indent=4)    
+        # create dictionary of new key
+        for ix,key in enumerate(add_key):
+            # check if message is a number
+            if add_msg[ix].isdigit():
+                add_msg[ix] = int(add_msg[ix])
+            elif add_msg[ix].replace('.','',1).isdigit() and add_msg[ix].count('.') < 2:
+                add_msg[ix] = float(add_msg[ix])
+            add_dict[key] = add_msg[ix]
 
+        data.update(add_dict)
+        with open(json_file, 'w') as f:
+            json.dump(data, f, indent=4)    
+    else:
+        # create dictionary of new key
+        for ix,key in enumerate(add_key):
+            # check if message is a number
+            if add_msg[ix].isdigit():
+                add_msg[ix] = int(add_msg[ix])
+            elif add_msg[ix].replace('.','',1).isdigit() and add_msg[ix].count('.') < 2:
+                add_msg[ix] = float(add_msg[ix])
+            add_dict[key] = add_msg[ix]    # write
+            
+        # Serializing json
+        json_object = json.dumps(add_dict, indent=4)
+        
+        # Writing to sample.json
+        with open(json_file, "w") as outfile:
+            outfile.write(json_object)
+            
 if __name__ == "__main__":
     main(sys.argv[1:])
 
