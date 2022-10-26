@@ -227,10 +227,10 @@ Example:
     design_file = opj(outputdir, f'design_task-{task}.mat')
     if os.path.isfile(design_file):
         if verbose:
-            print(f"Design matrix: {design_file}")
+            print(f"Design matrix: {design_file}", flush=True)
         design_matrix = io.loadmat(design_file)
     else:
-        print("Creating new design matrix")
+        print("Creating new design matrix", flush=True)
         if os.path.isdir(png_dir):
             try:
                 dm = prf.get_prfdesign(png_dir, n_pix=n_pix, dm_edges_clipping=clip_dm)
@@ -263,9 +263,9 @@ Example:
     files = utils.get_file_from_substring(search_for, inputdir)
     
     if verbose:
-        print("Loading in data")
+        print("Loading in data", flush=True)
         for ff in files:
-            print(f" {ff}")
+            print(f" {ff}", flush=True)
     
     if not files[0].endswith(".nii.gz") and not files[0].endswith(".nii"):
         # chunk into L/R pairs
@@ -317,7 +317,7 @@ Example:
 
     # cut volumes at the beginning of the timeseries. Also subtract number of volumes from baseline
     if verbose:
-        print(f"Cutting {cut_vols} from beginning of timeseries")
+        print(f"Cutting {cut_vols} from beginning of timeseries", flush=True)
         
     m_prf_tc_data = m_prf_tc_data[cut_vols:,:]
 
@@ -327,13 +327,13 @@ Example:
     # convert to psc according to baseline (as per Serge Dumoulin).
     if psc:
         if verbose:
-            print("Converting to percent signal change and fix baseline")
+            print("Converting to percent signal change and fix baseline", flush=True)
 
         m_prf_tc_data = utils.percent_change(m_prf_tc_data, 0, baseline=baseline)
 
     # save files
     if verbose:
-        print("Saving averaged data")
+        print("Saving averaged data", flush=True)
         
     np.save(opj(outputdir, f'{out}_hemi-LR_desc-avg_bold.npy'), m_prf_tc_data)
     np.save(opj(outputdir, f'{out}_hemi-L_desc-avg_bold.npy'), m_prf_tc_data[:,:n_verts[0]])
@@ -345,10 +345,10 @@ Example:
         if giftis:
             tr = dataset.ParseGiftiFile(pair[0]).TR_sec
             if verbose:
-                print(f"Setting TR to {tr}")
+                print(f"Setting TR to {tr}", flush=True)
         else:
             if verbose:
-                print("Could not find func-file, setting TR to 1.5; CHECK THIS!")
+                print("Could not find func-file, setting TR to 1.5; CHECK THIS!", flush=True)
             tr = 1.5        
 
         # plop everything if pRFmodelFitting object
@@ -360,7 +360,7 @@ Example:
             old_params = utils.get_file_from_substring(['model-gauss', 'stage-iter', 'params.pkl'], outputdir, return_msg=None)
             if verbose:
                 if old_params != None:
-                    print(f"Injecting '{old_params}' into {model}-model")
+                    print(f"Injecting '{old_params}' into {model}-model", flush=True)
         else:
             old_params = None
 

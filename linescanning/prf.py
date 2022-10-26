@@ -764,7 +764,7 @@ def select_stims(settings_dict, stim_library, frames=225, baseline_frames=15, ra
 
             return design
 
-def prf_neighbouring_vertices(subject, hemi='lh', vertex=None, prf_params=None, compare=False):
+def prf_neighbouring_vertices(subject, hemi='lh', vertex=None, prf_params=None, compare=False, vertices_only=False):
 
     """prf_neighbouring_vertices
 
@@ -782,6 +782,8 @@ def prf_neighbouring_vertices(subject, hemi='lh', vertex=None, prf_params=None, 
         if you do not want to depend on fixed data structures, you can specify the pRF-parameters directly with a string pointing to a numpy-file or the numpy-array itself
     compare: bool
         if True, it will compare the parameters of neighbouring vertices with the parameters of <vertex>
+    vertices_only: bool
+        only return the vertices, not their pRF-parameters (which might depend on a certain project structure)
 
     Returns
     ----------
@@ -795,6 +797,9 @@ def prf_neighbouring_vertices(subject, hemi='lh', vertex=None, prf_params=None, 
     ----------
     Note that the last element in both is the information about the requested vertex itself!
     """
+
+    if not isinstance(vertex, int):
+        raise ValueError("Must specify vertex from which to extract neighbours")
 
     # fetch the surface used for vertex extraction
     surf = utils.get_file_from_substring(f"{hemi}.fiducial", opj(os.environ['SUBJECTS_DIR'], subject, 'surf'))
@@ -821,20 +826,23 @@ def prf_neighbouring_vertices(subject, hemi='lh', vertex=None, prf_params=None, 
 
     verts.append(vertex)
 
-    # extract pRF parameters for each vertex
-    prfs = {}
-    for ii in verts:
-        cmd_1 = ('call_prfinfo', '-s', str(subject), '-v', str(ii), '-h', str(hemi))
-        prfs[ii] = ast.literal_eval(utils.decode(subprocess.check_output(cmd_1)).splitlines()[0])
+    if not vertices_only:
+        # extract pRF parameters for each vertex
+        prfs = {}
+        for ii in verts:
+            cmd_1 = ('call_prfinfo', '-s', str(subject), '-v', str(ii), '-h', str(hemi))
+            prfs[ii] = ast.literal_eval(utils.decode(subprocess.check_output(cmd_1)).splitlines()[0])
 
-    if compare:
-        for ii in verts[:-1]:
-            print(f'Vertex {ii}:')
-            for el in ['x', 'y', 'size']:
-                x = round((prfs[ii][el]/prfs[list(prfs.keys())[-1]][el])*100,2)
-                print(f" {el} = {x}% similar")
+        if compare:
+            for ii in verts[:-1]:
+                print(f'Vertex {ii}:')
+                for el in ['x', 'y', 'size']:
+                    x = round((prfs[ii][el]/prfs[list(prfs.keys())[-1]][el])*100,2)
+                    print(f" {el} = {x}% similar")
 
-    return prfs, verts
+        return prfs, verts
+    else:
+        return verts
 
 def create_line_prf_matrix(
     log_dir, 
@@ -1180,7 +1188,7 @@ def generate_model_params(model='gauss', dm=None, TR=1.5, fit_hrf=False, verbose
         yml_file = utils.get_file_from_substring("prf_analysis.yml", opj(os.path.dirname(os.path.dirname(utils.__file__)), 'misc'))
 
     if verbose:
-        print(f"Reading settings from '{yml_file}'")
+        print(f"Reading settings from '{yml_file}'", flush=True)
 
     with open(yml_file) as file:
         
@@ -1308,7 +1316,7 @@ class GaussianModel():
             # check if dimensions make sense
             if self.old_params.shape[0] != self.data.shape[0]:
                 if self.verbose:
-                    print(f"Matching old parameters of shape {self.old_params.shape} to data of shape {self.data.shape[0],self.old_params.shape[-1]}")
+                    print(f"Matching old parameters of shape {self.old_params.shape} to data of shape {self.data.shape[0],self.old_params.shape[-1]}", flush=True)
                 self.old_params = np.tile(self.old_params, (self.data.shape[0],1))
 
             # set inserted params as gridsearch_params and iterative_search_params
@@ -1320,11 +1328,11 @@ class GaussianModel():
             self.previous_gaussian_fitter = self.gaussian_fitter
 
             if self.verbose:
-                print(f"Inserting parameters from {type(self.old_params)} as 'iterative_search_params' in {self}")            
+                print(f"Inserting parameters from {type(self.old_params)} as 'iterative_search_params' in {self}", flush=True)            
 
     def gridfit(self):
         if self.verbose:
-            print("Starting gauss grid fit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S'))
+            print("Starting gauss grid fit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S'), flush=True)
 
         ## start grid fit
         start = time.time()
@@ -1344,12 +1352,12 @@ class GaussianModel():
                 start_time=datetime.now().strftime('%Y/%m/%d %H:%M:%S'),
                 rsq=str(self.settings['rsq_threshold']),
                 nr=str(np.sum(self.gauss_grid[:, -1]>self.settings['rsq_threshold'])),
-                total=str(self.gaussian_fitter.data.shape[0])))
+                total=str(self.gaussian_fitter.data.shape[0])), flush=True)
                 
             print(f"Gridfit took {str(timedelta(seconds=elapsed))}")
             print("Mean rsq>{rsq}: {m_rsq}".format(
                 rsq=self.settings['rsq_threshold'],
-                m_rsq=str(round(mean_rsq,2))))
+                m_rsq=str(round(mean_rsq,2))), flush=True)
         
         if self.write_files:
             if self.save_grid:
@@ -1358,14 +1366,14 @@ class GaussianModel():
     def iterfit(self):
         start = time.time()
         if self.verbose:
-            print("Starting gauss iterfit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S'))
+            print("Starting gauss iterfit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S'), flush=True)
 
         # fetch bounds
         self.gauss_bounds = self.fetch_bounds(model='gauss')
 
         if isinstance(self.fix_parameters, list):
             if self.verbose:
-                print(f"Fixing parameters (idx): {self.fix_parameters}")
+                print(f"Fixing parameters (idx): {self.fix_parameters}", flush=True)
 
             for el in self.fix_parameters:
                 self.gauss_bounds[el] = tuple(
@@ -1395,9 +1403,9 @@ class GaussianModel():
             print("Completed gauss iterfit at {start_time}. Mean rsq>{rsq}: {m_rsq}".format(
                 start_time=datetime.now().strftime('%Y/%m/%d %H:%M:%S'),
                 rsq=self.settings['rsq_threshold'],
-                m_rsq=str(round(mean_rsq,2))))
+                m_rsq=str(round(mean_rsq,2))), flush=True)
 
-            print(f"Iterfit took {str(timedelta(seconds=elapsed))}")
+            print(f"Iterfit took {str(timedelta(seconds=elapsed))}", flush=True)
 
         # save intermediate files
         if self.write_files:
@@ -1464,7 +1472,7 @@ class ExtendedModel():
             ## Start grid fit
             start = time.time()
             if self.verbose:
-                print(f"Starting {self.model} gridfit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S'))
+                print(f"Starting {self.model} gridfit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S'), flush=True)
 
             self.tmp_fitter.grid_fit(
                 *self.grid_list,
@@ -1479,21 +1487,21 @@ class ExtendedModel():
             filtered_ = utils.filter_for_nans(self.tmp_fitter.gridsearch_params)
             setattr(self, f"{self.model}_grid", filtered_)
             if self.verbose:
-                mean_rsq = np.nanmean(filtered_[self.tmp_fitter.gridsearch_rsq_mask, -1])
+                mean_rsq = np.mean(filtered_[self.tmp_fitter.gridsearch_rsq_mask, -1])
                 print("Completed {model} gridfit at {start_time}. Mean rsq>{rsq}: {m_rsq}".format(
                     model=self.model,
                     start_time=datetime.now().strftime('%Y/%m/%d %H:%M:%S'),
                     rsq=str(self.settings['rsq_threshold']),
-                    m_rsq=str(round(mean_rsq,2))))
+                    m_rsq=str(round(mean_rsq,2))), flush=True)
                     
-                print(f"Gridfit took {str(timedelta(seconds=elapsed))}")
+                print(f"Gridfit took {str(timedelta(seconds=elapsed))}", flush=True)
 
             if self.write_files:
                 if self.save_grid:
                     self.save_params(model=self.model, stage="grid")
         else:
             if self.verbose:
-                print(f"Setting {(type(self.gaussian_fitter.iterative_search_params))} as 'gridsearch_params' in {self.tmp_fitter}")
+                print(f"Setting {(type(self.gaussian_fitter.iterative_search_params))} as 'gridsearch_params' in {self.tmp_fitter}", flush=True)
                 
             self.tmp_fitter.gridsearch_params = self.gaussian_fitter.iterative_search_params
 
@@ -1505,7 +1513,7 @@ class ExtendedModel():
         self.tmp_bounds = self.fetch_bounds(model=self.model)
         if isinstance(self.fix_parameters, list):
             if self.verbose:
-                print(f"Fixing parameters (idx): {self.fix_parameters}")
+                print(f"Fixing parameters (idx): {self.fix_parameters}", flush=True)
 
             for el in self.fix_parameters:
                 self.tmp_bounds[el] = tuple(
@@ -1516,7 +1524,7 @@ class ExtendedModel():
         
         start = time.time()
         if self.verbose:
-            print(f"Starting {self.model} iterfit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S'))
+            print(f"Starting {self.model} iterfit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S'), flush=True)
 
         # fit
         if self.constraints[1] == "tc":
@@ -1540,14 +1548,14 @@ class ExtendedModel():
         setattr(self, f"{self.model}_iter", filtered_)
 
         if self.verbose:
-            mean_rsq = np.nanmean(filtered_[self.tmp_fitter.rsq_mask, -1])
+            mean_rsq = np.mean(filtered_[self.tmp_fitter.rsq_mask, -1])
             print("Completed {model} iterfit at {start_time}. Mean rsq>{rsq}: {m_rsq}".format(
                 model=self.model,
                 start_time=datetime.now().strftime('%Y/%m/%d %H:%M:%S'),
                 rsq=self.settings['rsq_threshold'],
-                m_rsq=str(round(mean_rsq,2))))
+                m_rsq=str(round(mean_rsq,2))), flush=True)
 
-            print(f"Iterfit took {str(timedelta(seconds=elapsed))}")
+            print(f"Iterfit took {str(timedelta(seconds=elapsed))}", flush=True)
 
         if self.write_files:
             self.save_params(model=self.model, stage="iter")   
@@ -1684,7 +1692,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         # read design matrix if needed
         if isinstance(self.design_matrix, str):
             if self.verbose:
-                print(f"Reading design matrix from '{self.design_matrix}'")
+                print(f"Reading design matrix from '{self.design_matrix}'", flush=True)
             self.design_matrix = read_par_file(self.design_matrix)
 
         #----------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -1696,14 +1704,14 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
             self.settings['bounds']['bold_bsl'] = [0,0]
             self.fix_grid_baseline = 0
             if self.verbose:
-                print(f"Fixing baseline at {self.settings['bounds']['bold_bsl']}")
+                print(f"Fixing baseline at {self.settings['bounds']['bold_bsl']}", flush=True)
         else:
             self.fix_grid_baseline = None
 
         # check if we got a pRF-stim object
         if self.prf_stim != None:
             if self.verbose:
-                print("Using user-defined pRF-stimulus object")
+                print("Using user-defined pRF-stimulus object", flush=True)
             self.prf_stim = self.prf_stim
         else:
             self.prf_stim = self.prf_stim_
@@ -1738,7 +1746,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
 
         if self.model_obj != None:
             if self.verbose:
-                print(f"Setting {self.model_obj} as '{model}_model'-attribute")
+                print(f"Setting {self.model_obj} as '{model}_model'-attribute", flush=True)
             setattr(self, f'{model}_model', self.model_obj)
 
     def define_settings(self):
@@ -1758,7 +1766,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                 self.hrf = self.hrf[np.newaxis,...]
             
             if self.verbose:
-                print(f"Instantiate HRF with: '{type(self.hrf)}'")
+                print(f"Instantiate HRF with: '{type(self.hrf)}'", flush=True)
 
             try:
                 self.hrf = HRF(self.hrf)
@@ -1767,7 +1775,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
 
         elif isinstance(self.hrf, list):
             if self.verbose:
-                print(f"Instantiate HRF with: {self.hrf}")
+                print(f"Instantiate HRF with: {self.hrf}", flush=True)
 
             try:
                 self.hrf = HRF()
@@ -1783,7 +1791,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                 hrf_pars = [1,1,0]
 
             if self.verbose:
-                print(f"Instantiate HRF with: {hrf_pars}")
+                print(f"Instantiate HRF with: {hrf_pars}", flush=True)
             
             try:
                 self.hrf = HRF()
@@ -1804,7 +1812,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                     if getattr(self, setting) != self.settings[setting]:
 
                         if self.verbose:
-                            print(f"Setting '{setting}' to user-defined value: {getattr(self, setting)} (was: {self.settings[setting]})")
+                            print(f"Setting '{setting}' to user-defined value: {getattr(self, setting)} (was: {self.settings[setting]})", flush=True)
 
                         self.settings[setting] = getattr(self, setting)
 
@@ -1833,7 +1841,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
 
         else:
             if self.verbose:
-                print(f"Gaussian fitter: {self.previous_gaussian_fitter}")
+                print(f"Gaussian fitter: {self.previous_gaussian_fitter}", flush=True)
 
                 # assume old parameters are grid parameters
                 if self.model == "gauss" and "iter" in self.stage:
@@ -1850,7 +1858,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                 self.settings['bounds']['bold_bsl'] = [0,0]
 
             # overwrite settings with custom settings
-            self.update_settings
+            self.update_settings()
 
             # initiate and do grid fit
             ExtendedModel.__init__(self)
