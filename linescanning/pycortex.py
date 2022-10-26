@@ -1,11 +1,14 @@
 import cortex
-from linescanning import image, utils
+from linescanning import (
+    image, 
+    utils)
 import nibabel as nb
 import numpy as np
 import os
 import configparser
-import random
 import sys
+from scipy import stats
+from typing import Union
 
 opj = os.path.join
 
@@ -42,7 +45,10 @@ def set_ctx_path(p=None, opt="update"):
             config.set("basic", "filestore", p)
             with open(usercfg, 'w') as fp:
                 config.write(fp)
-                
+            
+            if not os.path.exists(p):
+                os.makedirs(p, exist_ok=True)
+
             return config.get("basic", "filestore")
         else:
             return config.get("basic", "filestore")
@@ -255,35 +261,10 @@ def view_maps(subject, cxdir=None, prfdir=None):
     prf_lr_v = cortex.Vertex(prf_lr, subject=subject,
                              cmap='magma', vmin=-0.5, vmax=1)
 
-    port = random.randint(1024, 65536)
-
-    if place == "sge":
-        cortex.webshow({'curvature': curv_data,
-                        'thickness': thick_data,
-                        'eccentricity': ecc_v,
-                        'best vertices': prf_lr_v
-                        }, open_browser=False, port=port)
-
-        txt = "Now run {script} {port} in your local terminal".format(
-            script='/mnt/d/FSL/shared/spinoza/programs/linescanning/bin/call_webviewer.sh', port=port)
-    else:
-        # cortex.webshow({'curvature': curv_data,
-        #                 'thickness': thick_data,
-        #                 'r2': r2_v,
-        #                 'best vertices': prf_lr_v
-        #                 }, open_browser=True, port=port)
-
-        cortex.webshow({'curvature': curv_data,
-                        'thickness': thick_data,
-                        'best vertices': prf_lr_v
-                        }, open_browser=True, port=port)
-
-        os.wait()
-        txt = None
-
-    if txt != None:
-        print(txt)
-
+    cortex.webshow({
+        'curvature': curv_data,
+        'thickness': thick_data,
+        'best vertices': prf_lr_v})
 
 def get_ctxsurfmove(subject):
 
