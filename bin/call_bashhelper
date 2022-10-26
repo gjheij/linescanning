@@ -25,6 +25,54 @@ function check_file {
   fi
 }
 
+function dykstra_distance {
+
+  if [[ $# -eq 0 ]]; then
+    echo
+    echo "---------------------------------------------------------------------------------------------------"
+    echo "dykstra_distance"
+    echo
+    echo "Wrapper for mris_pmake. Calculates the distance between <startVertex> & <endVertex> using Dykstra's"
+    echo "algorithm."
+    echo
+    echo "Usage"
+    echo "----------"
+    echo "  dykstra_distance <subject> <hemi> <surface> <startVertex> <endVertex> <json file>"
+    echo ""
+    echo "Parameters"
+    echo "----------"
+    echo "subject: str"
+    echo "  subject ID as per FreeSurfer output"
+    echo "hemi: str"
+    echo "  hemisphere to process. Must be one of \"lh\" or \"rh\""
+    echo "surface: str"
+    echo "  surface name to process, e.g., \"fiducial\". Defaults to \"inflated\""
+    echo "startVertex: int"
+    echo "  vertex to calculate distances TO"
+    echo "endVertex: int"
+    echo "  vertex to calculate distances FROM"
+    echo "json file: str"
+    echo "  store the output in a key-value pair between <endVertex> and the output from mris_pmake"
+    echo ""
+    echo "Example"
+    echo "----------"
+    echo "  dykstra_distance sub-001 lh fiducial 1053 784"
+    echo "  dykstra_distance sub-001 lh fiducial 1053 784 sub-001_desc-distances.json"
+    echo ""
+    echo "---------------------------------------------------------------------------------------------------"
+    echo
+  else
+    dist=`mris_pmake --subject ${1} --hemi ${2} --surface ${3} --mpmProg pathFind --mpmArgs vertexStart:${4},vertexEnd:${5} --mpmOverlay distance | sed -n '2p' | cut -d"[" -f2 | cut -d" " -f2`
+
+    # write output to json file
+    if [[ ! -z ${6} ]]; then
+      call_json ${6} "${5}" "${dist}"
+    else
+      echo ${dist}
+    fi
+  fi
+}
+
 function flywheel2bids {
   input_dir=${1}
   fname=${2}
