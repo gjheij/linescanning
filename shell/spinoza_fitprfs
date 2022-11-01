@@ -65,7 +65,11 @@ Options:
   --zscore        use the zscore'd output from pybest, rather than percent signal change. If not spe-
                   cified, percent signal change is implemented as follows:
                     psc = signals*100/(mean(signals)) - median(signals_without_stimulus)
-
+  --v1            only fit voxels from ?.V1_exvivo.thresh.label; the original dimensions will be main-
+                    tained, but timecourses outside of the ROI are set to zero
+  --v2            only fit voxels from ?.V2_exvivo.thresh.label; the original dimensions will be main-
+                    tained, but timecourses outside of the ROI are set to zero
+    
 Arguments:
   <input dir>     base input directory with pybest data (e.g., 'DIR_DATA_DERIV/pybest'). You can also 
                   point to the fmriprep-folder, in which case the gifti's of 'fsnative' will be used.
@@ -107,6 +111,7 @@ clip=1
 use_constr="--tc"
 fit_flag=""
 cut_vols=""
+lbl_flag=""
 while getopts :-:los:n:m:t:x:c:v: argument
 do
   case ${argument} in
@@ -144,7 +149,13 @@ do
           ;;    
         no_fit)
           fit_flag="--no_fit"
-          ;;                                   
+          ;;      
+        v1)
+          lbl_flag="--v1"
+          ;;
+        v2)
+          lbl_flag="--v2"
+          ;;            
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}"
@@ -412,6 +423,7 @@ for subID in ${search}; do
             -p ${use_pngdir} \
             -m ${use_model} \
             -u ${PYBEST_SPACE} \
+            ${lbl_flag} \
             ${zscore_flag} \
             ${raw_flag} \
             ${verb_flag} \

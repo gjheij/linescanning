@@ -100,6 +100,10 @@ Options:
     --no_fit        Stop the process before fitting, right after saving out averaged data. This was 
                     useful for me to switch to percent-signal change without requiring a re-fit.
     --raw           use unzscore'd data from pybest; do not percent-signal change.
+    --v1            only fit voxels from ?.V1_exvivo.thresh.label; the original dimensions will be 
+                    maintained, but timecourses outside of the ROI are set to zero
+    --v2            only fit voxels from ?.V2_exvivo.thresh.label; the original dimensions will be 
+                    maintained, but timecourses outside of the ROI are set to zero
 
 Example:
   call_prf -s 001 -n 1 -t 2R -o /path/derivatives/prf -i /path/to/pybest/sub-001 -p /path/png
@@ -129,9 +133,10 @@ Example:
     constraints = "tc"
     do_fit      = True
     cut_vols    = 0
+    lbl         = None
 
     try:
-        opts = getopt.getopt(argv,"ghs:n:t:o:i:p:m:x:u:c:v:",["help", "sub=", "model=", "ses=", "task=", "out=", "in=", "png=", "params=", "grid", "space=", "hrf", "n_pix=", "clip=", "verbose", "file_ending=", "zscore", "overwrite", "constr=", "tc", "bgfs", "no_fit", "raw", "cut_vols="])[0]
+        opts = getopt.getopt(argv,"ghs:n:t:o:i:p:m:x:u:c:v:",["help", "sub=", "model=", "ses=", "task=", "out=", "in=", "png=", "params=", "grid", "space=", "hrf", "n_pix=", "clip=", "verbose", "file_ending=", "zscore", "overwrite", "constr=", "tc", "bgfs", "no_fit", "raw", "cut_vols=", "v1", "v2"])[0]
     except getopt.GetoptError:
         print("ERROR while reading arguments; did you specify an illegal argument?")
         print(main.__doc__)
@@ -185,6 +190,12 @@ Example:
             constraints = utils.string2list(arg)
         elif opt in ("--cut_vols"):
             cut_vols = int(arg)
+        elif opt in ("--v1"):
+            lbl = "V1_exvivo.thresh"
+            roi_tag = "V1"
+        elif opt in ("--v2"):
+            lbl = "V2_exvivo.thresh"
+            roi_tag = "V2"
             
     if len(argv) < 2:
         print(main.__doc__)
@@ -267,6 +278,14 @@ Example:
         for ff in files:
             print(f" {ff}", flush=True)
     
+    # convert to psc according to baseline (as per Serge Dumoulin).
+    if psc:
+        if verbose:
+            print("Converting to percent signal change and fix baseline", flush=True)
+      
+        # default baseline is 15 volumes
+        baseline = 15-cut_vols
+
     if not files[0].endswith(".nii.gz") and not files[0].endswith(".nii"):
         # chunk into L/R pairs
         hemi_pairs = [[i, j] for i, j in zip(files[:-1], files[1:])]
@@ -278,7 +297,10 @@ Example:
             if giftis:
                 hemi_data = [dataset.ParseGiftiFile(pair[ix]).data for ix in range(len(pair))]
             else:
-                hemi_data = [np.load(pair[ix]) for ix in range(len(pair))]
+                if psc:
+                    hemi_data = [utils.percent_change(np.load(pair[ix]), 0, baseline=baseline) for ix in range(len(pair))]
+                else:
+                    hemi_data = [np.load(pair[ix]) for ix in range(len(pair))]
             
             prf_tc_data.append(np.hstack(hemi_data))
 
@@ -299,7 +321,12 @@ Example:
         run_ids = obj.get_runs(prf_tc_data)
 
         # loop through run IDs and get median into <time,voxels> array
-        m_prf_tc_data = np.median([utils.select_from_df(prf_tc_data, expression=f"run = {ii}").values for ii in run_ids], axis=0)
+        m_prf_tc_data = np.median(
+            [utils.select_from_df(
+                prf_tc_data, 
+                expression=f"run = {ii}").values 
+            for ii in run_ids], 
+            axis=0)
 
     if space == "fsnative":
         # vertices per hemi
@@ -315,21 +342,34 @@ Example:
         if n_verts_fs != n_verts:
             raise ValueError(f"Mismatch between number of vertices in pRF-analysis ({n_verts}) and FreeSurfer ({n_verts_fs})..?\nYou're probably using an older surface reconstruction. Check if you've re-ran fMRIprep again with new FreeSurfer-segment")
 
+        # check if there's ROI-specific fitting
+        if isinstance(lbl, str):
+
+            print(f"Label: {lbl}", flush=True)
+
+            from linescanning import optimal
+
+            # load in surfaces
+            surf_obj = optimal.SurfaceCalc(subject=f"sub-{sub}", fs_label=lbl)
+
+            # initialize empty array and only keep the timecourses from label; keeps the original dimensions for simplicity sake! You can always retrieve the label indices with linescanning.optimal.SurfaceCalc
+            empty = np.zeros_like(m_prf_tc_data)
+
+            # insert timecourses 
+            lbl_true = np.where(surf_obj.whole_roi == True)[0]
+            empty[:,lbl_true] = m_prf_tc_data[:,lbl_true]
+
+            # overwrite m_prf_tc_data
+            m_prf_tc_data = empty.copy()
+
+            out += f"_roi-{roi_tag}"
+
     # cut volumes at the beginning of the timeseries. Also subtract number of volumes from baseline
     if verbose:
         print(f"Cutting {cut_vols} from beginning of timeseries", flush=True)
-        
+    
     m_prf_tc_data = m_prf_tc_data[cut_vols:,:]
-
-    # default baseline is 15 volumes
-    baseline = 15-cut_vols 
-
-    # convert to psc according to baseline (as per Serge Dumoulin).
-    if psc:
-        if verbose:
-            print("Converting to percent signal change and fix baseline", flush=True)
-
-        m_prf_tc_data = utils.percent_change(m_prf_tc_data, 0, baseline=baseline)
+    design = design_matrix[list(design_matrix.keys())[-1]][...,cut_vols:]
 
     # save files
     if verbose:
@@ -367,7 +407,7 @@ Example:
         # stage 1 - no HRF
         stage1 = prf.pRFmodelFitting(
             m_prf_tc_data.T, 
-            design_matrix=design_matrix[list(design_matrix.keys())[-1]], 
+            design_matrix=design, 
             TR=tr, 
             model=model, 
             stage=stage, 

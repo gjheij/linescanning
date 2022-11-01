@@ -40,6 +40,7 @@ raw_flag=""           # spinoza_fitprfs
 use_constr=""         # spinoza_fitprfs
 fit_flag=""           # spinoza_fitprfs
 fprep_input=0         # spinoza_fitprfs
+lbl_flag=""           # spinoza_fitprfs
 use_bbr=""            # spinoza_fmriprep
 WARP_ONLY=""          # spinoza_fmriprep
 REMOVE_WF=""          # spinoza_fmriprep
@@ -55,7 +56,7 @@ NO_BIAS=""            # spinoza_qmrimaps
 
 # use long options in bash:
 # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options
-declare -a array=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv" "--no_fit" "--fmriprep" "--fprep")
+declare -a array=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv" "--no_fit" "--fmriprep" "--fprep" "--v1" "--v2")
 
 # sort options array
 IFS=$'\n' opts=($(sort <<<"${array[*]}"))
@@ -173,7 +174,13 @@ do
           ;;
         fmriprep)
           fprep_input=1
-          ;;          
+          ;;
+        v1)
+          lbl_flag="--v1"
+          ;;
+        v2)
+          lbl_flag="--v2"
+          ;;   
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}, possible options are:"
@@ -358,6 +365,10 @@ Args:
                     (e.g., DoG, CSS, or DN). By default, we'll use trust-constr minimization for both. 
                     It's recommended to at least to Gaussian fitting with trust-constr, and potential 
                     extended models with L-BGFS. For this, see '-x' flag  
+  --v1              only fit voxels from ?.V1_exvivo.thresh.label; the original dimensions will be main-
+                    tained, but timecourses outside of the ROI are set to zero
+  --v2              only fit voxels from ?.V2_exvivo.thresh.label; the original dimensions will be main-
+                    tained, but timecourses outside of the ROI are set to zero
   --verbose         turn on verbose for pRF-fitting (spinoza_fitprfs)
   --warp_only       spinoza_fmriprep; skip full processing, but make new 'boldref'-images and copy 
                     bold-to-T1w registration files
@@ -1172,6 +1183,7 @@ if [[ $? -eq 0 ]]; then
     ${OW} \
     ${MODEL} \
     ${CUT_VOLS} \
+    ${lbl_flag} \
     ${PRF_INPUT} ${DIR_DATA_DERIV}/prf ${PNG_DIR}
 
   if [[ $? -ne 0 ]]; then
