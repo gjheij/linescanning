@@ -210,6 +210,10 @@ def ants_applytopoints(chicken_file, output_file, trafo_file):
         cmd = f"call_createident {trafo_file}"
         os.system(cmd)
 
+    if isinstance(output_file, str):
+        if not output_file.endswith("csv"):
+            raise ValueError(f"{output_file} must have extension 'csv'..")
+
     cmd = f"antsApplyTransformsToPoints -d 3 -i {chicken_file} -o {output_file} -t [{trafo_file},1]"
     os.system(cmd)
     # print(cmd)
