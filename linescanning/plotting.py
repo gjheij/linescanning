@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import pandas as pd
+from scipy import stats
 import seaborn as sns
 from typing import Union
 
@@ -26,10 +27,14 @@ class Defaults():
         self.set_xlim_zero=False
 
         if self.xkcd:
-            self.fontname = "Arial"
-        else:
             self.fontname = "Humor Sans"
+        else:
+            self.fontname = "Montserrat"
         
+        self.update_rc(self.fontname)
+
+    def update_rc(self, font):
+        plt.rcParams.update({'font.family': font})
 
 class LazyPRF(Defaults):
     """LazyPRF
@@ -131,6 +136,7 @@ class LazyPRF(Defaults):
 
         super().__init__()
         self.__dict__.update(kwargs)
+        self.update_rc(self.fontname)
 
         if not hasattr(self, "edge_color"):
             self.edge_color = self.cross_color
@@ -199,7 +205,7 @@ class LazyPRF(Defaults):
             self.ax.set_title(
                 self.title, 
                 fontsize=self.font_size, 
-                fontname="Arial",
+                fontname=self.fontname,
                 pad=self.pad_title)
             
         self.patch = patches.Circle(
@@ -397,13 +403,12 @@ class LazyPlot(Defaults):
 
         super().__init__()
         self.__dict__.update(kwargs)
+        self.update_rc(self.fontname)
 
         if self.xkcd:
             with plt.xkcd():
-                self.fontname = "Humor Sans"
                 self.plot()
         else:
-            self.fontname = "Arial"
             self.plot()
         
         if self.save_as:
@@ -499,7 +504,9 @@ class LazyPlot(Defaults):
 
         # axis labels and titles
         if self.labels:
-            axs.legend(frameon=False, fontsize=self.label_size)
+            axs.legend(
+                frameon=False, 
+                fontsize=self.label_size)
 
         if self.x_label:
             axs.set_xlabel(
@@ -715,6 +722,7 @@ class LazyCorr(Defaults):
         y_lim=None,
         x_lim=None,                 
         save_as=None,
+        points=True,
         **kwargs):
 
         self.x              = x
@@ -730,9 +738,11 @@ class LazyCorr(Defaults):
         self.y_lim          = y_lim
         self.x_lim          = x_lim        
         self.save_as        = save_as
+        self.points         = points
 
         super().__init__()
         self.__dict__.update(kwargs)
+        self.update_rc(self.fontname)
 
         if self.xkcd:
             with plt.xkcd():
@@ -756,22 +766,21 @@ class LazyCorr(Defaults):
         else:
             axs = self.axs        
 
-        sns.regplot(x=self.x, y=self.y, color=self.color, ax=axs)
+        sns.regplot(
+            x=self.x, 
+            y=self.y, 
+            color=self.color, 
+            ax=axs,
+            scatter=self.points)
 
-        if self.x_label:
-            if self.x_label != 'none':
-                axs.set_xlabel(self.x_label, fontsize=self.font_size)
-            else:
-                axs.set_xlabel(None)
+        if isinstance(self.x_label, str):
+            axs.set_xlabel(self.x_label, fontsize=self.font_size)
 
-        if self.y_label:
-            if self.y_label != 'none':
-                axs.set_ylabel(self.y_label, fontsize=self.font_size)
-            else:
-                axs.set_ylabel(None)
+        if isinstance(self.y_label, str):
+            axs.set_ylabel(self.y_label, fontsize=self.font_size)
 
         if self.title:
-            axs.set_title(self.title, fontname=self.fontname, fontsize=self.font_size)
+            axs.set_title(self.title, fontsize=self.font_size)
 
         axs.tick_params(
             width=self.tick_width, 
@@ -815,8 +824,16 @@ class LazyBar():
         y_label2: str=None,
         title2: str=None,
         add_points: bool=False,
-        points_color: Union[str,tuple]="#cccccc",
+        points_color: Union[str,tuple]=None,
+        points_palette: Union[list,sns.palettes._ColorPalette]=None,
+        points_cmap: str="viridis",
+        points_legend: bool=False,
+        points_alpha: float=1,
         error: str="sem",
+        fancy: bool=False,
+        fancy_rounding: float=0.15,
+        fancy_pad: float=-0.004,
+        fancy_aspect: float=0.2,
         **kwargs):
 
         self.data               = data
@@ -838,7 +855,15 @@ class LazyBar():
         self.title2             = title2
         self.add_points         = add_points
         self.points_color       = points_color
+        self.points_palette     = points_palette
+        self.points_cmap        = points_cmap
+        self.points_legend      = points_legend
+        self.points_alpha       = points_alpha
         self.error              = error
+        self.fancy              = fancy
+        self.fancy_rounding     = fancy_rounding
+        self.fancy_pad          = fancy_pad
+        self.fancy_aspect       = fancy_aspect
 
         self.kw_defaults = Defaults()
 
@@ -848,7 +873,17 @@ class LazyBar():
             "y_label",
             "add_hline",
             "add_vline",
-            "y_lim"
+            "y_lim",
+            "trim_left",
+            "trim_bottom",
+            "points_hue",
+            "points_alpha",
+            "bbox_to_anchor",
+            "figsize",
+            "fancy",
+            "fancy_rounding",
+            "fancy_pad",
+            "fancy_aspect"
         ]
 
         kw_sns = {}
@@ -858,6 +893,7 @@ class LazyBar():
 
         self.__dict__.update(**self.kw_defaults.__dict__)
         self.__dict__.update(**kwargs)
+        self.kw_defaults.update_rc(self.fontname)
 
         if self.xkcd:
             with plt.xkcd():
@@ -923,15 +959,72 @@ class LazyBar():
                 yerr=self.sem
             ))
 
+        # from: https://stackoverflow.com/a/61569240
+        if self.fancy:
+            
+            new_patches = []
+            for patch in reversed(self.ff.patches):
+                # print(bb.xmin, bb.ymin,abs(bb.width), abs(bb.height))
+                bb = patch.get_bbox()
+                color = patch.get_facecolor()
+                p_bbox = patches.FancyBboxPatch(
+                    (bb.xmin, bb.ymin),
+                    abs(bb.width), abs(bb.height),
+                    boxstyle=f"round,pad={self.fancy_pad},rounding_size={self.fancy_rounding}",
+                    ec="none", 
+                    fc=color,
+                    mutation_aspect=self.fancy_aspect
+                )
+
+                patch.remove()
+                new_patches.append(p_bbox)
+
+            for patch in new_patches:
+                self.ff.add_patch(patch)
+
         if self.add_points:
+
+            if not hasattr(self, "points_hue"):
+                self.points_hue = None
+            
+            if not self.points_palette:
+                self.points_palette = self.points_cmap
+
+            # give priority to given points_color
+            if isinstance(self.points_color, (str,tuple)):
+                self.points_palette = None
+                self.points_hue = None
+
             sns.stripplot(
                 data=self.data, 
                 x=xx, 
                 y=yy, 
-                dodge=True, 
+                hue=self.points_hue,
+                dodge=False, 
                 ax=self.ff,
-                color=self.points_color
+                color=self.points_color,
+                palette=self.points_palette,
+                alpha=self.points_alpha
             )
+
+            if not self.points_legend:
+                self.ff.legend([],[], frameon=False)
+            else:
+                if not hasattr(self, "bbox_to_anchor"):
+                    self.ff.legend(
+                        frameon=False, 
+                        fontsize=self.label_size*0.8)
+                else:
+                    # left, bottom, width, height
+                    self.ff.legend(
+                        frameon=False, 
+                        fontsize=self.label_size*0.8)
+
+                    sns.move_legend(
+                        self.ff, 
+                        loc="best",
+                        bbox_to_anchor=self.bbox_to_anchor,
+                        fontsize=self.label_size)
 
         # axis labels and titles
         if self.title:
@@ -955,12 +1048,14 @@ class LazyBar():
                 self.ff.set_xticks([])
             else:
                 raise ValueError(f"sns_ori must be 'v' or 'h', not '{self.sns_ori}'")
-            
-        if not self.add_axis:
+        elif isinstance(self.add_labels,list):
+            self.ff.set_xlabel(self.add_labels)
+
+        if isinstance(self.sns_rot, (int,float)):
             if self.sns_ori == 'h':
-                self.ff.set_xticklabels(self.ff.get_xticklabels(), rotation=self.sns_rot)
+                self.ff.set_yticklabels(self.ff.get_yticklabels(), rotation=self.sns_rot)
             elif self.sns_ori == "v":
-                self.ff.set_yticklabels(self.ff.get_xticklabels(), rotation=self.sns_rot)
+                self.ff.set_xticklabels(self.ff.get_xticklabels(), rotation=self.sns_rot)
             else:
                 raise ValueError(f"sns_ori must be 'v' or 'h', not '{self.sns_ori}'")
 
@@ -997,6 +1092,16 @@ class LazyBar():
                 self.y_label2, 
                 fontname=self.fontname,
                 fontsize=self.font_size)
+
+        if hasattr(self, "trim_left"):
+            trim_left = self.trim_left
+        else:
+            trim_left = False
+
+        if hasattr(self, "trim_bottom"):
+            trim_bottom = self.trim_bottom
+        else:
+            trim_bottom = False
 
         sns.despine(
             offset=self.sns_offset, 
@@ -1061,34 +1166,58 @@ class LazyHist(Defaults):
         y=None,
         save_as=None, 
         axs=None, 
-        cmap='magma', 
-        alpha=None,
         xkcd=False,
         font_size=None,
         title=None,
         figsize=(8,8),
-        **kwargs):
+        kde=False,
+        hist=True,
+        bins="auto",
+        fill=False,
+        kde_kwargs={},
+        hist_kwargs={},
+        color="#cccccc",
+        x_ticks: list=None,
+        y_ticks: list=None,
+        x_label2: str=None,
+        y_label2: str=None,
+        title2: str=None,
+        return_obj: bool=False):
         
         self.data           = data
         self.x              = x
         self.y              = y
         self.save_as        = save_as
         self.axs            = axs
-        self.cmap           = cmap
-        self.alpha          = alpha
         self.xkcd           = xkcd
         self.title          = title
         self.font_size      = font_size
         self.figsize        = figsize
+        self.kde            = kde
+        self.kde_kwargs     = kde_kwargs
+        self.hist_kwargs    = hist_kwargs
+        self.hist           = hist
+        self.bins           = bins
+        self.fill           = fill
+        self.x_label2       = x_label2
+        self.y_label2       = y_label2
+        self.title2         = title2
+        self.x_ticks        = x_ticks
+        self.y_ticks        = y_ticks
+        self.color          = color
+        self.return_obj     = return_obj
 
         super().__init__()
-        self.__dict__.update(kwargs)      
+        self.__dict__.update(self.kde_kwargs)
+        self.update_rc(self.fontname)
 
         if self.xkcd:
             with plt.xkcd():
                 self.plot()
         else:
             self.plot()
+
+        self.kde = self.return_kde()
 
         if self.save_as:
             if isinstance(self.save_as, list):
@@ -1099,29 +1228,92 @@ class LazyHist(Defaults):
             else:
                 raise ValueError(f"Unknown input '{self.save_as}' for 'save_as'")
 
-    def plot(self, **kwargs):
+    def plot(self):
 
         if self.axs == None:
             _,self.axs = plt.subplots(figsize=self.figsize)
 
-        if self.alpha == None:
-            self.alpha = 1
+        if self.hist:
+            self.axs.hist(
+                self.data,
+                density=True,
+                bins=self.bins,
+                color=self.color,
+                **self.hist_kwargs
+            )
 
-        if isinstance(self.x, str) and isinstance(self.x, str):
-            sns.histplot(self.data, x=self.x, y=self.y, ax=self.axs, **kwargs)
-        else:
-            sns.histplot(self.data, ax=self.axs,**kwargs)
+        if self.kde:
 
-        self.axs.tick_params(
+            self.ff = sns.kdeplot(
+                data=self.data,
+                ax=self.axs,
+                fill=self.fill,
+                color=self.color,
+                **self.kde_kwargs
+            )
+
+        # axis labels and titles
+        if self.title:
+            self.ff.set_title(
+                self.title, 
+                fontname=self.fontname, 
+                fontsize=self.font_size)                    
+        
+        self.ff.tick_params(
             width=self.tick_width, 
             length=self.tick_length,
             labelsize=self.label_size)
 
         for axis in ['top', 'bottom', 'left', 'right']:
-            self.axs.spines[axis].set_linewidth(self.axis_width)
+            self.ff.spines[axis].set_linewidth(self.axis_width)
 
-        if self.sns_trim:
-            sns.despine(offset=self.sns_offset, trim=self.sns_trim)
+        if isinstance(self.x_ticks, list):
+            self.ff.set_xticks(self.x_ticks)
 
-        if self.return_obj:
-            return self
+        if isinstance(self.y_ticks, list):
+            self.ff.set_yticks(self.y_ticks)            
+
+        if not isinstance(self.x_label2, str):
+            self.ff.set(xlabel=None)
+
+        if  not isinstance(self.y_label2, str):
+            self.ff.set(ylabel=None)            
+
+        if self.x_label2:
+            self.ff.set_xlabel(
+                self.x_label2, 
+                fontname=self.fontname, 
+                fontsize=self.font_size)
+
+        if self.y_label2:
+            self.ff.set_ylabel(
+                self.y_label2, 
+                fontname=self.fontname,
+                fontsize=self.font_size)
+
+        if hasattr(self, "trim_left"):
+            trim_left = self.trim_left
+        else:
+            trim_left = False
+
+        if hasattr(self, "trim_bottom"):
+            trim_bottom = self.trim_bottom
+        else:
+            trim_bottom = False
+
+        sns.despine(
+            offset=self.sns_offset, 
+            trim=self.sns_trim,
+            left=trim_left, 
+            bottom=trim_bottom, 
+            ax=self.ff)
+
+        if self.title2:
+            self.ff.set_title(
+                self.title2, 
+                fontname=self.fontname, 
+                fontsize=self.font_size,
+                pad=self.pad_title)
+
+    def return_kde(self):
+        return self.ff.get_lines()[0].get_data()            
