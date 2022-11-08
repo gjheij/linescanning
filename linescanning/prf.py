@@ -1303,7 +1303,7 @@ def generate_model_params(model='gauss', dm=None, TR=1.5, fit_hrf=False, verbose
 
 class GaussianModel():
 
-    def __init__(self):
+    def __init__(self):     
 
         self.gaussian_fitter = Iso2DGaussianFitter(
             data=self.data,
@@ -1364,6 +1364,7 @@ class GaussianModel():
                 self.save_params(model="gauss", stage="grid") 
 
     def iterfit(self):
+
         start = time.time()
         if self.verbose:
             print("Starting gauss iterfit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S'), flush=True)
@@ -1734,7 +1735,10 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         for optimizer in self.constraints:
             if optimizer not in self.allowed_optimizers:
                 raise ValueError(f"Unknown optimizer '{optimizer}'. Must be one of {self.allowed_optimizers}")
-
+        
+        if self.verbose:
+            print(f"Using constraint(s): {self.constraints}")
+            
         #----------------------------------------------------------------------------------------------------------------------------------------------------------
         # whichever model you run, run the Gaussian first
 
@@ -1782,7 +1786,13 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                 self.hrf.create_spm_hrf(hrf_params=self.hrf, TR=self.TR, force=True)
             except:
                 pass
-
+        
+        elif isinstance(self.hrf, str):
+            if self.verbose:
+                print(f"Instantiate 'direct' HRF", flush=True)
+            
+            self.hrf = "direct"
+            
         else:
             # try to read HRF parameters from settings
             try:
@@ -2484,6 +2494,13 @@ class SizeResponse():
         # create stimuli
         self.stims_fill, self.stims_fill_sizes = make_stims(self.x, factor=factor)
     
+    def find_pref_size(self, size=None):
+        if not hasattr(self, "stims_fill"):
+            self.make_stimuli(factor=2)
+
+        idx,_ = utils.find_nearest(self.stims_fill_sizes, size)
+        return idx,self.stims_fill[idx]
+
     @staticmethod
     def parameters_to_df(params, model="norm", save_as=None):
         """store the Divisive Normalization model parameters in a DataFrame"""
