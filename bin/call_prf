@@ -134,9 +134,10 @@ Example:
     do_fit      = True
     cut_vols    = 0
     lbl         = None
+    save_grid   = True
 
     try:
-        opts = getopt.getopt(argv,"ghs:n:t:o:i:p:m:x:u:c:v:",["help", "sub=", "model=", "ses=", "task=", "out=", "in=", "png=", "params=", "grid", "space=", "hrf", "n_pix=", "clip=", "verbose", "file_ending=", "zscore", "overwrite", "constr=", "tc", "bgfs", "no_fit", "raw", "cut_vols=", "v1", "v2"])[0]
+        opts = getopt.getopt(argv,"ghs:n:t:o:i:p:m:x:u:c:v:",["help", "sub=", "model=", "ses=", "task=", "out=", "in=", "png=", "params=", "grid", "space=", "hrf", "n_pix=", "clip=", "verbose", "file_ending=", "zscore", "overwrite", "constr=", "tc", "bgfs", "no_fit", "raw", "cut_vols=", "v1", "v2", "no_grid"])[0]
     except getopt.GetoptError:
         print("ERROR while reading arguments; did you specify an illegal argument?")
         print(main.__doc__)
@@ -196,6 +197,11 @@ Example:
         elif opt in ("--v2"):
             lbl = "V2_exvivo.thresh"
             roi_tag = "V2"
+        elif opt in ("--no_grid"):
+            save_grid = False
+            if grid_only:
+                print("WARNING: '--no_grid' was specified (meaning 'do not save out gridsearch parameters', though '-g' or '--grid' was specified (meaning do gridsearch only). Overruling '--no_grid'")
+                save_grid = True         
             
     if len(argv) < 2:
         print(main.__doc__)
@@ -283,12 +289,27 @@ Example:
         if verbose:
             print("Converting to percent signal change and fix baseline", flush=True)
       
-        # default baseline is 15 volumes
-        baseline = 15-cut_vols
+        # default baseline is 19 volumes
+        baseline = 19-cut_vols
 
     if not files[0].endswith(".nii.gz") and not files[0].endswith(".nii"):
+        
+        # get unique run-IDs
+        run_ids = []
+        for ii in files:
+            run_ids.append(utils.split_bids_components(ii)["run"])
+
+        run_ids = np.unique(np.array(run_ids))
+
         # chunk into L/R pairs
-        hemi_pairs = [[i, j] for i, j in zip(files[:-1], files[1:])]
+        hemi_pairs = []
+
+        for run in run_ids:
+            pair = []
+            for ii in ["L","R"]:
+                pair.append(utils.get_file_from_substring([f"run-{run}_", f"hemi-{ii}"], files))
+
+            hemi_pairs.append(pair)
 
         # load them in
         prf_tc_data = []
@@ -397,7 +418,7 @@ Example:
 
         if not overwrite:
             # check if we have existing Gaussian pRFs that we should insert in DN-model
-            old_params = utils.get_file_from_substring(['model-gauss', 'stage-iter', 'params.pkl'], outputdir, return_msg=None)
+            old_params = utils.get_file_from_substring([out, 'model-gauss', f'stage-{stage}', 'params.pkl'], outputdir, return_msg=None)
             if verbose:
                 if old_params != None:
                     print(f"Injecting '{old_params}' into {model}-model", flush=True)
@@ -418,7 +439,9 @@ Example:
             fit_hrf=False,
             fix_bold_baseline=psc,
             old_params=old_params,
-            constraints=constraints)
+            constraints=constraints,
+            save_grid=save_grid,
+            nr_jobs=1)
 
         stage1.fit()
 
@@ -446,7 +469,9 @@ Example:
                 write_files=True,                                
                 previous_gaussian_fitter=stage1.previous_fitter,
                 fix_bold_baseline=psc,
-                constraints=constraints)
+                constraints=constraints,
+                save_grid=save_grid,
+                nr_jobs=1)
 
             stage2.fit()    
 
