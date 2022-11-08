@@ -25,6 +25,7 @@ from bids import BIDSLayout
 from linescanning.utils import get_file_from_substring, remove_files
 warnings.filterwarnings("ignore")
 opj = os.path.join
+opb = os.path.basename
 
 def main(argv):
 
