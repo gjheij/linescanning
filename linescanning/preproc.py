@@ -953,7 +953,7 @@ Resulting components from the ICA were high-pass filtered using discrete cosine 
 
             subfigs[comp].suptitle(f"component {comp+1}", fontsize=self.defaults.font_size*1.4, y=1.02)
 
-        fig.suptitle("Independent component analyis (ICA)", fontsize=self.defaults.font_size*1.8, y=1.012)
+        fig.suptitle("Independent component analysis (ICA)", fontsize=self.defaults.font_size*1.8, y=1.012)
 
         plt.tight_layout()
 
