@@ -1,6 +1,7 @@
 # pylint: disable=no-member,E1130,E1137
 import cortex
 from datetime import datetime
+import json
 from linescanning import (
     planning,
     dataset, 
@@ -13,6 +14,8 @@ import nibabel as nb
 import numpy as np
 import os
 import pandas as pd
+from scipy import stats
+from typing import Union
 import warnings
 
 warnings.filterwarnings('ignore')
@@ -1147,3 +1150,228 @@ class CalcBestVertex():
                       'rh': planning.normal2angle(self.rh_normal)}
 
             return df
+
+class Neighbours(SurfaceCalc):
+
+    def __init__(
+        self, 
+        subject:str=None, 
+        fs_dir:str=None, 
+        fs_label:str="V1_exvivo.thresh",
+        hemi:str="lh",
+        verbose:bool=False,
+        **kwargs):
+
+        self.subject = subject
+        self.fs_dir = fs_dir
+        self.fs_label = fs_label
+        self.hemi = hemi
+        self.verbose = verbose
+        self.__dict__.update(kwargs)
+
+        # pycortex path will be read from 'filestore' key in options.cfg file from pycortex
+        if not isinstance(self.fs_dir, str):
+            self.fs_dir = os.environ.get("SUBJECTS_DIR")
+
+        allowed_options = ["lh","left","rh","right","both"]
+        if self.hemi == "both":
+            self.hemi_list = ["lh","rh"]
+        elif self.hemi == "lh" or self.hemi == "left":
+            self.hemi_list = ["lh"]
+        elif self.hemi == "rh" or self.hemi == "right":
+            self.hemi_list = ["right"]
+        else:
+            raise ValueError(f"'hemi' must one of {allowed_options}")
+
+        # set flag for subsurface or not
+        self.sub_surface = False
+        if isinstance(self.fs_label, str):
+            self.sub_surface = True
+
+        # initialize SurfaceCalc
+        if not hasattr(self, "lh_surf"):
+            if self.verbose:
+                print("Initializing SurfaceCalc")
+
+            super().__init__(
+                subject=self.subject, 
+                fs_dir=self.fs_dir,
+                fs_label=self.fs_label)
+
+        if isinstance(self.fs_label, str):
+            self.create_subsurface()
+
+        if hasattr(self, "target_vert"):
+            if isinstance(self.target_vert, int):
+                self.distances_to_target(self.target_vert, self.hemi)
+
+    def create_subsurface(self):
+        if self.verbose:
+            print(f"Creating subsurfaces for {self.fs_label}")        
+                    
+        for h in ["lh","rh"]:
+            if h == "lh":
+                surf = self.lh_surf
+            else:
+                surf = self.rh_surf
+
+            # create the subsurface
+            subsurface = surf.create_subsurface(vertex_mask=getattr(self, f"{h}_roi_mask"))
+            setattr(self, f"{h}_subsurf", subsurface)
+
+        # get the vertices belonging to subsurface
+        self.lh_subsurf_v = np.where(self.lh_subsurf.subsurface_vertex_map != stats.mode(self.lh_subsurf.subsurface_vertex_map)[0][0])[0]
+
+        self.rh_subsurf_v = np.where(self.rh_subsurf.subsurface_vertex_map != stats.mode(self.rh_subsurf.subsurface_vertex_map)[0][0])[0]+ self.lh_subsurf.subsurface_vertex_map.shape[-1]
+
+        self.leftlim = np.max(self.lh_subsurf_v)
+        self.subsurface_verts = np.concatenate(
+            [self.lh_subsurf_v, self.rh_subsurf_v])
+
+    def create_distance(self):
+        # Make the distance x distance matrix.
+        ldists, rdists = [], []
+
+        if self.verbose:
+            print('Creating distance by distance matrices')
+
+        for i in range(len(self.lh_subsurf_v)):
+            ldists.append(self.lh_subsurf.geodesic_distance([i]))
+
+        self.dists_L = np.array(ldists)
+
+        for i in range(len(self.rh_subsurf_v)):
+            rdists.append(self.rh_subsurf.geodesic_distance([i]))
+
+        self.dists_R = np.array(rdists)
+
+        # Pad the right hem with np.inf.
+        padL = np.pad(
+            self.dists_L, ((0, 0), (0, self.dists_R.shape[-1])), constant_values=np.Inf)
+        # pad the left hem with np.inf..
+        padR = np.pad(
+            self.dists_R, ((0, 0), (self.dists_L.shape[-1], 0)), constant_values=np.Inf)
+
+        self.distance_matrix = np.vstack([padL, padR])  # Now stack.
+        self.distance_matrix = (self.distance_matrix + self.distance_matrix.T)/2 # Make symmetrical        
+
+    def distances_to_target(self, target_vert:int=None, hemi:str=None, vert_dict:Union[dict,str]=None):
+
+        txt = "full surface"
+        if self.sub_surface:
+            txt = self.fs_label
+
+        if not isinstance(vert_dict, (dict,str)):
+
+            if isinstance(self.fs_label, str):
+                use_surf = getattr(self, f"{hemi}_subsurf")
+                use_vert = getattr(self, f"{hemi}_subsurf_v")
+
+                # find the index of the target vertex within the subsurface
+                target_wb = target_vert
+                target_vert = np.where(use_vert == target_vert)[0][0]
+                
+                print(f"Target vertex '{target_wb}' is at index '{target_vert}' in subsurface")
+            else:
+                use_surf = getattr(self, f"{hemi}_surf")
+
+            if self.verbose:
+                print(f"Finding distances from {txt} to vertex #{target_vert}")
+                
+            # get distance to target
+            dist_to_targ = use_surf.geodesic_distance(target_vert)
+            # store
+            setattr(self, f"{hemi}_dist_to_targ", dist_to_targ)            
+        else:
+            if isinstance(vert_dict, str):
+                print(f"Reading distances from {vert_dict}")
+                with open(vert_dict) as f:
+                    dist_to_targ = json.load(f)
+
+                # store
+                setattr(self, f"{hemi}_dist_to_targ", dist_to_targ)
+
+    def find_distance_range(
+        self, 
+        hemi:str="lh", 
+        vmin:Union[int,float]=None, 
+        vmax:Union[int,float]=None):
+
+        """find_distance_range
+
+        Find the vertices given a range of distance using `vmin` and `vmax`. For instance, if you want the vertices within 2mm of your target vertex, specify `vmax=2`. If you want the vertices within 2-4mm, specify `vmin=2,vmax=4`. If vertices are found given your criteria, a dictionary collecting key-value pairings between the vertices and their distances to the target will be returned.
+
+        Parameters
+        ----------
+        hemi: str, optional
+            Which hemisphere to use. Should be one of ['lh','rh'], by default "lh"
+        vmin: Union[int,float], optional
+            Minimum distance to extract, by default None
+        vmax: Union[int,float], optional
+            Maximum distance to extract, by default None
+        verbose: bool, optional
+            Turn on verbosity, by default False
+
+        Returns
+        ----------
+        dict
+            Key-value pairing between the vertices surviving the criteria + their distance to the target vertex
+
+        Raises
+        ----------
+        ValueError
+            If both `vmin` and `vmax` are `None`. One or both should be specified
+        ValueError
+            If no vertices could be found with the criteria
+
+        Example
+        ----------
+        >>> from linescanning.pycortex import Neighbours
+        >>> # initialize the class, which - given a target vertex - will start to do some
+        >>> # initial calculations
+        >>> nbr = Neighbours(
+        >>>     subject="sub-001",
+        >>>     target=1053,
+        >>>     verbose=True)
+        >>> #
+        >>> # call find_distance_range
+        >>> nbr.find_distance_range(vmin=2,vmax=4)
+        """
+        # check if we ran distances_to_target()
+        if hasattr(self, f"{hemi}_dist_to_targ"):
+            distances = getattr(self, f"{hemi}_dist_to_targ")
+
+            if isinstance(distances, np.ndarray):
+                if isinstance(vmin, (int,float)) and not isinstance(vmax, (int,float)):
+                    result = np.where(distances >= vmin)
+                elif not isinstance(vmin, (int,float)) and isinstance(vmax, (int,float)):
+                    result = np.where(distances <= vmax)
+                elif isinstance(vmin, (int,float)) and isinstance(vmax, (int,float)):
+                    result = np.where((distances >= vmin) & (distances <= vmax))
+                else:
+                    raise ValueError("Not sure what to do. Please specify 'vmin' and/or 'vmax', or use 'self.<hemi>_dist_to_target to fetch all distances")
+
+                try:
+                    verts = result[0]
+                    if self.verbose:
+                        print(f"Found {len(verts)} vertices to target for vmin={vmin} & vmax={vmax}")
+                    output = {}
+                    for ii in verts:
+                        output[ii] = distances[ii]
+                    
+                    return output
+
+                except:
+                    raise ValueError(f"Could not find vertices complying to criteria: vmin = {vmin}; vmax = {vmax}")
+            
+            elif isinstance(distances, dict):
+                if isinstance(vmin, (int,float)) and not isinstance(vmax, (int,float)):
+                    result = [int(k) for k, v in distances.items() if v >= vmin]
+                elif not isinstance(vmin, (int,float)) and isinstance(vmax, (int,float)):
+                    result = [int(k) for k, v in distances.items() if v <= vmax]
+                elif isinstance(vmin, (int,float)) and isinstance(vmax, (int,float)):
+                    result = [int(k) for k, v in distances.items() if vmin <= v <= vmax]
+                else:
+                    raise ValueError("Not sure what to do. Please specify 'vmin' and/or 'vmax', or use 'self.<hemi>_dist_to_target to fetch all distances")
+
+                return result
