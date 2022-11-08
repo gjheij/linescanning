@@ -58,7 +58,8 @@ Options:
   --no_clip       ensures that the design matrix is NOT clipped, despite the possible presence of 
                   screen delimiter files
   --no_fit        Stop the process before fitting, right after saving out averaged data. This was use-
-                  ful for me to switch to percent-signal change without requiring a re-fit.               
+                  ful for me to switch to percent-signal change without requiring a re-fit.
+  --no_grid       Don't save out gridsearch parameters
   --raw           use the raw, un-zscore'd output from pybest, rather than percent signal change
   --tc            use trust-constr minimization for both the Gaussian as well as the extended model. 
                   Use the '-x' flag if you want different minimizers for both stages
@@ -112,6 +113,7 @@ use_constr="--tc"
 fit_flag=""
 cut_vols=""
 lbl_flag=""
+save_grid=""
 while getopts :-:los:n:m:t:x:c:v: argument
 do
   case ${argument} in
@@ -150,6 +152,9 @@ do
         no_fit)
           fit_flag="--no_fit"
           ;;      
+        no_grid)
+          save_grid="--no_grid"
+          ;;            
         v1)
           lbl_flag="--v1"
           ;;
@@ -423,6 +428,7 @@ for subID in ${search}; do
             -p ${use_pngdir} \
             -m ${use_model} \
             -u ${PYBEST_SPACE} \
+            ${save_grid} \
             ${lbl_flag} \
             ${zscore_flag} \
             ${raw_flag} \
