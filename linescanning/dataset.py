@@ -1,9 +1,7 @@
-import hedfpy
 from . import glm, plotting, preproc, utils
 import matplotlib.pyplot as plt
 import nibabel as nb
 from nilearn.signal import _standardize
-from niworkflows.reports import *
 from niworkflows.reports import core
 import numpy as np
 import os
@@ -89,6 +87,11 @@ class ParseEyetrackerFile():
         TR2=None, 
         verbose=False, 
         use_bids=True):
+
+        try:
+            import hedfpy
+        except:
+            raise ModuleNotFoundError("could not find 'hedfpy', so this functionality is disabled")
 
         self.edf_file           = edf_file
         self.func_file          = func_file
