@@ -541,8 +541,8 @@ class ParseExpToolsFile(ParseEyetrackerFile):
         **kwargs):
 
         self.tsv_file                       = tsv_file
-        self.sub                            = int(subject)
-        self.run                            = int(run)
+        self.sub                            = subject
+        self.run                            = run
         self.TR                             = TR
         self.deleted_first_timepoints       = deleted_first_timepoints
         self.button                         = button
