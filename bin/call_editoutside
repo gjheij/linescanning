@@ -66,7 +66,7 @@ if [[ ! -z ${sub} ]]; then
   fi
 
   REF=`find ${DIR_DATA_DERIV}/cat12/${base_dir} -type f -name "${sub}*" -and -name "*T1w.nii.gz" 2>/dev/null`
-  MAN=${DIR_DATA_DERIV}/manual_masks/${base_dir}/${base}_acq-${space^^}_desc-outside.nii.gz
+  MAN=${DIR_DATA_DERIV}/manual_masks/${base_dir}/${base}_acq-${DATA}_desc-outside.nii.gz
 
 else
 
