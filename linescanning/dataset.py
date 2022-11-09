@@ -650,16 +650,13 @@ class ParseExpToolsFile(ParseEyetrackerFile):
         
         if self.verbose:
             print(f"Preprocessing {tsv_file}")
-        data_onsets = []
         with open(tsv_file) as f:
-            timings = pd.read_csv(f, delimiter='\t')
-            data_onsets.append(pd.DataFrame(timings))
+            self.data = pd.read_csv(f, delimiter='\t')
 
         # trim onsets to first 't'
         delete_time         = delete_vols*self.TR
-        self.data           = data_onsets[0]
-        self.start_time     = float(timings.loc[(timings['event_type'] == "pulse") & (timings['phase'] == 0)]['onset'].values[0])
-        self.trimmed        = timings.loc[(timings['event_type'] == "stim") & (timings['phase'] == phase_onset)].iloc[1:,:]
+        self.start_time     = float(self.data.loc[(self.data['event_type'] == "pulse") & (self.data['phase'] == 0)]['onset'].values[0])
+        self.trimmed        = self.data.loc[(self.data['event_type'] == "stim") & (self.data['phase'] == phase_onset)].iloc[1:,:]
         self.onset_times    = self.trimmed['onset'].values[...,np.newaxis]
 
         skip_duration = False
@@ -678,7 +675,7 @@ class ParseExpToolsFile(ParseEyetrackerFile):
         if self.button:
 
             # get dataframe with responses
-            self.response_df = timings.loc[(timings['event_type'] == "response") & (timings['response'] != 'space')]
+            self.response_df = self.data.loc[(self.data['event_type'] == "response") & (self.data['response'] != 'space')]
 
             # get the onset times
             self.response_times = self.response_df['onset'].values[...,np.newaxis]
@@ -707,7 +704,7 @@ class ParseExpToolsFile(ParseEyetrackerFile):
                 self.event_names = self.add_events.copy()
 
             for ix,ev in enumerate(self.add_events):
-                ev_times = np.array([ii for ii in np.unique(timings[ev].values)])
+                ev_times = np.array([ii for ii in np.unique(self.data[ev].values)])
 
                 # filter for nan (https://stackoverflow.com/a/11620982)
                 ev_times = ev_times[~np.isnan(ev_times)][...,np.newaxis]
@@ -788,14 +785,10 @@ class ParseExpToolsFile(ParseEyetrackerFile):
             if not isinstance(self.RT_relative_to, str):
                 raise ValueError(f"Need a reference column to calculate reaction times (RTs), not '{self.RT_relative_to}'")
             
-
             # get response times
             if not hasattr(self, "response_df"):
-                self.response_df = timings.loc[(timings['event_type'] == "response") & (timings['response'] != 'space')]
-                
-            # get trial IDs where response occurred
-            self.id_responses = self.response_df.loc[(timings['event_type'] == "response")]['trial_nr'].values
-
+                self.response_df = self.data.loc[(self.data['event_type'] == "response") & (self.data['response'] != 'space')]
+            
             # fetch trials were target happened
             self.id_target = {}
             self.id_no_target = []
@@ -804,7 +797,7 @@ class ParseExpToolsFile(ParseEyetrackerFile):
             for idx in self.trimmed['trial_nr'].values:
 
                 # cross-check
-                trial_overview = timings.loc[(timings['trial_nr'] == idx)]
+                trial_overview = self.data.loc[(self.data['trial_nr'] == idx)]
                 
                 # get the values of reference column; skip if all elements are nan
                 if self.RT_relative_to != "start":
@@ -852,6 +845,8 @@ class ParseExpToolsFile(ParseEyetrackerFile):
                 
             if len(self.rts) >= 1:
                 self.rts = np.array(self.rts)
+            else:
+                self.rts = np.array([0])
 
             if len(self.id_target) != 0:
                 self.hits = len(self.rts)/len(self.id_target)
@@ -865,7 +860,14 @@ class ParseExpToolsFile(ParseEyetrackerFile):
                     add_fa_txt = f"[added {round(self.fa,2)} to avoid d' = inf]"
                 else:
                     add_fa_txt = ""
-                
+
+                # set HITS to something if 0 to avoid d' = inf
+                if self.hits == float(0):
+                    self.hits = 0.5*(1/len(self.trimmed['trial_nr'].values))
+                    add_hits_txt = f"[added {round(self.hits,2)} to avoid d' = inf]"
+                else:
+                    add_hits_txt = ""
+
                 # calculate d-prime
                 self.hitZ = stats.norm.ppf(self.hits)
                 self.faZ = stats.norm.ppf(self.fa)
@@ -879,7 +881,7 @@ class ParseExpToolsFile(ParseEyetrackerFile):
 
             if self.verbose:
                 if hasattr(self, 'dPrime'):
-                    print(f" Hits:\t{round(self.hits,2)}\t({len(self.rts)}/{len(self.id_target)})")
+                    print(f" Hits:\t{round(self.hits,2)}\t({len(self.rts)}/{len(self.id_target)})\t{add_hits_txt}")
                     print(f" Miss:\t{round(self.miss,2)}\t({(len(self.id_target)-len(self.rts))}/{len(self.id_target)})")
                     print(f" FA:\t{round(self.fa,2)}\t({len(self.false_alarms)}/{len(self.id_no_target)})\t{add_fa_txt}")
                     print(f" CR:\t{round(self.cr,2)}\t({len(self.correct_rejection)}/{len(self.id_no_target)})")
@@ -1501,7 +1503,10 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                     list_element=run_id)
 
                 if self.acompcor:
-                    ref_slice = self.ref_slice[run_id]
+                    if len(self.ref_slice) > 1:
+                        ref_slice = self.ref_slice[run_id]
+                    else:
+                        ref_slice = self.ref_slice[0]
                 else:
                     ref_slice = None
 
