@@ -244,8 +244,10 @@ nthread_flag="--nthreads ${nthreads}"
 VERSION=`${run_cmd} --version | cut -d" " -f2 | cut -d"." -f1`
 if [[ `echo "${VERSION//[!0-9]/}"` -lt "21" ]]; then
   output_dir=${derivatives}
+  add_fprep=1
 else
   output_dir=${derivatives}/fmriprep
+  add_fprep=0
 fi
 
 # run cmd if warp_only=0
@@ -305,22 +307,38 @@ if [ ! -z ${SUBJECT_PREFIX} ]; then
 fi
 
 # see https://github.com/nipreps/fmriprep/issues/2189#issuecomment-646620788
-xfms=`find ${work}/fmriprep*wf/single_subject_${subj_ID}_wf/func_preproc*/bold_reg_wf/bbreg_wf/concat_xfm -type f -name "out_fwd.tfm" 2>/dev/null`
-if [[ ! -z ${xfms} ]]; then
-  echo "Copying from-bold_to-T1w tfm-files"
-  for xfm in ${xfms[@]}; do
-    wf_name=`python -c "from linescanning.utils import disassemble_fmriprep_wf; print(disassemble_fmriprep_wf('${xfm}', '${subj_ID}', prefix='${pref}'))"`
-    
-    # check ses-flag
-    if [[ ${wf_name} == *"ses-"* ]]; then
-      ses_id=`echo ${wf_name} | cut -d'_' -f2`
-      base_dir=${pref}${subj_ID}/${ses_id}
+for tt in "fwd" "inv"; do
+  xfms=`find ${work}/fmriprep*wf/single_subject_${subj_ID}_wf/func_preproc*/bold_reg_wf/bbreg_wf/concat_xfm -type f -name "out_${tt}.tfm" 2>/dev/null`
+  if [[ ! -z ${xfms} ]]; then
+
+    if [[ ${tt} == "fwd" ]]; then
+      m="bold_to-T1w"
     else
-      base_dir=${pref}${subj_ID}
+      m="T1w_to-bold"
     fi
 
-    out_xfm=${output_dir}/${base_dir}/func/${wf_name}_from-bold_to-T1w_mode-image_xfm.txt
-    cp ${xfm} ${out_xfm}
+    echo "Copying \"${m}\" tfm-files"
+    for xfm in ${xfms[@]}; do
+      wf_name=`python -c "from linescanning.utils import disassemble_fmriprep_wf; print(disassemble_fmriprep_wf('${xfm}', '${subj_ID}', prefix='${pref}'))"`
+      
+      # check ses-flag
+      if [[ ${wf_name} == *"ses-"* ]]; then
+        ses_id=`echo ${wf_name} | cut -d'_' -f2`
+        base_dir=${pref}${subj_ID}/${ses_id}
+      else
+        base_dir=${pref}${subj_ID}
+      fi
 
-  done
-fi
+      if [[ ${add_fprep} -eq 1 ]]; then
+        fprep_dir=${output_dir}/fmriprep
+      else
+        fprep_dir=${output_dir}
+      fi
+
+
+      out_xfm=${fprep_dir}/${base_dir}/func/${wf_name}_from-${m}_mode-image_xfm.txt
+      cp ${xfm} ${out_xfm}
+
+    done
+  fi
+done
