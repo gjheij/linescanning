@@ -22,10 +22,14 @@ def check_input_is_list(obj, var=None, list_element=0):
         attr = getattr(obj, var)
     else:
         raise ValueError(f"Class does not have '{var}'-attribute")
+
+    obj_attr = "func_file"
+    if hasattr(obj, "tsv_file"):
+        obj_attr = "tsv_file"
     
     if isinstance(attr, list) or isinstance(attr, np.ndarray):
-        if len(attr) != len(obj.func_file):
-            raise ValueError(f"Length of '{var}' ({len(attr)}) does not match number of func files ({len(obj.func_file)}). Either specify a list of equal lenghts or 1 integer value for all volumes")
+        if len(attr) != len(getattr(obj,obj_attr)):
+            raise ValueError(f"Length of '{var}' ({len(attr)}) does not match number of func files ({len(getattr(obj,obj_attr))}). Either specify a list of equal lenghts or 1 integer value for all volumes")
 
         return attr[list_element]
     else:
@@ -599,8 +603,16 @@ class ParseExpToolsFile(ParseEyetrackerFile):
                 # check if we got different nr of vols to delete per run
                 delete_vols = check_input_is_list(self, "deleted_first_timepoints", list_element=run)
 
+                # check if we got different stimulus durations per run
+                duration = check_input_is_list(self, var="stim_duration", list_element=run)
+
                 # read in the exptools-file
-                self.preprocess_exptools_file(onset_file, run=self.run, delete_vols=delete_vols, phase_onset=self.phase_onset)
+                self.preprocess_exptools_file(
+                    onset_file, 
+                    run=self.run, 
+                    delete_vols=delete_vols, 
+                    phase_onset=self.phase_onset,
+                    duration=duration)
 
                 # append to df
                 df_onsets.append(self.get_onset_df(index=False))
@@ -649,7 +661,7 @@ class ParseExpToolsFile(ParseEyetrackerFile):
     def events_single_run(self, run=1):
         return self.events_per_run[run]
 
-    def preprocess_exptools_file(self, tsv_file, run=1, delete_vols=0, phase_onset=1):
+    def preprocess_exptools_file(self, tsv_file, run=1, delete_vols=0, phase_onset=1, duration=None):
         
         if self.verbose:
             print(f"Preprocessing {tsv_file}")
@@ -663,9 +675,9 @@ class ParseExpToolsFile(ParseEyetrackerFile):
         self.onset_times    = self.trimmed['onset'].values[...,np.newaxis]
 
         skip_duration = False
-        if isinstance(self.stim_duration, float) or isinstance(self.stim_duration, int):
-            self.durations = np.full_like(self.onset_times, float(self.stim_duration))
-        elif self.stim_duration == None:
+        if isinstance(duration, float) or isinstance(duration, int):
+            self.durations = np.full_like(self.onset_times, float(duration))
+        elif duration == None:
             skip_duration = True
         else:
             self.durations = self.trimmed['duration'].values[...,np.newaxis]
