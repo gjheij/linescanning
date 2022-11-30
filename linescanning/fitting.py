@@ -833,33 +833,46 @@ class NideconvFitter():
         add_offset=True, 
         error_type="sem", 
         axs=None, 
+        events=None,
         **kwargs):
 
         if not hasattr(self, "tc_condition"):
             self.timecourses_condition()
 
         n_cols = len(list(self.cond))
-        figsize=(n_cols*8,8)
+        figsize=(n_cols*6,6)
 
         if not axs:
-            
             fig = plt.figure(figsize=figsize)
             gs = fig.add_gridspec(1, n_cols)
 
         if error_type == "std":
-            err = self.tc_std.copy()
+            err = self.std_condition.copy()
         elif error_type == "sem":
-            err = self.tc_sem.copy()
+            err = self.sem_condition.copy()
         else:
             raise ValueError(f"Error type must be 'std' or 'sem', not '{error_type}'")
+
+        if not isinstance(events, list) and not isinstance(events, np.ndarray):
+            events = self.cond
+        else:
+            if self.verbose:
+                print(f"Flipping events to {events}")
         
-        for ix,event in enumerate(self.cond):
+        for ix, event in enumerate(events):
             
             # add axis
             if not axs:
                 ax = fig.add_subplot(gs[ix])
             else:
                 ax = axs
+
+            for key in list(kwargs.keys()):
+                if ix != 0:
+                    if key == "y_ticks":
+                        kwargs[key] = []
+                    elif key == "y_label":
+                        kwargs[key] = None
 
             event_df = select_from_df(self.tc_condition, expression=f"event_type = {event}")
             error_df = select_from_df(err, expression=f"event_type = {event}")            
@@ -881,7 +894,7 @@ class NideconvFitter():
                 
                 self.data_for_plot.append(col_data)
                 self.error_for_plot.append(col_error)
-
+            
             plotting.LazyPlot(
                 self.data_for_plot,
                 xx=self.time,
