@@ -883,7 +883,10 @@ class LazyBar():
             "fancy",
             "fancy_rounding",
             "fancy_pad",
-            "fancy_aspect"
+            "fancy_aspect",
+            "font_name",
+            "x_ticks",
+            "y_ticks"
         ]
 
         kw_sns = {}
@@ -929,6 +932,9 @@ class LazyBar():
                 self.palette = None
                 self.cmap = None
                 self.color = kw_sns["color"]
+            elif isinstance(kw_sns["color"], list):
+                self.palette = sns.color_palette(palette=kw_sns["color"])
+                self.color = None
         else:
             self.color = None
             if isinstance(self.palette, list):
