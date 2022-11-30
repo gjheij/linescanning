@@ -68,25 +68,19 @@ def ants_applytrafo(fixed, moving, trafo=None, invert=0, interp='nn', output=Non
     ----------
     fixed: str|nibabel.Nifti1Image
         string to nifti reference image (.nii.gz) or nibabel.Nifti1Image that will be con-verted temporarily to a file (fixed.nii.gz) in the working directory
-
     moving: str|nibabel.Nifti1Image
         moving (to-be-registered) image (.nii.gz) or nibabel.Nifti1Image that will be converted temporarily to a file (moving.nii.gz) in the working directory
-
     trafo: str|list
         list or single path to transformation files in order of application
-
     interp: str
         interpolation type: 'lin' (linear), 'nn' (NearestNeighbor), gau (Gaussian), bspl<order>, cws  CosineWindowedSinc), wws (WelchWindowedSinc), hws (HammingWindowed-Sinc), lws (LanczosWindowedSinc); default = 'nn'
-
     invert: int|list
         list or single integer with the length of trafo-list to specify which transformations to invert or not. Default = 0 for all, meaning use as they are specified: do not invert
-
     output: str
         output name for warped file
-
     return_type: str
         whether you'd like the `filename` returned (return_type='file') or a `nibabel.Nifti1Image` (return_type="nb")
-    
+
     Returns
     ----------
     str

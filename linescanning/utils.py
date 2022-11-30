@@ -162,6 +162,8 @@ def replace_string(fn, str1, str2, fn_sep='_'):
         filename with replaced substring
     """
 
+    if not isinstance(fn, str):
+        raise ValueError(f"Input must be string, not {fn} of type {type(fn)}")
     split_name = fn.split(os.sep)[-1].split(fn_sep)
     idx = [(i, split_name.index(str1))
            for i, split_name in enumerate(split_name) if str1 in split_name][0][0]
@@ -1216,16 +1218,20 @@ def resample2d(array:np.ndarray, new_size:int, kind='linear'):
 
 class FindFiles():
 
-    def __init__(self, directory, extension):
+    def __init__(self, directory, extension, exclude=None):
 
         self.directory = directory
         self.extension = extension
+        self.exclude = exclude
         self.files = []
 
         for filename in self.find_files(self.directory, f'*{self.extension}'):
             self.files.append(filename)
 
         self.files.sort()
+
+        if isinstance(self.exclude, str):
+            self.files = get_file_from_substring([], self.files, exclude=self.exclude)
 
     @staticmethod
     def find_files(directory, pattern):

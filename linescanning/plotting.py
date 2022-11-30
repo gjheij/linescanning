@@ -2,7 +2,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import pandas as pd
-from scipy import stats
 import seaborn as sns
 from typing import Union
 

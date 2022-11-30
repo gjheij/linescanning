@@ -68,7 +68,7 @@ if [[ ! -z ${sub} ]]; then
 
   REF=`find ${DIR_DATA_DERIV}/cat12/${base_dir} -type f -name "${sub}*" -and -name "*T1w.nii.gz" 2>/dev/null`
   SEG=`find ${DIR_DATA_DERIV}/manual_masks/${base_dir} -type f -name "${sub}*" -and -name "*cruise_cortex.nii.gz" 2>/dev/null`
-  MAN=${DIR_DATA_DERIV}/manual_masks/${base_dir}/${base}_acq-${space^^}_desc-manualseggm.nii.gz
+  MAN=${DIR_DATA_DERIV}/manual_masks/${base_dir}/${base}_acq-${DATA}_desc-manualseggm.nii.gz
 
 else
 
@@ -78,8 +78,8 @@ else
 
 fi
 
-if [[ ! -f ${REF} ]] || [[ ! -f ${SEG} ]]; then
-  echo "ERROR in `basename ${0}`: could not find T1w-reference or CRUISE cortex file"
+if [[ ! -f ${REF} ]]; then
+  echo "ERROR in `basename ${0}`: could not find T1w-reference"
   exit 1
 fi
 
@@ -92,7 +92,11 @@ if [[ ! -f ${MAN} ]]; then
 fi
 
 echo "Opening ITK-Snap"
-itksnap -g ${REF} -o ${SEG} -s ${MAN} 2>/dev/null
+if [[ -f ${SEG} ]]; then
+  itksnap -g ${REF} -o ${SEG} -s ${MAN} 2>/dev/null
+else
+  itksnap -g ${REF} -s ${MAN} 2>/dev/null
+fi
 
 if [[ ! -f ${MAN} ]]; then
   echo "ERROR in `basename ${0}`: manual edit file was not saved.."

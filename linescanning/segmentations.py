@@ -141,9 +141,16 @@ class Segmentations:
 
             # fetch segmentations, assuming default directory layout
             nighres_layout = BIDSLayout(self.nighres_source, validate=False).get(extension=['nii.gz'], return_type='file')
-            self.wb_cruise = utils.get_file_from_substring("cruise_cortex", nighres_layout)
-            self.wb_layers = utils.get_file_from_substring("layering_layers", nighres_layout)
-            self.wb_depth = utils.get_file_from_substring("layering_depth", nighres_layout)
+            self.wb_cruise = utils.get_file_from_substring("cruise_cortex", nighres_layout, exclude="1slice")
+            self.wb_layers = utils.get_file_from_substring("layering_layers", nighres_layout, exclude="1slice")
+            self.wb_depth = utils.get_file_from_substring("layering_depth", nighres_layout, exclude="1slice")
+
+            for n,ii in zip(["cruise","layers","depth"], [self.wb_cruise, self.wb_layers, self.wb_depth]):
+                if isinstance(ii, list):
+                    if len(ii) > 1:
+                        raise ValueError(f"Found multiple files for '{n}': {ii}")
+                    else:
+                        setattr(self, f"wb_{n}", ii[0])
 
             # fetch mask and tissue probabilities
             mask_layout = BIDSLayout(self.mask_dir, validate=False).get(extension=['nii.gz'], return_type='file')
@@ -158,9 +165,7 @@ class Segmentations:
 
             if self.trafo_file == None:
                 # try the default in derivatives/pycortex/<subject>/transforms
-                self.trafo_file = utils.get_file_from_substring([f"from-fs_to-ses{self.target_session}", ".mat"], opj(self.cortex_dir, 'transforms'), return_msg="None")
-                if self.trafo_file == None:
-                    raise ValueError(f"Could not find default trafo-file 'from-fs_to-ses{self.target_session}*.mat' in {opj(self.cortex_dir, 'transforms')}")
+                self.trafo_file = utils.get_file_from_substring([f"from-fs_to-ses{self.target_session}", ".mat"], opj(self.cortex_dir, 'transforms'))
             else:
                 if isinstance(self.trafo_file, str):
                     if not os.path.exists(self.trafo_file):
@@ -187,9 +192,10 @@ class Segmentations:
 
             in_type = ['prob', 'prob', 'prob', 'tissue', 'layer', 'prob', 'tissue']
             tag = ['wm', 'gm', 'csf', 'cortex', 'layers', 'depth', 'mask']
+            in_files = [self.wb_wm, self.wb_gm, self.wb_csf, self.wb_cruise, self.wb_layers, self.wb_depth, self.wb_brainmask]
             self.resampled = {}
-            self.resampled_data ={}
-            for nr,file in enumerate([self.wb_wm, self.wb_gm, self.wb_csf, self.wb_cruise, self.wb_layers, self.wb_depth, self.wb_brainmask]):
+            self.resampled_data = {}
+            for file,ft,t in zip(in_files, in_type, tag):
 
                 # replace acq-MP2RAGE with acq-1slice
                 if self.run == None:
@@ -199,27 +205,29 @@ class Segmentations:
                 new_file = opj(self.nighres_target, os.path.basename(new_fn))
                 
                 if not os.path.exists(new_file):
-                    if in_type[nr] == "tissue":
+                    if ft == "tissue":
                         interp = "mul"
-                    elif in_type[nr] == "layer":
+                    elif ft == "layer":
                         interp = "gen"
                     else:
                         interp = "nn"
                 
                     transform.ants_applytrafo(
                         self.reference_slice, 
-                        file, interp=interp, 
+                        file, 
+                        interp=interp, 
                         invert=invert,
                         trafo=self.trafo_file, 
                         output=new_file)
 
                 # collect them in 'resampled' dictionary
-                self.resampled[tag[nr]] = new_file
-                self.resampled_data[tag[nr]] = nb.load(new_file).get_fdata()
+                self.resampled[t] = new_file
+                self.resampled_data[t] = nb.load(new_file).get_fdata()
 
             # add reference and beam images
             self.resampled['ref'] = self.reference_slice; self.resampled_data['ref'] = nb.load(self.reference_slice).get_fdata()
-            self.resampled['line'] = image.create_line_from_slice(self.reference_slice, fold=self.foldover); self.resampled_data['line'] = nb.load(self.reference_slice).get_fdata()
+            self.resampled['line'] = image.create_line_from_slice(self.reference_slice, fold=self.foldover)
+            self.resampled_data['line'] = nb.load(self.reference_slice).get_fdata()
 
             # save pickle
             pickle_file = open(self.pickle_file, "wb")
