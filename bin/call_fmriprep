@@ -288,7 +288,7 @@ fi
 
 #-----------------------------------------------------------------------------
 # fMRIPrep's boldref seems to be messy lately (snow-like noise pattern instead of an image)
-bold_files=`find ${output_dir}/*${subj_ID}/ -type f -name "*preproc_bold.nii.gz" 2>/dev/null`
+bold_files=`find ${derivatives}/fmriprep/*${subj_ID}/ -type f -name "*preproc_bold.nii.gz" 2>/dev/null`
 IFS=$'\n' bold_files=($(sort <<<"${bold_files[*]}"))
 unset IFS
 
