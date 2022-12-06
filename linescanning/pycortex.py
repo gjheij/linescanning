@@ -7,9 +7,6 @@ import numpy as np
 import os
 import configparser
 import sys
-from scipy import stats
-from typing import Union
-
 opj = os.path.join
 
 def set_ctx_path(p=None, opt="update"):
