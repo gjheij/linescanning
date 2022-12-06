@@ -26,7 +26,7 @@ def check_input_is_list(obj, var=None, list_element=0):
     obj_attr = "func_file"
     if hasattr(obj, "tsv_file"):
         obj_attr = "tsv_file"
-    
+
     if isinstance(attr, list) or isinstance(attr, np.ndarray):
         if len(attr) != len(getattr(obj,obj_attr)):
             raise ValueError(f"Length of '{var}' ({len(attr)}) does not match number of func files ({len(getattr(obj,obj_attr))}). Either specify a list of equal lenghts or 1 integer value for all volumes")
@@ -34,6 +34,7 @@ def check_input_is_list(obj, var=None, list_element=0):
         return attr[list_element]
     else:
         return attr
+
 
 class ParseEyetrackerFile():
 
@@ -608,9 +609,9 @@ class ParseExpToolsFile(ParseEyetrackerFile):
 
                 # read in the exptools-file
                 self.preprocess_exptools_file(
-                    onset_file, 
-                    run=self.run, 
-                    delete_vols=delete_vols, 
+                    onset_file,
+                    run=self.run,
+                    delete_vols=delete_vols,
                     phase_onset=self.phase_onset,
                     duration=duration)
 
@@ -662,7 +663,7 @@ class ParseExpToolsFile(ParseEyetrackerFile):
         return self.events_per_run[run]
 
     def preprocess_exptools_file(self, tsv_file, run=1, delete_vols=0, phase_onset=1, duration=None):
-        
+
         if self.verbose:
             print(f"Preprocessing {tsv_file}")
         with open(tsv_file) as f:
@@ -681,7 +682,7 @@ class ParseExpToolsFile(ParseEyetrackerFile):
             skip_duration = True
         else:
             self.durations = self.trimmed['duration'].values[...,np.newaxis]
-        
+
         self.condition = self.trimmed['condition'].values[..., np.newaxis]
         if self.verbose:
             print(f" 1st 't' @{round(self.start_time,2)}s")
@@ -2027,7 +2028,7 @@ order={self.poly_order}). """
                 if acompcor or self.ica:
                     info = f" Using {self.clean_tag}-data for low-pass filtering"
                     data_for_filtering = self.get_data(index=True, filter_strategy="hp", dtype=self.standardization, acompcor=acompcor, ica=self.ica).T.values
-                    out_attr = f"lp_acomp_{self.standardization}"
+                    out_attr = f"lp_{self.clean_tag}_{self.standardization}"
                 elif hasattr(self, f"hp_{self.standardization}"):
                     info = " Using high-pass filtered data for low-pass filtering"
                     data_for_filtering = getattr(self, f"hp_{self.standardization}")
@@ -2276,7 +2277,10 @@ order={self.poly_order}). """
 
         if isinstance(return_data, pd.DataFrame):
             if index:
-                return return_data.set_index(['subject', 'run', 't'])
+                try:
+                    return return_data.set_index(['subject', 'run', 't'])
+                except:
+                    return return_data
             else:
                 return return_data
 
