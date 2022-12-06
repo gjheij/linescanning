@@ -33,6 +33,7 @@ Parameters
                                 parameters
     --plot                      create a plot of the pRF+timecourse+prediction
     --verbose                   print some extra information to the terminal
+    --v1                        use V1-only data
 
 Returns
 ----------
@@ -54,9 +55,10 @@ Example
     stage       = "iter"
     plot        = False
     verbose     = False
+    v1_data     = False
 
     try:
-        opts = getopt.getopt(argv,"qs:v:p:h:d:",["subject=", "prfdir=", "vertex=", "prf=", "lh", "rh", "gauss", "grid", "css", "dog", "norm", "plot", "verbose"])[0]
+        opts = getopt.getopt(argv,"qs:v:p:h:d:",["subject=", "prfdir=", "vertex=", "prf=", "lh", "rh", "gauss", "grid", "css", "dog", "norm", "plot", "verbose", "v1"])[0]
     except getopt.GetoptError:
         print(main.__doc__)
         sys.exit(2)
@@ -90,7 +92,9 @@ Example
         elif opt in ("--plot"):
             plot = True
         elif opt in ("--verbose"):
-            verbose = True            
+            verbose = True     
+        elif opt in ("--v1"):
+            v1_data = True                     
 
     if len(argv) < 1:
         print("\nNEED AT LEAST A SUBJECT ID")
@@ -102,6 +106,9 @@ Example
 
     if not prf_info:
         search_for = [f'model-{model}', stage, "desc-prf_params.pkl"]
+        if v1_data:
+            search_for += ["_roi-V1"]
+
         prf_info = utils.get_file_from_substring(search_for, prf_dir)
     
     if isinstance(prf_info, list):
@@ -110,9 +117,13 @@ Example
     print(f"Reading from '{prf_info}'")
     info = prf.read_par_file(prf_info)
 
+    search_data = ["hemi-L_", "avg_bold", ".npy"]
+    if v1_data:
+        search_data += ["_roi-V1"]
+
     if hemi == "rh":
         tag = "hemi-R"
-        tmp = utils.get_file_from_substring(["hemi-L_", "avg_bold", ".npy"], prf_dir)
+        tmp = utils.get_file_from_substring(search_data, prf_dir)
         vertex = np.load(tmp).shape[-1]+vertex
     else:
         tag = "hemi-L"
@@ -122,7 +133,15 @@ Example
     ecc = np.sqrt(vert_info[0]**2+vert_info[1]**2)
 
     vert_info = np.append(vert_info,(polar,ecc))
-    info = {'x': vert_info[0],'y': vert_info[1],'size': vert_info[2],'beta': vert_info[3],'baseline': vert_info[4],'r2': vert_info[5],'polar': vert_info[6],'ecc': vert_info[7]}
+    info = {
+        'x': vert_info[0],
+        'y': vert_info[1],
+        'size': vert_info[2],
+        'beta': vert_info[3],
+        'baseline': vert_info[4],
+        'r2': vert_info[5],
+        'polar': vert_info[6],
+        'ecc': vert_info[7]}
     
     print(f"pRF parameters ID: {vertex}")
     print(f" x-coord: {round(vert_info[0],2)}")
@@ -134,7 +153,11 @@ Example
     if plot:
 
         # get data
-        data = utils.get_file_from_substring(["hemi-LR_", "avg_bold"], prf_dir)
+        search_data = ["hemi-LR_", "avg_bold"]
+        if v1_data:
+            search_data += ["_roi-V1"]
+
+        data = utils.get_file_from_substring(search_data, prf_dir)
         data = prf.read_par_file(data)
 
         # get design
@@ -150,6 +173,7 @@ Example
         obj.load_params(prf_info, model=model, stage=stage)
 
         # make plot
+        fname = opj(prf_dir, f"{subject}_{tag}_vox-{vertex}_model-{model}_stage-{stage}.svg")
         obj.plot_vox(
             vox_nr=vertex,
             model=model,
@@ -157,7 +181,7 @@ Example
             axis_type="time",
             resize_pix=270,
             title="pars",
-            save_as=opj(prf_dir, f"{subject}_{tag}_vox-{vertex}_model-{model}_stage-{stage}.svg"))        
+            save_as=fname)        
 
 if __name__ == "__main__":
     main(sys.argv[1:])

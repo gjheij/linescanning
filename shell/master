@@ -1236,7 +1236,17 @@ if [[ $? -eq 0 ]]; then
     TASK_ID="-t ${TYPE}"
   fi
 
-  ${job} spinoza_bestvertex ${MODEL} ${TASK_ID} ${GRID} ${SUBJECT} ${SESSION} ${VERT} ${FREEVIEW} ${OW} ${DIR_DATA_HOME} ${DIR_DATA_DERIV} ${LABEL_FILE}
+  ${job} spinoza_bestvertex \
+    ${MODEL} \
+    ${TASK_ID} \
+    ${GRID} \
+    ${SUBJECT} \
+    ${SESSION} \
+    ${VERT} \
+    ${FREEVIEW} \
+    ${OW} \
+    ${lbl_flag} \
+    ${DIR_DATA_HOME} ${DIR_DATA_DERIV} ${LABEL_FILE}
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_bestvertex exited with non-zero status"
