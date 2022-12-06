@@ -156,7 +156,7 @@ if [[ ${session} -ne 1 ]]; then
 
   anat_session2=`find "${nifti}/nifti" -type f \( -name "*t${ttime}*" -and -name "*real*" -and -name "*.nii.gz" \) 2>/dev/null`
   if [[ -z ${anat_session2} ]]; then
-    echo "ERROR: Couldn't find lower anatomy file, please specify correctly.."
+    echo "ERROR: Couldn't find low-res anatomy file, please specify correctly.."
     exit 1
   elif [ `echo ${anat_session2} | wc -w` -gt 1 ]; then
     echo "ERROR: Found more than 1 file, make sure only one file is specified for session 2 anatomy:"
