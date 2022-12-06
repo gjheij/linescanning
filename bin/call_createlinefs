@@ -109,12 +109,16 @@ Example:
         line_ctx = opj(os.environ['CTX'], subject, 'line_pycortex.csv')
 
     # this scan object will do everyting
-    scan = scanner.Scanner(optimal.target_vertex(subject,
-                                                 fs_dir=os.environ['FS'],
-                                                 cx_dir=os.environ['CTX'],
-                                                 prf_dir=os.environ['PRF'],
-                                                 out=line_ctx),
-                           fs_dir=os.environ['FS'], new_anat=anat2, fs2ses='identity', hemi=hemi,ses='fs', print_to_console=False)
+    scan = scanner.Scanner(
+        optimal.target_vertex(
+            subject,
+            deriv=os.environ.get("DIR_DATA_DERIV"),
+            out=line_ctx),
+        fs_dir=os.environ['FS'], 
+        new_anat=anat2, 
+        fs2ses='identity', 
+        hemi=hemi,ses='fs', 
+        print_to_console=False)
 
     tkr_coords = scan.tkr_coords[hemi]
     fold = scan.foldover[hemi]

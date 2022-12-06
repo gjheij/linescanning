@@ -106,9 +106,6 @@ Usage:
 
     # this scan object will do everyting
     scanner.Scanner(optimal.target_vertex(subject,
-                                          fs_dir=fs_dir,
-                                          cx_dir=cx_dir,
-                                          prf_dir=prf_dir,
                                           out=line_fn),
                     fs_dir=fs_dir, new_anat=anat2, fs2ses=affine, hemi=hemi,ses=new_ses)
 
