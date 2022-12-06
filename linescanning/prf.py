@@ -1696,6 +1696,13 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                 print(f"Reading design matrix from '{self.design_matrix}'", flush=True)
             self.design_matrix = read_par_file(self.design_matrix)
 
+        # adjust design matrix to data
+        if self.design_matrix.shape[-1] != self.data.shape[-1]:
+            missed_vols = self.design_matrix.shape[-1]-self.data.shape[-1]
+            self.design_matrix = self.design_matrix[...,missed_vols:]
+            if self.verbose:
+                print(f"Design has {missed_vols} more volumes than timecourses, cutting design to {self.design_matrix.shape}")
+
         #----------------------------------------------------------------------------------------------------------------------------------------------------------
         # Fetch the settings
         self.define_settings()
@@ -2584,7 +2591,7 @@ class SizeResponse():
         else:
             return func
 
-    def find_stim_sizes(self, curve1, curve2):
+    def find_stim_sizes(self, curve1, curve2=None):
         """find_stim_sizes
 
         Function to fetch the stimulus sizes that optimally disentangle the responses of two pRFs given the Size-Response curves. Starts by finding the maximum response for each curve, then finds the intersect, then finds the stimulus sizes before and after the intersect where the response difference is largest.
@@ -2611,34 +2618,37 @@ class SizeResponse():
         """
 
         # find the peaks of individual curves
-        sr_diff = curve1-curve2
-        size_indices = signal.find_peaks(abs(sr_diff))[0]
-        size_indices = np.append(size_indices, 
-                                 np.array((utils.find_max_val(curve1)[0],
-                                           utils.find_max_val(curve2)[0])))
+        if curve2 != None:
+            sr_diff = curve1-curve2
+            size_indices = signal.find_peaks(abs(sr_diff))[0]
+            size_indices = np.append(size_indices, 
+                                    np.array((utils.find_max_val(curve1)[0],
+                                            utils.find_max_val(curve2)[0])))
 
-        # append sizes of max of curves
-        use_stim_sizes = []
-        for size_index in size_indices:
-            use_stim_sizes.append(self.stims_fill_sizes[size_index])
+            # append sizes of max of curves
+            use_stim_sizes = []
+            for size_index in size_indices:
+                use_stim_sizes.append(self.stims_fill_sizes[size_index])
 
-        # find intersection of curves
-        _,y_size = utils.find_intersection(self.stims_fill_sizes, curve1, curve2)
-        use_stim_sizes.append(y_size)
-        use_stim_sizes.sort()
+            # find intersection of curves
+            _,y_size = utils.find_intersection(self.stims_fill_sizes, curve1, curve2)
+            use_stim_sizes.append(y_size)
+            use_stim_sizes.sort()
 
-        # append a stimulus of size 3dva if len(use_stim_sizes) == 4
-        if len(use_stim_sizes) == 4:
-            use_stim_sizes.append(2.5)
-
-        return use_stim_sizes
-
+            # append a stimulus of size 3dva if len(use_stim_sizes) == 4
+            if len(use_stim_sizes) == 4:
+                use_stim_sizes.append(2.5)
+            
+            return use_stim_sizes
+        else:
+            size_index = signal.find_peaks(curve1)[0][0]
+            return self.stims_fill_sizes[size_index]
 
     def plot_stim_size(self, stim_size, vf_extent=[-5,-5], ax=None):
         """plot output of :func:`linescanning.prf.SizeResponse.find_stim_sizes`"""
 
         if ax == None:
-            fig,ax = plt.subplots(figsize=(6,6))
+            _,ax = plt.subplots(figsize=(6,6))
 
         stim_ix = utils.find_nearest(self.stims_fill_sizes, stim_size)[0]
         cmap_blue = utils.make_binary_cm((8,178,240))
@@ -2651,7 +2661,12 @@ class SizeResponse():
         im.set_clip_path(patch)
 
 
-    def save_target_params(self, fname=None, hemi="L", stim_sizes=None, factor=None):
+    def save_target_params(
+        self, 
+        fname=None, 
+        hemi="L", 
+        stim_sizes=None, 
+        factor=None):
         """Write best_vertices-type file for normalization parameters + full normalization parameters in numpy-file"""
             
         ecc = np.sqrt(self.params_df['x'][0]**2+self.params_df['y'][0]**2)
@@ -2674,24 +2689,26 @@ class SizeResponse():
                 factor = 1
 
             vert_info = self.subject_info.vert_info.data.copy()
-            data_dict = {"hemi":     [hemi],
-                         "x":        [self.params_df['x'][0]*factor],
-                         "y":        [self.params_df['y'][0]*factor],
-                         "size":     [self.params_df['prf_size'][0]*factor],
-                         "beta":     [self.params_df['prf_ampl'][0]],
-                         "baseline": [self.params_df['bold_bsl'][0]],
-                         "r2":       [self.params_df['r2'][0]],
-                         "ecc":      [ecc],
-                         "polar":    [polar],
-                         "index":    [vert_info['index'][hemi]],
-                         "position": [vert_info['position'][hemi]],
-                         "normal":   [vert_info['normal'][hemi]]}
+            data_dict = {
+                "hemi":     [hemi],
+                "x":        [self.params_df['x'][0]*factor],
+                "y":        [self.params_df['y'][0]*factor],
+                "size":     [self.params_df['prf_size'][0]*factor],
+                "beta":     [self.params_df['prf_ampl'][0]],
+                "baseline": [self.params_df['bold_bsl'][0]],
+                "r2":       [self.params_df['r2'][0]],
+                "ecc":      [ecc],
+                "polar":    [polar],
+                "index":    [vert_info['index'][hemi]],
+                "position": [vert_info['position'][hemi]],
+                "normal":   [vert_info['normal'][hemi]]}
 
             # add stim sizes
+            if isinstance(stim_sizes, (int,float)):
+                stim_sizes = [stim_sizes]
+
             if isinstance(stim_sizes, list):
                 stim_sizes = np.array(stim_sizes)
-
-            if isinstance(stim_sizes, np.ndarray):
                 data_dict['stim_sizes'] = [stim_sizes*factor]
                 
             best_vertex = pd.DataFrame(data_dict)
@@ -2769,6 +2786,7 @@ class CollectSubject(pRFmodelFitting):
         best_vertex=False,
         filter_list=[],
         fit_hrf=False,
+        v1=False,
         **kwargs):
 
         self.subject        = subject
@@ -2782,6 +2800,7 @@ class CollectSubject(pRFmodelFitting):
         self.best_vertex    = best_vertex
         self.filter_list    = filter_list
         self.fit_hrf        = fit_hrf
+        self.v1_data        = v1
         self.__dict__.update(kwargs)
 
         if self.hemi == "lh" or self.hemi.lower() == "l" or self.hemi.lower() == "left":
@@ -2806,10 +2825,14 @@ class CollectSubject(pRFmodelFitting):
 
             self.design_matrix = read_par_file(self.design_fn) # read_par_file doesn't care whether it's a npy-/mat-/pkl-file
 
+            search_for = ["avg_bold", ".npy"]
+            if self.v1_data:
+                search_for += "_roi-V1"
+                
             try:
-                self.func_data_lr = np.load(utils.get_file_from_substring(["hemi-LR_", "avg_bold", ".npy"], self.prf_dir))
-                self.func_data_l = np.load(utils.get_file_from_substring(["hemi-L_", "avg_bold", ".npy"], self.prf_dir))
-                self.func_data_r = np.load(utils.get_file_from_substring(["hemi-R_", "avg_bold", ".npy"], self.prf_dir))
+                self.func_data_lr = np.load(utils.get_file_from_substring(search_for+["hemi-LR_"], self.prf_dir))
+                self.func_data_l = np.load(utils.get_file_from_substring(search_for+["hemi-L_"], self.prf_dir))
+                self.func_data_r = np.load(utils.get_file_from_substring(search_for+["hemi-R_"], self.prf_dir))
             except:
                 try:
                     self.func_data_lr = np.load(utils.get_file_from_substring(["desc-data.npy"]+self.filter_list, self.prf_dir))
@@ -2820,6 +2843,10 @@ class CollectSubject(pRFmodelFitting):
         allowed_models = ['gauss', 'css', 'dog', 'norm']
         look_for = [f"model-{model}", "stage-iter", "params.pkl"]
         
+        # add some filters
+        if self.v1_data:
+            look_for += ["_roi-V1"]
+
         if self.fit_hrf:
             look_for += ["hrf-true_"]
 
