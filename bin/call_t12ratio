@@ -3,9 +3,8 @@
 import sys, getopt
 import os
 from nilearn import image
-from scipy import ndimage
-import pathlib
 import nibabel as nb
+import numpy as np
 import warnings
 warnings.filterwarnings("ignore")
 opj = os.path.join
@@ -77,6 +76,11 @@ Example:
       os.makedirs(os.path.dirname(t2w), exist_ok=True)
 
     # calculate ratio
+    img = nb.load(t2w)
+    if len(img.get_fdata().shape) > 3:
+        data = np.squeeze(img.get_fdata(), axis=-1)
+        nb.Nifti1Image(data, affine=img.affine, header=img.header).to_filename(t2w)
+
     ratio_img = image.math_img('(t1 / t2)', t1=t1w, t2=t2w)
     ratio_img.to_filename(out+"_desc-ratio.nii.gz")
 
