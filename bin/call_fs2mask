@@ -19,7 +19,7 @@ This script converts an ROI given a FreeSurfer atlas into a nifti image based on
 For instance, if we want the ACC from the DKT-atlas, we can specify the aparc.DKTatlas+aseg.mgz 
 image, the corresponding values of the ACC (hemi-L = 1002; hemi-R = 2002), and an output image. The
 output image can be 1 hemisphere (specify one of the values) or both (specify both values like in 
-the format [<value1>,<value2>])
+the format "[<value1>,<value2>]")
 
 Args:
     <atlas img>         : str
