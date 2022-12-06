@@ -972,7 +972,6 @@ def select_from_df(df, expression="run = 1", index=True, indices=None):
 
         return sub_df
 
-
 def split_bids_components(fname):
 
     comp_list = fname.split('_')
@@ -983,9 +982,18 @@ def split_bids_components(fname):
         for i in ids:
             if i in el:
                 comp = el.split('-')[-1]
+
+                if "." in comp:
+                    ic = comp.index(".")
+                    if ic > 0:
+                        ex = 0
+                    else:
+                        ex = -1
+
+                    comp = comp.split(".")[ex]
+                
                 if i == "run":
-                    if comp != "avg":
-                        comp = int(comp)
+                    comp = int(comp)
 
                 comps[i] = comp
 
