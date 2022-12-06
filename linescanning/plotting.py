@@ -960,7 +960,6 @@ class LazyBar():
 
         # from: https://stackoverflow.com/a/61569240
         if self.fancy:
-            
             new_patches = []
             for patch in reversed(self.ff.patches):
                 # print(bb.xmin, bb.ymin,abs(bb.width), abs(bb.height))
@@ -1181,7 +1180,10 @@ class LazyHist(Defaults):
         x_label2: str=None,
         y_label2: str=None,
         title2: str=None,
-        return_obj: bool=False):
+        return_obj: bool=False,
+        x_lim: list=None,
+        y_lim: list=None,
+        **kwargs):
         
         self.data           = data
         self.x              = x
@@ -1205,6 +1207,9 @@ class LazyHist(Defaults):
         self.y_ticks        = y_ticks
         self.color          = color
         self.return_obj     = return_obj
+        self.x_lim          = x_lim
+        self.y_lim          = y_lim
+        self.kwargs         = kwargs
 
         super().__init__()
         self.__dict__.update(self.kde_kwargs)
@@ -1216,7 +1221,7 @@ class LazyHist(Defaults):
         else:
             self.plot()
 
-        self.kde = self.return_kde()
+        # self.kde = self.return_kde()
 
         if self.save_as:
             if isinstance(self.save_as, list):
@@ -1242,9 +1247,11 @@ class LazyHist(Defaults):
             )
 
         if self.kde:
-
+            
             self.ff = sns.kdeplot(
                 data=self.data,
+                x=self.x,
+                y=self.y,
                 ax=self.axs,
                 fill=self.fill,
                 color=self.color,
@@ -1265,6 +1272,13 @@ class LazyHist(Defaults):
 
         for axis in ['top', 'bottom', 'left', 'right']:
             self.ff.spines[axis].set_linewidth(self.axis_width)
+
+        # give priority to specify x-lims rather than seaborn's xlim
+        if isinstance(self.x_lim, list):
+            self.ff.set_xlim(self.x_lim)
+        
+        if isinstance(self.y_lim, list):
+            self.ff.set_ylim(self.y_lim)   
 
         if isinstance(self.x_ticks, list):
             self.ff.set_xticks(self.x_ticks)
@@ -1295,8 +1309,8 @@ class LazyHist(Defaults):
         else:
             trim_left = False
 
-        if hasattr(self, "trim_bottom"):
-            trim_bottom = self.trim_bottom
+        if "trim_bottom" in list(self.kwargs.keys()):
+            trim_bottom = self.kwargs["trim_bottom"]
         else:
             trim_bottom = False
 
