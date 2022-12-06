@@ -3,7 +3,10 @@
 #$ -cwd
 #$ -V
 
-from linescanning import utils, prf, plotting
+from linescanning import (
+    utils, 
+    prf, 
+    plotting)
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import numpy as np
@@ -42,9 +45,6 @@ Parameters
                 rivatives>/pycortex/<subject>
     --prf       Path to pRF directory up to subject specific directories (defaults to <deriva-
                 tives/<prf>/<subject>/ses-<session>)
-    --adjust    The pRFs of some subjects are fitted before the BOLD screen was moved closer into
-                the bore. With this flag, we can correct for the closer screen. This factor is 1.08
-                and is applied to the x/y coordinates as well  as the size.
     --fraction  Define what fraction of the 'superficial' (input) pRF-size should define the 'middle'
                 layer pRF. Default is 0.8, meaning we assume that the middle pRF is 20% smaller com-
                 pared to the 'superficial' pRF. Maps to 'scale_factor' in:
@@ -71,12 +71,12 @@ Example
     prf_dir     = None
     stage       = "iter"
     verbose     = False
-    adjust      = False
     deriv       = os.environ.get("DIR_DATA_DERIV")
     fraction    = 0.8
+    v1_data     = False
 
     try:
-        opts = getopt.getopt(argv,"vqs:n:h:m:l:d:",["help", "sub=", "deriv=", "lh", "rh", "ses=", "cx=", "prf=", "grid", "verbose", "adjust", "fraction="])[0]
+        opts = getopt.getopt(argv,"vqs:n:h:m:l:d:",["help", "sub=", "deriv=", "lh", "rh", "ses=", "cx=", "prf=", "grid", "verbose", "fraction=", "v1"])[0]
     except getopt.GetoptError:
         print("ERROR IN ARGUMENT HANDLING!")
         print(main.__doc__)
@@ -104,10 +104,10 @@ Example
             cx_dir = arg
         elif opt in ("--prf"):
             prf_dir = arg
-        elif opt in ("--adjust"):
-            adjust = True 
         elif opt in ("--fraction"):
-            fraction = float(fraction)                   
+            fraction = float(fraction)   
+        elif opt in ("--v1"):
+            v1_data = True
 
     if len(argv) < 1:
         print("\nNEED AT LEAST A SUBJECT ID")
@@ -125,7 +125,6 @@ Example
                     raise ValueError(f"Unknown session type '{session}'. Must be an integer or 'none'")
             else:
                 ses = f'ses-{session}'
-
                 
             prf_dir = opj(os.environ.get('DIR_DATA_DERIV'), 'prf', subject, ses)
             cx_dir = opj(os.environ.get('DIR_DATA_DERIV'), 'pycortex', subject)
@@ -134,6 +133,10 @@ Example
         raise ValueError(f"Stage must be 'grid' or 'iter', not {stage}")
 
     for hemi in hemi_list:
+
+        if verbose:
+            print("\n---------------------------------------------------------------------------------------------------")
+            print(f"Dealing with hemisphere: {hemi}")
         
         if hemi == "lh":
             hemi_tag = "hemi-L"
@@ -142,9 +145,9 @@ Example
 
         #---------------------------------------------------------------------------------------------------
         # figure settings
-        fig = plt.figure(constrained_layout=True, figsize=(30,5))
-        gs00 = fig.add_gridspec(1,4, width_ratios=[10,20,10,10])
-        gs01 = fig.add_gridspec(5,1, left=0.48, right=0.98)        
+        fig = plt.figure(constrained_layout=True, figsize=(20,5))
+        gs00 = fig.add_gridspec(ncols=3, width_ratios=[10,20,10])
+        # gs01 = fig.add_gridspec(5,1, left=0.48, right=0.98)
 
         #---------------------------------------------------------------------------------------------------
         # load in subject
@@ -154,31 +157,24 @@ Example
             cx_dir=cx_dir, 
             hemi=hemi, 
             resize_pix=270,
-            correct_screen=adjust,
             best_vertex=True,
-            verbose=True)
+            verbose=True,
+            v1=v1_data)
 
         # get the prf, timecourse, and prediction
-        pars,prf_array,tc_bold,_ = SI_.plot_vox(
+        pars,_,tc_bold,_ = SI_.plot_vox(
             model="gauss",
             stage="iter",
-            make_figure=False)
-
-        # make pRF plot
-        ax1 = fig.add_subplot(gs00[0])
-        plotting.LazyPRF(
-            prf_array, 
-            SI_.settings['vf_extent'], 
-            ax=ax1)    
+            make_figure=False)  
 
         # initiate class
         fitting = prf.pRFmodelFitting(
-            tc_bold[np.newaxis,...],
+            tc_bold,
             design_matrix=SI_.design_matrix, 
             TR=SI_.settings['TR'], 
             model="norm", 
             stage=stage, 
-            old_params=pars[np.newaxis,...], 
+            old_params=pars, 
             verbose=verbose,
             fix_bold_baseline=True,
             rsq_threshold=0,
@@ -187,24 +183,30 @@ Example
         # fit
         fitting.fit()
 
-        if "iter" in stage:
-            new_params = fitting.norm_iter[0]
-        else:
-            new_params = fitting.norm_grid[0]
-        
-        if np.all(new_params == 0):
+        # get new information from fitting object
+        pars_new,prf_new,_,tc_new = fitting.plot_vox(
+            model="norm",
+            stage=stage,
+            make_figure=False)
+
+        if np.all(pars_new == 0):
             raise ValueError("All parameters in 'new_params' are equal to zero..")
 
-        new_prediction = fitting.norm_model.return_prediction(*new_params[:-1]).T
-
-        print(f"Params in: \t{[round(ii, 2) for ii in SI_.pars[0,...]]}")
-        print(f"Params out: \t{[round(ii, 2) for ii in new_params]}")
+        if verbose:
+            print(f"Params in: \t{[round(ii, 2) for ii in SI_.pars[0,...]]}")
+            print(f"Params out: \t{[round(ii, 2) for ii in pars_new]}")
 
         #---------------------------------------------------------------------------------------------------
         # plot pRF output
+        ax1 = fig.add_subplot(gs00[0])
+        plotting.LazyPRF(
+            prf_new, 
+            SI_.settings['vf_extent'], 
+            ax=ax1)  
+
         ax2 = fig.add_subplot(gs00[1])
         plotting.LazyPlot(
-            [tc_bold, new_prediction],
+            [tc_bold, tc_new],
             xx=np.arange(0,tc_bold.shape[0],1)*fitting.TR,
             color=['#cccccc', 'r'], 
             labels=['real', 'pred'], 
@@ -213,53 +215,44 @@ Example
             y_label="amplitude",
             x_label="time (s)",
             line_width=[0.5, 3],
-            markers=['.', None],                        
-            font_size=16)
+            markers=['.', None])
 
         #---------------------------------------------------------------------------------------------------
         # size response functions
-        SR = prf.SizeResponse(fitting.prf_stim, new_params, subject_info=SI_)
-        SR.make_stimuli()
+        SR = prf.SizeResponse(fitting.prf_stim, pars_new, subject_info=SI_)
+        SR.make_stimuli(factor=2)
         sr_curve1 = SR.make_sr_function(center_prf=True)
-        sr_curve2 = SR.make_sr_function(center_prf=True, scale_factor=fraction)
+        # sr_curve2 = SR.make_sr_function(center_prf=True, scale_factor=fraction)
 
         #---------------------------------------------------------------------------------------------------
+        # get optimal stimulus size
+        use_stim_sizes = SR.find_stim_sizes(sr_curve1)
+
         # make plot 
         ax3 = fig.add_subplot(gs00[2])
         plotting.LazyPlot(
-            [sr_curve1, sr_curve2], 
+            # [sr_curve1, sr_curve2],
+            sr_curve1, 
             xx=SR.stims_fill_sizes,
-            color=["#1B9E77","#D95F02"], 
-            labels=['superficial', 'middle'],
+            color="r", #["#1B9E77","#D95F02"], 
+            # labels=['superficial', 'middle'],
             axs=ax3,
             y_label="Response",
             x_label="Stimulus size (°)",
-            font_size=16)
-
-        #---------------------------------------------------------------------------------------------------
-        # find stim sizes
-        use_stim_sizes = SR.find_stim_sizes(sr_curve1, sr_curve2)
-        for ix,ii in enumerate(use_stim_sizes):
-            ax3.axvline(ii, color='k', lw=2, ymin=0.05, ymax=0.1)
-
-            # plot actual stimuli too
-            ax = fig.add_subplot(gs01[ix])
-            stim_ix = utils.find_nearest(SR.stims_fill_sizes, ii)[0]
-            cmap_blue = utils.make_binary_cm((8,178,240))
-
-            ax.axvline(0, color='k', linestyle='dashed', lw=0.5)
-            ax.axhline(0, color='k', linestyle='dashed', lw=0.5)
-            im = ax.imshow(
-                SR.stims_fill[stim_ix], 
-                extent=SI_.settings['vf_extent']+SI_.settings['vf_extent'], cmap=cmap_blue)
-            ax.axis('off')
-            patch = patches.Circle((0,0), radius=SI_.settings['vf_extent'][-1], transform=ax.transData)
-            im.set_clip_path(patch)
-
+            add_vline={
+                "pos": use_stim_sizes,
+                "color": "r"},
+            y_ticks=[0,1]
+            )
+            
         #---------------------------------------------------------------------------------------------------
         # finalize figure and save output
         fig.tight_layout(rect=[0, 0, 0.91, 1])
-        fig.savefig(opj(cx_dir, f"{subject}_{hemi_tag}_desc-sizeresponse.svg"))
+        fig.savefig(
+            opj(cx_dir, f"{subject}_{hemi_tag}_desc-sizeresponse.svg"),
+            dpi=300,
+            bbox_inches="tight")
+            
         SR.save_target_params(hemi=hemi, stim_sizes=use_stim_sizes)
 
     ff = opj(cx_dir, f"{subject}_model-norm_desc-best_vertices.csv")
