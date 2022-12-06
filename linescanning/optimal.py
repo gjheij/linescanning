@@ -254,7 +254,12 @@ def target_vertex(
                 print(f" normal = {normal}")
 
                 if use_prf == True:
-                    os.system(f"call_prfinfo -s {subject} -v {vertex} --{tag} --{model} -p {prf_file} --plot")
+                    
+                    v1_flag = ""
+                    if "roi-V1" in os.path.basename(prf_file):
+                        v1_flag  = "--v1"
+
+                    os.system(f"call_prfinfo -s {subject} -v {vertex} --{tag} --{model} -p {prf_file} --plot {v1_flag}")
 
             # # Smooth vertex maps
             # print("Smooth vertex maps for visual verification")
@@ -303,13 +308,14 @@ def target_vertex(
 
             else:
                 if use_prf:
-                    svgs = utils.get_file_from_substring(["svg", "vox-", f"model-{model}"], os.path.dirname(prf_file))
+                    svgs = utils.get_file_from_substring(["svg", "vox-", f"model-{model}"], os.path.dirname(prf_file), return_msg=None)
                     if isinstance(svgs, str):
                         svgs = [svgs]
 
-                    if len(svgs) != 0:
-                        for svg in svgs:
-                            os.remove(svg)
+                    if isinstance(svgs,list):
+                        if len(svgs) != 0:
+                            for svg in svgs:
+                                os.remove(svg)
 
         BV_.write_line_pycortex(save_as=out)
         print(" writing {file}".format(file=out))
@@ -348,7 +354,7 @@ def target_vertex(
 
             best_vertex.to_csv(prf_bestvertex)
             print(" writing {file}".format(file=prf_bestvertex))
-            print(f"Now run 'call_sizeresponse -s {subject} --verbose' to obtain DN-parameters (don't forget to use '--adjust' where applicable!")
+            print(f"Now run 'call_sizeresponse -s {subject} --verbose {v1_flag}' to obtain DN-parameters")
 
         print("Done")
         return BV_
