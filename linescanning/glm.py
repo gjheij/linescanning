@@ -745,36 +745,47 @@ def fit_first_level(stim_vector, data, make_figure=False, copes=None, xkcd=False
         print(f"max beta (vox {best_vox}) = {round(betas_conv[-1,best_vox],2)}")
 
     if make_figure:
-        
+
         markers = ['.']
         colors = ["#cccccc"]
         linewidth = [0.5]
 
         # you can specify to plot multiple events!
         if isinstance(plot_event, int):
-            # get the correct stimulus vector and betas for that vector
-            use_stim = X_conv[:,plot_event][...,np.newaxis]
-            beta = np.array((1, betas_conv[plot_event, best_vox]))
+
+            # always include intercept
+            beta_idx = [0,plot_event]
+
+            # get betas for all voxels
+            betas = betas_conv[beta_idx]
+            event = X_conv[:,beta_idx]
+
+            # get predictions
+            preds = event@betas
 
             # to avoid annoying indexing, add intercept here again
-            conv = np.hstack((intercept, use_stim))
-            signals = [data[:, best_vox], conv@beta]
+            signals = [data[:, best_vox], preds[:,best_vox]]
             labels = ['True signal', 'Event signal']
             markers.append(None)
             colors.append("r")
             linewidth.append(2)
+
         elif isinstance(plot_event, list):
+
             signals = [data[:, best_vox]]
             labels = ['True signal']
             for ii in plot_event:
-                # get the correct stimulus vector and betas for that vector
-                use_stim = X_conv[:,ii][...,np.newaxis]
-                beta = np.array((1, betas_conv[ii, best_vox]))
+                # always include intercept
+                beta_idx = [0,ii]
 
-                # to avoid annoying indexing, add intercept here again
-                conv = np.hstack((intercept, use_stim))
+                # get betas for all voxels
+                betas = betas_conv[beta_idx]
+                event = X_conv[:,beta_idx]
 
-                signals.append(conv@beta)
+                # get predictions
+                preds = event@betas
+
+                signals.append(preds[:,best_vox])
                 labels.append(f'Event {ii}')
                 markers.append(None)
                 linewidth.append(2)
