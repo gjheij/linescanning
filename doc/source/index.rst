@@ -27,11 +27,12 @@ Contents
    :maxdepth: 1
    :caption: Example gallery
 
-   examples/lazyplot
-   examples/prfmodelfitter
-   examples/genericglm
-   examples/nideconv
    examples/acompcor
+   examples/eyetracker
+   examples/genericglm
+   examples/lazyplot
+   examples/nideconv
+   examples/prfmodelfitter
    
 .. toctree::
    :maxdepth: 2
