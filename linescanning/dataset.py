@@ -32,8 +32,10 @@ def check_input_is_list(obj, var=None, list_element=0):
     obj_attr = "func_file"
     if hasattr(obj, "tsv_file"):
         obj_attr = "tsv_file"
+    elif hasattr(obj, "edf_file"):
+        obj_attr = "edf_file"
 
-    if isinstance(attr, list) or isinstance(attr, np.ndarray):
+    if isinstance(attr, (list,np.ndarray)):
         if len(attr) != len(getattr(obj,obj_attr)):
             raise ValueError(f"Length of '{var}' ({len(attr)}) does not match number of func files ({len(getattr(obj,obj_attr))}). Either specify a list of equal lenghts or 1 integer value for all volumes")
 
@@ -44,7 +46,7 @@ def check_input_is_list(obj, var=None, list_element=0):
 
 class ParseEyetrackerFile():
 
-    """ParseEyetrackerFile()
+    """ParseEyetrackerFile
 
     Class for parsing edf-files created during experiments with Exptools2. The class will read in the file, read when the experiment actually started, correct onset times for this start time and time deleted because of removing the first few volumes (to do this correctly, set the `TR` and `deleted_first_timepoints`). You can also provide a numpy array/file containing eye blinks that should be added to the onset times in real-world time (seconds). In principle, it will return a pandas DataFrame indexed by subject and run that can be easily concatenated over runs. This function relies on the naming used when programming the experiment. In the `session.py` file, you should have created `phase_names=['iti', 'stim']`; the class will use these things to parse the file.
 
@@ -95,8 +97,7 @@ class ParseEyetrackerFile():
         low_pass_pupil_f=6.0, 
         high_pass_pupil_f=0.01,
         func_file=None, 
-        TR1=0.105, 
-        TR2=None, 
+        TR=0.105, 
         verbose=False, 
         use_bids=True,
         nr_vols=None):
@@ -110,8 +111,7 @@ class ParseEyetrackerFile():
         self.func_file          = func_file
         self.sub                = subject
         self.run                = run
-        self.TR1                = TR1
-        self.TR2                = TR2
+        self.TR                 = TR
         self.low_pass_pupil_f   = low_pass_pupil_f
         self.high_pass_pupil_f  = high_pass_pupil_f
         self.verbose            = verbose
@@ -126,7 +126,7 @@ class ParseEyetrackerFile():
                 print("\nEYETRACKER")
 
             self.preprocess_edf_files()
-            self.include_blinks = True
+            self.ho.close_hdf_file()
 
     def preprocess_edf_files(self):
 
@@ -194,10 +194,13 @@ class ParseEyetrackerFile():
                 for el in ['sub', 'run']:
                     setattr(self, el, bids_comps[el])
             else:
-                self.run = i+1            
+                self.run = i+1
+            
+            # check if we got multiple TRs for different edf-files
+            use_TR = check_input_is_list(self, "TR", list_element=self.run)
 
             # full output from 'fetch_relevant_info' > use sub as differentiator if multiple files were given
-            self.data = self.fetch_relevant_info(TR=self.TR1, nr_vols=self.nr_vols)
+            self.data = self.fetch_relevant_info(TR=use_TR, nr_vols=self.nr_vols)
 
             # collect outputs
             self.df_blinks.append(self.fetch_eyeblinks())
@@ -285,22 +288,15 @@ class ParseEyetrackerFile():
         extract = [
             "pupil", 
             "pupil_int",
-            "pupil_bp",
-            "pupil_lp",
-            "pupil_hp",
-            "pupil_bp_psc",
-            "pupil_bp_clean_psc",
             "gaze_x_int",
             "gaze_y_int",
             "gaze_x",
-            "gaze_y"]
-        
-        df_space_eye = {} 
-        df_space_func = {}
+            "gaze_y"]           
         
         if self.verbose:
             print(f" Fetching:     {extract}")
 
+        df_space_eye = {} 
         for extr in extract:
             data = np.squeeze(
                 self.ho.signal_during_period(
@@ -310,10 +306,26 @@ class ParseEyetrackerFile():
                     requested_eye=eye).values)
 
             df_space_eye[extr] = data
-            
-            # resample to TR
-            data_rs = glm.resample_stim_vector(data, nr_vols)
-            df_space_func[f"{extr}"] = data_rs                           
+        
+        df_space_func = {}
+        rs_col = list(df_space_eye.keys())
+        for col in rs_col:
+            df_space_func[col] = glm.resample_stim_vector(df_space_eye[col], nr_vols)   
+
+            # high-pass filter
+            df_space_func[f"{col}_hp"] = preproc.highpass_dct(
+                df_space_func[col], 
+                self.high_pass_pupil_f,
+                TR=TR)[0]
+
+            # percent signal change
+            for hh in [col,f"{col}_hp"]:
+                dd = df_space_func[hh]
+                df_space_func[f"{hh}_psc"] = np.squeeze(
+                    utils.percent_change(
+                        dd, 
+                        0,
+                        baseline=dd.shape[0]))
 
         # add start time to it
         start_exp_time = trial_times.iloc[0, :][-1]
@@ -362,7 +374,7 @@ class ParseEyetrackerFile():
         df_space_func['subject'], df_space_func['run'], df_space_func['t'] = self.sub, self.run, list(TR*np.arange(df_space_func.shape[0]))
 
         # index
-        df_blink_events = pd.DataFrame(onsets, columns=['onsets'])
+        df_blink_events = pd.DataFrame(onsets, columns=['onset'])
 
         for tt,mm in zip(['subject','run','event_type'],[self.sub,self.run,"blink"]):
             df_blink_events[tt] = mm
@@ -501,7 +513,7 @@ class ParseExpToolsFile(ParseEyetrackerFile):
                 self.edfs, 
                 subject=self.sub, 
                 func_file=self.funcs, 
-                TR1=self.TR, 
+                TR=self.TR, 
                 use_bids=self.use_bids, 
                 verbose=self.verbose,
                 **kwargs)
