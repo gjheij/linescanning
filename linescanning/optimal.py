@@ -235,87 +235,90 @@ def target_vertex(
                     setattr(BV_, f"{r}_best_vertex_coord", getattr(BV_.surface, f'{r}_surf_data')[0][vert[i]])
                     setattr(BV_, f"{r}_best_vert_mask", (getattr(BV_.surface, f'{r}_surf_data')[1] == [vert[i]]).sum(0))
 
-            # Calculate normal using the standard method. Other options are "cross" and "Newell"
-            BV_.fetch_normal()
+            # check if we found a vertex for both hemispheres; if not, go to criteria
+            if isinstance(getattr(BV_, "lh_best_vert_mask"), np.ndarray) and isinstance(getattr(BV_, "rh_best_vert_mask"), np.ndarray):
 
-            for hemi in ['left', 'right']:
-                if hemi == "left":
-                    tag = "lh"
-                else:
-                    tag = "rh"
+                # Calculate normal using the standard method. Other options are "cross" and "Newell"
+                BV_.fetch_normal()
 
-                coord = getattr(BV_, f"{tag}_best_vertex_coord")
-                vertex = getattr(BV_, f"{tag}_best_vertex")
-                normal = getattr(BV_.surface, f"{tag}_surf_normals")[vertex]
-                
-                print(f"Found following vertex in {hemi} hemisphere:")
-                print(f" vertex = {vertex}")
-                print(f" coord  = {coord}")
-                print(f" normal = {normal}")
+                for hemi in ['left', 'right']:
+                    if hemi == "left":
+                        tag = "lh"
+                    else:
+                        tag = "rh"
 
-                if use_prf == True:
+                    coord = getattr(BV_, f"{tag}_best_vertex_coord")
+                    vertex = getattr(BV_, f"{tag}_best_vertex")
+                    normal = getattr(BV_.surface, f"{tag}_surf_normals")[vertex]
                     
-                    v1_flag = ""
-                    if "roi-V1" in os.path.basename(prf_file):
-                        v1_flag  = "--v1"
+                    print(f"Found following vertex in {hemi} hemisphere:")
+                    print(f" vertex = {vertex}")
+                    print(f" coord  = {coord}")
+                    print(f" normal = {normal}")
 
-                    os.system(f"call_prfinfo -s {subject} -v {vertex} --{tag} --{model} -p {prf_file} --plot {v1_flag}")
+                    if use_prf == True:
+                        
+                        v1_flag = ""
+                        if "roi-V1" in os.path.basename(prf_file):
+                            v1_flag  = "--v1"
 
-            # # Smooth vertex maps
-            # print("Smooth vertex maps for visual verification")
-            # BV_.vertex_to_map()
-            # BV_.smooth_vertexmap()
+                        os.system(f"call_prfinfo -s {subject} -v {vertex} --{tag} --{model} -p {prf_file} --plot {v1_flag}")
 
-            if isinstance(vert,np.ndarray):
-                webshow = False
-        
-            if webshow:
-                orig = opj(fs_dir, subject, 'mri', 'orig.mgz')
-                tkr = transform.ctx2tkr(subject, coord=[BV_.lh_best_vertex_coord,BV_.rh_best_vertex_coord])
-                tkr_ = {'lh': tkr[0], 'rh': tkr[1]}
-                lh_fid=opj(fs_dir, subject, 'surf', "lh.fiducial")
-                rh_fid=opj(fs_dir, subject, 'surf', "rh.fiducial")
-                os.system(f"freeview -v {orig} -f {lh_fid}:edgecolor=green {rh_fid}:edgecolor=green  --ras {round(tkr_['lh'][0],2)} {round(tkr_['lh'][1],2)} {round(tkr_['lh'][2],2)} tkreg 2>/dev/null")
-            else:
-                print("Verification with FreeView disabled")
+                # # Smooth vertex maps
+                # print("Smooth vertex maps for visual verification")
+                # BV_.vertex_to_map()
+                # BV_.smooth_vertexmap()
 
-            #----------------------------------------------------------------------------------------------------------------
-            # Write out files if all is OK
-            happy = input("Happy with the position? (y/n): ")
-            if happy.lower() == 'y' or happy == 'yes':
-                print(" Alrighty, continuing with these parameters")
-
-                if not isinstance(vert, np.ndarray):
-                    textList = [
-                        "# Created on {date}\n".format(date=datetime.now().strftime("%d/%m/%Y %H:%M:%S")),
-                        f"size: {size_val}\n",
-                        f"ecc: {ecc_val}\n",
-                        f"r2: {r2_val}\n",
-                        f"polar: {pol_val}\n",
-                        f"thickness: {thick_val}\n",
-                        f"depth: {depth_val}\n"]
+                if isinstance(vert,np.ndarray):
+                    webshow = False
+            
+                if webshow:
+                    orig = opj(fs_dir, subject, 'mri', 'orig.mgz')
+                    tkr = transform.ctx2tkr(subject, coord=[BV_.lh_best_vertex_coord,BV_.rh_best_vertex_coord])
+                    tkr_ = {'lh': tkr[0], 'rh': tkr[1]}
+                    lh_fid=opj(fs_dir, subject, 'surf', "lh.fiducial")
+                    rh_fid=opj(fs_dir, subject, 'surf', "rh.fiducial")
+                    os.system(f"freeview -v {orig} -f {lh_fid}:edgecolor=green {rh_fid}:edgecolor=green  --ras {round(tkr_['lh'][0],2)} {round(tkr_['lh'][1],2)} {round(tkr_['lh'][2],2)} tkreg 2>/dev/null")
                 else:
-                    textList = [
-                        "# Created on {date}\n".format(date=datetime.now().strftime("%d/%m/%Y %H:%M:%S")),
-                        "Manually selected following vertices:\n",
-                        f"lh: {vert[0]}\n",
-                        f"rh: {vert[1]}\n"]
+                    print("Verification with FreeView disabled")
 
-                outF = open(opj(cx_dir, subject, "cutoffs.o{ext}".format(ext=os.getpid())), "w")
-                outF.writelines(textList)
-                outF.close()
-                check = True
+                #----------------------------------------------------------------------------------------------------------------
+                # Write out files if all is OK
+                happy = input("Happy with the position? (y/n): ")
+                if happy.lower() == 'y' or happy == 'yes':
+                    print(" Alrighty, continuing with these parameters")
 
-            else:
-                if use_prf:
-                    svgs = utils.get_file_from_substring(["svg", "vox-", f"model-{model}"], os.path.dirname(prf_file), return_msg=None)
-                    if isinstance(svgs, str):
-                        svgs = [svgs]
+                    if not isinstance(vert, np.ndarray):
+                        textList = [
+                            "# Created on {date}\n".format(date=datetime.now().strftime("%d/%m/%Y %H:%M:%S")),
+                            f"size: {size_val}\n",
+                            f"ecc: {ecc_val}\n",
+                            f"r2: {r2_val}\n",
+                            f"polar: {pol_val}\n",
+                            f"thickness: {thick_val}\n",
+                            f"depth: {depth_val}\n"]
+                    else:
+                        textList = [
+                            "# Created on {date}\n".format(date=datetime.now().strftime("%d/%m/%Y %H:%M:%S")),
+                            "Manually selected following vertices:\n",
+                            f"lh: {vert[0]}\n",
+                            f"rh: {vert[1]}\n"]
 
-                    if isinstance(svgs,list):
-                        if len(svgs) != 0:
-                            for svg in svgs:
-                                os.remove(svg)
+                    outF = open(opj(cx_dir, subject, "cutoffs.o{ext}".format(ext=os.getpid())), "w")
+                    outF.writelines(textList)
+                    outF.close()
+                    check = True
+
+                else:
+                    if use_prf:
+                        svgs = utils.get_file_from_substring(["svg", "vox-", f"model-{model}"], os.path.dirname(prf_file), return_msg=None)
+                        if isinstance(svgs, str):
+                            svgs = [svgs]
+
+                        if isinstance(svgs,list):
+                            if len(svgs) != 0:
+                                for svg in svgs:
+                                    os.remove(svg)
 
         BV_.write_line_pycortex(save_as=out)
         print(" writing {file}".format(file=out))
@@ -851,7 +854,8 @@ class CalcBestVertex():
                 val = list(curv_dict.values())
 
                 if len(val) == 0:
-                    raise ValueError("Could not find a vertex with these parameters. Try lowering your r2-criteria if used.")
+                    print(f"WARNING [{i}]: Could not find a vertex with these parameters. Try lowering your r2-criteria if used.")
+                    setattr(self, f'{i}_best_vert_mask', None)
                 else:
                     if len(val) < 10:
                         add_txt = f": {list(vv)}"
@@ -859,26 +863,25 @@ class CalcBestVertex():
                         add_txt = ""
                     print(f"{i}: {len(val)} voxels matched criteria{add_txt}")
 
-                # print("list of curvatures: \n",val)
+                    # find curvature closest to zero
+                    low = utils.find_nearest(val, 0)
 
-                # find curvature closest to zero
-                low = utils.find_nearest(val, 0)
+                    # print(f"lowest curvature value = {low}")
+                    # sys.exit(1)
+                    # look which vertex has this curvature
+                    for idx,cv in curv_dict.items():
+                        if cv == low[-1]:             
+                            min_index = idx
+                            setattr(self, f'{i}_best_vertex', min_index)
+                    
+                    # 'curv' contains 1e8 for values outside ROI and absolute values for inside ROI (see mask_curv_with_prf)
+                    # min_index = find_nearest(curv,0)[0]; setattr(self, f'{i}_best_vertex', min_index) # np.argmin(curv); 
+                    min_vertex = surf[0][min_index]; setattr(self, f'{i}_best_vertex_coord', min_vertex)
+                    min_vert_mask = (surf[1] == min_vertex).sum(0); setattr(self, f'{i}_best_vert_mask', min_vert_mask)
 
-                # print(f"lowest curvature value = {low}")
-                # sys.exit(1)
-                # look which vertex has this curvature
-                for idx,cv in curv_dict.items():
-                    if cv == low[-1]:             
-                        min_index = idx; setattr(self, f'{i}_best_vertex', min_index)
-                
-                # 'curv' contains 1e8 for values outside ROI and absolute values for inside ROI (see mask_curv_with_prf)
-                # min_index = find_nearest(curv,0)[0]; setattr(self, f'{i}_best_vertex', min_index) # np.argmin(curv); 
-                min_vertex = surf[0][min_index]; setattr(self, f'{i}_best_vertex_coord', min_vertex)
-                min_vert_mask = (surf[1] == min_vertex).sum(0); setattr(self, f'{i}_best_vert_mask', min_vert_mask)
-
-                # setattr(self, f'{i}_best_vertex', np.argmin(curv))
-                # setattr(self, f'{i}_best_vertex_coord', surf[0][getattr(self, f'{i}_best_vertex')])
-                # setattr(self, f'{i}_best_vert_mask', (surf[1] == getattr(self, f'{i}_best_vertex_coord')).sum(0))
+                    # setattr(self, f'{i}_best_vertex', np.argmin(curv))
+                    # setattr(self, f'{i}_best_vertex_coord', surf[0][getattr(self, f'{i}_best_vertex')])
+                    # setattr(self, f'{i}_best_vert_mask', (surf[1] == getattr(self, f'{i}_best_vertex_coord')).sum(0))
 
             else:
                 raise TypeError(f'Attribute {i}_prf does not exist')
