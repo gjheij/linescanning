@@ -14,6 +14,7 @@ class Defaults():
         self.tick_length = 0
         self.axis_width = 0.5
         self.line_width = 1
+        self.line_style = "solid"
         self.sns_offset = None
         self.sns_trim = False
         self.sns_bottom = False
@@ -462,13 +463,24 @@ class LazyPlot(Defaults):
                             f"Length of line width lenghts {len(self.line_width)} does not match length of data list ({len(self.array)}")
 
                     use_width = self.line_width[idx]
-                elif isinstance(self.line_width, int) or isinstance(self.line_width, float):
+                elif isinstance(self.line_width, (int,float)):
                     use_width = self.line_width
                 else:
                     use_width = ""
 
+                # decide on line-style
+                if isinstance(self.line_style, list):
+                    if len(self.line_style) != len(self.array):
+                        raise ValueError(f"Length of line width lenghts {len(self.line_style)} does not match length of data list ({len(self.array)}")
+
+                    use_style = self.line_style[idx]
+                elif isinstance(self.line_style, str):
+                    use_style = self.line_style
+                else:
+                    use_style = "solid"                    
+
                 # decide on x-axis
-                if not isinstance(self.xx, np.ndarray) and not isinstance(self.xx, list) and not isinstance(self.xx, range):
+                if not isinstance(self.xx, (np.ndarray,list,range)):
                     x = np.arange(0, len(el))
                 else:
                     # range has no copy attribute
@@ -489,10 +501,11 @@ class LazyPlot(Defaults):
                     color=self.color_list[idx], 
                     label=lbl, 
                     lw=use_width, 
+                    ls=use_style,
                     marker=self.markers[idx])
 
                 # plot shaded error bars
-                if isinstance(self.error, list) or isinstance(self.error, np.ndarray):
+                if isinstance(self.error, (list,np.ndarray)):
                     yerr = self.error[idx]
                     if np.isscalar(yerr) or len(yerr) == len(el):
                         ymin = el - yerr
