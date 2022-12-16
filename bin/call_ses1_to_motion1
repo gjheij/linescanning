@@ -11,7 +11,7 @@ a given session
 
 It will look for the following files:
   - ses-1 anat: $PYMP2RAGE/<subject>/ses-1
-  - ses-2 anat: $DIR_DATA_HOME/<subject>/ses-2/anat/*motion1*
+  - ses-X anat: $DIR_DATA_HOME/<subject>/ses-X/anat/*motion1*
 
 And output a transformation matrix as:
   $CTX/transforms/<subject>_from-ses1_to-motion1_desc-genaff.mat
@@ -19,11 +19,12 @@ And output a transformation matrix as:
 Arguments:
   <subject>    subject ID, e.g., sub-001
   <ses nr>     session number, e.g., 2
+
 Usage:
-  call_ses1_to_ses <subject> <ses_nr>
+  call_ses1_to_motion1 <subject> <ses_nr>
 
 Example:
-  call_ses1_to_ses sub-001 2
+  call_ses1_to_motion1 sub-001 2
 
 ---------------------------------------------------------------------------------------------------
 
