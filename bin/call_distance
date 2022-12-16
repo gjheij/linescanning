@@ -1,0 +1,265 @@
+#!/usr/bin/env bash
+#$ -cwd
+#$ -j Y
+#$ -V
+#$ -pe smp 1
+#
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_distance
+
+Wrapper for FreeSurfer's mris_pmake. Calculates the distance between <startVertex> & <endVertex> 
+using Dykstra's algorithm
+
+Parameters
+----------
+  subject     ID as used in the FreeSurfer reconstruction
+  output      output filename (ideally json file)
+  -s <start>  vertex to calculate distances to
+  -e <end>    vertex to calculate distance to <start>
+  -l <label>  label image to extract vertices from        [default = V1_exvivo.thresh]
+  --lh|--rh   which hemisphere to process                 [default = "lh"]
+  --fiducial  use fiducial (mid-thickness) surface        [default]
+  --white     use WM/GM boundary surface (?h.white)
+  --pial      use GM/CSF boundary surface (?h.pial)
+
+Usage:
+  call_distance --lh|--rh --white|--pial -l <label> -s <start> -e <end> <subject> <output>
+
+Example:
+  call_distance --lh --fiducial -s 1053 -e 784 sub-001 distance.json
+  call_distance --lh -s 1053 -l V1_exvivo.thresh sub-001 distance.json
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+hemi="lh"
+fiducial=1
+white=0
+pial=0
+label="V1_exvivo.thresh"
+end_v=""
+while getopts :-:s:e:l: arg; do
+  case $arg in
+    -)
+      case "${OPTARG}" in
+        lh)
+          hemi="lh"
+          ;;      
+        rh)
+          hemi="rh"
+          ;;
+        white)
+          white=1
+          ;;
+        pial)
+          pial=1
+          ;;
+        fiducial)
+          fiducial=1
+          ;;          
+        *)
+          if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
+            echo "Unknown option --${OPTARG}"
+            exit 1
+          fi
+          ;;
+      esac;;    
+    s)  start_v=${OPTARG}
+        ;;
+    l)  label=${OPTARG}
+        ;;      
+    e)  end_v=${OPTARG}
+        ;;          
+  esac
+done
+
+echo "---------------------------------------------------------------------------------------------------"
+start=`date +%s`
+start_date=`date`
+echo "call_distance; started @${start_date}"
+echo 
+
+if [[ $# -lt 1 ]]; then
+  Usage >&2
+  exit 1
+fi
+
+SUB=${@:$OPTIND:1}
+OUT=${@:$OPTIND+1:1}
+
+if [[ ${fiducial} -eq 1 ]]; then
+  SURF="fiducial"
+fi
+
+if [[ ${white} -eq 1 ]]; then
+  SURF="white"
+fi
+
+if [[ ${pial} -eq 1 ]]; then
+  SURF="pial"
+fi
+
+echo "sub   = ${SUB}"
+echo "surf  = ${SURF}"
+echo "hemi  = ${hemi}"
+echo "label = ${label}"
+echo "start = ${start_v}"
+echo "end   = ${end_v}"
+echo "out   = ${OUT}"
+
+function dykstra_distance {
+
+  if [[ $# -eq 0 ]]; then
+    echo
+    echo "---------------------------------------------------------------------------------------------------"
+    echo "dykstra_distance"
+    echo
+    echo "Wrapper for mris_pmake. Calculates the distance between <startVertex> & <endVertex> using Dykstra's"
+    echo "algorithm."
+    echo
+    echo "Usage"
+    echo "----------"
+    echo "  dykstra_distance <subject> <hemi> <surface> <startVertex> <endVertex> <json file>"
+    echo ""
+    echo "Parameters"
+    echo "----------"
+    echo "subject: str"
+    echo "  subject ID as per FreeSurfer output"
+    echo "hemi: str"
+    echo "  hemisphere to process. Must be one of \"lh\" or \"rh\""
+    echo "surface: str"
+    echo "  surface name to process, e.g., \"fiducial\". Defaults to \"inflated\""
+    echo "startVertex: int"
+    echo "  vertex to calculate distances TO"
+    echo "endVertex: int"
+    echo "  vertex to calculate distances FROM"
+    echo "json file: str"
+    echo "  store the output in a key-value pair between <endVertex> and the output from mris_pmake"
+    echo ""
+    echo "Example"
+    echo "----------"
+    echo "  dykstra_distance sub-001 lh fiducial 1053 784"
+    echo "  dykstra_distance sub-001 lh fiducial 1053 784 sub-001_desc-distances.json"
+    echo ""
+    echo "---------------------------------------------------------------------------------------------------"
+    echo
+  else
+    dist=`mris_pmake --subject ${1} --hemi ${2} --surface ${3} --mpmProg pathFind --mpmArgs vertexStart:${4},vertexEnd:${5} --mpmOverlay distance | sed -n '2p' | cut -d"[" -f2 | cut -d" " -f2`
+
+    # write output to json file
+    if [[ ! -z ${6} ]]; then
+      call_json ${6} "${5}" "${dist}"
+    else
+      echo ${dist}
+    fi
+  fi
+}
+
+function clean {
+  rm -r $PWD/M_weights_distance.mat 2>/dev/null
+  rm -r $PWD/options.txt 2>/dev/null
+  rm -r $PWD/stdout.log 2>/dev/null
+  rm -r $PWD/user_msg.log 2>/dev/null
+  rm -r $PWD/dijk.label 2>/dev/null
+  rm -r $PWD/cost.txt 2>/dev/null
+}
+
+function read_vertices {
+  PYTHON_CODE=$(cat <<END
+from linescanning import optimal;
+import numpy as np;
+nbr = optimal.Neighbours(
+    subject="${SUB}",
+    verbose=False
+);
+lbl_vert = np.where(nbr.${hemi}_roi_mask == True)[0];
+print(list(lbl_vert))
+END
+  )
+
+  echo $PYTHON_CODE
+}
+
+function fill_vertices {
+  PYTHON_CODE=$(cat <<END
+import json;
+empty_verts = [];
+with open('${1}', 'r') as f:
+    data = json.load(f);
+for key in list(data.keys()):
+    if not isinstance(data[key], (int,float)):
+        empty_verts.append(int(key))
+print(empty_verts);
+END
+  )
+
+  echo "Filling empty vertices.."
+  # keep iterating through the empty vertices until there's no empty vertices left
+  count=0
+  while true; do
+    res=("$(python -c "${PYTHON_CODE}")")
+    tmp_vertices=`echo ${res} | cut -d"[" -f2 | cut -d"]" -f1`
+    IFS=', ' read -r -a empty_verts <<< "${tmp_vertices}"
+    unset IFS
+    if [[ ${#empty_verts[@]} -eq 0 ]]; then
+      break
+    else
+      ((count++))
+      echo " Iter #${count}: ${#empty_verts[@]} vertices left"
+      for vert in ${empty_verts[@]}; do
+        dykstra_distance ${SUB} ${hemi} ${SURF} ${start_v} ${vert} ${OUT}
+        clean
+      done
+    fi
+  done
+  echo "Done after ${count} iteration(s)"
+}
+
+#-----------------------------------------------------------------------------
+# Start loop
+if [[ ! -z ${end_v} ]]; then
+  # dykstra_distance is in call_bashhelper
+  dykstra_distance ${SUB} ${hemi} ${SURF} ${start_v} ${end_v} ${OUT}
+  clean
+else
+  # loop through label vertices
+  if [[ ! -z ${label} ]]; then
+
+    if [[ ! -f ${OUT} ]]; then
+      res=("$(python -c "`read_vertices`")")
+      lbl_vertices=`echo ${res} | cut -d"[" -f2 | cut -d"]" -f1`
+      IFS=', ' read -r -a vertices <<< "${lbl_vertices}"
+      unset IFS
+      echo "${hemi}.${label} contains ${#vertices[@]} vertices"
+      for vert in ${vertices[@]}; do
+        if [[ ${vert} != ${start_v} ]]; then
+          dykstra_distance ${SUB} ${hemi} ${SURF} ${start_v} ${vert} ${OUT}
+        fi
+        clean
+      done
+    fi
+    # iteratively fill vertices where process exited with non-zero status
+    fill_vertices ${OUT}
+  fi 
+fi
+
+echo
+echo "---------------------------------------------------------------------------------------------------"
+end=`date +%s`
+end_date=`date`
+printf "Done at ${end_date}\n"
+
+let deltatime=end-start
+let hours=deltatime/3600
+let minutes=(deltatime/60)%60
+let seconds=deltatime%60
+printf "Time spent: %d:%02d:%02d\n" ${hours} ${minutes} ${seconds}
+echo "---------------------------------------------------------------------------------------------------"
