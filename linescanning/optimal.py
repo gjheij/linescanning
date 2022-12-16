@@ -1234,8 +1234,7 @@ class Neighbours(SurfaceCalc):
         self.rh_subsurf_v = np.where(self.rh_subsurf.subsurface_vertex_map != stats.mode(self.rh_subsurf.subsurface_vertex_map)[0][0])[0]+ self.lh_subsurf.subsurface_vertex_map.shape[-1]
 
         self.leftlim = np.max(self.lh_subsurf_v)
-        self.subsurface_verts = np.concatenate(
-            [self.lh_subsurf_v, self.rh_subsurf_v])
+        self.subsurface_verts = np.concatenate([self.lh_subsurf_v, self.rh_subsurf_v])
 
     def create_distance(self):
         # Make the distance x distance matrix.
@@ -1289,8 +1288,24 @@ class Neighbours(SurfaceCalc):
                 
             # get distance to target
             dist_to_targ = use_surf.geodesic_distance(target_vert)
+
+            # make into convenient dictionary index on whole-brain
+            self.tmp = {}
+            self.df = {}
+            self.df["idx"] = np.zeros((dist_to_targ.shape[0]))
+            self.df["distance"] = np.zeros((dist_to_targ.shape[0]))
+            for ii in range(dist_to_targ.shape[0]):
+                self.tmp[use_vert[ii]] = dist_to_targ[ii]
+                self.df["idx"][ii] = use_vert[ii]
+                self.df["distance"][ii] = dist_to_targ[ii]
+                
+                # make dataframe
+                self.df = pd.DataFrame(self.df)
+
             # store
-            setattr(self, f"{hemi}_dist_to_targ", dist_to_targ)            
+            setattr(self, f"{hemi}_dist_to_targ_arr", dist_to_targ)
+            setattr(self, f"{hemi}_dist_to_targ", self.tmp)
+            
         else:
             if isinstance(vert_dict, str):
                 print(f"Reading distances from {vert_dict}")
@@ -1299,6 +1314,16 @@ class Neighbours(SurfaceCalc):
 
                 # store
                 setattr(self, f"{hemi}_dist_to_targ", dist_to_targ)
+                data = np.array(list(getattr(self, f"{hemi}_dist_to_targ").items()))
+                self.df = pd.DataFrame(data, columns=["idx","distance"])
+
+        convert_dict = {
+            'idx': int,
+            'distance': float
+            }
+
+        self.df = self.df.astype(convert_dict)
+        setattr(self, f"{hemi}_dist_to_targ_df", self.df)
 
     def find_distance_range(
         self, 
