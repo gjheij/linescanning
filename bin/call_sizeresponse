@@ -4,11 +4,9 @@
 #$ -V
 
 from linescanning import (
-    utils, 
     prf, 
     plotting)
 import matplotlib.pyplot as plt
-import matplotlib.patches as patches
 import numpy as np
 import os
 import sys, getopt
@@ -23,13 +21,15 @@ def main(argv):
 ---------------------------------------------------------------------------------------------------
 call_sizeresponse
 
-Find stimulus sizes that allow optimal disentanglement of pRFs in superficial/deep layers and middle 
-layers of the cortex. We know from earlier studies that pRF-sizes seem to be higher in superficial 
-and deeper layers compared to middle layer pRFs. Here, we take for each subject the Gaussian pRF 
-parameters, fit a Divisive Normalization model, compare the Size-Response curves for superficial/
-deeper layers (= `regular` pRF size) and middle layers (= `0.8*pRF-size`), and extract the stimulus 
-sizes where the differences between these to curves are largest.
-
+Find stimulus sizes that maximally stimulate either the activation pool or the normalization pool of
+the target vertex. We fit a Divisive Normalization model, and derive the response curves in response 
+to full field stimuli ('full'), growing stimulus size ('fill'), and growing hole size ('hole'). The 
+'fill' stimuli are used to estimate the activation response, while the 'hole' stimuli probe the re-
+sponse of the normalization pool. The response to the 'full' stimulus will be used to normalize the 
+'fill' and 'hole' curves. Eventually, this will produce a file in the pycortex-folder containing the
+normalization parameters, as well as the stimulus size to be used for the activation pool and normali-
+zation pool. These values are read from the file in the 'ActNorm' experiment.
+(see https://github.com/gjheij/LineExps/tree/main/ActNorm)
 
 Parameters
 ----------
@@ -45,14 +45,13 @@ Parameters
                 rivatives>/pycortex/<subject>
     --prf       Path to pRF directory up to subject specific directories (defaults to <deriva-
                 tives/<prf>/<subject>/ses-<session>)
-    --fraction  Define what fraction of the 'superficial' (input) pRF-size should define the 'middle'
-                layer pRF. Default is 0.8, meaning we assume that the middle pRF is 20% smaller com-
-                pared to the 'superficial' pRF. Maps to 'scale_factor' in:
-                https://linescanning.readthedocs.io/en/latest/classes/prf.html#linescanning.prf.SizeResponse.make_sr_function
+    --v1        use the normalization parameters from the V1-fit. Skips re-fitting, takes the target-
+                vertex index from the full-brain fit. If not specified, the Gaussian parameters are
+                read in, and a DN-model is fit from which the size-response curves are derived.
 
 Returns
 ----------
-    a *npy-file containing stimulus sizes
+    a *csv-file containing stimulus sizes
     a *pdf-file containing matplotlib figure
 
 Example
@@ -70,13 +69,15 @@ Example
     cx_dir      = None
     prf_dir     = None
     stage       = "iter"
+    model       = "gauss"
     verbose     = False
     deriv       = os.environ.get("DIR_DATA_DERIV")
-    fraction    = 0.8
     v1_data     = False
+    bv          = True
+    v_target    = 0
 
     try:
-        opts = getopt.getopt(argv,"vqs:n:h:m:l:d:",["help", "sub=", "deriv=", "lh", "rh", "ses=", "cx=", "prf=", "grid", "verbose", "fraction=", "v1"])[0]
+        opts = getopt.getopt(argv,"vqs:n:h:m:l:d:",["help", "sub=", "deriv=", "lh", "rh", "ses=", "cx=", "prf=", "grid", "verbose", "v1"])[0]
     except getopt.GetoptError:
         print("ERROR IN ARGUMENT HANDLING!")
         print(main.__doc__)
@@ -99,15 +100,15 @@ Example
         elif opt in ("--rh"):
             hemi_list = ["rh"]
         elif opt in ("-d", "--deriv"):
-            deriv = arg
+            deriv = arg          
         elif opt in ("--cx"):
             cx_dir = arg
         elif opt in ("--prf"):
-            prf_dir = arg
-        elif opt in ("--fraction"):
-            fraction = float(fraction)   
+            prf_dir = arg 
         elif opt in ("--v1"):
             v1_data = True
+            bv = False
+            model = "norm"
 
     if len(argv) < 1:
         print("\nNEED AT LEAST A SUBJECT ID")
@@ -145,10 +146,12 @@ Example
 
         #---------------------------------------------------------------------------------------------------
         # figure settings
-        fig = plt.figure(constrained_layout=True, figsize=(20,5))
-        gs00 = fig.add_gridspec(ncols=3, width_ratios=[10,20,10])
-        # gs01 = fig.add_gridspec(5,1, left=0.48, right=0.98)
-
+        fig = plt.figure(constrained_layout=True, figsize=(24,5))
+        subfigs = fig.subfigures(ncols=2, width_ratios=[4,1])
+        gs00 = subfigs[0].subplots(ncols=3, gridspec_kw={"width_ratios": [10,20,10]})
+        gs01 = subfigs[1].subplots(nrows=2)
+        cols = ["#1B9E77","#D95F02"]
+        
         #---------------------------------------------------------------------------------------------------
         # load in subject
         SI_ = prf.CollectSubject(
@@ -157,61 +160,79 @@ Example
             cx_dir=cx_dir, 
             hemi=hemi, 
             resize_pix=270,
-            best_vertex=True,
-            verbose=True,
+            best_vertex=bv,
+            verbose=verbose,
+            model=model,
             v1=v1_data)
 
+        if v1_data:
+            if not hasattr(SI_, "target_vertex"):
+                raise ValueError(f"Something doesn't add up.. You requested the normalization parameters from the V1-fit, but I cannot find the index of the target vertex. Did CollectSubject do what it was supposed to..?")
+            v_target = SI_.target_vertex
+
+            # add the shape of left hemisphere data to target in right hemisphere
+            if hemi == "rh":
+                v_target += SI_.func_data_l.shape[-1]
+        
         # get the prf, timecourse, and prediction
-        pars,_,tc_bold,_ = SI_.plot_vox(
-            model="gauss",
+        pars,prf_old,tc_bold,pred_old = SI_.plot_vox(
+            vox_nr=v_target,
+            model=model,
             stage="iter",
-            make_figure=False)  
-
-        # initiate class
-        fitting = prf.pRFmodelFitting(
-            tc_bold,
-            design_matrix=SI_.design_matrix, 
-            TR=SI_.settings['TR'], 
-            model="norm", 
-            stage=stage, 
-            old_params=pars, 
-            verbose=verbose,
-            fix_bold_baseline=True,
-            rsq_threshold=0,
-            nr_jobs=1)
-
-        # fit
-        fitting.fit()
-
-        # get new information from fitting object
-        pars_new,prf_new,_,tc_new = fitting.plot_vox(
-            model="norm",
-            stage=stage,
             make_figure=False)
 
+        if not v1_data:
+            # initiate class (saved data does not have volumes cut at the beginning)
+            fitting = prf.pRFmodelFitting(
+                tc_bold,
+                design_matrix=SI_.design_matrix, 
+                TR=SI_.settings['TR'], 
+                model="norm", 
+                stage=stage, 
+                old_params=pars, 
+                verbose=verbose,
+                fix_bold_baseline=True,
+                rsq_threshold=0,
+                nr_jobs=1)
+
+            # fit
+            fitting.fit()
+
+            # get new information from fitting object
+            pars_new,prf_new,_,tc_new = fitting.plot_vox(
+                model="norm",
+                stage=stage,
+                make_figure=False)
+        
+            if verbose:
+                print(f"Params in: \t{[round(ii, 2) for ii in SI_.pars[0,...]]}")
+                print(f"Params out: \t{[round(ii, 2) for ii in pars_new]}")
+
+        else:
+            pars_new = pars.copy()
+            prf_new = prf_old.copy()
+            tc_new = pred_old.copy()
+
+            if verbose:
+                print(f"Copying original parameters: {[round(ii, 2) for ii in pars]}")
+        
         if np.all(pars_new == 0):
             raise ValueError("All parameters in 'new_params' are equal to zero..")
 
-        if verbose:
-            print(f"Params in: \t{[round(ii, 2) for ii in SI_.pars[0,...]]}")
-            print(f"Params out: \t{[round(ii, 2) for ii in pars_new]}")
-
         #---------------------------------------------------------------------------------------------------
         # plot pRF output
-        ax1 = fig.add_subplot(gs00[0])
         plotting.LazyPRF(
             prf_new, 
-            SI_.settings['vf_extent'], 
-            ax=ax1)  
+            [-5,5], 
+            ax=gs00[0])  
 
-        ax2 = fig.add_subplot(gs00[1])
         plotting.LazyPlot(
             [tc_bold, tc_new],
-            xx=np.arange(0,tc_bold.shape[0],1)*fitting.TR,
+            xx=np.arange(0,tc_bold.shape[0],1)*SI_.TR,
             color=['#cccccc', 'r'], 
             labels=['real', 'pred'], 
             add_hline='default', 
-            axs=ax2,
+            axs=gs00[1],
             y_label="amplitude",
             x_label="time (s)",
             line_width=[0.5, 3],
@@ -219,43 +240,73 @@ Example
 
         #---------------------------------------------------------------------------------------------------
         # size response functions
-        SR = prf.SizeResponse(fitting.prf_stim, pars_new, subject_info=SI_)
-        SR.make_stimuli(factor=2)
-        sr_curve1 = SR.make_sr_function(center_prf=True)
-        # sr_curve2 = SR.make_sr_function(center_prf=True, scale_factor=fraction)
+        SR_ = prf.SizeResponse(params=pars_new, subject_info=SI_)
+        
+        if verbose:
+            print("Making response-curves for 'full', 'fill', 'hole' stimuli")
+
+        # full field stimulation
+        sr_full = SR_.make_sr_function(
+            center_prf=True, 
+            dt="full", 
+            normalize=None)
+
+        # activation
+        sr_act = SR_.make_sr_function(
+            center_prf=True, 
+            dt="fill", 
+            normalize=sr_full)
+
+        # suppression
+        sr_suppr = SR_.make_sr_function(
+            center_prf=True, 
+            dt="hole", 
+            normalize=sr_full)
 
         #---------------------------------------------------------------------------------------------------
         # get optimal stimulus size
-        use_stim_sizes = SR.find_stim_sizes(sr_curve1)
+        size_act = SR_.find_stim_sizes(sr_act, t="max", dt="fill")
+        size_suppr = SR_.find_stim_sizes(sr_suppr, t="min", dt="hole")
 
         # make plot 
-        ax3 = fig.add_subplot(gs00[2])
         plotting.LazyPlot(
-            # [sr_curve1, sr_curve2],
-            sr_curve1, 
-            xx=SR.stims_fill_sizes,
-            color="r", #["#1B9E77","#D95F02"], 
-            # labels=['superficial', 'middle'],
-            axs=ax3,
-            y_label="Response",
-            x_label="Stimulus size (°)",
+            [sr_act,sr_suppr],
+            axs=gs00[2],
+            xx=SR_.stims_fill_sizes,
+            line_width=2, 
+            color=cols,
+            labels=[f"act ({round(size_act,2)}dva)",f"suppr ({round(size_suppr,2)}dva)"],
+            x_label="stimulus size",
+            y_label="response",
             add_vline={
-                "pos": use_stim_sizes,
-                "color": "r"},
-            y_ticks=[0,1]
-            )
-            
+                "pos": [size_act,size_suppr],
+                "color": cols},
+            x_lim=[0,5],
+            add_hline=0)
+
+        for ix,ii in enumerate([size_act,size_suppr]):
+            SR_.plot_stim_size(
+                ii, 
+                ax=gs01[ix], 
+                dt=["fill","hole"][ix],
+                clip=False, 
+                cmap=cols[ix],
+                vf_extent=SR_.vf_extent)
+
+        plt.tight_layout()
+
         #---------------------------------------------------------------------------------------------------
         # finalize figure and save output
-        fig.tight_layout(rect=[0, 0, 0.91, 1])
         fig.savefig(
             opj(cx_dir, f"{subject}_{hemi_tag}_desc-sizeresponse.svg"),
             dpi=300,
             bbox_inches="tight")
             
-        SR.save_target_params(hemi=hemi, stim_sizes=use_stim_sizes)
+        SR_.save_target_params(
+            hemi=hemi, 
+            stim_sizes=[size_act,size_suppr])
 
-    ff = opj(cx_dir, f"{subject}_model-norm_desc-best_vertices.csv")
+    ff = opj(cx_dir, f"{subject}_model-norm_desc-best_vertices2.csv")
     print(f"Copy '{ff}' to the 'LineExps/data' folder")
 
 if __name__ == "__main__":
