@@ -1,6 +1,5 @@
 # pylint: disable=no-member,E1130,E1137
 from linescanning import transform, utils
-from numpy.lib.arraysetops import isin
 import matplotlib.pyplot as plt
 import nibabel as nb
 import numpy as np
@@ -125,7 +124,13 @@ def reorient_img(img, code="RAS", out=None, qform="orig"):
         raise ValueError(f"Code '{code}' not yet implemented")
 
 
-def create_line_from_slice(in_file, out_file=None, width=16, fold="FH", keep_input=False):
+def create_line_from_slice(
+    in_file, 
+    out_file=None, 
+    width=16, 
+    fold="FH", 
+    keep_input=False,
+    shift=0):
 
     """create_line_from_slice
 
@@ -143,7 +148,9 @@ def create_line_from_slice(in_file, out_file=None, width=16, fold="FH", keep_inp
         string denoting the type of foldover direction that was used. We can find this in the info-file in the pycortex directory and can either be *FH* (line = `LR`), or *LR* (line = `FH`)
     keep_input: boolean, optional
         Keep the native input of the input data rather than binarizing the input image
-    
+    shift: int, optional
+        Sometimes the slice had to be moved in `foldover` direction to place the saturation slabs in the right position. We need to correct for this. This argument moves the line `shift` millimeter in `fold` direction. For instance, if `fold="FH"` and `shift=2`, the line will be moved up. Use negative values to move the line down.
+        
     Returns
     ----------
     nibabel.Nifti1Image
@@ -166,16 +173,25 @@ def create_line_from_slice(in_file, out_file=None, width=16, fold="FH", keep_inp
         img = True
         in_img = nb.load(in_file)
         in_data = in_img.get_fdata()
+        vox_size = in_img.header["pixdim"][1]
     elif isinstance(in_file, np.ndarray):
         in_data = in_file.copy()
+        vox_size = 0.25
 
     if len(in_data.shape) == 4:
         in_data = np.squeeze(in_data, 3)
         
     empty_img = np.zeros_like(in_data)
 
-    upper, lower = (empty_img.shape[0] // 2)+(int(width) /2), (empty_img.shape[0] // 2)-(int(width)/2)
+    upper, lower = int((empty_img.shape[0]//2)+(int(width)/2)), int((empty_img.shape[0]//2)-(int(width)/2))
 
+    # account for shift (assuming voxel size 0.25mm)
+    if shift != 0:
+        shift = int(round(shift/vox_size,0))
+
+        upper += shift
+        lower += shift
+        
     # print(fold.lower())
     if fold.lower() == "rl" or fold.lower() == "lr":
         
@@ -185,9 +201,9 @@ def create_line_from_slice(in_file, out_file=None, width=16, fold="FH", keep_inp
             beam = beam[...,np.newaxis]
 
         if keep_input == False:
-            empty_img[int(lower):int(upper)] = beam
+            empty_img[lower:upper] = beam
         elif keep_input == True:
-            empty_img[int(lower):int(upper)] = beam*in_data[int(lower):int(upper)]
+            empty_img[lower:upper] = beam*in_data[lower:upper]
 
     elif fold.lower() == "fh" or fold.lower() == "hf":
 
@@ -197,9 +213,9 @@ def create_line_from_slice(in_file, out_file=None, width=16, fold="FH", keep_inp
             beam = beam[...,np.newaxis]
 
         if keep_input == False:
-            empty_img[:, int(lower):int(upper)] = beam
+            empty_img[:,lower:upper] = beam
         elif keep_input == True:
-            empty_img[:, int(lower):int(upper)] = beam*in_data[:, int(lower):int(upper)]
+            empty_img[:,lower:upper] = beam*in_data[:,lower:upper ]
             
     else:
         raise NotImplementedError(f"Unknown option {fold}, probably not implemented yet..")
@@ -212,7 +228,6 @@ def create_line_from_slice(in_file, out_file=None, width=16, fold="FH", keep_inp
             return line
     else:
         return empty_img
-
 
 def get_max_coordinate(in_img):
 
