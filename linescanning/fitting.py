@@ -258,20 +258,21 @@ class NideconvFitter():
         self.fit()
 
         # some plotting defaults
+        self.plotting_defaults = plotting.Defaults()
         if not hasattr(self, "font_size"):
-            self.font_size = 18
+            self.font_size = self.plotting_defaults.font_size
 
         if not hasattr(self, "label_size"):
-            self.label_size = 14
+            self.label_size = self.plotting_defaults.label_size
 
         if not hasattr(self, "tick_width"):
-            self.tick_width = 0.5
+            self.tick_width = self.plotting_defaults.tick_width
 
         if not hasattr(self, "tick_length"):
-            self.tick_length = 7
+            self.tick_length = self.plotting_defaults.tick_length
 
         if not hasattr(self, "axis_width"):
-            self.axis_width = 0.5
+            self.axis_width = self.plotting_defaults.axis_width
 
     def timecourses_condition(self):
 
@@ -851,8 +852,8 @@ class NideconvFitter():
         elif error_type == "sem":
             err = self.sem_condition.copy()
         else:
-            raise ValueError(f"Error type must be 'std' or 'sem', not '{error_type}'")
-
+            err = self.std_condition.copy()
+            
         if not isinstance(events, list) and not isinstance(events, np.ndarray):
             events = self.cond
         else:
@@ -895,6 +896,9 @@ class NideconvFitter():
                 self.data_for_plot.append(col_data)
                 self.error_for_plot.append(col_error)
             
+            if not isinstance(error_type, str):
+                self.error_for_plot = None
+
             plotting.LazyPlot(
                 self.data_for_plot,
                 xx=self.time,
