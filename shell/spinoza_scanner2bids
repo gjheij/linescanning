@@ -364,15 +364,33 @@ for subID in ${search}; do
             # default to FH foldover
             fold="FH"
           fi
-
           echo "  foldover is set to: ${fold}"
 
+          # get foldover direction
+          if [[ ! -z ${ses} ]]; then
+            md=`find $(dirname ${input_dir}) -type f \( -name "*ses-${nr}*" -and -name "*.md" \) 2>/dev/null`
+          else
+            md=`find $(dirname ${input_dir}) -type f \( -name "*ses-${nr}*" -and -name "*.md" \) 2>/dev/null`
+          fi
+
+          # check for multiple files; take last one if more than one are found
+          cnt=0
+          for ii in ${md[@]}; do ((cnt++)); done
+          if [[ ${cnt} -gt 1 ]]; then
+            md=${md[cnt]}
+          fi
+
+          shift=0
+          if [[ -f ${md} ]]; then
+            shift=`grep -A0 "shift:" ${md} | cut -d":" -f2`
+          fi
+          echo "  shift is set to: ${shift}mm"
+          
+          # use run-1 as template
+          slice_img=`find "${bids_dir}/anat" -type f \( -name "${base}*" -and -name "*1slice*" -and -name "*run-1*" -and -name "*.nii.gz" \) 2>/dev/null`
           for bold in ${bold_files[@]}; do
             ((count++))
 
-            # use run-1 as template
-            slice_img=`find "${bids_dir}/anat" -type f \( -name "*1slice*" -and -name "*run-1*" -and -name "*.nii.gz" \) 2>/dev/null`
-            
             # fetch task
             task=`task_id ${bold}`
             if [[ ${task} == "prf" ]]; then
@@ -388,10 +406,15 @@ for subID in ${search}; do
             fi   
 
             line_img=${bids_dir}/func/${base}_task-${task}_run-${run}_bold.nii.gz
-
             if [[ -f ${slice_img} ]]; then
               if [[ ! -f ${line_img} ]]; then
-                call_createline "${slice_img}" "${line_img}" "16" "${fold}"
+
+                call_createline \
+                  -i ${slice_img} \
+                  -o ${line_img} \
+                  --width 16 \
+                  --${fold,,} \
+                  --shift ${shift}
 
                 if [[ $? != 0 ]]; then
                   echo
@@ -405,7 +428,7 @@ for subID in ${search}; do
                 echo "  `basename ${line_img}` exists"
               fi
             else
-              echo "  WARNING: could not find slice-img for \"1slice\" and \"run-1\""
+              echo "  WARNING: could not find file with [\"acq-1slice\" and \"run-1\"] in \"${bids_dir}/anat\""
             fi
 
           done
