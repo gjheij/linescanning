@@ -516,7 +516,13 @@ def get_file_from_substring(filt, path, return_msg='error', exclude=None):
                 else:
                     match_list.append(opj(path, fname))
             if exclude != None:
-                return [f for f in match_list if exclude not in f]
+                exl_list = [f for f in match_list if exclude not in f]
+                
+                # return the string if there's only 1 element
+                if len(exl_list) == 1:
+                    return exl_list[0]
+                else:
+                    return exl_list
             else:
                 return match_list
             # return match_list

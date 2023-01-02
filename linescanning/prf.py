@@ -229,7 +229,12 @@ def create_circular_mask(h, w, center=None, radius=None):
     return mask
 
 
-def make_stims(x, dim_stim=2, factor=4, concentric=False, concentric_size=0.65):
+def make_stims(
+    xy, 
+    dim_stim=2, 
+    factor=4, 
+    concentric_size=0.65, 
+    dt="fill"):
 
     """make_stims
 
@@ -245,8 +250,8 @@ def make_stims(x, dim_stim=2, factor=4, concentric=False, concentric_size=0.65):
         number of dimensions to use: 2 for circle, 1 for bar
     factor: int
         factor with which to increase stimulus size
-    concentric: boolean
-        If true, concentric stimuli will be made. For that, the next argument is required
+    dt: str
+        Set the type of stimulus that needs to be created. by default 'fill', other options are 'full' [fullscreen stimulus], 'concentric' [circles with holes], 'hole' [fullscreen with growing hole]
     concentric_size: float
         proportion of stimulus size that needs to be masked out again
 
@@ -256,36 +261,52 @@ def make_stims(x, dim_stim=2, factor=4, concentric=False, concentric_size=0.65):
         list of numpy.ndarrays with meshgrid-size containing the stimuli. Can be plotted with :func:`linescanning.prf.plot_stims`
     """
 
+    if not isinstance(xy,tuple):
+        xy = (xy,xy)
+
     if dim_stim == 1:
-        stims = [np.zeros_like(x) for n in range(int(x.shape[-1]/factor))]
+        stims = [np.zeros_like(xy[0]) for n in range(int(xy.shape[-1]/factor))]
     else:
-        stims = [np.zeros((x.shape[0],x.shape[0])) for n in range(int(x.shape[-1]/(2*factor)))]
+        stims = [np.zeros((xy[1].shape[0],xy[0].shape[0])) for n in range(int(xy[0].shape[-1]/(2*factor)))]
         stim_sizes=[]
+    
+    if dt != "full":
+        for pp, stim in enumerate(stims):
 
-    for pp, stim in enumerate(stims):
+            if dim_stim == 1:
+                #2d rectangle or 1d
+                stim[int(stim.shape[0]/2)-pp:int(stim.shape[0]/2)+pp] = 1
+            else:
+                #2d circle
+                xx,yy = np.meshgrid(xy[0],xy[1])
+                stim[((xx**2+yy**2)**0.5)<(xy[0].max()*pp/(len(stims)*factor))] = 1
+                stim_sizes.append(2*(xy[0].max()*pp/(len(stims)*factor)))
 
-        if dim_stim == 1:
-            #2d rectangle or 1d
-            stim[int(stim.shape[0]/2)-pp:int(stim.shape[0]/2)+pp] = 1
-        else:
-            #2d circle
-            xx,yy = np.meshgrid(x,x)
-            stim[((xx**2+yy**2)**0.5)<(x.max()*pp/(len(stims)*factor))] = 1
-            stim_sizes.append(2*(x.max()*pp/(len(stims)*factor)))
+                # make concentric rings
+                if dt == "concentric":
+                    stim_rad = radius(stim)
 
-            # make concentric rings
-            if concentric:
-                stim_rad = radius(stim)
+                    if stim_rad > 2:
+                        mask = create_circular_mask(xy.shape[1], xy.shape[0], radius=concentric_size*stim_rad)
+                        stim[mask] = 0
 
-                if stim_rad > 2:
-                    mask = create_circular_mask(x.shape[0], x.shape[0], radius=concentric_size*stim_rad)
-                    stim[mask] = 0
+        if dt == "hole":
+            stims_hole = []
+            for stim in stims:
+                stim_inv = np.ones_like(stim)
+                stim_inv[stim>0] = 0
+                stims_hole.append(stim_inv)
+
+            stims = stims_hole.copy()
+
+    else:
+        stims = [np.ones((xy[1].shape[0],xy[0].shape[0]))]
+        stim_sizes.append(np.inf)
 
     if dim_stim > 1:
         return stims, stim_sizes
     else:
         return stims
-
 
 def make_stims2(n_pix, prf_object, dim_stim=2, degrees=[0,6], concentric=False, concentric_size=0.65):
 
@@ -352,7 +373,7 @@ def plot_stims(
     n_rows=5, 
     n_cols=10, 
     figsize=None, 
-    extent=[-5,5],
+    extent=([-5,5],[-5,5]),
     save_as=None,
     axis_on=False,
     interval=1):
@@ -377,7 +398,7 @@ def plot_stims(
     fig,_ = plt.subplots(n_rows, n_cols, figsize=figsize)
     start = 0
     for i, ax in enumerate(fig.axes):
-        ax.imshow(stims[start], extent=extent+extent)
+        ax.imshow(stims[start], extent=extent[0]+extent[1])
         
         if not axis_on:
             ax.axis('off')
@@ -1701,7 +1722,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
             missed_vols = self.design_matrix.shape[-1]-self.data.shape[-1]
             self.design_matrix = self.design_matrix[...,missed_vols:]
             if self.verbose:
-                print(f"Design has {missed_vols} more volumes than timecourses, cutting design to {self.design_matrix.shape}")
+                print(f"Design has {missed_vols} more volumes than timecourses, trimming from beginning of design to {self.design_matrix.shape}")
 
         #----------------------------------------------------------------------------------------------------------------------------------------------------------
         # Fetch the settings
@@ -2048,7 +2069,6 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                 else:
                     vox = vox_nr
                 
-
                 params = params[vox,...]
                 pred = use_model.return_prediction(*params[:-1]).T
                 return pred, params, vox
@@ -2476,31 +2496,53 @@ class SizeResponse():
     >>> SR = prf.SizeResponse(fitting.prf_stim, new_params, subject_info=subject_info)        
     """
     
-    def __init__(self, prf_stim, params, model="norm", subject_info=None):
+    def __init__(self, prf_stim=None, params=None, model="norm", subject_info=None):
 
         self.prf_stim = prf_stim
-        self.n_pix = self.prf_stim.design_matrix.shape[0]
         self.params = params
         self.model = model
+        self.subject_info = subject_info
 
+        if isinstance(self.subject_info, CollectSubject):
+            if not isinstance(self.params, (np.ndarray,str,pd.DataFrame)):
+                self.params = self.subject_info.pars.copy()
+
+            if self.prf_stim == None:
+                self.prf_stim = self.subject_info.prf_stim
+                
         if isinstance(self.params, np.ndarray):
             self.params_df = self.parameters_to_df(self.params, model=self.model)
         elif isinstance(self.params, pd.DataFrame):
             self.params_df = self.params.copy()
-            
-        self.subject_info = subject_info
+        
+        # read the dimensions from design matrix
+        self.n_pix = self.prf_stim.design_matrix.shape[0]
 
         # define visual field in degree of visual angle
-        self.ss_deg = 2*np.degrees(np.arctan(self.prf_stim.screen_size_cm /(2.0*self.prf_stim.screen_distance_cm)))
-        self.x = np.linspace(-self.ss_deg/2, self.ss_deg/2, 1000)
+        self.ss_deg_x = 2*np.degrees(np.arctan(70/(2.0*self.prf_stim.screen_distance_cm)))
+        self.x = np.linspace(-self.ss_deg_x/2, self.ss_deg_x/2, 1920)
+
+        self.ss_deg_y = 2*np.degrees(np.arctan(self.prf_stim.screen_size_cm /(2.0*self.prf_stim.screen_distance_cm)))
+        self.y = np.linspace(-self.ss_deg_y/2, self.ss_deg_y/2, 1080)
         self.dx = self.n_pix/len(self.x)
 
+        # define visual extent:
+        self.x_ext = [-self.ss_deg_x/2,self.ss_deg_x/2]
+        self.y_ext = [-self.ss_deg_y/2,self.ss_deg_y/2]
+        self.vf_extent = (self.x_ext,self.y_ext)
 
-    def make_stimuli(self, factor=4):
+    def make_stimuli(self, factor=4, dt="fill"):
         """create stimuli for Size-Response curve simulation. See :func:`linescanning.prf.make_stims`"""
         # create stimuli
-        self.stims_fill, self.stims_fill_sizes = make_stims(self.x, factor=factor)
-    
+        
+        self.stims_tmp, self.stims_tmp_sizes = make_stims(
+            (self.x,self.y), 
+            factor=factor, 
+            dt=dt)
+        
+        setattr(self, f"stims_{dt}", self.stims_tmp)
+        setattr(self, f"stims_{dt}_sizes", self.stims_tmp_sizes)
+
     def find_pref_size(self, size=None):
         if not hasattr(self, "stims_fill"):
             self.make_stimuli(factor=2)
@@ -2560,7 +2602,7 @@ class SizeResponse():
             return df
 
     
-    def make_sr_function(self, center_prf=True, scale_factor=None, normalize=True):
+    def make_sr_function(self, center_prf=True, scale_factor=None, normalize="max", dt="fill"):
         """create Size-Response function. If you want to ignore the actual location of the pRF, set `center_prf=True`. You can also scale the pRF-size with a factor `scale_factor`, for instance if you want to simulate pRF-sizes across depth."""
         if center_prf:
             mu_x, mu_y = 0,0
@@ -2573,6 +2615,9 @@ class SizeResponse():
         else:
             prf_size = self.params_df['prf_size'][0]
 
+        # make the stimuli        
+        self.make_stimuli(factor=2, dt=dt)
+
         func = norm_2d_sr_function(
             self.dx**2*self.params_df['A'][0], 
             self.params_df['B'][0], 
@@ -2581,17 +2626,25 @@ class SizeResponse():
             prf_size, 
             self.params_df['surr_size'][0], 
             self.x, 
-            self.x, 
-            self.stims_fill, 
+            self.y, 
+            getattr(self,f"stims_{dt}"), 
             mu_x=mu_x, 
             mu_y=mu_y)
 
-        if normalize:
-            return func / func.max()
+        # normalize by max value or given value
+        if isinstance(normalize, (str,int,float,np.ndarray)):
+            if normalize == "max":
+                norm = func.max()
+            elif isinstance(normalize, np.ndarray):
+                norm = normalize[0]
+            else:
+                norm = normalize
+
+            return func/norm
         else:
             return func
 
-    def find_stim_sizes(self, curve1, curve2=None):
+    def find_stim_sizes(self, curve1, curve2=None, t="max", dt="fill"):
         """find_stim_sizes
 
         Function to fetch the stimulus sizes that optimally disentangle the responses of two pRFs given the Size-Response curves. Starts by finding the maximum response for each curve, then finds the intersect, then finds the stimulus sizes before and after the intersect where the response difference is largest.
@@ -2641,25 +2694,35 @@ class SizeResponse():
             
             return use_stim_sizes
         else:
-            size_index = signal.find_peaks(curve1)[0][0]
-            return self.stims_fill_sizes[size_index]
+            # find maximum
+            if t == "max":
+                size_index = np.where(curve1 == np.amax(curve1))[0][0]
+            else:
+                # find minimum
+                size_index = np.where(curve1 == np.amin(curve1))[0][0]
 
-    def plot_stim_size(self, stim_size, vf_extent=[-5,-5], ax=None):
+            stims = getattr(self, f"stims_{dt}_sizes")
+            return stims[size_index]
+
+    def plot_stim_size(self, stim_size, vf_extent=([-5,5],[-5,5]), ax=None, dt="fill", clip=True, cmap=(8,178,240)):
         """plot output of :func:`linescanning.prf.SizeResponse.find_stim_sizes`"""
 
         if ax == None:
             _,ax = plt.subplots(figsize=(6,6))
 
-        stim_ix = utils.find_nearest(self.stims_fill_sizes, stim_size)[0]
-        cmap_blue = utils.make_binary_cm((8,178,240))
+        stims = getattr(self, f"stims_{dt}")
+        sizes = getattr(self, f"stims_{dt}_sizes")
+        stim_ix = utils.find_nearest(sizes, stim_size)[0]
+        cmap_blue = utils.make_binary_cm(cmap)
 
-        im = ax.imshow(self.stims_fill[stim_ix], extent=vf_extent+vf_extent, cmap=cmap_blue)
+        im = ax.imshow(stims[stim_ix], extent=vf_extent[0]+vf_extent[1], cmap=cmap_blue)
         ax.axvline(0, color='k', linestyle='dashed', lw=0.5)
         ax.axhline(0, color='k', linestyle='dashed', lw=0.5)
         ax.axis('off')
-        patch = patches.Circle((0,0), radius=vf_extent[-1], transform=ax.transData)
-        im.set_clip_path(patch)
 
+        if clip:
+            patch = patches.Circle((0,0), radius=vf_extent[0][-1], transform=ax.transData)
+            im.set_clip_path(patch)
 
     def save_target_params(
         self, 
@@ -2827,12 +2890,15 @@ class CollectSubject(pRFmodelFitting):
 
             search_for = ["avg_bold", ".npy"]
             if self.v1_data:
-                search_for += "_roi-V1"
-                
+                search_for += ["_roi-V1"]
+                exclude = None
+            else:
+                exclude = "_roi-V1"
+            
             try:
-                self.func_data_lr = np.load(utils.get_file_from_substring(search_for+["hemi-LR_"], self.prf_dir))
-                self.func_data_l = np.load(utils.get_file_from_substring(search_for+["hemi-L_"], self.prf_dir))
-                self.func_data_r = np.load(utils.get_file_from_substring(search_for+["hemi-R_"], self.prf_dir))
+                self.func_data_lr = np.load(utils.get_file_from_substring(search_for+["hemi-LR_"], self.prf_dir, exclude=exclude))
+                self.func_data_l = np.load(utils.get_file_from_substring(search_for+["hemi-L_"], self.prf_dir, exclude=exclude))
+                self.func_data_r = np.load(utils.get_file_from_substring(search_for+["hemi-R_"], self.prf_dir, exclude=exclude))
             except:
                 try:
                     self.func_data_lr = np.load(utils.get_file_from_substring(["desc-data.npy"]+self.filter_list, self.prf_dir))
@@ -2841,7 +2907,7 @@ class CollectSubject(pRFmodelFitting):
 
         # try to read iterative fit parameters
         allowed_models = ['gauss', 'css', 'dog', 'norm']
-        look_for = [f"model-{model}", "stage-iter", "params.pkl"]
+        look_for = ["stage-iter", "params.pkl"]
         
         # add some filters
         if self.v1_data:
@@ -2850,35 +2916,42 @@ class CollectSubject(pRFmodelFitting):
         if self.fit_hrf:
             look_for += ["hrf-true_"]
 
+        if self.verbose:
+            print(f"Reading full-cortex pRF estimates with {look_for}")
         for model in allowed_models:
-            par_file = utils.get_file_from_substring(look_for, self.prf_dir, return_msg=None)
+            par_file = utils.get_file_from_substring(look_for+[f"model-{model}"], self.prf_dir, return_msg=None)
             if isinstance(par_file, str):
+                if self.verbose:
+                    print(f" model: {model}:\t{par_file}")
+
                 setattr(self, f'{model}_iter_pars', read_par_file(par_file))
         
         # set pycortex directory
         if self.cx_dir == None:
             if derivatives != None:
                 self.cx_dir = opj(self.derivatives, 'pycortex', self.subject)
+            
+        if self.cx_dir != None and os.path.exists(self.cx_dir):
+            self.vert_fn = utils.get_file_from_substring([self.model, "best_vertices.csv"], self.cx_dir)
 
+            if self.verbose:
+                print(f"Reading {self.vert_fn}")
+
+            self.vert_info = utils.VertexInfo(
+                self.vert_fn, 
+                subject=self.subject, 
+                hemi=self.hemi)
+        
+        # fetch target vertex parameters
+        if hasattr(self, "vert_info"):
+            self.target_params = self.return_prf_params(hemi=self.hemi)
+            self.target_vertex = self.return_target_vertex(hemi=self.hemi)
+
+            if self.verbose:
+                print(f"Target vertex: {self.target_vertex}")
+
+        # find the csv file with parameters (generally available with 'norm')
         if self.best_vertex:
-            
-            if self.cx_dir != None and os.path.exists(self.cx_dir):
-                self.vert_fn = utils.get_file_from_substring([self.model, "best_vertices.csv"], self.cx_dir)
-
-                if self.verbose:
-                    print(f"Reading {self.vert_fn}")
-
-                self.vert_info = utils.VertexInfo(
-                    self.vert_fn, 
-                    subject=self.subject, 
-                    hemi=self.hemi)
-            
-            # fetch target vertex parameters
-            if hasattr(self, "vert_info"):
-                self.target_params = self.return_prf_params(hemi=self.hemi)
-                self.target_vertex = self.return_target_vertex(hemi=self.hemi)
-
-            # find the csv file with parameters (generally available with 'norm')
             try:
                 self.params_fn = utils.get_file_from_substring([f"model-{self.model}", "desc-params.csv"], self.cx_dir)
                 self.normalization_params_df = pd.read_csv(self.params_fn, index_col=0)            
@@ -2892,7 +2965,7 @@ class CollectSubject(pRFmodelFitting):
                 tmp_data = self.func_data_r.copy()
             
             self.data = tmp_data[...,self.target_vertex][np.newaxis,...]
-
+            txt = "target vertex"
         else:
             if hasattr(self, f"{self.model}_iter_pars"):
                 self.pars = getattr(self, f"{self.model}_iter_pars")
@@ -2901,6 +2974,11 @@ class CollectSubject(pRFmodelFitting):
 
             if hasattr(self, "func_data_lr"):
                 self.data = self.func_data_lr.T
+
+            txt = "full cortex"
+
+        if self.verbose:
+            print(f"Shape final parameters: {self.pars.shape} [{txt}]")
 
         # initialize the model
         if hasattr(self, "data"):
