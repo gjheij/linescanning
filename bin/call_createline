@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 
 import os, sys
-import numpy as np
-import nibabel as nb
+import getopt
 from linescanning.image import create_line_from_slice
+from linescanning.utils import reverse_sign
 
 def main(argv):
 
@@ -15,14 +15,25 @@ This super short script creates a nifti image of the line-contours based on the 
 It assumes your slice gap was 4 voxels, +2 and -2 from the middle. It returns a nifti image with
 high values of where the box was.
 
-Args:
-    <input file>        string-like path to file to extract from
-    <output file>       string-like path to output new volume to
-    <line width>        int value of line thickness (default 4, larger for visibility purposes). It
+Parameters
+----------
+    -i|--in <file>      string-like path to file to extract from
+    -o|--out <file>     string-like path to output new volume to
+    -w|--width <int>    int value of line thickness (default 4, larger for visibility purposes). It
                         will add half of the <width> in both directions from the center, so <width>
                         has to be a divideable by 2. Even numbers only!
-    <foldover>          foldover direction, can be 'FH', 'AP', or 'LR'. Could be read from the
-                        sub-xxx_desc-info.csv file.
+    -s|--shift <int>    how many mm the line needs to be shifted in the `foldover` direction.  This 
+                        may be required if you had a bad shim and you had to move the slice in a 
+                        particular direction to target the spot you intended. Could be read from 
+                        the sub-xxx_desc-info.csv file. 
+                        
+                        ---------------------------------------------------------------------------
+                        IMPORTANT: input value will be inverted,
+                        as the default assumption is that the slice was moved down, so that you
+                        now have to move the beam up to correspond to the correct location.
+                        ---------------------------------------------------------------------------
+                        
+    --fh|--lr|--ap      foldover direction (where the saturation slabs are positioned)
 
 Outputs
     output file         new volume containing the extracted data from input file
@@ -31,32 +42,55 @@ Usage:
     call_createline <input> <output> <width> <foldover direction>
 
 Example:
-    call_createline input.nii.gz output.nii.gz 16 FH
+    call_createline -i input.nii.gz -o output.nii.gz -w 16 --fh
+    call_createline -i input.nii.gz -o output.nii.gz --width 16 --fh --shift 4
 
 ---------------------------------------------------------------------------------------------------
-
     """
 
     in_file     = None
     out_file    = None
     width       = 16
     fold        = "FH"
+    shift       = 0
 
-    if len(argv) < 2:
-        print("NOT ENOUGH ARGUMENTS SPECIFIED")
+    try:
+        opts = getopt.getopt(argv,"hi:o:w:s:",["help", "in=", "out=", "width=", "fh", "lr", "ap", "shift="])[0]
+    except getopt.GetoptError:
+        print(main.__doc__)
+        sys.exit(2)
+
+    for opt, arg in opts:
+        if opt in ("-h", "--help"):
+            print(main.__doc__)
+            sys.exit()
+        elif opt in ("-i", "--in"):
+            in_file = arg
+        elif opt in ("-o", "--out"):
+            out_file = arg
+        elif opt in ("-w", "--width"):
+            width = arg
+        elif opt in ("--fh"):
+            fold = "FH"
+        elif opt in ("--lr"):
+            fold = "LR"
+        elif opt in ("--ap"):
+            fold = "AP"
+        elif opt in ("-s", "--shift"):
+            shift = reverse_sign(int(arg))
+
+    if len(argv) < 4:
+        print("NOT ENOUGH ARGUMENTS SPECIFIED. NEED AT LEAST INPUT FILE AND OUTPUT FILE")
         print(main.__doc__)
         sys.exit()
-    elif len(argv) == 4:
-        in_file     = argv[0]
-        out_file    = argv[1]
-        width       = argv[2]
-        fold        = argv[3]
-    elif len(argv) == 2:
-        in_file     = argv[0]
-        out_file    = argv[1] 
 
     if os.path.exists(in_file):
-        create_line_from_slice(in_file, out_file=out_file, width=width, fold=fold)
+        create_line_from_slice(
+            in_file, 
+            out_file=out_file, 
+            width=width, 
+            fold=fold,
+            shift=shift)
     else:
         raise FileNotFoundError(f"Could not find specified file: {in_file}")
 
