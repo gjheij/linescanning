@@ -872,7 +872,7 @@ def percent_change(ts, ax, nilearn=False, baseline=20):
         
     return psc
 
-def select_from_df(df, expression="run = 1", index=True, indices=None):
+def select_from_df(df, expression="run = 1", index=True, indices=None, match_exact=True):
     """select_from_df
 
     Select a subset of a dataframe based on an expression. Dataframe should be indexed by the variable you want to select on or have the variable specified in the expression argument as column name. If index is True, the dataframe will be indexed by the selected variable. If indices is specified, the dataframe will be indexed by the indices specified through a list (only select the elements in the list) or a `range`-object (select within range).
@@ -887,6 +887,8 @@ def select_from_df(df, expression="run = 1", index=True, indices=None):
         return output dataframe with the same indexing as `df`, by default True
     indices: list, range, numpy.ndarray, optional
         List, range, or numpy array of indices to select from `df`, by default None
+    match_exact: bool, optional:
+        When you insert a list of strings with `indices` to be filtered from the dataframe, you can either request that the items of `indices` should **match** exactly (`match_exact=True`, default) the column names of `df`, or whether the columns of `df` should **contain** the items of `indices` (`match_exact=False`).
 
     Returns
     ----------
@@ -908,7 +910,17 @@ def select_from_df(df, expression="run = 1", index=True, indices=None):
         if isinstance(indices, tuple):
             return df.iloc[:,indices[0]:indices[1]]
         elif isinstance(indices, list):
-            return df.iloc[:,indices]
+            if all(isinstance(item, str) for item in indices):
+                if match_exact:
+                    return df[df.columns[df.columns.isin(indices)]]
+                else:
+                    df_tmp = []
+                    for item in indices:
+                        df_tmp.append(df[df.columns[df.columns.str.contains(item)]])
+
+                    return pd.concat(df_tmp, axis=1)
+            else:
+                return df.iloc[:,indices]
         elif isinstance(indices, np.ndarray):
             return df.iloc[:,list(indices)]
         else:
