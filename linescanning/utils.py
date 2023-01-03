@@ -211,7 +211,7 @@ def string2list(string_array):
     """
 
     if type(string_array) == str:
-        new = string_array[1:-1].split(',')[0:]
+        new = string_array.split(',')[0:]
         new = list(filter(None, new))
 
         return new
