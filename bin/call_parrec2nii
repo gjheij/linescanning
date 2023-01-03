@@ -1,0 +1,189 @@
+#!/usr/bin/env bash
+
+# source helper functions
+source call_bashhelper
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_parrec2nii
+
+Wrapper for the parrec2nii to make life a little easier. In theory, it'll only require and input di-
+rectory containing the files to be converted. If not output directory is specified, the script will
+create a directory called INPUT/nifti and store the output there. Settings are default, but you can
+edit the actual call to dcm2niix as you wish.
+
+By default, the output name will be a combination of the "patient name" '%n' flag, and the "protocol
+name" '%p'. So, if you register you subjects in the MR console as 'sub-xxx' or 'sub-xxx_ses-x' and
+your sequence (e.g., MP2RAGE) as 'acq-MP2RAGE_T1w', then your output files will already have BIDS-
+names.
+
+You can specify some other options though:
+
+Arguments:
+  -i <input folder>   folder containing the files to be processed. Always needed!
+  -o <output folder>  output folder. If empty, it will use <input folder>/nifti
+  -c <compress>       create nii's ("n") or nii.gz's (default)
+
+Example:
+  call_dcm2niix -i /path/to/PARRECs
+  call_dcm2niix -i /path/to/file.par
+  call_dcm2niix -i /path/to/PARRECs -c n
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+# Allocate input arguments to variables
+#
+while getopts i:o:c:v: argument
+do
+  case ${argument} in
+    i)  pathInput=${OPTARG}
+          ;;
+    o)  pathOutput=${OPTARG}
+          ;;
+    c)  compress=${OPTARG}
+          ;;
+  esac
+done
+
+if [[ $# -lt 1 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+#-----------------------------------------------------------------------------
+# Get bash helper functions
+source call_bashhelper
+
+#-----------------------------------------------------------------------------
+# Check if we have parrec2nii installed
+
+fn_exists()
+{
+    FN=`type -t $1`
+
+    if [[ -z ${FN} ]]; then
+      echo "Didn't find parrec2nii, please install nibabel"
+      exit 1
+    fi
+}
+
+cmd="parrec2nii"
+fn_exists ${cmd}
+
+#-----------------------------------------------------------------------------
+# Set default inputs/outputs
+if [[ -z ${pathInput} ]]; then
+  echo "ALWAYS NEED AT LEAST AN INPUT FOLDER/FILE"
+  Usage >&2
+  exit 1
+fi
+
+if [[ -z ${pathOutput} ]]; then
+  pathOutput=${pathInput}/nifti
+fi
+
+# -z : gz compress images (y/o/i/n/3, default n) [y=pigz, o=optimal pigz, i=internal:zlib, n=no, 3=no,3D]
+if [[ -z ${compress} ]]; then
+  NIIGZ="o"
+  COMPR="-c"
+else
+  if [[ ${compress} == "n" ]]; then
+    COMPR=""
+  fi
+fi
+
+#-----------------------------------------------------------------------------
+# Run it
+
+if [[ ! -d ${pathOutput} ]]; then
+  mkdir -p ${pathOutput}
+fi
+
+# check if input is directory or loose file
+if [[ -d ${pathInput} ]]; then
+  ff=`find ${pathInput} -type f -iname "*.par" 2>/dev/null`
+else
+  ff=${pathInput}
+fi
+
+IFS=$'\n' par_files=($(sort <<<"${ff[*]}"))
+unset IFS   
+for par in ${par_files[@]}; do
+
+  orig_out=${pathOutput}/$(basename ${par} .par).nii.gz
+  if [ ! -f ${orig_out} ]; then
+    ${cmd} --scaling fp --verbose ${COMPR} -o ${pathOutput} ${par}
+
+    if [[ $? -ne 0 ]]; then
+      echo "\"${cmd}\" exited with non-zero status"
+      exit 1
+    fi
+  fi
+
+  # rename according to Protocol Name & Patient Name | read_par comes from call_bashhelper
+  pat=`read_par ${par} "Patient name"`
+  prot=`read_par ${par} "Protocol name"`
+
+  # check if volumes are doubled (in case ofll phase data)
+  phase=0
+  dyns=`read_par ${par} "number of dynamics"`
+  vols=`fslval ${orig_out} dim4 | xargs`
+
+  bids_out=${pathOutput}/${pat}_${prot}
+  if [ ${vols} != ${dyns} ]; then
+
+    if [[ ! -f ${bids_out}.nii.gz && ! -f ${bids_out}_ph.nii.gz ]]; then
+      echo "Output has ${vols} volumes, but PAR-file says ${dyns}; assuming interleaved phase data"
+
+      PYTHON_CODE=$(cat <<END
+import nibabel as nb;
+import os;
+import numpy as np;
+opj = os.path.join;
+ff = '${orig_out}';
+img = nb.load(ff);
+data = img.get_fdata();
+mag = data[...,::2];
+pha = data[...,1::2];
+out = '${bids_out}';
+nb.Nifti1Image(mag, affine=img.affine, header=img.header).to_filename(out+'.nii.gz');
+nb.Nifti1Image(pha, affine=img.affine, header=img.header).to_filename(out+'_ph.nii.gz');
+END
+)
+      echo "Extracting and saving interleaved magnitude/phase data"
+      python -c "$PYTHON_CODE"
+    fi
+  else
+    if [[ ! -f ${bids_out}.nii.gz ]]; then
+      mv ${orig_out} ${bids_out}.nii.gz 2>/dev/null
+    fi
+  fi
+
+  # define json file
+  json_f=${bids_out}.json
+  echo "Writing ${json_f}"
+  
+  # function is from call_bashhelper
+  pars_for_json ${par} ${json_f}
+
+  if [[ ${bids_out} == *"_epi.nii.gz"* ]]; then
+
+    base_path=""
+    if [[ ${pat} == *"ses"* ]]; then
+      ses_nr=$(echo ${pat} | cut -d"_" -f2)
+      base_path+="${ses_nr}"
+    fi
+
+    call_json ${json_f} IntendedFor ${base_path}/func/$(basename ${bids_out} _epi)_bold.nii.gz
+
+  fi
+
+done

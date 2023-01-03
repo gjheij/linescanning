@@ -11,24 +11,26 @@ call_dcm2niix
 Wrapper for the dcm2niix to make life a little easier. In theory, it'll only require and input di-
 rectory containing the files to be converted. If not output directory is specified, the script will
 create a directory called INPUT/nifti and store the output there. Settings are default, but you can
-edit the actual call to dcm2niix as you wish.
+edit the actual call to dcm2niix as you wish. By default, the output name will be a combination of 
+the "patient name" '%n' flag, and the "protocol name" '%p'. So, if you register you subjects in the 
+MR console as 'sub-xxx' or 'sub-xxx_ses-x' and your sequence (e.g., MP2RAGE) as 'acq-MP2RAGE_T1w', 
+then your output files will already have BIDS-names. In case dcm2niix breaks due to catastropic er-
+rors (happens with laaarge PAR/RECs), we'll attempt to convert with parrec2nii (comes as an execu-
+table with nibabel). This will attempt to put the correct information in an accompanying json side-
+car (not produced by parrec2nii); some information (e.g., RepetitionTime) could be missing.
 
-By default, the output name will be a combination of the "patient name" '%n' flag, and the "protocol
-name" '%p'. So, if you register you subjects in the MR console as 'sub-xxx' or 'sub-xxx_ses-x' and
-your sequence (e.g., MP2RAGE) as 'acq-MP2RAGE_T1w', then your output files will already have BIDS-
-names.
-
-You can specify some other options though:
-
-Arguments:
+Parameters
+----------
   -i <input folder>   folder containing the files to be processed. Always needed!
   -o <output folder>  output folder. If empty, it will use <input folder>/nifti
   -c <compress>       create nii's ("n") or nii.gz's ("o"; default)
   -v <version>        2019|2020 (2020 fails sometimes when dealing with fMRI phase data)
 
-Example:
-  call_dcm2niix -i /path/to/PARRECs
-  call_dcm2niix -i /path/to/PARRECs -c n
+Example
+----------
+  call_dcm2niix -i /path/to/PARRECs         # most basic call
+  call_dcm2niix -i /path/to/PARRECs -c n    # don't compress
+  call_dcm2niix -i /path/to/PARRECs -v dev  # use developmental version
 
 ---------------------------------------------------------------------------------------------------
 
@@ -40,16 +42,16 @@ USAGE
 #
 while getopts i:o:c:v: argument
 do
-    case ${argument} in
-      i)  pathInput=${OPTARG}
-            ;;
-      o)  pathOutput=${OPTARG}
-            ;;
-      c)  compress=${OPTARG}
-            ;;
-      v)  version=${OPTARG}
-            ;;
-    esac
+  case ${argument} in
+    i)  pathInput=${OPTARG}
+          ;;
+    o)  pathOutput=${OPTARG}
+          ;;
+    c)  compress=${OPTARG}
+          ;;
+    v)  version=${OPTARG}
+          ;;
+  esac
 done
 
 if [[ $# -lt 1 ]] ; then
@@ -62,16 +64,14 @@ fi
 
 fn_exists()
 {
-    FN=`type -t $1`
+  FN=`type -t $1`
 
-    if [[ -z ${FN} ]]; then
-      echo "Didn't find dcm2niix, please install (have a look at https://github.com/rordenlab/dcm2niix)"
-      echo "or specify the path to the function"
-      exit 1
-    fi
+  if [[ -z ${FN} ]]; then
+    echo "Didn't find dcm2niix, please install (have a look at https://github.com/rordenlab/dcm2niix)"
+    echo "or specify the path to the function"
+    exit 1
+  fi
 }
-
-fn_exists dcm2niix
 
 # overwrite version?
 if [[ ${version} == "2019" ]]; then
@@ -81,12 +81,12 @@ elif [[ ${version} == "2021" ]]; then
 elif [[ ${version} == "2022" ]]; then
   cmd="/packages/mricrogl/20220720/Resources/dcm2niix"  
 elif [[ ${version} == "dev" ]]; then
-  cmd="/Users/heij/SC/programs/packages/dcm2niix/build/bin/dcm2niix"    
-elif [[ ${version} == "nb" ]]; then
-  cmd="parrec2nii"
+  cmd="/Users/heij/SC/programs/packages/dcm2niix/build/bin/dcm2niix"
 else
   cmd="dcm2niix"
 fi
+
+fn_exists ${cmd}
 
 #-----------------------------------------------------------------------------
 # Set default inputs/outputs
@@ -103,7 +103,6 @@ fi
 # -z : gz compress images (y/o/i/n/3, default n) [y=pigz, o=optimal pigz, i=internal:zlib, n=no, 3=no,3D]
 if [[ -z ${compress} ]]; then
   NIIGZ="o"
-  COMPR="-c"
 else
   if [[ ${compress} == "n" ]] || [[ ${compress} == "y" ]] || [[ ${compress} == "i" ]] || [[ ${compress} == "3" ]] || [[ ${compress} == "o" ]]; then
     NIIGZ=${compress}
@@ -115,10 +114,6 @@ else
     echo "Or leave empty for the default \"o\" (= optimized compression)"
     exit 1
   fi
-
-  if [[ ${compress} == "n" ]]; then
-    COMPR=""
-  fi
 fi
 
 #-----------------------------------------------------------------------------
@@ -128,58 +123,29 @@ if [[ ! -d ${pathOutput} ]]; then
   mkdir -p ${pathOutput}
 fi
 
-if [[ $version != "nb" ]]; then
-  ${cmd} -b y -f %n_%p -z ${NIIGZ} -d 0 -o ${pathOutput} -v 1 ${pathInput}
-else
-  ff=`find ${pathInput} -type f -iname "*.par" 2>/dev/null`
-  IFS=$'\n' par_files=($(sort <<<"${ff[*]}"))
-  unset IFS   
+log=${pathInput}/log.txt
+if [[ -f ${log} ]]; then
+  rm ${log}
+fi
+
+# redirect output to log-file so we can monitor catastrophic errors
+${cmd} -b y -f %n_%p -z ${NIIGZ} -d 0 -o ${pathOutput} -v 1 ${pathInput} &> ${log}
+
+# check for catastrophic errors and try to run them with parrec2nii
+ff=`cat ${log} | grep "Catastrophic" | cut -d"." -f2 | xargs | sed 's/\r$//'`
+if [[ ! -z ${ff} ]]; then
+  IFS=$' ' par_files=($(sort <<<"${ff[*]}"))
+  unset IFS
+
+  echo "Found ${#par_files[@]} catastropic errors; attempting conversion with \"call_parrec2nii\""
+
   for par in ${par_files[@]}; do
-
-    ${cmd} --verbose ${COMPR} -o ${pathOutput} ${par}
-
-    if [[ $? -ne 0 ]]; then
-      echo "\"${cmd}\" exited with non-zero status"
-      exit 1
+    par_fn=`find $(dirname ${par}) -type f -iname "$(basename ${par})*.par" 2>/dev/null`
+    if [ -f ${par_fn} ]; then
+      call_parrec2nii -i ${par_fn} -o ${pathOutput}
     fi
-
-    # rename according to Protocol Name & Patient Name
-    pat_name=`head -30 $par | grep -A0 "Patient name" | cut -d":" -f2 | xargs`
-    prot_name=`head -30 $par | grep -A0 "Protocol name" | cut -d":" -f2 | xargs`
-    orig_out=${pathOutput}/$(basename ${par} .par).nii.gz
-
-    echo " BIDS-name: ${pat_name}_${prot_name}"
-
-    # check if volumes are doubled (in case ofll phase data)
-    phase=0
-    dyns=`head -30 ${par} | grep -A0 "number of dynamics" | cut -d":" -f2 | xargs`
-    vols=`fslval ${orig_out} dim4`
-
-    if [ ${vols} != ${dyns} ]; then
-      echo " nifti has ${vols} volumes, PAR-file says ${dyns}; assuming phase-data"
-      PYTHON_CODE=$(cat <<END
-import nibabel as nb;
-import os;
-import numpy as np;
-opj = os.path.join;
-ff = '${orig_out}';
-img = nb.load(ff);
-data = img.get_fdata();
-mag = data[...,::2];
-pha = data[...,1::2];
-out = opj('${pathOutput}', '${pat_name}_${prot_name}');
-nb.Nifti1Image(mag, affine=img.affine, header=img.header).to_filename(out+'.nii.gz');
-nb.Nifti1Image(pha, affine=img.affine, header=img.header).to_filename(out+'_ph.nii.gz');
-END
-)
-      python -c "$PYTHON_CODE"
-
-      echo " done"
-    fi
-
   done
 
-  echo "Done"
 fi
 
 # OPTIONS:
