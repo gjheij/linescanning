@@ -157,7 +157,7 @@ for subID in ${search}; do
     fi
 
     # fetch and sort the lab-files
-    bold_files_unsorted=`find "${lab_func}" -type f \( -name "*bold_*" -and -name "*.lab" \) 2>/dev/null`
+    bold_files_unsorted=`find "${lab_func}" -maxdepth 1 -type f \( -name "*bold_*" -and -name "*.lab" \) 2>/dev/null`
     IFS=$'\n' bold_files=($(sort <<<"${bold_files_unsorted[*]}"))
     unset IFS
 
@@ -196,7 +196,7 @@ for subID in ${search}; do
         if [[ ! -f ${outputbase}.mat ]]; then
 
           # find corresponding LSD-image
-          lsd=`find "${lab_func}" -type f \( -name "*run-${run}*" -and -name "*desc-recon*" -and -name "*.lab" \) 2>/dev/null`
+          lsd=`find "${lab_func}" -maxdepth 1 -type f \( -name "*run-${run}*" -and -name "*desc-recon*" -and -name "*.lab" \) 2>/dev/null`
           if [[ -z ${lsd} ]]; then
             if [[ ${old_lsd} != "" ]]; then
               lsd=${old_lsd}
