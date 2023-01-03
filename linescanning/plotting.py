@@ -846,6 +846,7 @@ class LazyBar():
         fancy_rounding: float=0.15,
         fancy_pad: float=-0.004,
         fancy_aspect: float=0.2,
+        add_legend: bool=False,
         **kwargs):
 
         self.data               = data
@@ -862,6 +863,7 @@ class LazyBar():
         self.add_axis           = add_axis
         self.lim                = lim
         self.ticks              = ticks
+        self.add_legend         = add_legend
         self.x_label2           = x_label2
         self.y_label2           = y_label2
         self.title2             = title2
@@ -898,7 +900,8 @@ class LazyBar():
             "fancy_aspect",
             "font_name",
             "x_ticks",
-            "y_ticks"
+            "y_ticks",
+            "add_legend"
         ]
 
         kw_sns = {}
@@ -1042,7 +1045,14 @@ class LazyBar():
                         loc="best",
                         bbox_to_anchor=self.bbox_to_anchor,
                         fontsize=self.label_size)
-
+        else:
+            if self.add_legend:
+                self.ff.legend(
+                    frameon=False, 
+                    fontsize=self.label_size*0.8)
+            else:
+                self.ff.legend([],[], frameon=False)
+                
         # axis labels and titles
         if self.title:
             self.ff.set_title(
