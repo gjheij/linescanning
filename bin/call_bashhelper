@@ -14,6 +14,143 @@ function search_character_substring {
   echo $starts_at
 }
 
+function read_par {
+
+  #---------------------------------------------------------------------------------------------------------
+  # Create help text
+  function Usage {
+      cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+read_par
+
+Read parameters from a PAR-file. 
+
+Args:
+ -r <lines>   number of lines to read from the par file (default is 50)
+ <par file>   PAR/par file to read
+ <read key>   key to read from the par file
+
+Usage:
+ read_par some_file.par "EPI factor"
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+}
+
+  if [[ $# -lt 1 ]] ; then
+    Usage >&2
+  else
+    # Check for subject & session flags
+    read_lines=50
+    while getopts hr:s: argument
+    do
+      case ${argument} in
+        r)  read_lines=${OPTARG}
+              ;;
+      esac
+    done
+
+    par_file=${@:$OPTIND:1}
+    read_key=${@:$OPTIND+1:1}
+
+    # reads x lines, cuts the :, removes white spaces, and removes carriage return
+    par_key=`head -${read_lines} $par | grep "${read_key}" | cut -d":" -f2 | xargs | sed 's/\r$//'`
+    echo ${par_key}
+  fi
+
+}
+
+function pars_for_json {
+
+  #---------------------------------------------------------------------------------------------------------
+  # Create help text
+  function Usage {
+      cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+pars_for_json
+
+Calculate the following parameters from a PAR-file:
+  - Water fat shift (WFS_hz)      | water fat shift*water fat ppm*gyromagnetic ratio
+  - Total readout time (TRT)      | water fat shift/WFS_hz
+  - Effective echo spacing (EES)  | TRT/EPI factor+1
+  - Phase encoding direction      | in fmriprep convention (e.g., AP='j-')
+
+Args:
+ <par file>   PAR/par file to read
+ <json file>  output file; if not specified, the output is printed to the terminal. You can choose 
+              to redirect this output to another file using 'pars_for_json ... &> some_file.txt'
+
+Returns:
+  array in the following order: WFS,WFS_hz,TRT,EES,PE
+
+Usage:
+ pars_for_json some_file.par
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+}
+
+  if [[ $# -lt 1 ]] ; then
+    Usage >&2
+  else
+    par_file=${@:$OPTIND:1}
+    json_file=${@:$OPTIND+1:1}
+
+    # gyromagnetic reatio
+    gyro=42.576
+
+    # water-fat part per million
+    wf_ppm=3.35
+
+    # EPI factor
+    epi_f=`read_par ${par_file} "EPI factor"`
+
+    # water fat shift
+    WFS=`read_par ${par_file} "Water Fat shift"`
+
+    # WFS (freq)
+    WFS_hz=`echo "${WFS} * ${wf_ppm} * ${gyro}" | bc -l`
+
+    # total read out time
+    TRT=`echo "${WFS}/${WFS_hz}" | bc -l`
+
+    # effective echo spacing
+    EES=`echo "${TRT}/${epi_f}+1" | bc -l` 
+
+    # phase encoding direction
+    PE=`read_par ${par_file} "Preparation direction"`
+    if [[ ${PE} == "AP" ]]; then
+      ADD_PE="j-"
+    elif [[ ${PE} == "AP" ]]; then
+      ADD_PE="j"
+    elif [[ ${PE} == "LR" ]]; then
+      ADD_PE="i"
+    elif [[ ${PE} == "RL" ]]; then
+      ADD_PE="i-"
+    else
+      ADD_PE="AP"
+    fi
+
+    # protocol name
+    PROT=`read_par ${par_file} "Protocol name"`
+
+    if [[ ! -z ${json_file} ]]; then
+      call_json ${json_file} TotalReadoutTime,PhaseEncodingDirection,EffectiveEchoSpacing,ProtocolName ${TRT},${ADD_PE},${EES},${PROT}
+    else
+      echo "WFS:    ${WFS}"
+      echo "WFS_hz: ${WFS_hz}"
+      echo "TRT:    ${TRT}s"
+      echo "EES:    ${EES}s"
+      echo "PE:     ${ADD_PE} (=${PE})"
+    fi
+  fi
+
+}
+
 function check_file {
   input=${1}
   if [ -f ${input} ]; then
