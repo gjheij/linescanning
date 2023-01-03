@@ -4,7 +4,7 @@ import json
 import os
 import sys
 import ast
-
+from linescanning import utils
 def main(argv):
 
     """
@@ -43,22 +43,15 @@ Example
     add_key     = argv[1]
     add_msg     = argv[2]
 
-    # force into list whatever the input may be
-    if isinstance(add_key, str):
+    if "," in add_key:
+        add_key = utils.string2list(add_key)
+    else:
         add_key = [add_key]
+
+    if "," in add_msg:
+        add_msg = utils.string2list(add_msg)
     else:
-        try:
-            add_key = list(ast.literal_eval(add_key))
-        except:
-            raise Exception(f"Could not read {add_key} into list")
-    
-    if isinstance(add_msg, str):
         add_msg = [add_msg]
-    else:
-        try:
-            add_msg = list(ast.literal_eval(add_msg))
-        except:
-            raise Exception(f"Could not read {add_msg} into list")
 
     # check if length of lists match
     if len(add_msg) != len(add_key):
