@@ -12,26 +12,22 @@ function Usage {
 call_parrec2nii
 
 Wrapper for the parrec2nii to make life a little easier. In theory, it'll only require and input di-
-rectory containing the files to be converted. If not output directory is specified, the script will
-create a directory called INPUT/nifti and store the output there. Settings are default, but you can
-edit the actual call to dcm2niix as you wish.
+rectory containing the files to be converted. If no output directory is specified, the script will
+create a directory called INPUT/nifti and store the output there. Because parrec2nii does not out-
+put a json side-car file by default, we'll attempt to create one based on the information found in 
+the par-file; some information (e.g., RepetitionTime) could be missing.
 
-By default, the output name will be a combination of the "patient name" '%n' flag, and the "protocol
-name" '%p'. So, if you register you subjects in the MR console as 'sub-xxx' or 'sub-xxx_ses-x' and
-your sequence (e.g., MP2RAGE) as 'acq-MP2RAGE_T1w', then your output files will already have BIDS-
-names.
-
-You can specify some other options though:
-
-Arguments:
-  -i <input folder>   folder containing the files to be processed. Always needed!
+Parameters
+----------
+  -i <input>          PAR-file or folder containing PAR-files to be processed. Always needed!
   -o <output folder>  output folder. If empty, it will use <input folder>/nifti
   -c <compress>       create nii's ("n") or nii.gz's (default)
 
-Example:
-  call_dcm2niix -i /path/to/PARRECs
-  call_dcm2niix -i /path/to/file.par
-  call_dcm2niix -i /path/to/PARRECs -c n
+Example
+----------
+  call_parrec2nii -i /path/to/PARRECs       # call with folder
+  call_parrec2nii -i /path/to/file.par      # call with file
+  call_parrec2nii -i /path/to/PARRECs -c n  # don't compress
 
 ---------------------------------------------------------------------------------------------------
 

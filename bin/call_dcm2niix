@@ -9,7 +9,7 @@ function Usage {
 call_dcm2niix
 
 Wrapper for the dcm2niix to make life a little easier. In theory, it'll only require and input di-
-rectory containing the files to be converted. If not output directory is specified, the script will
+rectory containing the files to be converted. If no output directory is specified, the script will
 create a directory called INPUT/nifti and store the output there. Settings are default, but you can
 edit the actual call to dcm2niix as you wish. By default, the output name will be a combination of 
 the "patient name" '%n' flag, and the "protocol name" '%p'. So, if you register you subjects in the 
