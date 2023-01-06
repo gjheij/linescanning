@@ -15,6 +15,7 @@ Add a key an description to a given json file.
 
 Parameters
 ----------
+    --merge         don't overwrite existing keys/value pairings
     <json file>     path representing a valid json-file
     <key>           string of the key that should be added; use double+single quotes (see example) 
                     for list-like input
@@ -38,10 +39,19 @@ Example
         print("NOT ENOUGH ARGUMENTS SPECIFIED")
         print(main.__doc__)
         sys.exit(1)
-        
-    json_file   = argv[0]
-    add_key     = argv[1]
-    add_msg     = argv[2]
+    
+    merge = False
+    start_ix = 0
+    if len(argv) == 4:
+        if "merge" in argv[0]:
+            merge = True
+            start_ix = 1
+        elif "merge" in argv[-1]:
+            merge = True
+
+    json_file   = argv[start_ix]
+    add_key     = argv[start_ix+1]
+    add_msg     = argv[start_ix+2]
 
     if "," in add_key:
         add_key = utils.string2list(add_key)
@@ -53,9 +63,10 @@ Example
     else:
         add_msg = [add_msg]
 
-    # check if length of lists match
-    if len(add_msg) != len(add_key):
-        raise ValueError(f"Length ({len(add_key)}) of key list does not match length of message list ({len(add_msg)})")          
+    msg_is_list = False
+    if len(add_key) == 1 and len(add_msg) > 1:
+        print(f"add_msg = list of len={len(add_msg)}")
+        msg_is_list = True
 
     # check if file exists
     add_dict = {}
@@ -72,7 +83,21 @@ Example
                 add_msg[ix] = int(add_msg[ix])
             elif add_msg[ix].replace('.','',1).isdigit() and add_msg[ix].count('.') < 2:
                 add_msg[ix] = float(add_msg[ix])
-            add_dict[key] = add_msg[ix]
+            
+            if merge:
+                if key not in list(data.keys()):
+                    print(f"Merge is True, but {key} is new")
+                    if msg_is_list:
+                        add_dict[key] = add_msg
+                    else:
+                        add_dict[key] = add_msg[ix]
+                else:
+                    print(f"merge = True, not overwriting {key}")
+            else:
+                if msg_is_list:
+                    add_dict[key] = add_msg
+                else:
+                    add_dict[key] = add_msg[ix]     
 
         data.update(add_dict)
         with open(json_file, 'w') as f:
@@ -81,10 +106,12 @@ Example
         # create dictionary of new key
         for ix,key in enumerate(add_key):
             # check if message is a number
+
             if add_msg[ix].isdigit():
                 add_msg[ix] = int(add_msg[ix])
             elif add_msg[ix].replace('.','',1).isdigit() and add_msg[ix].count('.') < 2:
                 add_msg[ix] = float(add_msg[ix])
+
             add_dict[key] = add_msg[ix]    # write
             
         # Serializing json
