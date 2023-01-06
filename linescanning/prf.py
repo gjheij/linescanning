@@ -914,6 +914,10 @@ def create_line_prf_matrix(
     """
 
     screenshot_path = utils.get_file_from_substring("Screenshot", log_dir)
+
+    if isinstance(screenshot_path, list):
+        raise TypeError(f"Found multiple ({len(screenshot_path)}) instances for 'Screenshot'. Maybe hidden directories from MacOS?; \n{screenshot_path}")
+
     image_list = os.listdir(screenshot_path)
     image_list.sort()
     tr_in_duration = int(stim_duration/TR)
