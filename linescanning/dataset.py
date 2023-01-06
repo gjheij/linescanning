@@ -22,22 +22,16 @@ opj = os.path.join
 pd.options.mode.chained_assignment = None # disable warning thrown by string2float
 warnings.filterwarnings("ignore")
 
-def check_input_is_list(obj, var=None, list_element=0):
+def check_input_is_list(obj, var=None, list_element=0, matcher="func_file"):
 
     if hasattr(obj, var):
         attr = getattr(obj, var)
     else:
         raise ValueError(f"Class does not have '{var}'-attribute")
 
-    obj_attr = "func_file"
-    if hasattr(obj, "tsv_file"):
-        obj_attr = "tsv_file"
-    elif hasattr(obj, "edf_file"):
-        obj_attr = "edf_file"
-
     if isinstance(attr, (list,np.ndarray)):
-        if len(attr) != len(getattr(obj,obj_attr)):
-            raise ValueError(f"Length of '{var}' ({len(attr)}) does not match number of func files ({len(getattr(obj,obj_attr))}). Either specify a list of equal lenghts or 1 integer value for all volumes")
+        if len(attr) != len(getattr(obj,matcher)):
+            raise ValueError(f"Length of '{var}' ({len(attr)}) does not match number of func files ({len(getattr(obj,matcher))}). Either specify a list of equal lenghts or 1 integer value for all volumes")
 
         return attr[list_element]
     else:
@@ -197,7 +191,11 @@ class ParseEyetrackerFile():
                 self.run = i+1
             
             # check if we got multiple TRs for different edf-files
-            use_TR = check_input_is_list(self, "TR", list_element=self.run)
+            use_TR = check_input_is_list(
+                self, 
+                "TR", 
+                list_element=self.run,
+                matcher="edf_file")
 
             # full output from 'fetch_relevant_info' > use sub as differentiator if multiple files were given
             self.data = self.fetch_relevant_info(TR=use_TR, nr_vols=self.nr_vols)
@@ -538,10 +536,19 @@ class ParseExpToolsFile(ParseEyetrackerFile):
                     self.run = run+1
 
                 # check if we got different nr of vols to delete per run
-                delete_vols = check_input_is_list(self, "deleted_first_timepoints", list_element=run)
+                delete_vols = check_input_is_list(
+                    self, 
+                    "deleted_first_timepoints", 
+                    list_element=run,
+                    matcher="tsv_file")
 
                 # check if we got different stimulus durations per run
-                duration = check_input_is_list(self, var="stim_duration", list_element=run)
+                duration = check_input_is_list(
+                    self, 
+                    var="stim_duration", 
+                    list_element=run,
+                    matcher="tsv_file"
+                    )
 
                 # read in the exptools-file
                 self.preprocess_exptools_file(
@@ -1079,10 +1086,18 @@ class ParsePhysioFile():
                     self.run = run+1
 
                 # check if deleted_first_timepoints is list or not
-                delete_first = check_input_is_list(self, var="deleted_first_timepoints", list_element=run)
+                delete_first = check_input_is_list(
+                    self, 
+                    var="deleted_first_timepoints",
+                    list_element=run,
+                    matcher="func_file")
 
                 # check if deleted_last_timepoints is list or not
-                delete_last = check_input_is_list(self, var="deleted_last_timepoints", list_element=run)
+                delete_last = check_input_is_list(
+                    self, 
+                    var="deleted_last_timepoints", 
+                    list_element=run,
+                    matcher="func_file")
 
                 if self.physio_mat != None:
                     if isinstance(self.physio_mat, list):
@@ -1262,6 +1277,8 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
         baseline=20,
         baseline_units="seconds",
         psc_nilearn=False,
+        foldover="FH",
+        shift=0,
         **kwargs):
 
         self.sub                        = subject
@@ -1284,7 +1301,8 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
         self.verbose                    = verbose
         self.retroicor                  = retroicor
         self.acompcor                   = acompcor
-        self.foldover                   = "FH"
+        self.foldover                   = foldover
+        self.shift                      = shift
         self.func_tag                   = func_tag
         self.n_components               = n_components
         self.select_component           = select_component
@@ -1404,19 +1422,29 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                 delete_first = check_input_is_list(
                     self, 
                     var="deleted_first_timepoints", 
-                    list_element=run_id)
+                    list_element=run_id,
+                    matcher="func_file")
 
                 # check if deleted_last_timepoints is list or not
                 delete_last = check_input_is_list(
                     self, 
                     var="deleted_last_timepoints", 
-                    list_element=run_id)
+                    list_element=run_id,
+                    matcher="func_file")
 
                 # check if baseline is list or not
                 baseline = check_input_is_list(
                     self, 
                     var="baseline", 
-                    list_element=run_id)
+                    list_element=run_id,
+                    matcher="func_file")
+
+                # check if shift is list or not
+                shift = check_input_is_list(
+                    self, 
+                    var="shift", 
+                    list_element=run_id,
+                    matcher="func_file")                    
 
                 if self.acompcor:
                     if len(self.ref_slice) > 1:
@@ -1438,6 +1466,7 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                     acompcor=self.acompcor,
                     reference_slice=ref_slice,
                     baseline=baseline,
+                    shift=shift,
                     **kwargs)
                 
                 if self.standardization == "psc":
@@ -1603,6 +1632,7 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
         acompcor=False,
         reference_slice=None,
         baseline=None,
+        shift=0,
         **kwargs):
 
         #----------------------------------------------------------------------------------------------------------------------------------------------------
@@ -1826,6 +1856,7 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                     summary_plot=self.report,
                     TR=self.TR,
                     foldover=self.foldover,
+                    shift=shift,
                     verbose=self.verbose,
                     save_ext=self.save_ext,
                     **kwargs)
