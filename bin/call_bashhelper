@@ -14,6 +14,56 @@ function search_character_substring {
   echo $starts_at
 }
 
+function read_json {
+
+  #---------------------------------------------------------------------------------------------------------
+  # Create help text
+  function Usage {
+      cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+read_json
+
+Read parameters from a json-file. 
+
+Args:
+ <json file>  PAR/par file to read
+ <read key>   key to read from the json file
+
+Usage:
+ read_json some_file.json "RepetitionTime"
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+}
+
+  if [[ $# -lt 2 ]] ; then
+    Usage >&2
+  else
+
+    json_file=${1}
+    read_key=${2}
+
+    if [[ -z ${read_key} ]]; then
+      echo "Please specify a key (e.g., \"RepetitionTime\") to read"
+    else
+      # reads x lines, cuts the :, removes white spaces, and removes carriage return
+      json_key=`cat ${epi_json} | grep ${read_key} | cut -d':' -f2`
+      if [ ! -z ${json_key} ]; then
+        if [[ ${json_key} == *","* ]]; then
+          json_key=`echo ${json_key} | cut -d"," -f1`
+        fi
+        json_key=`echo ${json_key} |  xargs | sed 's/\r$//'`
+        echo ${json_key}
+      else
+        echo ""
+      fi
+    fi
+  fi
+
+}
+
 function read_par {
 
   #---------------------------------------------------------------------------------------------------------
@@ -44,20 +94,23 @@ USAGE
   else
     # Check for subject & session flags
     read_lines=50
-    while getopts hr:s: argument
-    do
-      case ${argument} in
-        r)  read_lines=${OPTARG}
-              ;;
-      esac
-    done
+    par_file=${1}
+    if [ ! -f ${1} ]; then
+      read_lines=${1}
+      par_file=${2}
+      read_key=${3}
+    else
+      par_file=${1}
+      read_key=${2}
+    fi
 
-    par_file=${@:$OPTIND:1}
-    read_key=${@:$OPTIND+1:1}
-
-    # reads x lines, cuts the :, removes white spaces, and removes carriage return
-    par_key=`head -${read_lines} $par | grep "${read_key}" | cut -d":" -f2 | xargs | sed 's/\r$//'`
-    echo ${par_key}
+    if [[ -z ${read_key} ]]; then
+      echo "Please specify a key (e.g., \"number of echoes\") to read"
+    else
+      # reads x lines, cuts the :, removes white spaces, and removes carriage return
+      par_key=`head -${read_lines} ${par} | grep "${read_key}" | cut -d":" -f2 | xargs | sed 's/\r$//'`
+      echo ${par_key}
+    fi
   fi
 
 }
@@ -79,9 +132,11 @@ Calculate the following parameters from a PAR-file:
   - Phase encoding direction      | in fmriprep convention (e.g., AP='j-')
 
 Args:
- <par file>   PAR/par file to read
- <json file>  output file; if not specified, the output is printed to the terminal. You can choose 
-              to redirect this output to another file using 'pars_for_json ... &> some_file.txt'
+  --merge       don't overwrite existing keys
+  <par file>    PAR/par file to read
+  <json file>   output file; if not specified, the output is printed to the terminal. You can 
+                choose to redirect this output to another file using 'pars_for_json ... &> some_
+                file.txt'
 
 Returns:
   array in the following order: WFS,WFS_hz,TRT,EES,PE
@@ -97,8 +152,17 @@ USAGE
   if [[ $# -lt 1 ]] ; then
     Usage >&2
   else
-    par_file=${@:$OPTIND:1}
-    json_file=${@:$OPTIND+1:1}
+
+    MERGE=""
+    par_file=${1}
+    if [ ! -f ${1} ]; then
+      par_file=${2}
+      json_file=${3}
+      MERGE="--merge"
+    else
+      par_file=${1}
+      json_file=${2}
+    fi
 
     # gyromagnetic reatio
     gyro=42.576
@@ -123,32 +187,73 @@ USAGE
 
     # phase encoding direction
     PE=`read_par ${par_file} "Preparation direction"`
-    if [[ ${PE} == "AP" ]]; then
-      ADD_PE="j-"
-    elif [[ ${PE} == "AP" ]]; then
-      ADD_PE="j"
-    elif [[ ${PE} == "LR" ]]; then
-      ADD_PE="i"
-    elif [[ ${PE} == "RL" ]]; then
-      ADD_PE="i-"
-    else
-      ADD_PE="AP"
-    fi
+    ADD_PE=`fprep_pe ${PE}`
 
     # protocol name
     PROT=`read_par ${par_file} "Protocol name"`
 
+    # flip PE if protocol name is BOLD but json file EPI
+    txt=""
+    if [[ ${PROT} == *"_bold"* ]] && [[ $(basename ${json_file}) == *"epi.json"* ]]; then
+      ADD_PE=`fprep_pe ${PE} 1`
+      txt="; flipped for epi_json"
+    elif [[ ${PROT} == *"_epi"* ]]; then
+      ADD_PE=`fprep_pe ${PE} 1`
+      txt="; flipped for epi.par"
+    fi
+
     if [[ ! -z ${json_file} ]]; then
-      call_json ${json_file} TotalReadoutTime,PhaseEncodingDirection,EffectiveEchoSpacing,ProtocolName ${TRT},${ADD_PE},${EES},${PROT}
+      call_json ${merge} ${json_file} TotalReadoutTime,PhaseEncodingDirection,EffectiveEchoSpacing,ProtocolName ${TRT},${ADD_PE},${EES},${PROT}
     else
       echo "WFS:    ${WFS}"
       echo "WFS_hz: ${WFS_hz}"
-      echo "TRT:    ${TRT}s"
-      echo "EES:    ${EES}s"
-      echo "PE:     ${ADD_PE} (=${PE})"
+      echo "TRT:    ${TRT}"
+      echo "EES:    ${EES}"
+      echo "PE:     ${ADD_PE}${txt}"
     fi
   fi
 
+}
+
+function fprep_pe {
+  PE=${1}
+  FLIP=${2}
+  
+  # check if we want the flipped version
+  if [[ -z ${FLIP} ]]; then
+    FLIP=0
+  else
+    FLIP=${FLIP}
+  fi
+
+  # derive code from PE
+  if [[ ${PE} == "AP" ]]; then
+    if [[ ${FLIP} -eq 0 ]]; then
+      ADD_PE="j-"
+    else
+      ADD_PE="j"
+    fi
+  elif [[ ${PE} == "PA" ]]; then
+    if [[ ${FLIP} -eq 0 ]]; then
+      ADD_PE="j"
+    else
+      ADD_PE="j-"
+    fi  
+  elif [[ ${PE} == "LR" ]]; then
+    if [[ ${FLIP} -eq 0 ]]; then
+      ADD_PE="i"
+    else
+      ADD_PE="i-"
+    fi    
+  elif [[ ${PE} == "RL" ]]; then
+    if [[ ${FLIP} -eq 0 ]]; then
+      ADD_PE="i-"
+    else
+      ADD_PE="i"
+    fi
+  fi
+
+  echo $ADD_PE
 }
 
 function check_file {

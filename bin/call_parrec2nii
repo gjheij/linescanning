@@ -63,12 +63,12 @@ source call_bashhelper
 
 fn_exists()
 {
-    FN=`type -t $1`
+  FN=`type -t $1`
 
-    if [[ -z ${FN} ]]; then
-      echo "Didn't find parrec2nii, please install nibabel"
-      exit 1
-    fi
+  if [[ -z ${FN} ]]; then
+    echo "Didn't find parrec2nii, please install nibabel"
+    exit 1
+  fi
 }
 
 cmd="parrec2nii"
@@ -82,8 +82,13 @@ if [[ -z ${pathInput} ]]; then
   exit 1
 fi
 
+pathInput=`fetch_filepath ${pathInput}`
 if [[ -z ${pathOutput} ]]; then
-  pathOutput=${pathInput}/nifti
+  if [ -f ${pathInput} ]; then
+    pathOutput=$(dirname ${pathInput})/nifti
+  else
+    pathOutput=${pathInput}/nifti
+  fi
 fi
 
 # -z : gz compress images (y/o/i/n/3, default n) [y=pigz, o=optimal pigz, i=internal:zlib, n=no, 3=no,3D]
@@ -117,11 +122,12 @@ for par in ${par_files[@]}; do
   orig_out=${pathOutput}/$(basename ${par} .par).nii.gz
   if [ ! -f ${orig_out} ]; then
     ${cmd} --scaling fp --verbose ${COMPR} -o ${pathOutput} ${par}
-
     if [[ $? -ne 0 ]]; then
       echo "\"${cmd}\" exited with non-zero status"
       exit 1
     fi
+  else
+    echo "Converted file exists, continuing to BIDS/json stuff"
   fi
 
   # rename according to Protocol Name & Patient Name | read_par comes from call_bashhelper
@@ -169,17 +175,39 @@ END
   
   # function is from call_bashhelper
   pars_for_json ${par} ${json_f}
+  
+  # check corresponding EPI file
+  if [[ ${bids_out} == *"_bold"* ]]; then
+    epi=`echo $(basename ${bids_out} | sed "s|_bold|_epi|g")`
 
-  if [[ ${bids_out} == *"_epi.nii.gz"* ]]; then
+    if [ -f $(dirname ${bids_out})/${epi}.nii.gz ]; then
+      base_path=""
+      if [[ ${pat} == *"ses"* ]]; then
+        ses_nr=$(echo ${pat} | cut -d"_" -f2)
+        base_path+="${ses_nr}"
+      fi
 
-    base_path=""
-    if [[ ${pat} == *"ses"* ]]; then
-      ses_nr=$(echo ${pat} | cut -d"_" -f2)
-      base_path+="${ses_nr}"
+      # try to read TR from EPI json file
+      epi_json=$(dirname ${bids_out})/${epi}.json
+      if [ -f ${epi_json} ]; then
+        declare -a find_keys=("RepetitionTime" "EchoTime")
+        for key in ${find_keys[@]}; do
+          val=`read_json ${epi_json} ${key}`
+          if [[ ! -z ${val} ]]; then
+            echo "Found ${key}: ${val}"
+            call_json ${json_f} ${key} ${val}
+          fi
+        done
+      fi
+
+      echo "Adding basic information to $(basename ${epi_json})"
+
+      # add the regular parameters to EPI json
+      pars_for_json --merge ${par} ${epi_json}
+
+      # add IntendedFor field
+      call_json ${epi_json} IntendedFor ${base_path}/func/$(basename ${bids_out}).nii.gz
     fi
-
-    call_json ${json_f} IntendedFor ${base_path}/func/$(basename ${bids_out} _epi)_bold.nii.gz
-
   fi
 
 done
