@@ -100,8 +100,11 @@ def reorient_img(img, code="RAS", out=None, qform="orig"):
         pairs = {"L": "LR", "R": "RL", "A": "AP",
                  "P": "PA", "S": "SI", "I": "IS"}
         orient = "{} {} {}".format(
-            pairs[code[0].upper()], pairs[code[1].upper()], pairs[code[2].upper()])
+            pairs[code[0].upper()], 
+            pairs[code[1].upper()], 
+            pairs[code[2].upper()])
         cmd_txt = "fslswapdim {} {} {}".format(img, orient, new)
+        print(cmd_txt)
         os.system(cmd_txt)
 
     elif code.upper() == "NB":
@@ -228,6 +231,47 @@ def create_line_from_slice(
             return line
     else:
         return empty_img
+
+def create_ribbon_from_beam(
+    in_file, 
+    ribbon,
+    out_file=None):
+
+    """create_ribbon_from_beam
+
+    This creates a binary image of the outline of the ribbon based on the beam image (see :func:`linescanning.image.create_line_from_slice`). The line's dimensions are 16 voxels of 0.25mm x 2.5 mm (slice thickness) and 0.25 mm (frequency encoding direction). We know that the middle of the line is at the center of the slice, so the entire line encompasses 8 voxels up/down from the center. We then select only the voxels from `ribbon`.
+
+    Parameters
+    ----------
+    in_file: str
+        path to image that should be used as reference (generally this should be the 1 slice file of the first run or something)
+    ribbon: list, tuple
+        input representing the ribbon, e.g., `(358,363)`
+    out_file: str, optional
+        path specifying the output name of the newly created 'line' or 'beam' file
+    
+    Returns
+    ----------
+    nibabel.Nifti1Image
+        if `out_file==None`, a niimg-object is returned
+    str
+        an actual file if the specified output name is created (*NOT RETURNED*)
+    """
+
+    beam_img = nb.load(in_file)
+    beam_data = beam_img.get_fdata()
+
+    # insert ribbon voxels
+    rib_beam = np.zeros_like(beam_data)
+    beam_loc = np.where(beam_data>0)
+    rib_beam[ribbon[0]:ribbon[1],beam_loc[1][0]:beam_loc[1][-1]+1] = 1
+
+    # save
+    rib_img = nb.Nifti1Image(rib_beam, affine=beam_img.affine, header=beam_img.header)
+    if out_file != None:
+        rib_img.to_filename(out_file)
+    else:
+        return rib_img
 
 def get_max_coordinate(in_img):
 
