@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 import os
-from nilearn import image
 import nibabel as nb
 from linescanning.image import mgz2nii
 import numpy as np
