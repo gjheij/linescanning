@@ -25,6 +25,8 @@ Arguments:
   -n <session>        session ID (e.g., 1, 2, or n)
   -m <n_echoes>       number of echoes in the acquisition (e.g., 5)
   -c|--sge            submit job to cluster (SGE)
+  --debug             don't submit job, just print inputs/outputs
+  --no_nordic         turn off NORDIC denoising during reconstruction
   -o                  overwrite existing files
   <project root>      base directory containing the derivatives and the subject's folders.
   <sourcedata>        base directory containing the raw data for reconstruction
@@ -36,11 +38,13 @@ Notes:
   relies on matlab scripts stored in '/data1/projects/MicroFunc/common'. As it relies on MRecon,
   we can only run this on the spinoza server
 
-run with master:  "master -m 03 -s 003 -n 4 -e 5" (sub-003, ses-4, multi-echo (5) acquisition)
-                  "master -m 03 -s 003 -n 4"      (sub-003, ses-4, single-echo acquisition)
-                  "master -m 03 --sge"            (submit to cluster)
-                  "master -m 03 -o"               (overwrite existing files)
-                  "master -m 03 -o --sge"         (overwrite and submit)
+run with master:  
+  "master -m 03 -s 003 -n 4 -e 5" (sub-003, ses-4, multi-echo (5) acquisition)
+  "master -m 03 -s 003 -n 4"      (sub-003, ses-4, single-echo acquisition)
+  "master -m 03 --sge"            (submit to cluster)
+  "master -m 03 -o"               (overwrite existing files)
+  "master -m 03 -o --sge"         (overwrite and submit)
+  "master -m 03 -s 003 --debug"   (debug mode)
 
 Runs by default NORDIC denoising!
 ---------------------------------------------------------------------------------------------------
@@ -57,11 +61,18 @@ fi
 # Check for subject & session flags
 OW=0
 SGE=0
+NORDIC=""
 while getopts :-:ocs:n:m: argument
 do
   case ${argument} in
     -)
       case "${OPTARG}" in
+        debug)
+          DEBUG="--debug"
+          ;;   
+        no_nordic)
+          NORDIC="--no_nordic"
+          ;;         
         sge)
           SGE=1
           ;;                                                                   
@@ -197,6 +208,17 @@ for subID in ${search}; do
 
           # find corresponding LSD-image
           lsd=`find "${lab_func}" -maxdepth 1 -type f \( -name "*run-${run}*" -and -name "*desc-recon*" -and -name "*.lab" \) 2>/dev/null`
+          
+          ct=0
+          for ii in ${lsd[@]}; do ((ct++)); done
+          if [[ ${ct} -gt 1 ]]; then
+            echo "Found multiple (${ct}) items in input. Please move irrelevant items out pf the directory:"
+            for ii in ${lsd[@]}; do
+              echo " $ii"
+            done
+            exit 1
+          fi
+
           if [[ -z ${lsd} ]]; then
             if [[ ${old_lsd} != "" ]]; then
               lsd=${old_lsd}
@@ -215,7 +237,15 @@ for subID in ${search}; do
             job="bash"
           fi
 
-          ${job} ${DIR_SCRIPTS}/bin/call_linerecon -r ${run} ${echo_flag} ${bold} ${lsd} ${outputbase}
+
+          ${job} ${DIR_SCRIPTS}/bin/call_linerecon \
+            -r ${run} \
+            ${echo_flag} \
+            ${NORDIC} \
+            ${DEBUG} \
+            ${bold} \
+            ${lsd} \
+            ${outputbase}
 
           # set variable with which we can retrieve old LSD-image in case we don't have run-specific LSD-images
           old_lsd=${lsd}

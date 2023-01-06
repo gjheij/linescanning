@@ -19,6 +19,8 @@ job="bash"
 
 # Allocate input arguments to variables
 #
+DEBUG=""              # spinoza_linerecon
+NORDIC=""             # spinoza_linerecon
 OW=""                 # multiple (overwrite mode)
 verb_flag=""          # multiple (turn on verboses)
 FREEVIEW=""           # spinoza_bestvertex
@@ -57,7 +59,7 @@ NO_BIAS=""            # spinoza_qmrimaps
 
 # use long options in bash:
 # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options
-declare -a array=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv" "--no_fit" "--fmriprep" "--fprep" "--v1" "--v2" "--no_grid")
+declare -a array=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv" "--no_fit" "--fmriprep" "--fprep" "--v1" "--v2" "--no_grid" "--debug" "--no_nordic")
 
 # sort options array
 IFS=$'\n' opts=($(sort <<<"${array[*]}"))
@@ -68,6 +70,12 @@ do
   case ${arg} in
     -)
       case "${OPTARG}" in
+        debug)
+          DEBUG="--debug"
+          ;;       
+        no_nordic)
+          NORDIC="--no_nordic"
+          ;;            
         no_bbr)
           use_bbr="--no_bbr"
           ;;
@@ -350,6 +358,7 @@ Args:
   --no_fit          spinoza_fitprfs; stop right after saving out averaged data. This was useful for 
                     meto switch to percent-signal change without requiring a re-fit.                    
   --no_freeview     disable FreeView during vertex selection (spinoza_bestvertex)
+  --no_nordic       turn off NORDIC denoising during reconstruction of line-scanning data
   --ups             maps to '-u' in spinoza_qmrimaps; turn on Universal Pulses
   --remove_wf       maps to '-r all' in spinoza_fmriprep; removes full fmriprep_wf folder. Be careful
                     with this one! Mainly used for debugging of a single subject. Use \"--remove_surf
@@ -525,12 +534,13 @@ if [[ $? -eq 0 ]]; then
   fi
   
   subject=${SUBJECT_PREFIX}${SUB}
-  ${job} spinoza_lineplanning ${OW} \
-                              -s ${subject} \
-                              -n ${ses_nr} \
-                              -i ${DIR_DATA_SOURCE}/${subject}/ses-${ses_nr}/planning \
-                              -p ${DIR_DATA_DERIV}/pycortex/${subject}/line_pycortex.csv \
-                              -h ${HEMI}
+  ${job} spinoza_lineplanning \
+    ${OW} \
+    -s ${subject} \
+    -n ${ses_nr} \
+    -i ${DIR_DATA_SOURCE}/${subject}/ses-${ses_nr}/planning \
+    -p ${DIR_DATA_DERIV}/pycortex/${subject}/line_pycortex.csv \
+    -h ${HEMI}
 
 
   echo "[${module}] DONE" && echo
@@ -619,7 +629,15 @@ if [[ $? -eq 0 ]]; then
     N_ECHOES="-m ${n_echoes}"
   fi    
 
-  ${job} spinoza_linerecon ${SUBJECT} ${SESSION} ${N_ECHOES} ${OW} ${SGE} ${DIR_DATA_HOME} ${DIR_DATA_SOURCE}
+  ${job} spinoza_linerecon \
+    ${SUBJECT} \
+    ${SESSION} \
+    ${N_ECHOES} \
+    ${DEBUG} \
+    ${OW} \
+    ${SGE} \
+    ${NORDIC} \
+    ${DIR_DATA_HOME} ${DIR_DATA_SOURCE}
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_linerecon exited with non-zero status"
