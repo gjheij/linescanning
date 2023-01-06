@@ -60,6 +60,8 @@ class aCompCor(Segmentations):
         List or string representing transformation files that need to be applied, by default None.
     foldover: str, optional
         Foldover direction during the line-scanning acquisition, by default "FH". This is to make sure the line is specified correctly when initializing :class:`linescanning.segmentations.Segmentations`
+    shift: float, optional
+        how many mm the line needs to be shifted in the `foldover` direction.  This may be required if you had a bad shim and you had to move the slice in a particular direction to target the spot you intended. Default = 0
 
     Raises
     ----------
@@ -106,6 +108,7 @@ class aCompCor(Segmentations):
         trg_session=None, 
         trafo_list=None, 
         foldover="FH", 
+        shift=0,
         **kwargs):
 
         self.data               = data
@@ -125,6 +128,7 @@ class aCompCor(Segmentations):
         self.trg_session        = trg_session
         self.TR                 = TR
         self.foldover           = foldover
+        self.shift              = shift
         self.__dict__.update(kwargs)
 
         if self.wm_voxels == None and self.csf_voxels == None:
@@ -134,6 +138,7 @@ class aCompCor(Segmentations):
                 reference_slice=self.reference_slice,
                 target_session=self.trg_session,
                 foldover=self.foldover,
+                shift=self.shift,
                 verbose=self.verbose,
                 trafo_file=self.trafo_list,
                 **kwargs)
@@ -145,6 +150,7 @@ class aCompCor(Segmentations):
         self.elbows                 = []
         self.pcas                   = []
         self.tissue_pca             = {"wm": True, "csf": True}
+        self.pca_but_timecourses    = {"wm": False, "csf": False}
         for tissue in ['csf', 'wm']:
             
             self.tissue_voxels  = getattr(self, f"{tissue}_voxels")
@@ -170,6 +176,7 @@ Timecourses from these voxels were extracted and fed into a PCA. These component
                 except:
                     self.elbow_ = None
                     self.tissue_pca[tissue] = False
+                    self.pca_but_timecourses[tissue] = True
                     if self.verbose:
                         print(f" PCA for '{tissue}' was unsuccessful. Using all un-PCA'd timecourses ({len(self.tissue_voxels)})")
                         self.pca_desc = f"""
@@ -198,7 +205,7 @@ No voxels for '{tissue}' were found, so PCA was skipped. """
 
                 self.acompcor_components.append(self.include_components)
             else:
-                if self.tissue_pca[tissue]:
+                if self.pca_but_timecourses[tissue]:
                     self.do_pca = False
                     self.info = "timecourses"
                     # raise ValueError("Found 0 components surviving the elbow-plot. Turn on verbose and inspect the plot")

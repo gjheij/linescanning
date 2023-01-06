@@ -92,6 +92,7 @@ class Segmentations:
         foldover="FH", 
         pickle_file=None,
         voxel_cutoff=300,
+        shift=0,
         verbose=False,
         **kwargs):
 
@@ -105,6 +106,7 @@ class Segmentations:
         self.foldover           = foldover
         self.pickle_file        = pickle_file
         self.voxel_cutoff       = voxel_cutoff
+        self.shift              = shift
         self.verbose            = verbose
         self.__dict__.update(kwargs)
 
@@ -226,7 +228,11 @@ class Segmentations:
 
             # add reference and beam images
             self.resampled['ref'] = self.reference_slice; self.resampled_data['ref'] = nb.load(self.reference_slice).get_fdata()
-            self.resampled['line'] = image.create_line_from_slice(self.reference_slice, fold=self.foldover)
+            self.resampled['line'] = image.create_line_from_slice(
+                self.reference_slice, 
+                fold=self.foldover,
+                width=16,
+                shift=self.shift)
             self.resampled_data['line'] = nb.load(self.reference_slice).get_fdata()
 
             # save pickle
@@ -244,7 +250,11 @@ class Segmentations:
 
             if 'ref' not in list(self.resampled.keys()):
                 self.resampled['ref'] = self.reference_slice
-                self.resampled['line'] = image.create_line_from_slice(self.reference_slice, fold=self.foldover)
+                self.resampled['line'] = image.create_line_from_slice(
+                    self.reference_slice, 
+                    fold=self.foldover,
+                    width=16,
+                    shift=self.shift)
 
         self.segmentation_df = {}
         self.segmentation_df[self.subject] = self.resampled.copy()
@@ -369,8 +379,7 @@ class Segmentations:
                     beam_cmap = utils.make_binary_cm(cmap_color_line)
 
                     # load data
-                    line = self.get_plottable_segmentations(
-                        use_df[sub]['line'])
+                    line = self.get_plottable_segmentations(use_df[sub]['line'])
 
                     # plot data
                     ax.imshow(np.rot90(line), cmap=beam_cmap, alpha=0.6)
@@ -565,16 +574,20 @@ class Segmentations:
 
         """
             
-        self.cortex     = self.get_plottable_segmentations(self.segmentation_df[self.subject]['cortex'])
-        self.line       = self.get_plottable_segmentations(self.segmentation_df[self.subject]['line'])
-        self.mask       = self.get_plottable_segmentations(self.segmentation_df[self.subject]['mask'])
+        self.cortex = self.get_plottable_segmentations(self.segmentation_df[self.subject]['cortex'])
+        self.line   = self.get_plottable_segmentations(self.segmentation_df[self.subject]['line'])
+        self.mask   = self.get_plottable_segmentations(self.segmentation_df[self.subject]['mask'])
+
+        beam_loc = np.where(self.line>0)
+        if self.verbose:
+            print(f" Beam location = [{beam_loc[1][0]},{beam_loc[1][-1]+1}]; shift={self.shift}mm")
 
         if self.foldover == "FH":
-            self.beam_ctx   = np.multiply(self.cortex, self.line.astype(bool))[:, 352:368]
-            self.mask_beam  = np.multiply(self.mask, self.line.astype(bool))[:, 352:368]
+            self.beam_ctx   = np.multiply(self.cortex, self.line.astype(bool))[:, beam_loc[1][0]:beam_loc[1][-1]+1]
+            self.mask_beam  = np.multiply(self.mask, self.line.astype(bool))[:, beam_loc[1][0]:beam_loc[1][-1]+1]
         else:
-            self.beam_ctx   = np.multiply(self.cortex, self.line.astype(bool))[352:368, :]
-            self.mask_beam  = np.multiply(self.mask, self.line.astype(bool))[352:368, :]
+            self.beam_ctx   = np.multiply(self.cortex, self.line.astype(bool))[beam_loc[0][0]:beam_loc[0][-1]+1, :]
+            self.mask_beam  = np.multiply(self.mask, self.line.astype(bool))[beam_loc[0][0]:beam_loc[0][-1]+1, :]
 
         self.wm_voxels  = []
         self.csf_voxels = []
