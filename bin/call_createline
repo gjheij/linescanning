@@ -19,13 +19,13 @@ Parameters
 ----------
     -i|--in <file>      string-like path to file to extract from
     -o|--out <file>     string-like path to output new volume to
-    -w|--width <int>    int value of line thickness (default 4, larger for visibility purposes). It
-                        will add half of the <width> in both directions from the center, so <width>
-                        has to be a divideable by 2. Even numbers only!
+    -w|--width <int>    int value of line thickness (default 4mm [=16 voxels], larger for visibility 
+                        purposes). It will add half of the <width> in both directions from the cen-
+                        ter, so <width> has to be a divideable by 2. Even numbers only!
     -s|--shift <int>    how many mm the line needs to be shifted in the `foldover` direction.  This 
                         may be required if you had a bad shim and you had to move the slice in a 
                         particular direction to target the spot you intended. Could be read from 
-                        the sub-xxx_desc-info.csv file. 
+                        the sub-xxx_desc-info.csv file. Default = 0
                         
                         ---------------------------------------------------------------------------
                         IMPORTANT: input value will be inverted,
@@ -33,7 +33,8 @@ Parameters
                         now have to move the beam up to correspond to the correct location.
                         ---------------------------------------------------------------------------
                         
-    --fh|--lr|--ap      foldover direction (where the saturation slabs are positioned)
+    --fh|--lr|--ap      foldover direction (where the saturation slabs are positioned). Default is
+                        FH
 
 Outputs
     output file         new volume containing the extracted data from input file

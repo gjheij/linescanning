@@ -23,64 +23,62 @@ Utilizes the same strategy as in spinoza_lineplanning, but instead of using a re
 between two sessions, orig.nii.gz and an identity matrix are used to "warp" the coordinate.
 
 Args:
-    -s <subj name>      str:
-                        name of the directory as specified in the pycortex filestore directory
-
-    -f <fs_dir>         str (optional):
-                        if left empty, SUBJECTS_DIR will be used 
-
-    -l <ctx_file>       str (optional):
-                        file containing the information about placement of the line. If left empty
-                        we'll look for <project>/derivatives/pycortex/<subject>/line_pycortex.csv.
-
-    -h <hemisphere>     str (optional):
-                        which hemisphere should we do? Use 'lh' for left, 'rh' for right (default =
-                        left)
-
-    -o <output file>    str (optional):
-                        new nifti-image containing the beam with the correct orientation and dimensions
-                        of FreeSurfer
-
-    -q                  (optional):
-                        prevent FreeView from opening. This is used if you just want to see how the
-                        angles are calculated without the hassle of waiting for FreeView.
+    -s|--subject    name of the directory as specified in the pycortex filestore directory
+    -f|--fsdir      FreeSurfer directory; if left empty, SUBJECTS_DIR will be used 
+    -l|--line_ctx   file containing the information about placement of the line. If left empty
+                    we'll look for <project>/derivatives/pycortex/<subject>/line_pycortex.csv.
+    -n|--session    session ID of line-scanning session to which `line_ctx` belongs
+    -o|--output     new nifti-image containing the beam with the correct orientation and dimensions
+                    of FreeSurfer
+    --lh|--rh       which hemisphere should we do? Use 'lh' for left, 'rh' for right (default = lh)
+    --no-freeview   prevent FreeView from opening. This is used if you just want to see how the
+                    angles are calculated without the hassle of waiting for FreeView.
 
 Outputs
     a new nifti image with the line at the specified location 
 
 Example:
     call_createlinefs -s sub-001
-    call_createlinefs -s sub-001 -h rh
+    call_createlinefs -s sub-001 --rh
+    call_createlinefs -s sub-001 --rh --no-freeview
 
 ---------------------------------------------------------------------------------------------------
     """
 
     subject     = None
+    session     = 2
     line_ctx    = None
-    fs_dir      = os.environ['SUBJECTS_DIR']
+    fs_dir      = os.environ.get('SUBJECTS_DIR')
     output      = None
     hemi        = 'lh'
     freeview    = True
 
     try:
-        opts = getopt.getopt(argv,"qs:f:h:l:o:",["subject=", "line_ctx=", "fsdir=", "hemi=", "output="])[0]
+        opts = getopt.getopt(argv,"hs:f:h:l:o:n:",["help", "subject=", "line_ctx=", "fsdir=", "lh", "rh", "output=", "no-freeview", "session="])[0]
     except getopt.GetoptError:
         print(main.__doc__)
         sys.exit(2)
 
     for opt, arg in opts:
-        if opt == '-q':
-            freeview = False
+        if opt in ("-h", "--help"):
+            print(main.__doc__)
+            sys.exit()
         elif opt in ("-s", "--subject"):
             subject = arg
+        elif opt in ("-n", "--session"):
+            session = arg
         elif opt in ("-f", "--fsdir"):
             fs_dir = arg  
-        elif opt in ("-h", "--hemi"):
-            hemi = arg   
         elif opt in ("-l", "--line_ctx"):
             line_ctx = arg               
         elif opt in ("-o", "--output"):
             output = arg
+        elif opt in ("--no-freeview"):
+            freeview = False
+        elif opt in ("--lh"):
+            hemi = "lh"
+        elif opt in ("--rh"):
+            hemi = "rh"
 
     if len(argv) < 1:
         print("\nNEED AT LEAST A SUBJECT ID")
@@ -94,7 +92,7 @@ Example:
             tag = "hemi-R"
         else:
             raise ValueError(f"Invalid hemisphere {hemi} specified. Please use 'lh' or 'rh'")
-        output = opj(fs_dir, subject, 'mri', f'space-fs_{tag}_desc-beam.nii.gz')        
+        output = opj(fs_dir, subject, 'mri', f'{subject}_ses-{session}_space-fsnative_{tag}_desc-beam_template.nii.gz')        
 
     orig = opj(fs_dir, subject, 'mri', 'orig.mgz')
     os.system(f'call_createbeamfs {subject}')
@@ -145,12 +143,13 @@ Example:
     if freeview:
         print(f"\nOpening Freeview; make sure to highlight 'space-fs_desc-template_beam'!")
         print(f"Save image as: '{output}'")        
-        os.system("freeview -v {orig} {beam}:colormap=Heat -f {fid}:edgecolor=green --ras {x} {y} {z} tkreg --transform-volume 2>/dev/null".format(orig=orig, 
-                                                                                                                                                beam=beam, 
-                                                                                                                                                fid=opj(fs_dir, subject, 'surf', f"{hemi}.fiducial"),
-                                                                                                                                                x=round(tkr_coords[0],2),
-                                                                                                                                                y=round(tkr_coords[1],2),
-                                                                                                                                                z=round(tkr_coords[2],2)))
+        os.system("freeview -v {orig} {beam}:colormap=Heat -f {fid}:edgecolor=green --ras {x} {y} {z} tkreg --transform-volume 2>/dev/null".format(
+            orig=orig, 
+            beam=beam, 
+            fid=opj(fs_dir, subject, 'surf', f"{hemi}.fiducial"),
+            x=round(tkr_coords[0],2),
+            y=round(tkr_coords[1],2),
+            z=round(tkr_coords[2],2)))
     else:
         print("Not opening FreeView..")
         
