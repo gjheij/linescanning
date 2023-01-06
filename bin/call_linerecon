@@ -22,7 +22,6 @@ Usage:
   call_linerecon [options] <raw data> <lsd image> <output file>
 
 Arguments:
-  -n                if -n is specified, we'll skip NORDIC during reconstruction
   -m <nr_echoes>    number of echoes in a multi-echo acquisition. Leave empty if acquisition was 
                     single-echo
   -r <run>          When running multiple reconstructions in parallel, it can help to add a run ID 
@@ -35,6 +34,8 @@ Arguments:
                     between runs
   <basename>        basename for output. Will automatically store the output in a .mat file, so spe-
                     cify up until .mat
+  --debug           don't submit job, just print inputs/outputs
+  -n|--no_nordic    skip NORDIC during reconstruction
 
 Example:
   call_linerecon bold.lab lsd.lab func.mat
@@ -48,9 +49,25 @@ USAGE
 
 # Deal with arguments
 do_nordic="on"
-while getopts hnm:r: argument
+DEBUG=0
+while getopts :-:hnm:r: argument
 do
   case ${argument} in
+    -)
+      case "${OPTARG}" in
+        debug)
+          DEBUG=1
+          ;;
+        no_nordic)
+          do_nordic="off"
+          ;;                                                                      
+        *)
+          if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
+            echo "Unknown option --${OPTARG}"
+            exit 1
+          fi
+          ;;
+      esac;;  
     m)  n_echos=${OPTARG}
           ;;       
     r)  run_id=${OPTARG}
@@ -95,12 +112,13 @@ fi
 if [[ -f ${RAW} && -f ${LSD} ]]; then
 
   echo "Inputs:"
-  echo " bold = ${RAW}"
-  echo " LSD  = ${LSD}"
-  echo " Out  = ${OUT}.mat"
+  echo " bold   = ${RAW}"
+  echo " LSD    = ${LSD}"
+  echo " Out    = ${OUT}.mat"
+  echo " Nordic = ${do_nordic}"
+  echo " Echos  = ${n_echos}"
 
   if [[ ${multiecho} -eq 0 ]]; then
-    echo "Acquisition: single-echo"
     (
     echo "%% paths"
     echo "addpath(getenv('MRRECON')) %working without patch or with seline patch"
@@ -130,7 +148,6 @@ if [[ -f ${RAW} && -f ${LSD} ]]; then
     ) >> ${newrecon}
   
   elif [[ ${multiecho} -eq 1 ]]; then
-    echo "Acquisition: Multi-echo (${n_echos} echoes)"
     ## INSERT MULTIECHO PIPELINE
     (
     echo "%% paths"
@@ -171,7 +188,10 @@ if [[ -f ${RAW} && -f ${LSD} ]]; then
     ) >> ${newrecon}
   fi
 
-  call_matlab ${newrecon}
+  if [[ $DEBUG -eq 0 ]]; then
+    echo "Initiating call to Matlab"
+    call_matlab ${newrecon} 
+  fi
 
 else
 
