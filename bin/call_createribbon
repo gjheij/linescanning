@@ -1,0 +1,51 @@
+#!/usr/bin/env python
+
+import os, sys
+import getopt
+from linescanning import (
+    image,
+    utils
+)
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_createribbon
+
+This super short script creates a nifti image of the ribbon-contours based on the `beam`-image (created with `call_createline`).
+
+Parameters
+----------
+    <input>     input beam image based on which to create the ribbon image
+    <output>    output image representing the ribbon voxels
+    <range>     range of voxels to color in
+
+Usage:
+    call_createribbon <input> <ribbon> <output>
+
+Example:
+    call_createribbon sub-001_ses-2_task-pRF_run-1_bold.nii.gz sub-001_ses-2_task-pRF_run-1_desc-ribbon.nii.gz 359,364 
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    if len(argv) < 3:
+        print("Please specify all required arguments; see below:")
+        print(main.__doc__)
+        sys.exit()
+
+    in_file     = argv[0]
+    out_file    = argv[1]
+    ribbon      = [int(i) for i in utils.string2list(argv[2])]
+
+    if os.path.exists(in_file):
+        image.create_ribbon_from_beam(
+            in_file, 
+            ribbon, 
+            out_file)
+    else:
+        raise FileNotFoundError(f"Could not find specified file: {in_file}")
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
