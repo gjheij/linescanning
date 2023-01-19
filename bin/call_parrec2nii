@@ -221,8 +221,8 @@ END
             fi            
 
             # set TR in nifti
-            if [[ ${val} == "RepetitionTime" ]]; then
-              ehco "Setting TR to '${val}' in '${bids_out}.nii.gz'"
+            if [[ ${key} == "RepetitionTime" ]]; then
+              echo "Setting TR to '${val}' in '${bids_out}.nii.gz'"
               call_settr ${bids_out}.nii.gz ${val}
 
               if [[ $? -ne 0 ]]; then
