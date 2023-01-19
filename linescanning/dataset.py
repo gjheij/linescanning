@@ -1713,7 +1713,7 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
             self.ts_corrected = self.ts_magnitude[:,deleted_first_timepoints:]
 
         if self.verbose:
-            print(f" Cutting {deleted_first_timepoints} volumes from beginning{txt}")
+            print(f" Cutting {deleted_first_timepoints} volumes from beginning{txt} | {deleted_last_timepoints} volumes from end")
 
         self.vox_cols = [f'vox {x}' for x in range(self.ts_corrected.shape[0])]
 
