@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #$ -S /bin/bash
 #$ -cwd
-#$ -q all.q
+#$ -q recon.q
 #$ -j Y
 #$ -V
 
