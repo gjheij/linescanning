@@ -179,7 +179,7 @@ Timecourses from these voxels were extracted and fed into a PCA. These component
                     self.pca_but_timecourses[tissue] = True
                     if self.verbose:
                         print(f" PCA for '{tissue}' was unsuccessful. Using all un-PCA'd timecourses ({len(self.tissue_voxels)})")
-                        self.pca_desc = f"""
+                    self.pca_desc = f"""
 PCA with {self.n_components} was unsuccessful, so '{tissue}' timecourses were used to clean the data from respiration/cardiac 
 frequencies. """
 
@@ -187,7 +187,7 @@ frequencies. """
 
                 if self.verbose:
                     print(f" PCA for '{tissue}' was unsuccessful because no voxels were found")
-                    self.pca_desc = f"""
+                self.pca_desc = f"""
 No voxels for '{tissue}' were found, so PCA was skipped. """
 
                 self.elbow_ = None
