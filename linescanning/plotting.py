@@ -846,7 +846,7 @@ class LazyBar():
         fancy_rounding: float=0.15,
         fancy_pad: float=-0.004,
         fancy_aspect: float=0.2,
-        add_legend: bool=False,
+        bar_legend: bool=False,
         **kwargs):
 
         self.data               = data
@@ -863,7 +863,7 @@ class LazyBar():
         self.add_axis           = add_axis
         self.lim                = lim
         self.ticks              = ticks
-        self.add_legend         = add_legend
+        self.bar_legend         = bar_legend
         self.x_label2           = x_label2
         self.y_label2           = y_label2
         self.title2             = title2
@@ -901,7 +901,7 @@ class LazyBar():
             "font_name",
             "x_ticks",
             "y_ticks",
-            "add_legend"
+            "bar_legend"
         ]
 
         kw_sns = {}
@@ -960,11 +960,21 @@ class LazyBar():
 
         # check if we can do sem
         self.sem = None
-        if self.error == "sem":
-            if isinstance(self.data, pd.DataFrame):
-                self.sem = self.data.groupby(self.x).sem()[self.y].values
-        else:
-            self.sem = None
+        self.ci = None
+        if isinstance(self.error, str):
+            if self.error == "sem":
+                self.ci = None
+                if isinstance(self.data, pd.DataFrame):
+                    if hasattr(self, "hue"):
+                        self.sem = self.data.groupby([self.hue,self.x]).sem()[self.y].values
+                        n_x = len(np.unique(self.data[self.x].values))
+                        n_h = len(np.unique(self.data[self.hue].values))
+                        self.sem = self.sem.reshape(n_h,n_x)
+                    else:
+                        self.sem = self.data.groupby(self.x).sem()[self.y].values
+            else:
+                self.sem = None
+                self.ci = self.error
         
         self.ff = sns.barplot(
             data=self.data,
@@ -972,7 +982,7 @@ class LazyBar():
             y=yy, 
             ax=axs, 
             orient=self.sns_ori,
-            ci=None,
+            ci=self.ci,
             **dict(
                 kw_sns,
                 color=self.color,
@@ -1015,43 +1025,74 @@ class LazyBar():
                 self.points_palette = None
                 self.points_hue = None
 
-            sns.stripplot(
-                data=self.data, 
-                x=xx, 
-                y=yy, 
-                hue=self.points_hue,
-                dodge=False, 
-                ax=self.ff,
-                color=self.points_color,
-                palette=self.points_palette,
-                alpha=self.points_alpha
-            )
+            multi_strip = False
+            if hasattr(self, "hue"):
 
-            if not self.points_legend:
-                self.ff.legend([],[], frameon=False)
+                if isinstance(self.points_hue, str):
+
+                    if self.points_hue != self.hue:
+                        multi_strip = True
+                            
+                        hue_items = list(np.unique(self.data[self.points_hue].values))
+                        if isinstance(self.points_color, (str,tuple)):
+                            colors = [self.points_color for ii in range(len(hue_items))]
+                        else:
+                            colors = sns.color_palette(self.points_palette, len(hue_items))
+
+                        for it, color in zip(hue_items, colors):
+                            df_per_it = self.data[self.data[self.points_hue] == it]
+                            sns.stripplot(
+                                data=df_per_it, 
+                                x=xx, 
+                                y=yy, 
+                                hue=self.hue,
+                                dodge=True, 
+                                palette=[color] * 2,
+                                ax=self.ff)
+                
             else:
-                if not hasattr(self, "bbox_to_anchor"):
-                    self.ff.legend(
-                        frameon=False, 
-                        fontsize=self.label_size*0.8)
-                else:
-                    # left, bottom, width, height
-                    self.ff.legend(
-                        frameon=False, 
-                        fontsize=self.label_size*0.8)
+                sns.stripplot(
+                    data=self.data, 
+                    x=xx, 
+                    y=yy, 
+                    hue=self.points_hue,
+                    dodge=False, 
+                    ax=self.ff,
+                    color=self.points_color,
+                    palette=self.points_palette,
+                    alpha=self.points_alpha
+                )
 
-                    sns.move_legend(
-                        self.ff, 
-                        loc="best",
-                        bbox_to_anchor=self.bbox_to_anchor,
-                        fontsize=self.label_size)
-        else:
-            if self.add_legend:
+        if self.bar_legend:
+            if hasattr(self, "hue"):
+
+                # find categorical handles
+                handles,labels = self.ff.get_legend_handles_labels()
+
+                # find indices of categorical handles in list
+                cc = self.data[self.hue].values
+                indexes = np.unique(cc, return_index=True)[1]
+                cond = [cc[index] for index in sorted(indexes)]
+                
+                if multi_strip:
+                    handles = handles[-len(cond):]
+                    labels = labels[-len(cond):]
+
+                # filter out handles that correspond to labels
+                self.ff.legend(
+                    handles,
+                    labels,
+                    frameon=False, 
+                    fontsize=self.label_size*0.8)
+
+            else:
+
+                # filter out handles that correspond to labels
                 self.ff.legend(
                     frameon=False, 
                     fontsize=self.label_size*0.8)
-            else:
-                self.ff.legend([],[], frameon=False)
+        else:
+            self.ff.legend([],[], frameon=False)
                 
         # axis labels and titles
         if self.title:
@@ -1358,4 +1399,89 @@ class LazyHist(Defaults):
                 pad=self.pad_title)
 
     def return_kde(self):
-        return self.ff.get_lines()[0].get_data()            
+        return self.ff.get_lines()[0].get_data()
+
+def conform_ax_to_obj(
+    ax,
+    obj,
+    title=None,
+    x_label=None,
+    y_label=None):
+
+    """
+
+    Function to conform any plot to the aesthetics of this plotting module. Can be used when a plot is created with functions other than :class:`linescanning.plotting.LazyPlot`, :class:`linescanning.plotting.LazyCorr`, :class:`linescanning.plotting.LazyHist`, or any other function specified in this file. Assumes `ax` is a `matplotlib.axes._subplots.AxesSubplot` object, and `obj` a `linescanning.plotting.Lazy*`-object.
+
+    Parameters
+    ----------
+    ax: matplotlib.axes._subplots.AxesSubplot
+        input axis that needs to be modified
+    obj: linescanning.plotting.Lazy*
+        linecanning-specified plotting object containing the information with which `ax` will be conformed
+    title: str
+        overwrite any existing `title` in `ax`
+    x_label: str
+        overwrite any existing `x_label` in `ax`
+    y_label: str
+        overwrite any existing `y_label` in `ax`
+
+    Returns
+    ----------
+    matplotlib.axes._subplots.AxesSubplot
+        input axis with updated aesthetics
+
+    Example
+    ----------
+    >>> # convert statsmodels's QQ-plot
+    >>> from linescanning import plotting
+    >>> import matplotlib as plt
+    >>> from scipy import stats
+    >>> #
+    >>> fig,ax = plt.subplots(figsize=(8,8))
+    >>> sm.qqplot(mdf.resid, dist=stats.norm, line='s', ax=ax)
+    >>> ax = plotting.conform_ax_to_obj(ax,pl)
+    """
+    
+    if not isinstance(title, str):
+        title = ax.get_title()
+
+    if not isinstance(y_label, str):
+        y_label = ax.get_ylabel()
+
+    if not isinstance(x_label, str):
+        x_label = ax.get_xlabel()           
+
+    if isinstance(title, str):
+        ax.set_title(
+        title,
+        fontname=obj.fontname,
+        fontsize=obj.font_size)
+    
+    if isinstance(y_label, str):
+        ax.set_ylabel(
+            y_label,
+            fontname=obj.fontname,
+            fontsize=obj.font_size)
+
+    if isinstance(x_label, str):
+        ax.set_xlabel(
+            x_label,
+            fontname=obj.fontname,
+            fontsize=obj.font_size)        
+
+    ax.tick_params(
+        width=obj.tick_width, 
+        length=obj.tick_length,
+        labelsize=obj.label_size)
+
+    for axis in ['top', 'bottom', 'left', 'right']:
+        ax.spines[axis].set_linewidth(obj.axis_width)
+
+    sns.despine(
+        offset=obj.sns_offset, 
+        trim=obj.sns_trim,
+        left=False, 
+        bottom=False, 
+        ax=ax)
+
+    return ax
