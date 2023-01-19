@@ -7,6 +7,8 @@ import numpy as np
 import os
 import configparser
 import sys
+import time
+from matplotlib.colors import Normalize
 opj = os.path.join
 
 def set_ctx_path(p=None, opt="update"):
@@ -409,3 +411,175 @@ def make_r2(subject, r2=None, vmin1=0, vmax1=0.3, cmap="inferno"):
 def make_vertex(subject, array=None, vmin=None, vmax=None, cmap="magma"):
 
     return cortex.Vertex(array, subject=subject, vmin=vmin, vmax=vmax, cmap=cmap)
+
+class SavePycortexViews():
+    """SavePycortexViews
+
+    Save the elements of a `dict` containing vertex/volume objects to images given a set of viewing settings. 
+
+    Parameters
+    ----------
+    data_dict: dict, cortex.dataset.views.Vertex, cortex.dataset.views.Volume
+        Dictionary collecting objects to be projected on the surface or any object that is compatible with Pycortex plotting. If the latter, a dicitonary is automatically created.
+    subject: str, optional
+        Subject name as per Pycortex' filestore naming, by default None
+    fig_dir: str, optional
+        Output directory for the figures, by default None
+    specularity: int, optional
+        Level of 'glow' on the surface; ranges from 0-1, by default 0 (nothing at all)
+    unfold: int, optional
+        Level of inflation the surface needs to undergo; ranges from 0-1, by default 1 (fully inflated)
+    azimuth: int, optional
+        Rotation around the top-bottom axis, by default 185
+    altitude: int, optional
+        Rotation around the left-right axis, by default 90
+    radius: int, optional
+        _description_, by default 163
+    pivot: int, optional
+        _description_, by default 0
+    size: tuple, optional
+        _description_, by default (4000,4000)
+    data_name: str, optional
+        _description_, by default "occipital_inflated"
+    zoom: bool, optional
+        _description_, by default False
+
+    Example
+    ----------
+    >>> 
+    """
+
+    def __init__(
+        self,
+        data_dict,
+        subject=None,
+        fig_dir=None,
+        specularity=0,
+        unfold=1,
+        azimuth=180,
+        altitude=105,
+        radius=163,
+        pivot=0,
+        size=(4000,4000),
+        data_name="occipital_inflated",
+        zoom=False):
+        self.data_dict = data_dict
+        self.subject = subject
+        self.fig_dir = fig_dir
+        self.altitude = altitude
+        self.radius = radius
+        self.pivot = pivot
+        self.size = size
+        self.azimuth = azimuth
+        self.unfold = unfold
+        self.specularity = specularity
+        self.data_name = data_name
+        self.zoom = zoom
+
+        self.view = {
+            self.data_name:{
+                f'surface.{self.subject}.unfold':self.unfold, 
+                f'surface.{self.subject}.specularity':self.specularity,
+                # 'camera.target':self.target,
+                'camera.azimuth':self.azimuth,
+                'camera.altitude':self.altitude, 
+                'camera.radius':self.radius}}
+
+        if self.zoom:
+            self.view[self.data_name]['camera.Save image.Width'] = self.size[0]
+            self.view[self.data_name]['camera.Save image.Width'] = self.size[0]
+
+        self.js_handle = cortex.webgl.show(self.data_dict)
+        self.params_to_save = list(self.data_dict.keys())
+
+    def save_all(self):
+        for param_to_save in self.js_handle.dataviews.attrs.keys():
+            print(f"saving {param_to_save}")
+            self.save(param_to_save)
+
+    def save(self, param_to_save):
+
+        self.js_handle.setData([param_to_save])
+        time.sleep(1)
+        
+        # Save images by iterating over the different views and surfaces
+        for _, view_params in self.view.items():
+            filename = f"{self.subject}_desc-{param_to_save}.png"
+            output_path = os.path.join(self.fig_dir, filename)
+            #print(view)
+            for param_name, param_value in view_params.items():
+                time.sleep(1)
+                self.js_handle.ui.set(param_name, param_value)
+                
+            # Save image           
+            self.js_handle.getImage(output_path, size=self.size)
+        
+            # the block below trims the edges of the image:
+            # wait for image to be written
+            while not os.path.exists(output_path):
+                pass
+            time.sleep(1)
+            try:
+                import subprocess
+                subprocess.call(["convert", "-trim", output_path, output_path])
+            except:
+                pass    
+
+
+def Vertex2D_fix(
+    data1, 
+    data2, 
+    subject, 
+    cmap, 
+    vmin, 
+    vmax, 
+    vmin2, 
+    vmax2, 
+    roi_borders=None):
+
+    #this provides a nice workaround for pycortex opacity issues, at the cost of interactivity    
+    # Get curvature
+    curv = cortex.db.get_surfinfo(subject)
+
+    # Adjust curvature contrast / color. Alternately, you could work
+    # with curv.data, maybe threshold it, and apply a color map. 
+    
+    #standard
+    # curv.data = curv.data * .75 +0.1
+    #alternative
+    curv.data = np.sign(curv.data) * .25
+    #HCP adjustment
+    # curv.data = curv.data * -2.5# 1.25 +0.1
+
+    
+    curv = cortex.Vertex(curv.data, subject, vmin=-1,vmax=1,cmap='gray')
+    
+    norm2 = Normalize(vmin2, vmax2)   
+    
+    vx = cortex.Vertex(data1, subject, cmap=cmap, vmin=vmin, vmax=vmax)
+    
+    # Map to RGB
+    vx_rgb = np.vstack([vx.raw.red.data, vx.raw.green.data, vx.raw.blue.data])
+        
+
+    # Pick an arbitrary region to mask out
+    # (in your case you could use np.isnan on your data in similar fashion)
+    alpha = np.clip(norm2(data2), 0, 1).astype(float)
+
+    # Map to RGB
+    vx_rgb[:,alpha>0] = vx_rgb[:,alpha>0] * alpha[alpha>0]
+    
+    curv_rgb = np.vstack([curv.raw.red.data, curv.raw.green.data, curv.raw.blue.data])
+    
+    # do this to avoid artifacts where curvature gets color of 0 valur of colormap
+    curv_rgb[:,np.where((vx_rgb > 0))[-1]] = curv_rgb[:,np.where((vx_rgb > 0))[-1]] * (1-alpha)[np.where((vx_rgb > 0))[-1]]
+
+    # Alpha mask
+    display_data = curv_rgb + vx_rgb 
+
+    # display_data = curv_rgb * (1-alpha) + vx_rgb * alpha
+    if roi_borders is not None:
+        display_data[:,roi_borders.astype('bool')] = 0#255-display_data[:,roi_borders.astype('bool')]#0#255
+    
+    # Create vertex RGB object out of R, G, B channels
+    return cortex.VertexRGB(*display_data, subject)                
