@@ -26,7 +26,11 @@ Input options:
   --lines             flag to tell we're dealing with a line-scanning session. By default 'regular',
                       which means standard whole-brain acquisitions.
   --inv               add individual inversion files from anatomies in 'anat' folder
-
+  --dcm_fix           Extremely large par/rec's cannot be converted with 'dcm2niix'. Normal fMRI 
+                      sessions are converted using 'call_pydcm2niix', but this flag points it to 'call
+                      _dcm2niix', the same that is used for line-scanning sessions. It pipes the output 
+                      from dcm2niix to a log file to monitor 'Catastrophic errors'. It then tries to 
+                      convert these with 'parrec2nii', which comes with the python pacakge 'nibabel'
 Example:
   spinoza_scanner2bids /path/to/project_root /path/to/your/project/sourcedata     # regular
   spinoza_scanner2bids -n 1/path/to/project_root /path/to/your/project/sourcedata # regular|ses-1
@@ -64,6 +68,7 @@ EOF
 OW=0
 SES_TYPE="regular"
 ADD_INV=0
+DCM_FIX=0
 while getopts :-:os:n: argument
 do
   case ${argument} in
@@ -74,7 +79,11 @@ do
           ;;
         inv)
           ADD_INV=1
-          ;;          
+          ;;       
+        dcm_fix)
+          DCM_FIX=1
+          SES_TYPE="lines"
+          ;;             
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}, did you mean \"--lines\"?"
@@ -228,27 +237,29 @@ for subID in ${search}; do
         # NIFTI TO BIDS
 
         ## Low resolution anatomical scan
-        anat_lowres=`find "${input_dir}/planning/nifti" -type f \( -name "*real*" -and -name "*t10*" -and -name "*.nii.gz" \) 2>/dev/null`
-        anat_t1map=`find "${input_dir}/planning/nifti" -type f \( -name "*real*" -and -name "*t29*" -and -name "*.nii.gz" \) 2>/dev/null`
-        if [[ ! -f ${bids_dir}/anat/${base}_acq-MP2RAGE_T1w.nii.gz ]]; then
-          if [[ -f ${anat_lowres} && -f ${anat_t1map} ]]; then
+        if [[ ${DCM_FIX} -eq 0 ]]; then
+          anat_lowres=`find "${input_dir}/planning/nifti" -type f \( -name "*real*" -and -name "*t10*" -and -name "*.nii.gz" \) 2>/dev/null`
+          anat_t1map=`find "${input_dir}/planning/nifti" -type f \( -name "*real*" -and -name "*t29*" -and -name "*.nii.gz" \) 2>/dev/null`
+          if [[ ! -f ${bids_dir}/anat/${base}_acq-MP2RAGE_T1w.nii.gz ]]; then
+            if [[ -f ${anat_lowres} && -f ${anat_t1map} ]]; then
 
-            min=`fslstats ${anat_lowres} -R | awk '{print $1}'`
-            if [[ ${min} != "0.000000" ]]; then
-              echo " Rescaling lowres MP2RAGE-file"
-              call_maskmp2rage ${anat_lowres} ${anat_t1map} ${anat_lowres}
+              min=`fslstats ${anat_lowres} -R | awk '{print $1}'`
+              if [[ ${min} != "0.000000" ]]; then
+                echo " Rescaling lowres MP2RAGE-file"
+                call_maskmp2rage ${anat_lowres} ${anat_t1map} ${anat_lowres}
+              fi
+
+              echo " Relocating lowres MP2RAGE-file as ${base}_acq-MP2RAGE_T1w.nii.gz"
+              cp ${anat_lowres} ${bids_dir}/anat/${base}_acq-MP2RAGE_T1w.nii.gz
+              cp $(dirname ${anat_lowres})/$(basename ${anat_lowres} .nii.gz).json ${bids_dir}/anat/${base}_acq-MP2RAGE_T1w.json
             fi
 
-            echo " Relocating lowres MP2RAGE-file as ${base}_acq-MP2RAGE_T1w.nii.gz"
-            cp ${anat_lowres} ${bids_dir}/anat/${base}_acq-MP2RAGE_T1w.nii.gz
-            cp $(dirname ${anat_lowres})/$(basename ${anat_lowres} .nii.gz).json ${bids_dir}/anat/${base}_acq-MP2RAGE_T1w.json
+          else
+            echo " low resolution MP2RAGE exists"
           fi
-
-        else
-          echo " low resolution MP2RAGE exists"
         fi
 
-        if [[ ${ADD_INV} -eq 1 ]]; then
+        if [[ ${ADD_INV} -eq 1 ]] || [[ ${DCM_FIX} -eq 1 ]]; then
           inv_img=`find "${output_dir}" -type f \( -name "*T1w_*" -and -name "*_t10*" -or -name "*_t29*" -or -name "*_t30*" \) 2>/dev/null`
           IFS=$'\n' invs=($(sort <<<"${inv_img[*]}"))
           unset IFS
@@ -277,168 +288,174 @@ for subID in ${search}; do
           done
         fi
 
-        ## Multi-slice files
-        motion_img=`find "${output_dir}" -type f \( -name "*motion*" -and -name "*.nii.gz" \) 2>/dev/null`
-        IFS=$'\n' motion_img=($(sort <<<"${motion_img[*]}"))
-        unset IFS    
+        if [[ ${DCM_FIX} -eq 0 ]]; then
+          ## Multi-slice files
+          motion_img=`find "${output_dir}" -type f \( -name "*motion*" -and -name "*.nii.gz" \) 2>/dev/null`
+          IFS=$'\n' motion_img=($(sort <<<"${motion_img[*]}"))
+          unset IFS    
 
-        echo " Relocating multi-slice file (${#motion_img[@]})"
-        for i in ${motion_img[@]}; do
-          
-          run=`get_id ${i} motion`
-          if [[ -z ${run} ]]; then
-            run=${i}
-          fi
-
-          fname=${bids_dir}/anat/${base}_acq-MP2RAGE_rec-motion${run}.nii.gz
-          if [[ ! -f ${fname} ]]; then
-            if [[ -f ${motion_img} ]]; then
-              echo "  renaming to $(basename ${fname})"
-              cp ${motion_img} ${fname}
-              cp $(dirname ${motion_img})/$(basename ${motion_img} .nii.gz).json $(dirname ${fname})/$(basename ${fname} .nii.gz).json
-            else
-              echo " WARNING: apparently found ${n_motion} motion file(s), but cannot find file with \"motion${run}\" and \"*.nii.gz\""
-            fi
-          else
-            echo "  ${base}_acq-9slice_run-${run}_T1w.nii.gz exists"
-          fi
-        done
-
-
-        ## Single-slice
-        slice_img=`find "${output_dir}" -type f \( -name "*1slice*" -and -not -name "*space*" -and -name "*anat*" -and -name "*.nii.gz" \) 2>/dev/null`
-        
-        # sort array (https://stackoverflow.com/questions/7442417/how-to-sort-an-array-in-bash)
-        IFS=$'\n' slice_img=($(sort <<<"${slice_img[*]}"))
-        unset IFS   
-
-        # add counter in case run-X does not occur in file     
-        count=0
-        if [[ ! -z ${slice_img} ]]; then
-          
-          echo " Found 1slice-files"
-
-          for slice in ${slice_img[@]}; do
-            ((count++))
-
-            # fetch run
-            run=`run_id ${slice}`
-            if [[ ${run} -eq 0 ]]; then
-              run=${count}
-            fi     
-          
-            bids_slice=${bids_dir}/anat/${base}_acq-1slice_run-${run}_T1w.nii.gz
-            if [[ ! -f ${bids_slice} ]]; then
-              if [[ -f ${slice} ]]; then
-                echo "  renaming to $(basename ${bids_slice})"
-                cp ${slice} ${bids_slice}
-                cp $(dirname ${slice})/$(basename ${slice} .nii.gz).json $(dirname ${bids_slice})/$(basename ${bids_slice} .nii.gz).json
-              fi
-            else
-              echo "  $(basename ${bids_slice}) exists"
+          echo " Relocating multi-slice file (${#motion_img[@]})"
+          for i in ${motion_img[@]}; do
+            
+            run=`get_id ${i} motion`
+            if [[ -z ${run} ]]; then
+              run=${i}
             fi
 
-          done
-        
-        else
-          echo "  WARNING: no \"1slice\"-files were found in ${output_dir}"
-        fi
-
-        ## bold files
-        bold_files=`find "${input_dir}" -type f \( -name "*bold_*" -and -name "*.lab" \) 2>/dev/null`
-
-        # sort array (https://stackoverflow.com/questions/7442417/how-to-sort-an-array-in-bash)
-        IFS=$'\n' bold_files=($(sort <<<"${bold_files[*]}"))
-        unset IFS    
-
-        count=0
-        if [[ ! -z ${bold_files} ]]; then
-
-          echo " Found raw bold-files (*.lab)"
-  
-          # get foldover direction
-          info_file=`find "${DIR_DATA_DERIV}/pycortex/${sub_name}" -type f \( -name "*desc-info*" -and -name "*.csv" \) 2>/dev/null`
-          if [[ -f ${info_file} ]]; then
-            fold=`grep -A0 "foldover" ${info_file} | cut -d',' -f3`
-          else
-            # default to FH foldover
-            fold="FH"
-          fi
-          echo "  foldover is set to: ${fold}"
-
-          # get foldover direction
-          if [[ ! -z ${ses} ]]; then
-            md=`find $(dirname ${input_dir}) -type f \( -name "*ses-${nr}*" -and -name "*.md" \) 2>/dev/null`
-          else
-            md=`find $(dirname ${input_dir}) -type f \( -name "*ses-${nr}*" -and -name "*.md" \) 2>/dev/null`
-          fi
-
-          # check for multiple files; take last one if more than one are found
-          cnt=0
-          for ii in ${md[@]}; do ((cnt++)); done
-          if [[ ${cnt} -gt 1 ]]; then
-            md=${md[cnt]}
-          fi
-
-          shift=0
-          if [[ -f ${md} ]]; then
-            shift=`grep -A0 "shift:" ${md} | cut -d":" -f2`
-          fi
-          echo "  shift is set to: ${shift}mm"
-          
-          # use run-1 as template
-          slice_img=`find "${bids_dir}/anat" -type f \( -name "${base}*" -and -name "*1slice*" -and -name "*run-1*" -and -name "*.nii.gz" \) 2>/dev/null`
-          for bold in ${bold_files[@]}; do
-            ((count++))
-
-            # fetch task
-            task=`task_id ${bold}`
-            if [[ ${task} == "prf" ]]; then
-              task="pRF"
-            elif [[ ${task} == "sr" ]]; then
-              task="SR"
-            fi
-
-            # fetch run
-            run=`run_id ${bold}`
-            if [[ ${run} -eq 0 ]]; then
-              run=${count}
-            fi   
-
-            line_img=${bids_dir}/func/${base}_task-${task}_run-${run}_bold.nii.gz
-            if [[ -f ${slice_img} ]]; then
-              if [[ ! -f ${line_img} ]]; then
-
-                call_createline \
-                  -i ${slice_img} \
-                  -o ${line_img} \
-                  --width 16 \
-                  --${fold,,} \
-                  --shift ${shift}
-
-                if [[ $? != 0 ]]; then
-                  echo
-                  echo "---------------------------------------------------------------------------------------------------"
-                  echo "ERROR in `basename ${0}`: call_createline exited with non-zero status"
-                  exit 1
-                fi
-
-                echo "  wrote `basename ${line_img}`"
+            fname=${bids_dir}/anat/${base}_acq-MP2RAGE_rec-motion${run}.nii.gz
+            if [[ ! -f ${fname} ]]; then
+              if [[ -f ${motion_img} ]]; then
+                echo "  renaming to $(basename ${fname})"
+                cp ${motion_img} ${fname}
+                cp $(dirname ${motion_img})/$(basename ${motion_img} .nii.gz).json $(dirname ${fname})/$(basename ${fname} .nii.gz).json
               else
-                echo "  `basename ${line_img}` exists"
+                echo " WARNING: apparently found ${n_motion} motion file(s), but cannot find file with \"motion${run}\" and \"*.nii.gz\""
               fi
             else
-              echo "  WARNING: could not find file with [\"acq-1slice\" and \"run-1\"] in \"${bids_dir}/anat\""
+              echo "  ${base}_acq-9slice_run-${run}_T1w.nii.gz exists"
+            fi
+          done
+
+
+          ## Single-slice
+          slice_img=`find "${output_dir}" -type f \( -name "*1slice*" -and -not -name "*space*" -and -name "*anat*" -and -name "*.nii.gz" \) 2>/dev/null`
+          
+          # sort array (https://stackoverflow.com/questions/7442417/how-to-sort-an-array-in-bash)
+          IFS=$'\n' slice_img=($(sort <<<"${slice_img[*]}"))
+          unset IFS   
+
+          # add counter in case run-X does not occur in file     
+          count=0
+          if [[ ! -z ${slice_img} ]]; then
+            
+            echo " Found 1slice-files"
+
+            for slice in ${slice_img[@]}; do
+              ((count++))
+
+              # fetch run
+              run=`run_id ${slice}`
+              if [[ ${run} -eq 0 ]]; then
+                run=${count}
+              fi     
+            
+              bids_slice=${bids_dir}/anat/${base}_acq-1slice_run-${run}_T1w.nii.gz
+              if [[ ! -f ${bids_slice} ]]; then
+                if [[ -f ${slice} ]]; then
+                  echo "  renaming to $(basename ${bids_slice})"
+                  cp ${slice} ${bids_slice}
+                  cp $(dirname ${slice})/$(basename ${slice} .nii.gz).json $(dirname ${bids_slice})/$(basename ${bids_slice} .nii.gz).json
+                fi
+              else
+                echo "  $(basename ${bids_slice}) exists"
+              fi
+
+            done
+          
+          else
+            echo "  WARNING: no \"1slice\"-files were found in ${output_dir}"
+          fi
+
+          ## bold files
+          bold_files=`find "${input_dir}" -type f \( -name "*bold_*" -and -name "*.lab" \) 2>/dev/null`
+
+          # sort array (https://stackoverflow.com/questions/7442417/how-to-sort-an-array-in-bash)
+          IFS=$'\n' bold_files=($(sort <<<"${bold_files[*]}"))
+          unset IFS    
+
+          count=0
+          if [[ ! -z ${bold_files} ]]; then
+
+            echo " Found raw bold-files (*.lab)"
+    
+            # get foldover direction
+            info_file=`find "${DIR_DATA_DERIV}/pycortex/${sub_name}" -type f \( -name "*desc-info*" -and -name "*.csv" \) 2>/dev/null`
+            if [[ -f ${info_file} ]]; then
+              fold=`grep -A0 "foldover" ${info_file} | cut -d',' -f3`
+            else
+              # default to FH foldover
+              fold="FH"
+            fi
+            echo "  foldover is set to: ${fold}"
+
+            # get foldover direction
+            if [[ ! -z ${ses} ]]; then
+              md=`find $(dirname ${input_dir}) -type f \( -name "*ses-${nr}*" -and -name "*.md" \) 2>/dev/null`
+            else
+              md=`find $(dirname ${input_dir}) -type f \( -name "*ses-${nr}*" -and -name "*.md" \) 2>/dev/null`
             fi
 
-          done
-        
-        else
-          echo "  WARNING: no \"bold*.lab\"-files were found in ${input_dir}"
+            # check for multiple files; take last one if more than one are found
+            cnt=0
+            for ii in ${md[@]}; do ((cnt++)); done
+            if [[ ${cnt} -gt 1 ]]; then
+              md=${md[cnt]}
+            fi
+
+            shift=0
+            if [[ -f ${md} ]]; then
+              shift=`grep -A0 "shift:" ${md} | cut -d":" -f2`
+            fi
+            echo "  shift is set to: ${shift}mm"
+            
+            # use run-1 as template
+            slice_img=`find "${bids_dir}/anat" -type f \( -name "${base}*" -and -name "*1slice*" -and -name "*run-1*" -and -name "*.nii.gz" \) 2>/dev/null`
+            for bold in ${bold_files[@]}; do
+              ((count++))
+
+              # fetch task
+              task=`task_id ${bold}`
+              if [[ ${task} == "prf" ]]; then
+                task="pRF"
+              elif [[ ${task} == "sr" ]]; then
+                task="SR"
+              fi
+
+              # fetch run
+              run=`run_id ${bold}`
+              if [[ ${run} -eq 0 ]]; then
+                run=${count}
+              fi   
+
+              line_img=${bids_dir}/func/${base}_task-${task}_run-${run}_bold.nii.gz
+              if [[ -f ${slice_img} ]]; then
+                if [[ ! -f ${line_img} ]]; then
+
+                  call_createline \
+                    -i ${slice_img} \
+                    -o ${line_img} \
+                    --width 16 \
+                    --${fold,,} \
+                    --shift ${shift}
+
+                  if [[ $? != 0 ]]; then
+                    echo
+                    echo "---------------------------------------------------------------------------------------------------"
+                    echo "ERROR in `basename ${0}`: call_createline exited with non-zero status"
+                    exit 1
+                  fi
+
+                  echo "  wrote `basename ${line_img}`"
+                else
+                  echo "  `basename ${line_img}` exists"
+                fi
+              else
+                echo "  WARNING: could not find file with [\"acq-1slice\" and \"run-1\"] in \"${bids_dir}/anat\""
+              fi
+
+            done
+          
+          else
+            echo "  WARNING: no \"bold*.lab\"-files were found in ${input_dir}"
+          fi
         fi
 
-        # check if we also did partial 3DEPI stuff
-        bold_files=`find "${input_dir}" -type f \( -name "*acq-3DEPI*" -and -name "*bold.nii.gz" \) 2>/dev/null`
+        # check for more whole-brainy stuff
+        if [[ ${DCM_FIX} -eq 0 ]]; then
+          bold_files=`find "${input_dir}" -type f \( -name "*acq-3DEPI*" -and -name "*bold.nii.gz" \) 2>/dev/null`
+        else
+          bold_files=`find "${input_dir}" -type f \( -name "*bold.nii.gz" \) 2>/dev/null`
+        fi
 
         # sort array (https://stackoverflow.com/questions/7442417/how-to-sort-an-array-in-bash)
         IFS=$'\n' bold_files=($(sort <<<"${bold_files[*]}"))
@@ -446,7 +463,7 @@ for subID in ${search}; do
 
         count=0
         if [[ ! -z ${bold_files[@]} ]]; then
-          echo " Found 3DEPI file(s)"
+          echo " Found BOLD file(s)"
 
           for bold in ${bold_files[@]}; do
 
@@ -456,9 +473,9 @@ for subID in ${search}; do
               run=${count}
             fi 
 
-            func=`find "${output_dir}" -type f \( -name "*acq-3DEPI*" -and -name "*run-${run}*" -and -name "*bold.nii.gz" \) 2>/dev/null`
-            fmap=`find "${output_dir}" -type f \( -name "*acq-3DEPI*" -and -name "*run-${run}*" -and -name "*epi.nii.gz" \) 2>/dev/null`
-            phase=`find "${output_dir}" -type f \( -name "*acq-3DEPI*" -and -name "*run-${run}*" -and -name "*bold_ph.nii.gz" \) 2>/dev/null`
+            func=${bold}
+            fmap=$(dirname ${bold})/$(basename ${bold} _bold.nii.gz)_epi.nii.gz
+            phase=$(dirname ${bold})/$(basename ${bold} .nii.gz)_ph.nii.gz
             task=`task_id ${bold}`
 
             # -acq needs to be after task to be compatible with fMRIprep
@@ -468,8 +485,8 @@ for subID in ${search}; do
             fi
 
             # rename 'bold', 'epi', and 'phase'
-            fname=${tmp_dir}/${base}_task-${task}_run-${run}_acq-3DEPI
             for ext in "_bold.nii.gz" "_epi.nii.gz" "_bold_ph.nii.gz"; do
+            fname=${tmp_dir}/${base}_task-${task}_run-${run}_acq-3DEPI
               ff=${fname}${ext}
 
               if [[ ${ext} == "_bold.nii.gz" ]]; then
@@ -483,11 +500,20 @@ for subID in ${search}; do
                 image="phase"
               fi
 
+              ff=${bids_dir}/${image}/${base}_task-${task}_run-${run}_acq-3DEPI${ext}
               if [[ ! -f ${ff} ]]; then
+                if [[ ! -d ${ff} ]]; then
+                  mkdir -p $(dirname ${ff})
+                fi
+
                 if [[ -f ${orig} ]]; then
                   echo "  renaming ${image}-file to `basename ${ff}`"
                   cp ${orig} ${ff}
-                  cp $(dirname ${orig})/$(basename ${orig} .nii.gz).json $(dirname ${ff})/$(basename ${ff} .nii.gz).json
+
+                  json_file=$(dirname ${orig})/$(basename ${orig} .nii.gz).json
+                  if [ -f ${json_file} ]; then
+                    cp ${json_file} $(dirname ${ff})/$(basename ${ff} .nii.gz).json
+                  fi
                 fi
               else
                 echo "  $(basename ${ff}) exists"
