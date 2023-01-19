@@ -66,10 +66,8 @@ Options:
   --zscore        use the zscore'd output from pybest, rather than percent signal change. If not spe-
                   cified, percent signal change is implemented as follows:
                     psc = signals*100/(mean(signals)) - median(signals_without_stimulus)
-  --v1            only fit voxels from ?.V1_exvivo.thresh.label; the original dimensions will be main-
-                    tained, but timecourses outside of the ROI are set to zero
-  --v2            only fit voxels from ?.V2_exvivo.thresh.label; the original dimensions will be main-
-                    tained, but timecourses outside of the ROI are set to zero
+  --v1|--v1       only fit voxels from ?.V1/2_exvivo.thresh.label; the original dimensions will be 
+                  maintained, but timecourses outside of the ROI are set to zero
     
 Arguments:
   <input dir>     base input directory with pybest data (e.g., 'DIR_DATA_DERIV/pybest'). You can also 
@@ -309,7 +307,21 @@ for subID in ${search}; do
     for task in ${search_tasks[@]}; do
 
       # Check if we should overwrite file
-      prf_params=`find ${prf_dir} -type f \( -name "*${use_model}*" -and -name "*${stage}*" -and -name "*task-${task}*" -and -name "*prf_params.pkl" \) 2>/dev/null`
+      if [[ ! -z ${lbl_flag} ]]; then
+        if [[ ${lbl_flag} == *"v1"* ]]; then
+          roi="V1"
+        elif [[ ${lbl_flag} == *"v2"* ]]; then
+          roi="V2"
+        else
+          echo "ERROR in `basename ${0}`: the flag '${lbl_flag}' was specified, but there is only support for '--v1'/'--v2'"
+          exit 1
+        fi
+
+        prf_params=`find ${prf_dir} -type f \( -name "*${use_model}*" -and -name "*roi-${roi}*" -and -name "*${stage}*" -and -name "*task-${task}*" -and -name "*prf_params.pkl" \) 2>/dev/null`
+      else
+        prf_params=`find ${prf_dir} -type f \( -name "*${use_model}*" -and -name "*${stage}*" -and -name "*task-${task}*" -and -name "*prf_params.pkl" \) 2>/dev/null`
+      fi
+      
       if [[ ${OW} -eq 1 ]]; then
         if [[ -f ${prf_params} ]]; then
           rm -r ${prf_params}
