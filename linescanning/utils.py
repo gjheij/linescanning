@@ -19,6 +19,10 @@ opj = os.path.join
 pd.options.mode.chained_assignment = None # disable warning thrown by string2float
 warnings.filterwarnings("ignore")
 
+def verbose(msg, verbose, flush=True, **kwargs):
+    if verbose:
+        print(msg, flush=flush, **kwargs)
+
 def calculate_tsnr(data,ax):
     mean_d = np.mean(data,axis=ax)
     std_d = np.std(data,axis=ax)
