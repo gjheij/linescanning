@@ -12,9 +12,9 @@ function Usage {
 ---------------------------------------------------------------------------------------------------
 call_nordic
 
-Applies the NORDIC algorithm to whole-brain data. Requires the magnitude image, the phase image, and 
+Applies the NORDIC algorithm to whole-brain data. Requires the magnitude image, the phase image, and
 an output name. We'll try to read the run-ID from the input file to create a template script. This
-can be useful when you want to submit multiple NORDIC processes to a cluster as it avoids that the 
+can be useful when you want to submit multiple NORDIC processes to a cluster as it avoids that the
 template script is overwritten before another has initiated.
 
 Args:
@@ -42,7 +42,7 @@ mag_only=0
 while getopts hmv: arg; do
   case ${arg} in
     m)  mag_only=1
-        ;;         
+        ;;
   esac
 done
 
@@ -94,27 +94,27 @@ fi
 if [[ -f ${fn_mag} && -f ${fn_phase} ]]; then
 
   make_nordic_script ${fn_mag} ${fn_phase} ${fn_nordic} ${mag_only} ${new_script}
-  
+
   # calculate tSNR before nordic
   call_tsnr ${fn_mag}
 
   # call_matlab = in call_bashhelper
   call_matlab ${new_script}
 
-  # calculate tSNR after nordic
-  call_tsnr ${fn_nordic}.nii
-
   if [[ $? -ne 0 ]]; then
     echo "ERROR: matlab exited with non-zero status"
     exit 1
   fi
+
+  # calculate tSNR after nordic
+  call_tsnr ${fn_nordic}.nii
 
 else
   echo "Missing files for NORDIC; need a magnitude & phase image, got \"${IMG_MAGN}\" and \"${IMG_PHASE}\""
 fi
 
 #-----------------------------------------------------------------------------
-# Reset extension 
+# Reset extension
 if [[ ${ext_nordic} == "gz" ]]; then
   gzip ${fn_nordic}.nii 2>/dev/null
 fi
