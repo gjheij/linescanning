@@ -14,7 +14,7 @@ call_parrec2nii
 Wrapper for the parrec2nii to make life a little easier. In theory, it'll only require and input di-
 rectory containing the files to be converted. If no output directory is specified, the script will
 create a directory called INPUT/nifti and store the output there. Because parrec2nii does not out-
-put a json side-car file by default, we'll attempt to create one based on the information found in 
+put a json side-car file by default, we'll attempt to create one based on the information found in
 the par-file; some information (e.g., RepetitionTime) could be missing.
 
 Parameters
@@ -116,10 +116,10 @@ else
 fi
 
 IFS=$'\n' par_files=($(sort <<<"${ff[*]}"))
-unset IFS   
+unset IFS
 for par in ${par_files[@]}; do
-
-  orig_out=${pathOutput}/$(basename ${par} .par).nii.gz
+  ext=`fetch_extension ${par}`
+  orig_out=${pathOutput}/$(basename ${par} .${ext}).nii.gz
   if [ ! -f ${orig_out} ]; then
     ${cmd} --scaling fp --verbose ${COMPR} -o ${pathOutput} ${par}
     if [[ $? -ne 0 ]]; then
@@ -142,9 +142,23 @@ for par in ${par_files[@]}; do
   bids_out=${pathOutput}/${pat}_${prot}
   if [ ${vols} != ${dyns} ]; then
 
-    if [[ ! -f ${bids_out}.nii.gz && ! -f ${bids_out}_ph.nii.gz ]]; then
-      echo "Output has ${vols} volumes, but PAR-file says ${dyns}; assuming interleaved phase data"
+    echo "Output has ${vols} volumes, but PAR-file says ${dyns}"
+    # check if phase data is interleaved or at the end by looking at the column of image_type in the par-file. 0=mag|3=phase.
+    str="=== IMAGE INFORMATION ="
+    line_startpar=`grep -n -m 1 "${str}" ${par} | sed  's/\([0-9]*\).*/\1/'`
+    image_type_column=(`sed -n "$((${line_startpar}+2)),$ p" ${par} | awk '{ print $5 }' | sed -e 's/[^0-9]//g' | sed 's/\r$//'`)
 
+    # If first two numbers are 0, we assume that phase comes after mag
+    if [[ ${image_type_column[0]} -eq ${image_type_column[1]} ]]; then
+      txt="Data is not interleaved"
+      interleaved=0
+    else
+      txt="Data is interleaved"
+      interleaved=1
+    fi
+
+    echo "${txt}; extracting and saving magnitude/phase data"
+    if [[ ${interleaved} -eq 1 ]]; then
       PYTHON_CODE=$(cat <<END
 import nibabel as nb;
 import os;
@@ -160,8 +174,12 @@ nb.Nifti1Image(mag, affine=img.affine, header=img.header).to_filename(out+'.nii.
 nb.Nifti1Image(pha, affine=img.affine, header=img.header).to_filename(out+'_ph.nii.gz');
 END
 )
-      echo "Extracting and saving interleaved magnitude/phase data"
       python -c "$PYTHON_CODE"
+    else
+
+      # find where par become phase
+      fslroi ${orig_out} ${bids_out}.nii.gz 0 ${dyns}
+      fslroi ${orig_out} ${bids_out}_ph.nii.gz ${dyns} -1
     fi
   else
     if [[ ! -f ${bids_out}.nii.gz ]]; then
@@ -172,10 +190,10 @@ END
   # define json file
   json_f=${bids_out}.json
   echo "Writing ${json_f}"
-  
+
   # function is from call_bashhelper
   pars_for_json ${par} ${json_f}
-  
+
   # check corresponding EPI file
   if [[ ${bids_out} == *"_bold"* ]]; then
     epi=`echo $(basename ${bids_out} | sed "s|_bold|_epi|g")`
@@ -196,6 +214,22 @@ END
           if [[ ! -z ${val} ]]; then
             echo "Found ${key}: ${val}"
             call_json ${json_f} ${key} ${val}
+
+            if [[ $? -ne 0 ]]; then
+              echo "ERROR: call_json exited with non-zero status"
+              exit 1
+            fi            
+
+            # set TR in nifti
+            if [[ ${val} == "RepetitionTime" ]]; then
+              ehco "Setting TR to '${val}' in '${bids_out}.nii.gz'"
+              call_settr ${bids_out}.nii.gz ${val}
+
+              if [[ $? -ne 0 ]]; then
+                echo "ERROR: call_settr exited with non-zero status"
+                exit 1
+              fi                 
+            fi
           fi
         done
       fi
