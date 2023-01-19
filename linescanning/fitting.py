@@ -67,7 +67,9 @@ class CurveFitter():
         func=None, 
         order=1, 
         verbose=True, 
-        interpolate='linear'):
+        interpolate='linear',
+        fix_intercept=False,
+        sigma=1):
 
         self.y_data         = y_data
         self.func           = func
@@ -75,7 +77,9 @@ class CurveFitter():
         self.x              = x
         self.verbose        = verbose
         self.interpolate    = interpolate
-
+        self.fix_intercept  = fix_intercept
+        self.sigma          = sigma
+        
         if self.func == None:
             self.guess = True
             if isinstance(self.order, int):
@@ -105,6 +109,10 @@ class CurveFitter():
         else:
             self.params = self.pmodel.make_params(a=1, b=1, c=1, d=1)
 
+        if self.fix_intercept:
+            self.params['intercept'].value = 0
+            self.params['intercept'].vary = False
+        
         self.result = self.pmodel.fit(self.y_data, self.params, x=self.x)
 
         if self.verbose:
@@ -114,7 +122,7 @@ class CurveFitter():
         self.y_pred             = self.result.best_fit
         self.x_pred_upsampled   = np.linspace(self.x[0], self.x[-1], 1000)
         self.y_pred_upsampled   = self.result.eval(x=self.x_pred_upsampled)
-        self.ci                 = self.result.eval_uncertainty()
+        self.ci                 = self.result.eval_uncertainty(sigma=self.sigma)
         self.ci_upsampled       = glm.resample_stim_vector(self.ci, len(self.x_pred_upsampled), interpolate=self.interpolate)
 
     def first_order(x, a, b):
