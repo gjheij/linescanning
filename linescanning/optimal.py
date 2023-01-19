@@ -411,7 +411,10 @@ class SurfaceCalc(object):
                 cx_subject=self.subject,
                 freesurfer_subject_dir=self.fs_dir,
                 whitematter_surf='smoothwm')
-
+        
+        # reload database after import
+        cortex.db.reload_subjects()
+        
         self.curvature = cortex.db.get_surfinfo(self.subject, type="curvature")
         self.thickness = cortex.db.get_surfinfo(self.subject, type="thickness")
         self.depth = cortex.db.get_surfinfo(self.subject, type="sulcaldepth")
@@ -1279,12 +1282,11 @@ class Neighbours(SurfaceCalc):
                 target_wb = target_vert
                 target_vert = np.where(use_vert == target_vert)[0][0]
                 
-                print(f"Target vertex '{target_wb}' is at index '{target_vert}' in subsurface")
+                utils.verbose(f"Target vertex '{target_wb}' is at index '{target_vert}' in subsurface", self.verbose)
             else:
                 use_surf = getattr(self, f"{hemi}_surf")
 
-            if self.verbose:
-                print(f"Finding distances from {txt} to vertex #{target_vert}")
+            utils.verbose(f"Finding distances from {txt} to vertex #{target_vert}", self.verbose)
                 
             # get distance to target
             dist_to_targ = use_surf.geodesic_distance(target_vert)
@@ -1308,7 +1310,7 @@ class Neighbours(SurfaceCalc):
             
         else:
             if isinstance(vert_dict, str):
-                print(f"Reading distances from {vert_dict}")
+                utils.verbose(f"Reading distances from {vert_dict}", self.verbose)
                 with open(vert_dict) as f:
                     dist_to_targ = json.load(f)
 
@@ -1388,7 +1390,7 @@ class Neighbours(SurfaceCalc):
                 try:
                     verts = result[0]
                     if self.verbose:
-                        print(f"Found {len(verts)} vertices to target for vmin={vmin} & vmax={vmax}")
+                        utils.verbose(f"Found {len(verts)} vertices to target for vmin={vmin} & vmax={vmax}", self.verbose)
                     output = {}
                     for ii in verts:
                         output[ii] = distances[ii]
