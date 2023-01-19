@@ -750,16 +750,12 @@ def select_stims(settings_dict, stim_library, frames=225, baseline_frames=15, ra
         #     if verbose:
         #         print(f"Adding {frames-design.shape[-1]} frames")
         #     design = np.dstack((design, np.dstack([np.zeros_like(ref) for i in range(frames-design.shape[-1])])))
-
-        if verbose:
-            print(f"Design has shape: {design.shape}")
-
+        
+        utils.verbose(f"Design has shape: {design.shape}", verbose)
         if return_onsets:
             # # create onset df
             # try:
-            if verbose:
-                print("Creating onset dataframe")
-
+            utils.verbose("Creating onset dataframe", verbose)
             onset_frames = get_onset_idx(design)
             onset_times = onset_frames*TR
 
@@ -767,22 +763,13 @@ def select_stims(settings_dict, stim_library, frames=225, baseline_frames=15, ra
                           'event_type': stim_shuff}
 
             onset_df = pd.DataFrame(onset_dict)
-
-            if verbose:
-                print("Done")
+            utils.verbose("Done", verbose)
 
             return design, onset_df
 
-            # except:
-            #     if verbose:
-            #         print("Not returning onset dataframe")
-
-
         else:
 
-            if verbose:
-                print("Done")
-
+            utils.verbose("Done", verbose)
             return design
 
 def prf_neighbouring_vertices(subject, hemi='lh', vertex=None, prf_params=None, compare=False, vertices_only=False):
@@ -1007,8 +994,7 @@ def create_line_prf_matrix(
         # check baseline first
         baseline_start = settings['design'].get('start_duration')
 
-        if verbose:
-            print("Creating design matrix (can take a few minutes with thousands of TRs)")
+        utils.verbose("Creating design matrix (can take a few minutes with thousands of TRs)", verbose)
 
         # compatible with lineprf2
         if "baseline" in np.unique(trial_df['event_type'].values):
@@ -1177,7 +1163,12 @@ def distance_centers(prf1,prf2):
     return math.sqrt(math.pow(x2 - x1, 2) + math.pow(y2 - y1, 2) * 1.0)
  
 
-def generate_model_params(model='gauss', dm=None, TR=1.5, fit_hrf=False, verbose=False):
+def generate_model_params(
+    model='gauss', 
+    dm=None, 
+    TR=1.5, 
+    fit_hrf=False, 
+    verbose=False):
 
     """generate_model_params
 
@@ -1212,12 +1203,13 @@ def generate_model_params(model='gauss', dm=None, TR=1.5, fit_hrf=False, verbose
     if yml_file == None:
         yml_file = utils.get_file_from_substring("prf_analysis.yml", opj(os.path.dirname(os.path.dirname(utils.__file__)), 'misc'))
 
-    if verbose:
-        print(f"Reading settings from '{yml_file}'", flush=True)
-
+    utils.verbose(f"Reading settings from '{yml_file}'", verbose)
     with open(yml_file) as file:
         
         settings = yaml.safe_load(file)
+
+        if isinstance(dm, str):
+            dm = read_par_file(dm)
 
         prf_stim = stimulus.PRFStimulus2D(
             screen_size_cm=settings['screen_size_cm'],
@@ -1236,10 +1228,12 @@ def generate_model_params(model='gauss', dm=None, TR=1.5, fit_hrf=False, verbose
         coord_bounds = (-1.5*max_ecc_size, 1.5*max_ecc_size)
         prf_size = (0.2, 1.5*ss)
 
-        grids = {'screensize_degrees': float(ss), 
-                 'grids': {'sizes': [float(item) for item in sizes], 
-                           'eccs': [float(item) for item in eccs], 
-                           'polars': [float(item) for item in polars]}}
+        grids = {
+            'screensize_degrees': float(ss), 
+            'grids': {
+                'sizes': [float(item) for item in sizes], 
+                'eccs': [float(item) for item in eccs], 
+                'polars': [float(item) for item in polars]}}
         
         allowed_models = ['gauss', 'css', 'dog', 'norm']
         if model not in allowed_models:
@@ -1247,72 +1241,84 @@ def generate_model_params(model='gauss', dm=None, TR=1.5, fit_hrf=False, verbose
 
         # define bounds
         if model == "gauss":
-            gauss_bounds = [coord_bounds,                                           # x
-                            coord_bounds,                                           # y
-                            prf_size,                                               # prf size
-                            settings['prf_ampl'],                                   # prf amplitude
-                            settings['bold_bsl']]                                   # bold baseline
+            gauss_bounds = [
+                coord_bounds,                                           # x
+                coord_bounds,                                           # y
+                prf_size,                                               # prf size
+                settings['prf_ampl'],                                   # prf amplitude
+                settings['bold_bsl']]                                   # bold baseline
 
-            bounds = {'bounds': {'x': list(gauss_bounds[0]), 
-                                 'y': list(gauss_bounds[1]), 
-                                 'size': [float(item) for item in gauss_bounds[2]], 
-                                 'prf_ampl': gauss_bounds[3], 
-                                 'bold_bsl': gauss_bounds[4]}}
+            bounds = {
+                'bounds': {
+                    'x': list(gauss_bounds[0]), 
+                    'y': list(gauss_bounds[1]), 
+                    'size': [float(item) for item in gauss_bounds[2]], 
+                    'prf_ampl': gauss_bounds[3], 
+                    'bold_bsl': gauss_bounds[4]}}
 
         elif model == "css":
 
-            css_bounds = [coord_bounds,                                             # x
-                          coord_bounds,                                             # y
-                          prf_size,                                                 # prf size
-                          settings['prf_ampl'],                                     # prf amplitude
-                          settings['bold_bsl'],                                     # bold baseline
-                          settings['css_exponent']]                                 # CSS exponent
+            css_bounds = [
+                coord_bounds,                                             # x
+                coord_bounds,                                             # y
+                prf_size,                                                 # prf size
+                settings['prf_ampl'],                                     # prf amplitude
+                settings['bold_bsl'],                                     # bold baseline
+                settings['css_exponent']]                                 # CSS exponent
 
-            bounds = {'bounds': {'x': list(css_bounds[0]),
-                                 'y': list(css_bounds[1]),
-                                 'size': [float(item) for item in css_bounds[2]],
-                                 'prf_ampl': css_bounds[3],
-                                 'bold_bsl': css_bounds[4],
-                                 'css_exponent': css_bounds[5]}}
+            bounds = {
+                'bounds': {
+                    'x': list(css_bounds[0]),
+                    'y': list(css_bounds[1]),
+                    'size': [float(item) for item in css_bounds[2]],
+                    'prf_ampl': css_bounds[3],
+                    'bold_bsl': css_bounds[4],
+                    'css_exponent': css_bounds[5]}}
 
         elif model == "dog":
 
-            dog_bounds = [coord_bounds,                                             # x
-                          coord_bounds,                                             # y
-                          prf_size,                                                 # prf size
-                          settings['prf_ampl'],                                     # prf amplitude
-                          settings['bold_bsl'],                                     # bold baseline
-                          settings[model]['surround_amplitude_bound'],              # surround amplitude
-                          (settings['eps'], 3*ss)]                                  # surround size
+            dog_bounds = [
+                coord_bounds,                                             # x
+                coord_bounds,                                             # y
+                prf_size,                                                 # prf size
+                settings['prf_ampl'],                                     # prf amplitude
+                settings['bold_bsl'],                                     # bold baseline
+                settings[model]['surround_amplitude_bound'],              # surround amplitude
+                (settings['eps'], 3*ss)]                                  # surround size
 
-            bounds = {'bounds': {'x': list(dog_bounds[0]),
-                                 'y': list(dog_bounds[1]),
-                                 'size': [float(item) for item in dog_bounds[2]],
-                                 'prf_ampl': dog_bounds[3],
-                                 'bold_bsl': dog_bounds[4],
-                                 'surr_ampl': dog_bounds[5],
-                                 'surr_size': [float(item) for item in dog_bounds[6]]}}
+            bounds = {
+                'bounds': {
+                    'x': list(dog_bounds[0]),
+                    'y': list(dog_bounds[1]),
+                    'size': [float(item) for item in dog_bounds[2]],
+                    'prf_ampl': dog_bounds[3],
+                    'bold_bsl': dog_bounds[4],
+                    'surr_ampl': dog_bounds[5],
+                    'surr_size': [float(item) for item in dog_bounds[6]]}}
 
         elif model == "norm":
-            norm_bounds = [coord_bounds,                                            # x
-                           coord_bounds,                                            # x
-                           prf_size,                                                # prf size
-                           settings['prf_ampl'],                                    # prf amplitude
-                           settings['bold_bsl'],                                    # bold baseline
-                           settings[model]['surround_amplitude_bound'],             # surround amplitude
-                           (settings['eps'], 3*ss),                                 # surround size
-                           settings[model]['neural_baseline_bound'],                # neural baseline
-                           settings[model]['surround_baseline_bound']]              # surround baseline
+            norm_bounds = [
+                coord_bounds,                                            # x
+                coord_bounds,                                            # x
+                prf_size,                                                # prf size
+                settings['prf_ampl'],                                    # prf amplitude
+                settings['bold_bsl'],                                    # bold baseline
+                settings[model]['surround_amplitude_bound'],             # surround amplitude
+                (settings['eps'], 3*ss),                                 # surround size
+                settings[model]['neural_baseline_bound'],                # neural baseline
+                settings[model]['surround_baseline_bound']]              # surround baseline
 
-            bounds = {'bounds': {'x': list(norm_bounds[0]), 
-                                 'y': list(norm_bounds[1]), 
-                                 'size': [float(item) for item in norm_bounds[2]], 
-                                 'prf_ampl': norm_bounds[3], 
-                                 'bold_bsl': norm_bounds[4],
-                                 'surr_ampl': norm_bounds[5],
-                                 'surr_size': [float(item) for item in norm_bounds[6]],
-                                 'neur_bsl': list(norm_bounds[7]),
-                                 'surr_bsl': [float(item) for item in norm_bounds[8]]}}
+            bounds = {
+                'bounds': {
+                    'x': list(norm_bounds[0]), 
+                    'y': list(norm_bounds[1]), 
+                    'size': [float(item) for item in norm_bounds[2]], 
+                    'prf_ampl': norm_bounds[3], 
+                    'bold_bsl': norm_bounds[4],
+                    'surr_ampl': norm_bounds[5],
+                    'surr_size': [float(item) for item in norm_bounds[6]],
+                    'neur_bsl': list(norm_bounds[7]),
+                    'surr_bsl': [float(item) for item in norm_bounds[8]]}}
 
         if fit_hrf:
             bounds['bounds']["hrf_deriv"] = settings["hrf"]["deriv_bound"]
@@ -1340,8 +1346,7 @@ class GaussianModel():
             
             # check if dimensions make sense
             if self.old_params.shape[0] != self.data.shape[0]:
-                if self.verbose:
-                    print(f"Matching old parameters of shape {self.old_params.shape} to data of shape {self.data.shape[0],self.old_params.shape[-1]}", flush=True)
+                utils.verbose(f"Matching old parameters of shape {self.old_params.shape} to data of shape {self.data.shape[0],self.old_params.shape[-1]}", self.verbose)
                 self.old_params = np.tile(self.old_params, (self.data.shape[0],1))
 
             # set inserted params as gridsearch_params and iterative_search_params
@@ -1352,14 +1357,12 @@ class GaussianModel():
             # set gaussian_fitter as previous_gaussian_fitter
             self.previous_gaussian_fitter = self.gaussian_fitter
 
-            if self.verbose:
-                print(f"Inserting parameters from {type(self.old_params)} as 'iterative_search_params' in {self}", flush=True)            
+            utils.verbose(f"Inserting parameters from {type(self.old_params)} as 'iterative_search_params' in {self}", self.verbose)         
 
     def gridfit(self):
-        if self.verbose:
-            print("Starting gauss grid fit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S'), flush=True)
-
         ## start grid fit
+        utils.verbose(f"Starting gauss gridfit at {datetime.now().strftime('%Y/%m/%d %H:%M:%S')}", self.verbose)
+        
         start = time.time()
         self.gaussian_fitter.grid_fit(
             ecc_grid=self.settings['grids']['eccs'],
@@ -1372,17 +1375,13 @@ class GaussianModel():
 
         self.gauss_grid = utils.filter_for_nans(self.gaussian_fitter.gridsearch_params)
         mean_rsq = np.mean(self.gauss_grid[self.gauss_grid[:, -1]>self.settings['rsq_threshold'], -1])
-        if self.verbose:
-            print("Completed Gaussian gridfit at {start_time}. Voxels/vertices above {rsq}: {nr}/{total}".format(
-                start_time=datetime.now().strftime('%Y/%m/%d %H:%M:%S'),
-                rsq=str(self.settings['rsq_threshold']),
-                nr=str(np.sum(self.gauss_grid[:, -1]>self.settings['rsq_threshold'])),
-                total=str(self.gaussian_fitter.data.shape[0])), flush=True)
-                
-            print(f"Gridfit took {str(timedelta(seconds=elapsed))}")
-            print("Mean rsq>{rsq}: {m_rsq}".format(
-                rsq=self.settings['rsq_threshold'],
-                m_rsq=str(round(mean_rsq,2))), flush=True)
+        
+        # verbose stuff
+        start_time = datetime.now().strftime('%Y/%m/%d %H:%M:%S')
+        nr = np.sum(self.gauss_grid[:, -1]>self.settings['rsq_threshold'])
+        total = self.gaussian_fitter.data.shape[0]
+        utils.verbose(f"Completed Gaussian gridfit at {start_time}. Voxels/vertices above {self.settings['rsq_threshold']}: {nr}/{total}", self.verbose)
+        utils.verbose(f"Gridfit took {timedelta(seconds=elapsed)} | Mean rsq>{self.settings['rsq_threshold']}: {round(mean_rsq,2)}", self.verbose)
         
         if self.write_files:
             if self.save_grid:
@@ -1391,16 +1390,13 @@ class GaussianModel():
     def iterfit(self):
 
         start = time.time()
-        if self.verbose:
-            print("Starting gauss iterfit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S'), flush=True)
+        utils.verbose(f"Starting gauss iterfit at {datetime.now().strftime('%Y/%m/%d %H:%M:%S')}", self.verbose)
 
         # fetch bounds
         self.gauss_bounds = self.fetch_bounds(model='gauss')
 
         if isinstance(self.fix_parameters, list):
-            if self.verbose:
-                print(f"Fixing parameters (idx): {self.fix_parameters}", flush=True)
-
+            utils.verbose(f"Fixing parameters (idx): {self.fix_parameters}", self.verbose)
             for el in self.fix_parameters:
                 self.gauss_bounds[el] = tuple(
                     [self.gaussian_fitter.gridsearch_params[0,el],
@@ -1424,14 +1420,13 @@ class GaussianModel():
         # print summary
         elapsed = (time.time() - start)              
         self.gauss_iter = utils.filter_for_nans(self.gaussian_fitter.iterative_search_params)
-        if self.verbose:
-            mean_rsq = np.nanmean(self.gauss_iter[self.gaussian_fitter.rsq_mask, -1])
-            print("Completed gauss iterfit at {start_time}. Mean rsq>{rsq}: {m_rsq}".format(
-                start_time=datetime.now().strftime('%Y/%m/%d %H:%M:%S'),
-                rsq=self.settings['rsq_threshold'],
-                m_rsq=str(round(mean_rsq,2))), flush=True)
 
-            print(f"Iterfit took {str(timedelta(seconds=elapsed))}", flush=True)
+        # verbose stuff
+        mean_rsq = np.nanmean(self.gauss_iter[self.gaussian_fitter.rsq_mask, -1])
+        start_time = datetime.now().strftime('%Y/%m/%d %H:%M:%S')
+
+        utils.verbose(f"Completed Gaussian iterfit at {start_time}. Mean rsq>{self.settings['rsq_threshold']}: {round(mean_rsq,2)}", self.verbose)
+        utils.verbose(f"Iterfit took {timedelta(seconds=elapsed)}", self.verbose)
 
         # save intermediate files
         if self.write_files:
@@ -1497,8 +1492,7 @@ class ExtendedModel():
 
             ## Start grid fit
             start = time.time()
-            if self.verbose:
-                print(f"Starting {self.model} gridfit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S'), flush=True)
+            utils.verbose(f"Starting {self.model} gridfit at {datetime.now().strftime('%Y/%m/%d %H:%M:%S')}", self.verbose)
 
             self.tmp_fitter.grid_fit(
                 *self.grid_list,
@@ -1512,23 +1506,18 @@ class ExtendedModel():
             ### save grid parameters
             filtered_ = utils.filter_for_nans(self.tmp_fitter.gridsearch_params)
             setattr(self, f"{self.model}_grid", filtered_)
-            if self.verbose:
-                mean_rsq = np.mean(filtered_[self.tmp_fitter.gridsearch_rsq_mask, -1])
-                print("Completed {model} gridfit at {start_time}. Mean rsq>{rsq}: {m_rsq}".format(
-                    model=self.model,
-                    start_time=datetime.now().strftime('%Y/%m/%d %H:%M:%S'),
-                    rsq=str(self.settings['rsq_threshold']),
-                    m_rsq=str(round(mean_rsq,2))), flush=True)
-                    
-                print(f"Gridfit took {str(timedelta(seconds=elapsed))}", flush=True)
+
+            # verbose stuff
+            mean_rsq = np.mean(filtered_[self.tmp_fitter.gridsearch_rsq_mask, -1])
+            start_time = datetime.now().strftime('%Y/%m/%d %H:%M:%S')
+            utils.verbose(f"Completed {self.model} gridfit at {start_time}. Mean rsq>{self.settings['rsq_threshold']}: {round(mean_rsq,2)}", self.verbose)
+            utils.verbose(f"Gridfit took {timedelta(seconds=elapsed)}", self.verbose)
 
             if self.write_files:
                 if self.save_grid:
                     self.save_params(model=self.model, stage="grid")
         else:
-            if self.verbose:
-                print(f"Setting {(type(self.gaussian_fitter.iterative_search_params))} as 'gridsearch_params' in {self.tmp_fitter}", flush=True)
-                
+            utils.verbose(f"Setting {(type(self.gaussian_fitter.iterative_search_params))} as 'gridsearch_params' in {self.tmp_fitter}", self.verbose)
             self.tmp_fitter.gridsearch_params = self.gaussian_fitter.iterative_search_params
 
         setattr(self, f"{self.model}_fitter", self.tmp_fitter)
@@ -1538,9 +1527,7 @@ class ExtendedModel():
         # fetch bounds from settings > HRF bounds are automatically appended if fit_hrf=True
         self.tmp_bounds = self.fetch_bounds(model=self.model)
         if isinstance(self.fix_parameters, list):
-            if self.verbose:
-                print(f"Fixing parameters (idx): {self.fix_parameters}", flush=True)
-
+            utils.verbose(f"Fixing parameters (idx): {self.fix_parameters}", self.verbose)
             for el in self.fix_parameters:
                 self.tmp_bounds[el] = tuple(
                     [self.gaussian_fitter.iterative_search_params[0,el],
@@ -1549,8 +1536,7 @@ class ExtendedModel():
         setattr(self, f"{self.model}_bounds", self.tmp_bounds)        
         
         start = time.time()
-        if self.verbose:
-            print(f"Starting {self.model} iterfit at "+datetime.now().strftime('%Y/%m/%d %H:%M:%S'), flush=True)
+        utils.verbose(f"Starting {self.model} iterfit at {datetime.now().strftime('%Y/%m/%d %H:%M:%S')}", self.verbose)
 
         # fit
         if self.constraints[1] == "tc":
@@ -1573,15 +1559,11 @@ class ExtendedModel():
         filtered_ = utils.filter_for_nans(self.tmp_fitter.iterative_search_params)
         setattr(self, f"{self.model}_iter", filtered_)
 
-        if self.verbose:
-            mean_rsq = np.mean(filtered_[self.tmp_fitter.rsq_mask, -1])
-            print("Completed {model} iterfit at {start_time}. Mean rsq>{rsq}: {m_rsq}".format(
-                model=self.model,
-                start_time=datetime.now().strftime('%Y/%m/%d %H:%M:%S'),
-                rsq=self.settings['rsq_threshold'],
-                m_rsq=str(round(mean_rsq,2))), flush=True)
-
-            print(f"Iterfit took {str(timedelta(seconds=elapsed))}", flush=True)
+        # verbose stuff
+        mean_rsq = np.mean(filtered_[self.tmp_fitter.rsq_mask, -1])
+        start_time = datetime.now().strftime('%Y/%m/%d %H:%M:%S')
+        utils.verbose(f"Completed {self.model} iterfit at {start_time}. Mean rsq>{self.settings['rsq_threshold']}: {round(mean_rsq,2)}", self.verbose)
+        utils.verbose(f"Iterfit took {timedelta(seconds=elapsed)}", self.verbose)
 
         if self.write_files:
             self.save_params(model=self.model, stage="iter")   
@@ -1710,23 +1692,22 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         self.skip_grid          = skip_grid
         self.__dict__.update(kwargs)
 
+        # read design matrix if needed
+        if isinstance(self.design_matrix, str):
+            utils.verbose(f"Reading design matrix from '{self.design_matrix}'", self.verbose)
+            self.design_matrix = read_par_file(self.design_matrix)
+
+        # adjust design matrix to data
         # make data 2D
         if isinstance(self.data, np.ndarray):
             if self.data.ndim == 1:
                 self.data = self.data[np.newaxis,...]
-        
-        # read design matrix if needed
-        if isinstance(self.design_matrix, str):
-            if self.verbose:
-                print(f"Reading design matrix from '{self.design_matrix}'", flush=True)
-            self.design_matrix = read_par_file(self.design_matrix)
 
-        # adjust design matrix to data
-        if self.design_matrix.shape[-1] != self.data.shape[-1]:
-            missed_vols = self.design_matrix.shape[-1]-self.data.shape[-1]
-            self.design_matrix = self.design_matrix[...,missed_vols:]
-            if self.verbose:
-                print(f"Design has {missed_vols} more volumes than timecourses, trimming from beginning of design to {self.design_matrix.shape}")
+            if self.design_matrix.shape[-1] != self.data.shape[-1]:
+                missed_vols = self.design_matrix.shape[-1]-self.data.shape[-1]
+                self.design_matrix = self.design_matrix[...,missed_vols:]
+
+                utils.verbose(f"Design has {missed_vols} more volumes than timecourses, trimming from beginning of design to {self.design_matrix.shape}", self.verbose)
 
         #----------------------------------------------------------------------------------------------------------------------------------------------------------
         # Fetch the settings
@@ -1736,15 +1717,14 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         if self.fix_bold_baseline:
             self.settings['bounds']['bold_bsl'] = [0,0]
             self.fix_grid_baseline = 0
-            if self.verbose:
-                print(f"Fixing baseline at {self.settings['bounds']['bold_bsl']}", flush=True)
+
+            utils.verbose(f"Fixing baseline at {self.settings['bounds']['bold_bsl']}", self.verbose)
         else:
             self.fix_grid_baseline = None
 
         # check if we got a pRF-stim object
         if self.prf_stim != None:
-            if self.verbose:
-                print("Using user-defined pRF-stimulus object", flush=True)
+            utils.verbose("Using user-defined pRF-stimulus object", self.verbose)
             self.prf_stim = self.prf_stim
         else:
             self.prf_stim = self.prf_stim_
@@ -1768,8 +1748,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
             if optimizer not in self.allowed_optimizers:
                 raise ValueError(f"Unknown optimizer '{optimizer}'. Must be one of {self.allowed_optimizers}")
         
-        if self.verbose:
-            print(f"Using constraint(s): {self.constraints}")
+        utils.verbose(f"Using constraint(s): {self.constraints}", self.verbose)
             
         #----------------------------------------------------------------------------------------------------------------------------------------------------------
         # whichever model you run, run the Gaussian first
@@ -1781,8 +1760,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         self.norm_model     = Norm_Iso2DGaussianModel(stimulus=self.prf_stim, hrf=self.hrf)
 
         if self.model_obj != None:
-            if self.verbose:
-                print(f"Setting {self.model_obj} as '{model}_model'-attribute", flush=True)
+            utils.verbose(f"Setting {self.model_obj} as '{model}_model'-attribute", self.verbose)
             setattr(self, f'{model}_model', self.model_obj)
 
     def define_settings(self):
@@ -1801,18 +1779,14 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
             if self.hrf.ndim < 2:
                 self.hrf = self.hrf[np.newaxis,...]
             
-            if self.verbose:
-                print(f"Instantiate HRF with: '{type(self.hrf)}'", flush=True)
-
+            utils.verbose(f"Instantiate HRF with: '{type(self.hrf)}' (fit={self.fit_hrf})", self.verbose)
             try:
                 self.hrf = HRF(self.hrf)
             except:
                 raise ValueError("Cannot use HRF-class. Please specify list of three parameters")
 
         elif isinstance(self.hrf, list):
-            if self.verbose:
-                print(f"Instantiate HRF with: {self.hrf}", flush=True)
-
+            utils.verbose(f"Instantiate HRF with: {self.hrf} (fit={self.fit_hrf})", self.verbose)
             try:
                 self.hrf = HRF()
                 self.hrf.create_spm_hrf(hrf_params=self.hrf, TR=self.TR, force=True)
@@ -1820,11 +1794,8 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                 pass
         
         elif isinstance(self.hrf, str):
-            if self.verbose:
-                print(f"Instantiate 'direct' HRF", flush=True)
-            
-            self.hrf = "direct"
-            
+            self.hrf = "direct"  
+            utils.verbose(f"Instantiate '{self.hrf}' HRF (fit={self.fit_hrf})", self.verbose)
         else:
             # try to read HRF parameters from settings
             try:
@@ -1832,8 +1803,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
             except:
                 hrf_pars = [1,1,0]
 
-            if self.verbose:
-                print(f"Instantiate HRF with: {hrf_pars}", flush=True)
+            utils.verbose(f"Instantiate HRF with: {hrf_pars} (fit={self.fit_hrf})", self.verbose)
             
             try:
                 self.hrf = HRF()
@@ -1852,9 +1822,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
 
                     # only update if different
                     if getattr(self, setting) != self.settings[setting]:
-
-                        if self.verbose:
-                            print(f"Setting '{setting}' to user-defined value: {getattr(self, setting)} (was: {self.settings[setting]})", flush=True)
+                        utils.verbose(f"Setting '{setting}' to user-defined value: {getattr(self, setting)} (was: {self.settings[setting]})", self.verbose)
 
                         self.settings[setting] = getattr(self, setting)
 
@@ -1882,16 +1850,25 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                 GaussianModel.iterfit(self)
 
         else:
-            if self.verbose:
-                print(f"Gaussian fitter: {self.previous_gaussian_fitter}", flush=True)
+            utils.verbose(f"Gaussian fitter: {self.previous_gaussian_fitter}", self.verbose)
 
-                # assume old parameters are grid parameters
-                if self.model == "gauss" and "iter" in self.stage:
-                    GaussianModel.iterfit(self)
+            # assume old parameters are grid parameters
+            if self.model == "gauss" and "iter" in self.stage:
+
+                # we need a separete generation of settings if we have 'old_params' with the HRF fitted already, otherwise we get 'AssertionError: Unequal bounds (7) and parameters (9)' because it tries to add another set of parameters for the HRF while they already exist
+
+                if self.previous_gaussian_fitter.gridsearch_params.shape[-1] > 6:
+
+                    # HRF already fitted, so set to false and update settings
+                    utils.verbose(f"HRF already fitted, setting 'fit_hrf' in '{self.previous_gaussian_fitter}' to False", self.verbose)
+                    self.previous_gaussian_fitter.fit_hrf = False
+
+                GaussianModel.iterfit(self)
 
         #----------------------------------------------------------------------------------------------------------------------------------------------------------
         # Check if we should do DN-model
-        if self.model.lower() != "gauss":            
+        if self.model.lower() != "gauss":
+            
             
             ## Define settings/grids/fitter/bounds etcs
             self.define_settings()
@@ -1902,8 +1879,26 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
             # overwrite settings with custom settings
             self.update_settings()
 
+                
             # initiate and do grid fit
             ExtendedModel.__init__(self)
+
+            # if existing parameters already have more than the usual parameters given a model, we assume that the HRF has been fitted
+            if self.model == "dog":
+                max_shape = 8
+            elif self.model == "css":
+                max_shape = 7
+            elif self.model == "norm":
+                max_shape = 10
+            else:
+                raise ValueError(f"Model must be one of 'dog', 'css', or 'norm', not '{self.model}'")
+
+            if self.previous_gaussian_fitter.gridsearch_params.shape[-1] > max_shape:
+
+                # HRF already fitted, so set to false and update settings
+                utils.verbose(f"HRF already fitted, setting 'fit_hrf' in '{self.tmp_fitter}' to False", self.verbose)
+                self.tmp_fitter.fit_hrf = False
+
             ExtendedModel.gridfit(self)
 
             if "iter" in self.stage:
@@ -1912,41 +1907,45 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
     def fetch_bounds(self, model=None):
         
         if model == "norm":
-            bounds = [tuple(self.settings['bounds']['x']),                  # x
-                      tuple(self.settings['bounds']['y']),                  # y
-                      tuple(self.settings['bounds']['size']),               # prf size
-                      tuple(self.settings['bounds']['prf_ampl']),           # prf amplitude
-                      tuple(self.settings['bounds']['bold_bsl']),           # bold baseline
-                      tuple(self.settings['bounds']['surr_ampl']),          # surround amplitude
-                      tuple(self.settings['bounds']['surr_size']),          # surround size
-                      tuple(self.settings['bounds']['neur_bsl']),           # neural baseline
-                      tuple(self.settings['bounds']['surr_bsl'])]           # surround baseline
+            bounds = [
+                tuple(self.settings['bounds']['x']),                  # x
+                tuple(self.settings['bounds']['y']),                  # y
+                tuple(self.settings['bounds']['size']),               # prf size
+                tuple(self.settings['bounds']['prf_ampl']),           # prf amplitude
+                tuple(self.settings['bounds']['bold_bsl']),           # bold baseline
+                tuple(self.settings['bounds']['surr_ampl']),          # surround amplitude
+                tuple(self.settings['bounds']['surr_size']),          # surround size
+                tuple(self.settings['bounds']['neur_bsl']),           # neural baseline
+                tuple(self.settings['bounds']['surr_bsl'])]           # surround baseline
 
         elif model == "gauss":
-            bounds = [tuple(self.settings['bounds']['x']),                  # x
-                      tuple(self.settings['bounds']['y']),                  # y
-                      tuple(self.settings['bounds']['size']),               # prf size
-                      tuple(self.settings['bounds']['prf_ampl']),           # prf amplitude
-                      tuple(self.settings['bounds']['bold_bsl'])]           # bold baseline   
+            bounds = [
+                tuple(self.settings['bounds']['x']),                  # x
+                tuple(self.settings['bounds']['y']),                  # y
+                tuple(self.settings['bounds']['size']),               # prf size
+                tuple(self.settings['bounds']['prf_ampl']),           # prf amplitude
+                tuple(self.settings['bounds']['bold_bsl'])]           # bold baseline   
 
         elif model == "css":
 
-            bounds = [tuple(self.settings['bounds']['x']),                  # x
-                      tuple(self.settings['bounds']['y']),                  # y
-                      tuple(self.settings['bounds']['size']),               # prf size
-                      tuple(self.settings['bounds']['prf_ampl']),           # prf amplitude
-                      tuple(self.settings['bounds']['bold_bsl']),           # bold baseline
-                      tuple(self.settings['bounds']['css_exponent'])]       # CSS exponent
+            bounds = [
+                tuple(self.settings['bounds']['x']),                  # x
+                tuple(self.settings['bounds']['y']),                  # y
+                tuple(self.settings['bounds']['size']),               # prf size
+                tuple(self.settings['bounds']['prf_ampl']),           # prf amplitude
+                tuple(self.settings['bounds']['bold_bsl']),           # bold baseline
+                tuple(self.settings['bounds']['css_exponent'])]       # CSS exponent
 
         elif model == "dog":
 
-            bounds = [tuple(self.settings['bounds']['x']),                  # x
-                      tuple(self.settings['bounds']['y']),                  # y
-                      tuple(self.settings['bounds']['size']),               # prf size
-                      tuple(self.settings['bounds']['prf_ampl']),           # prf amplitude
-                      tuple(self.settings['bounds']['bold_bsl']),           # bold baseline
-                      tuple(self.settings['bounds']['surr_ampl']),          # surround amplitude
-                      tuple(self.settings['bounds']['surr_size'])]          # surround size
+            bounds = [
+                tuple(self.settings['bounds']['x']),                  # x
+                tuple(self.settings['bounds']['y']),                  # y
+                tuple(self.settings['bounds']['size']),               # prf size
+                tuple(self.settings['bounds']['prf_ampl']),           # prf amplitude
+                tuple(self.settings['bounds']['bold_bsl']),           # bold baseline
+                tuple(self.settings['bounds']['surr_ampl']),          # surround amplitude
+                tuple(self.settings['bounds']['surr_size'])]          # surround size
 
         else:
             raise ValueError(f"Unrecognized model '{model}'")               
@@ -2013,8 +2012,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                 except:
                     pass
                 
-                if self.verbose:
-                    print("Reading settings from pickle-file (safest option; overwrites other settings)")
+                utils.verbose(f"Reading settings from '{params_file}' (safest option; overwrites other settings)", self.verbose)
 
         elif isinstance(params_file, np.ndarray):
             params = params_file.copy()
@@ -2050,9 +2048,8 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         else:
             raise ValueError(f"Unrecognized input type for '{params_file}' ({type(params_file)})")
 
-        if self.verbose:
-            print(f"Inserting parameters from {type(params_file)} as '{model}_{stage}' in {self}")
-
+        utils.verbose(f"Inserting parameters from {type(params_file)} as '{model}_{stage}' in {self}", self.verbose)
+    
         setattr(self, f'{model}_{stage}', params)
 
     def make_predictions(self, vox_nr=None, model='gauss', stage='iter'):
@@ -2104,6 +2101,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         resize_pix=270,
         add_tc={"tc": None},
         axs=None,
+        normalize=False,
         **kwargs):    
         
         """plot_vox
@@ -2152,6 +2150,8 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
             Some examples:            
             >>> add_tc=np.array([]) # simplest
             >>> add_tc={"tc": np.array([]), "label": "grid", "marker": "."} # set some extra options
+        normalize: bool, optional
+            Normalize the prediction to the max amplitude. Default = False
 
         Returns
         ----------
@@ -2202,6 +2202,9 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         if hasattr(self, f"{model}_{stage}_predictions"):
             self.prediction = getattr(self, f"{model}_{stage}_predictions")[vox_nr]
 
+        if normalize:
+            self.prediction /= self.prediction.max()
+            
         prf_array = make_prf(
             self.prf_stim, 
             size=params[2], 
@@ -2269,7 +2272,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
             else:
                 x_axis = np.array(list(np.arange(0,self.prediction.shape[0])))
                 x_label = "volumes"
-
+                
             # add additional timecourse
             if isinstance(add_tc, np.ndarray):
                 add_tc = {"tc": add_tc}
@@ -2354,19 +2357,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
             out_dict['settings'] = self.settings
             out_dict['predictions'] = self.make_predictions(model=model, stage=stage)
 
-            # # save HRFs if applicable
-            # if self.fit_hrf:
-                
-            #     if stage != "grid":
-            #         try:
-            #             self.hrfs = [self.hrf.create_spm_hrf(hrf_params=[1,*params[ii,-3:-1]], TR=self.TR, force=True).values.T for ii in range(self.data.shape[0])]
-            #         except:
-            #             raise IOError(f"Could not create HRFs")
-
-            #         out_dict['hrf'] = self.hrfs
-
-            if self.verbose:
-                print(f"Save {stage}-fit parameters in {pkl_file}")
+            utils.verbose(f"Save {stage}-fit parameters in {pkl_file}", self.verbose)
 
             f = open(pkl_file, "wb")
             pickle.dump(out_dict, f)
@@ -2402,20 +2393,17 @@ def find_most_similar_prf(reference_prf, look_in_params, verbose=False, return_n
 
     x_par,_ = utils.find_nearest(look_in_params[...,0], reference_prf[0], return_nr='all')
 
-    if verbose:
-        print(f"{x_par.shape} survived x-parameter matching")
+    utils.verbose(f"{x_par.shape} survived x-parameter matching", verbose)
 
     y_par,_ = utils.find_nearest(look_in_params[x_par,1], reference_prf[1], return_nr='all')
     xy_par = x_par[y_par]
 
-    if verbose:
-        print(f"{xy_par.shape} survived y-parameter matching")
+    utils.verbose(f"{xy_par.shape} survived y-parameter matching", verbose)
 
     size_par,_ = utils.find_nearest(look_in_params[xy_par,2], reference_prf[2], return_nr='all')
     xysize_par = xy_par[size_par]
 
-    if verbose:
-        print(f"{xysize_par.shape} survived size-parameter matching")
+    utils.verbose(f"{xysize_par.shape} survived size-parameter matching", verbose)
 
     # filter indices with r2
     if r2_thresh != None:
@@ -2423,8 +2411,7 @@ def find_most_similar_prf(reference_prf, look_in_params, verbose=False, return_n
         true_idc = np.where(filt == True)
         xysize_par = xysize_par[true_idc]
 
-        if verbose:
-            print(f"{xysize_par.shape} survived r2>{r2_thresh}")
+        utils.verbose(f"{xysize_par.shape} survived r2>{r2_thresh}", verbose)
 
     if len(xysize_par) == 0:
         raise ValueError(f"Could not find similar pRFs. Maybe lower r2-threshold?")
@@ -2920,14 +2907,11 @@ class CollectSubject(pRFmodelFitting):
         if self.fit_hrf:
             look_for += ["hrf-true_"]
 
-        if self.verbose:
-            print(f"Reading full-cortex pRF estimates with {look_for}")
+        utils.verbose(f"Reading full-cortex pRF estimates with {look_for}", self.verbose)
         for model in allowed_models:
             par_file = utils.get_file_from_substring(look_for+[f"model-{model}"], self.prf_dir, return_msg=None)
             if isinstance(par_file, str):
-                if self.verbose:
-                    print(f" model: {model}:\t{par_file}")
-
+                utils.verbose(f" model: {model}:\t{par_file}", self.verbose)
                 setattr(self, f'{model}_iter_pars', read_par_file(par_file))
         
         # set pycortex directory
@@ -2938,9 +2922,7 @@ class CollectSubject(pRFmodelFitting):
         if self.cx_dir != None and os.path.exists(self.cx_dir):
             self.vert_fn = utils.get_file_from_substring([self.model, "best_vertices.csv"], self.cx_dir)
 
-            if self.verbose:
-                print(f"Reading {self.vert_fn}")
-
+            utils.verbose(f"Reading {self.vert_fn}", self.verbose)
             self.vert_info = utils.VertexInfo(
                 self.vert_fn, 
                 subject=self.subject, 
@@ -2950,9 +2932,7 @@ class CollectSubject(pRFmodelFitting):
         if hasattr(self, "vert_info"):
             self.target_params = self.return_prf_params(hemi=self.hemi)
             self.target_vertex = self.return_target_vertex(hemi=self.hemi)
-
-            if self.verbose:
-                print(f"Target vertex: {self.target_vertex}")
+            utils.verbose(f"Target vertex: {self.target_vertex}", self.verbose)
 
         # find the csv file with parameters (generally available with 'norm')
         if self.best_vertex:
