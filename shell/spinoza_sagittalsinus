@@ -187,7 +187,7 @@ for subID in ${search}; do
 
     if [[ ! -f ${r2star_mask} ]]; then
 
-      t1w=`find "${input_dir}" -type f \( -name "$(basename ${dir})*" -and -name "*${DATA^^}_*" -and -not -iname "*space-*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
+      t1w=`find "${input_dir}" -type f \( -name "${sub_name}*" -and -name "*${DATA^^}_*" -and -not -iname "*space-*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
 
       if [[ ! -z ${t1w} ]]; then
 
@@ -200,9 +200,11 @@ for subID in ${search}; do
         if [[ ${SOFTWARE} == "itk" ]] || [[ -z ${SOFTWARE} ]]; then
           call_checkfunction itksnap
           if [[ $? -eq 0 ]]; then
-            echo "Starting ITKsnap. Press add new segmentation and draw the sagittal sinus, save it as:"
-            echo "\"${r2star_mask}\" in the \"$(dirname ${MASKS})\" directory"
-            itksnap -g ${t1w} 2>/dev/null
+            echo "Starting ITKsnap. Edit, then close and save it"
+
+            # create empty image so we can load it as segmentation
+            call_createimg ${t1w} ${r2star_mask}
+            itksnap -g ${t1w} -s ${r2star_mask} 2>/dev/null
           else
             echo "call_checkfunction itksnap exited with non-zero status. Make sure you have ITKsnap installed!"
             echo "see: http://www.itksnap.org/pmwiki/pmwiki.php?n=Documentation.TutorialSectionInstallation"
