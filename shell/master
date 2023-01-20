@@ -247,6 +247,7 @@ do
 done
 
 # source helper functions
+source ${DIR_SCRIPTS}/shell/spinoza_setup
 source call_bashhelper
 
 # set the execute flag
@@ -718,26 +719,20 @@ if [[ $? -eq 0 ]]; then
   fi
 
   echo "---------------------------------------------------------------------------------------------------"
-  echo "[${module}] Register T1 from memp2rage to T1 from mp2rage"
+  echo "[${module}] Register ${ACQ[1]} to ${ACQ[0]}"
 
-  if [[ ${DATA:u} == "AVERAGE" ]]; then
-
-    # check where inputs live
-    if [[ -d ${DIR_DATA_DERIV}/pymp2rage ]]; then
-      INPUT_DIR=${DIR_DATA_DERIV}/pymp2rage
-    else
-      INPUT_DIR=${DIR_DATA_HOME}
-    fi
-
-    ${job} spinoza_registration ${REG_TYPE} ${SUBJECT} ${OW} ${SESSION} ${SGE} ${INPUT_DIR} ${DIR_DATA_DERIV}/ants
-
-    if [[ $? -ne 0 ]]; then
-      echo "ERROR in master: spinoza_registration exited with non-zero status"
-      exit 1
-    fi
-
+  # check where inputs live
+  if [[ -d ${DIR_DATA_DERIV}/pymp2rage ]]; then
+    INPUT_DIR=${DIR_DATA_DERIV}/pymp2rage
   else
-    echo "The variable \"DATA\" is \"${DATA}\"; must be \"AVERAGE\" for this module."
+    INPUT_DIR=${DIR_DATA_HOME}
+  fi
+
+  ${job} spinoza_registration ${REG_TYPE} ${SUBJECT} ${OW} ${SESSION} ${SGE} ${INPUT_DIR} ${DIR_DATA_DERIV}/ants
+
+  if [[ $? -ne 0 ]]; then
+    echo "ERROR in master: spinoza_registration exited with non-zero status"
+    exit 1
   fi
 
   echo "[${module}] DONE" && echo
