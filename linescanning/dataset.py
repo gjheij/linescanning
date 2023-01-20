@@ -56,8 +56,12 @@ class ParseEyetrackerFile():
         Low-pass cutoff frequency
     high_pass_pupil_f: float, optional
         High-pass cutoff frequency
-    TR: float
-        repetition time to correct onset times for deleted volumes
+    TR: float, optional (fMRI)
+        Repetition time of experiment. Together with `nr_vols`, used to determine the period that needs to be extracted after onset
+        of the first trial. Default = None
+    nr_vols: int, optional (fMRI)
+        Together with `TR`, used to determine the period that needs to be extracted after onset
+        of the first trial. Default = None
     deleted_first_timepoints: int
         number of volumes to delete to correct onset times for deleted volumes
 
@@ -81,6 +85,10 @@ class ParseEyetrackerFile():
     >>>         onsets.append(ParseExpToolsFile(df_onsets, subject=sub_idx, run=run).get_onset_df())
     >>>         
     >>> onsets = pd.concat(onsets).set_index(['subject', 'run', 'event_type'])
+
+    Notes
+    ----------
+    If you have self-paced experiments or want to extract the full data from the eyetracker, keep `TR` and `nr_vols` **None**.
     """
 
     def __init__(
@@ -98,8 +106,6 @@ class ParseEyetrackerFile():
 
         if not HEDFPY_AVAILABLE:
             raise ModuleNotFoundError("could not find 'hedfpy', so this functionality is disabled")
-        else:
-            print("I was able to import hedfpy")
 
         self.edf_file           = edf_file
         self.func_file          = func_file
@@ -142,9 +148,6 @@ class ParseEyetrackerFile():
                 raise ValueError(f"Input must be 'str' or 'list', not '{type(self.edf_file)}'")
 
             self.nr_vols = self.vols(self.func_file)
-        else:
-            if not isinstance(self.nr_vols, int):
-                raise ValueError(f"Nr of volumes must be specified (or pass the functional file)")
 
         h5_file = opj(os.path.dirname(edfs[0]), f"eye.h5")
         self.ho = hedfpy.HDFEyeOperator(h5_file)
@@ -191,11 +194,14 @@ class ParseEyetrackerFile():
                 self.run = i+1
             
             # check if we got multiple TRs for different edf-files
-            use_TR = check_input_is_list(
-                self, 
-                "TR", 
-                list_element=self.run,
-                matcher="edf_file")
+            if self.TR != None:
+                use_TR = check_input_is_list(
+                    self, 
+                    "TR", 
+                    list_element=self.run,
+                    matcher="edf_file")
+            else:
+                use_TR = None
 
             # full output from 'fetch_relevant_info' > use sub as differentiator if multiple files were given
             self.data = self.fetch_relevant_info(TR=use_TR, nr_vols=self.nr_vols)
@@ -248,15 +254,23 @@ class ParseEyetrackerFile():
         trial_times = self.ho.read_session_data(alias, 'trials')
         trial_phase_times = self.ho.read_session_data(alias, 'trial_phases')
 
-        # fetch duration of scan
-        func_time = nr_vols*TR
+        # fetch duration of scan or read until end of edf file
+        use_end_point = True
+        if TR != None and nr_vols != None:
+            func_time = nr_vols*TR
+            use_end_point = False
 
         # get block parameters
         self.session_start_EL_time = trial_times.iloc[0, :][0]
         self.sample_rate = self.ho.sample_rate_during_period(alias)
 
-        # add number of fMRI*samplerate as stop EL time
-        self.session_stop_EL_time = self.session_start_EL_time+(func_time*self.sample_rate)
+        # add number of fMRI*samplerate as stop EL time or read until end of edf file
+        if not use_end_point:
+            self.session_stop_EL_time = self.session_start_EL_time+(func_time*self.sample_rate)
+        else:
+            self.session_stop_EL_time = self.ho.block_properties(alias)["block_end_timestamp"].iloc[0]
+
+        # define period
         self.time_period = [self.session_start_EL_time,self.session_stop_EL_time]
 
         eye = self.ho.eye_during_period(self.time_period, alias)
@@ -305,25 +319,27 @@ class ParseEyetrackerFile():
 
             df_space_eye[extr] = data
         
+        # nothing to resample if nr_vols==None
         df_space_func = {}
-        rs_col = list(df_space_eye.keys())
-        for col in rs_col:
-            df_space_func[col] = glm.resample_stim_vector(df_space_eye[col], nr_vols)   
+        if isinstance(nr_vols, int):
+            rs_col = list(df_space_eye.keys())
+            for col in rs_col:
+                df_space_func[col] = glm.resample_stim_vector(df_space_eye[col], nr_vols)   
 
-            # high-pass filter
-            df_space_func[f"{col}_hp"] = preproc.highpass_dct(
-                df_space_func[col], 
-                self.high_pass_pupil_f,
-                TR=TR)[0]
+                # high-pass filter
+                df_space_func[f"{col}_hp"] = preproc.highpass_dct(
+                    df_space_func[col], 
+                    self.high_pass_pupil_f,
+                    TR=TR)[0]
 
-            # percent signal change
-            for hh in [col,f"{col}_hp"]:
-                dd = df_space_func[hh]
-                df_space_func[f"{hh}_psc"] = np.squeeze(
-                    utils.percent_change(
-                        dd, 
-                        0,
-                        baseline=dd.shape[0]))
+                # percent signal change
+                for hh in [col,f"{col}_hp"]:
+                    dd = df_space_func[hh]
+                    df_space_func[f"{hh}_psc"] = np.squeeze(
+                        utils.percent_change(
+                            dd, 
+                            0,
+                            baseline=dd.shape[0]))
 
         # add start time to it
         start_exp_time = trial_times.iloc[0, :][-1]
