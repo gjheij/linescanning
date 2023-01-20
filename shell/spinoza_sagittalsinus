@@ -124,8 +124,8 @@ for subID in ${search}; do
     r2star=`find "${input_dir}" -type f \( -name "*acq-${DATA^^}_*" -and -name "*R2starmap.nii.gz" \) 2>/dev/null`
     if [[ ! -z ${r2star} ]]; then
 
-      r2star_mask=${mask_dir}/${base}_acq-${DATA^^}_desc-sagittalsinus.nii.gz
-      if [[ ! -f ${r2star_mask} ]]; then
+      sinus_mask=${mask_dir}/${base}_acq-${DATA^^}_desc-sagittalsinus.nii.gz
+      if [[ ! -f ${sinus_mask} ]]; then
 
         echo
         echo "**************************************** Processing ${sub_name} ***************************************"
@@ -137,8 +137,8 @@ for subID in ${search}; do
         # threshold R2star mask and binarize mask
         echo "Thresholding and binarizing `basename ${r2star}`"
         fslmaths ${r2star} -thr 0.07 $(dirname ${r2star})/tmp_$(basename ${r2star})
-        fslmaths $(dirname ${r2star})/tmp_$(basename ${r2star}) -bin ${r2star_mask}
-        fslmaths ${r2star_mask} -fillh ${r2star_mask}
+        fslmaths $(dirname ${r2star})/tmp_$(basename ${r2star}) -bin ${sinus_mask}
+        fslmaths ${sinus_mask} -fillh ${sinus_mask}
 
         # now manually edit the file
         t1w=`find "${input_dir}" -type f \( -name "*T1w*" -and -name "*${DATA}*" -and -name "*.nii.gz" \) 2>/dev/null`
@@ -148,7 +148,7 @@ for subID in ${search}; do
           call_checkfunction itksnap
           if [[ $? -eq 0 ]]; then
             echo "Starting ITKsnap. Fill in the sagittal sinus where needed and save the image"
-            itksnap -g ${t1w} -s ${r2star_mask} 2>/dev/null
+            itksnap -g ${t1w} -s ${sinus_mask} 2>/dev/null
           else
             echo "call_checkfunction itksnap exited with non-zero status. Make sure you have ITKsnap installed!"
             echo "see: http://www.itksnap.org/pmwiki/pmwiki.php?n=Documentation.TutorialSectionInstallation"
@@ -162,8 +162,8 @@ for subID in ${search}; do
 
         inv2_mask=`find "${mask_dir}" -type f \( -name "*inv-2*" -and -name "*bet_mask*" \) 2>/dev/null`
         if [[ ! -z ${inv2_mask} ]]; then
-          echo "Applying mask to `basename ${r2star_mask}`"
-          fslmaths ${r2star_mask} -mas ${inv2_mask} ${r2star_mask}
+          echo "Applying mask to `basename ${sinus_mask}`"
+          fslmaths ${sinus_mask} -mas ${inv2_mask} ${sinus_mask}
         else
           echo "Could not find INV2 mask. Run BET on the 2nd inversion time first."
           echo "Otherwise you get an inaccurate segmentation of sagittal sinus"
@@ -183,9 +183,8 @@ for subID in ${search}; do
 
   else
 
-    r2star_mask=${mask_dir}/${base}_acq-${DATA^^}_desc-sagittalsinus.nii.gz
-
-    if [[ ! -f ${r2star_mask} ]]; then
+    sinus_mask=${mask_dir}/${base}_acq-${DATA^^}_desc-sagittalsinus.nii.gz
+    if [[ ! -f ${sinus_mask} ]]; then
 
       t1w=`find "${input_dir}" -type f \( -name "${sub_name}*" -and -name "*${DATA^^}_*" -and -not -iname "*space-*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
 
@@ -194,7 +193,7 @@ for subID in ${search}; do
         echo
         echo "**************************************** Processing ${sub_name} ***************************************"
 
-        echo "Creating `basename ${r2star_mask} `"
+        echo "Creating `basename ${sinus_mask} `"
 
         # install itksnap from here: http://www.itksnap.org/pmwiki/pmwiki.php?n=Documentation.TutorialSectionInstallation
         if [[ ${SOFTWARE} == "itk" ]] || [[ -z ${SOFTWARE} ]]; then
@@ -203,8 +202,8 @@ for subID in ${search}; do
             echo "Starting ITKsnap. Edit, then close and save it"
 
             # create empty image so we can load it as segmentation
-            call_createimg ${t1w} ${r2star_mask}
-            itksnap -g ${t1w} -s ${r2star_mask} 2>/dev/null
+            call_createimg ${t1w} ${sinus_mask}
+            itksnap -g ${t1w} -s ${sinus_mask} 2>/dev/null
           else
             echo "call_checkfunction itksnap exited with non-zero status. Make sure you have ITKsnap installed!"
             echo "see: http://www.itksnap.org/pmwiki/pmwiki.php?n=Documentation.TutorialSectionInstallation"
@@ -215,7 +214,7 @@ for subID in ${search}; do
           freeview -v ${t1w} 2>/dev/null
         elif [[ ${SOFTWARE} == "fsl" ]]; then
           echo "Starting FSLeyes. Press add new segmentation and draw the sagittal sinus, save it as:"
-          echo "\"${r2star_mask}\" in the \"manual_masks\" directory"
+          echo "\"${sinus_mask}\" in the \"manual_masks\" directory"
           fsleyes --scene ortho ${t1w} 2>/dev/null
         else
           echo "Unknown option specified: ${SOFTWARE}. I can deal with:"
@@ -232,11 +231,11 @@ for subID in ${search}; do
 
       fi
 
-      if [[ -f ${r2star_mask} ]]; then
+      if [[ -f ${sinus_mask} ]]; then
         inv2_mask=`find "${mask_dir}" -type f \( -name "*inv-2*" -and -name "*${DATA^^}*" -and -name "*bet_mask*" \) 2>/dev/null`
         if [[ ! -z ${inv2_mask} ]]; then
-          echo "Applying mask to `basename ${r2star_mask}`"
-          fslmaths ${r2star_mask} -mas ${inv2_mask} ${r2star_mask}
+          echo "Applying mask to `basename ${sinus_mask}`"
+          fslmaths ${sinus_mask} -mas ${inv2_mask} ${sinus_mask}
         else
           echo "Could not find INV2 mask. Run BET on the 2nd inversion time first."
           echo "Otherwise you get an inaccurate segmentation of sagittal sinus"
