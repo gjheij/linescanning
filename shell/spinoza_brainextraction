@@ -488,6 +488,16 @@ for subID in ${search}; do
       fslmaths ${spm} -sub ${brainmask} -thr 0 ${duramask}
     fi
 
+    # If we do not have INV2 images, we did not run spinoza_qmrimaps. So, we dont have a cat_dura mask. 
+    # If we do have a mni_sinus mask (from T2; spinoza_sinusfrommni), we can copy that one as cat_dura 
+    # so spinoza_masking won't crash
+    sinus_out=${MASKS}/${base}_acq-${DATA^^}_desc-mni_sinus.nii.gz
+    if [[ ! -f ${duramask} ]]; then
+      if [[ -f ${sinus_out} ]]; then
+        cp ${sinus_out} ${duramask} 2>/dev/null
+      fi
+    fi    
+
   else
 
     echo "No valid argument was specified. Please use ANTs/ants or FSL/fsl. Exiting script"
