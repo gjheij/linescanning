@@ -140,7 +140,7 @@ source call_bashhelper
 #-----------------------------------------------------------------------------
 
 echo "==================================================================================================="
-printf "ME-MP2RAGE to MP2RAGE REGISTRATION\n"
+printf "REGISTRATION\n"
 start=`date +%s`
 start_date=`date`
 
@@ -188,7 +188,16 @@ for subID in ${search}; do
     suffix=MP2RAGE
     ext="from-${ACQ[1]^^}_to-${ACQ[0]^^}"
     fixed=`find "${input_dir}" -type f \( -iname "*${ACQ[0]^^}_*" -and -name "*T1w.nii.gz" -and -not -name "*space-*" \) 2>/dev/null`
-    moving=`find "${input_dir}" -type f \( -iname "*${ACQ[1]^^}_*" -and -name "*.nii.gz" -and -not -name "*space-*" \) 2>/dev/null`    write_output=1
+
+    dd=("FLAIR")
+    # https://stackoverflow.com/a/15394738
+    if [[ " ${dd[*]} " =~ " ${ACQ[1]^^} " ]]; then
+      moving=`find "${input_dir}" -type f \( -iname "*_${ACQ[1]^^}.nii.gz" -and -not -name "*space-*" \) 2>/dev/null`
+    else
+      moving=`find "${input_dir}" -type f \( -iname "*${ACQ[1]^^}_*" -and -name "*.nii.gz" -and -not -name "*space-*" \) 2>/dev/null`    
+    fi
+    write_output=1
+
   elif [[ ${TYPE,,} == "mni" ]]; then
     txt="Registering ${ACQ[0]^^}-T1w to MNI152 template"
     suffix=MNI152NLin6Asym
@@ -283,7 +292,8 @@ for subID in ${search}; do
       for out in ${WARP_2_MP2RAGE[@]}; do
         
         # check if file exists and warp it
-        in_file=$(dirname ${moving})/$(basename ${moving} _T1w.nii.gz)_${out}.nii.gz
+        suff=`echo $moving | rev | cut -d"_" -f1 | rev | cut -d"." -f1`
+        in_file=$(dirname ${moving})/$(basename ${moving} _${suff}.nii.gz)_${out}.nii.gz
         if [ -f ${in_file} ]; then
 
           # define output
