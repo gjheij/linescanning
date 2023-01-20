@@ -99,6 +99,10 @@ Options:
                     the -x flag if you want different minimizers for both stages                      
     --no_fit        Stop the process before fitting, right after saving out averaged data. This was 
                     useful for me to switch to percent-signal change without requiring a re-fit.
+    --no_bounds     Turn off grid bounds; sometimes parameters fall outside the grid parameter 
+                    bounds, causing 'inf' values. This is especially troublesome when fitting a
+                    single timecourse. If you trust your iterative fitter, you can turn off the 
+                    bounds and let the iterative take care of the parameters                    
     --raw           use unzscore'd data from pybest; do not percent-signal change.
     --v1            only fit voxels from ?.V1_exvivo.thresh.label; the original dimensions will be 
                     maintained, but timecourses outside of the ROI are set to zero
@@ -135,6 +139,7 @@ Example:
     cut_vols    = 0
     lbl         = None
     save_grid   = True
+    grid_bounds = True   
 
     try:
         opts = getopt.getopt(argv,"ghs:n:t:o:i:p:m:x:u:c:v:",["help", "sub=", "model=", "ses=", "task=", "out=", "in=", "png=", "params=", "grid", "space=", "hrf", "n_pix=", "clip=", "verbose", "file_ending=", "zscore", "overwrite", "constr=", "tc", "bgfs", "no_fit", "raw", "cut_vols=", "v1", "v2", "no_grid"])[0]
@@ -197,6 +202,8 @@ Example:
         elif opt in ("--v2"):
             lbl = "V2_exvivo.thresh"
             roi_tag = "V2"
+        elif opt in ("--no_bounds"):
+            grid_bounds = False   
         elif opt in ("--no_grid"):
             save_grid = False
             if grid_only:
@@ -441,7 +448,8 @@ Example:
             old_params=old_params,
             constraints=constraints,
             save_grid=save_grid,
-            nr_jobs=1)
+            nr_jobs=1,
+            use_grid_bounds=grid_bounds)
 
         stage1.fit()
 
@@ -471,6 +479,7 @@ Example:
                 fix_bold_baseline=psc,
                 constraints=constraints,
                 save_grid=save_grid,
+                use_grid_bounds=grid_bounds
                 nr_jobs=1)
 
             stage2.fit()    

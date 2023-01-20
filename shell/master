@@ -44,6 +44,7 @@ fit_flag=""           # spinoza_fitprfs
 fprep_input=0         # spinoza_fitprfs
 lbl_flag=""           # spinoza_fitprfs
 save_grid=""          # spinoza_fitprfs
+bouds_flag=""         # spinoza_fitprfs
 use_bbr=""            # spinoza_fmriprep
 WARP_ONLY=""          # spinoza_fmriprep
 REMOVE_WF=""          # spinoza_fmriprep
@@ -60,7 +61,7 @@ NO_BIAS=""            # spinoza_qmrimaps
 
 # use long options in bash:
 # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options
-declare -a array=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv" "--no_fit" "--fmriprep" "--fprep" "--v1" "--v2" "--no_grid" "--debug" "--no_nordic" "--dcm_fix" "--ow")
+declare -a array=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv" "--no_fit" "--fmriprep" "--fprep" "--v1" "--v2" "--no_grid" "--debug" "--no_nordic" "--dcm_fix" "--ow" "--no_bounds")
 
 # sort options array
 IFS=$'\n' opts=($(sort <<<"${array[*]}"))
@@ -76,7 +77,10 @@ do
           ;;       
         dcm_fix)
           DCM_FIX="--dcm_fix"
-          ;;              
+          ;;         
+        no_bounds)
+          bounds_flag="--no_bounds"
+          ;;                 
         no_nordic)
           NORDIC="--no_nordic"
           ;;            
@@ -364,6 +368,10 @@ Args:
                     metric layering (spinoza_layering)
   --no_bbr          maps to '--force-no-bbr' in call_fmriprep
   --no_biascorr     maps to '-b' in spinoza_biassanlm; don't perform bias correction after denoising
+  --no_bounds       Turn off grid bounds; sometimes parameters fall outside the grid parameter bounds, 
+                    causing 'inf' values. This is especially troublesome when fitting a single time-
+                    course. If you trust your iterative fitter, you can turn off the bounds and let 
+                    the iterative take care of the parameters  
   --no_clip         spinoza_fitprfs; ensures that the design matrix is NOT clipped, despite the pos-
                     sible presence of screen delimiter files
   --no_grid         Don't save out gridsearch parameters
@@ -1227,6 +1235,7 @@ if [[ $? -eq 0 ]]; then
     ${CUT_VOLS} \
     ${lbl_flag} \
     ${save_grid} \
+    ${bouds_flag} \
     ${PRF_INPUT} ${DIR_DATA_DERIV}/prf ${PNG_DIR}
 
   if [[ $? -ne 0 ]]; then

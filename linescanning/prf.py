@@ -1490,6 +1490,10 @@ class ExtendedModel():
         # grid fit
         if not self.skip_grid:
 
+            if not self.use_grid_bounds:
+                utils.verbose("Ignoring grid bounds", self.verbose)
+                self.grid_bounds = None
+
             ## Start grid fit
             start = time.time()
             utils.verbose(f"Starting {self.model} gridfit at {datetime.now().strftime('%Y/%m/%d %H:%M:%S')}", self.verbose)
@@ -1667,6 +1671,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         constraints="tc",
         save_grid=True,
         skip_grid=False,
+        use_grid_bounds=True,
         **kwargs):
 
         self.data               = data
@@ -1690,6 +1695,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         self.constraints        = constraints
         self.save_grid          = save_grid
         self.skip_grid          = skip_grid
+        self.use_grid_bounds    = use_grid_bounds
         self.__dict__.update(kwargs)
 
         # read design matrix if needed
