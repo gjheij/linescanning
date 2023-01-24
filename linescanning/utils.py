@@ -953,7 +953,7 @@ def select_from_df(df, expression="run = 1", index=True, indices=None, match_exa
         if isinstance(expression, str):
             expression = [expression]
 
-        if isinstance(expression, tuple) or isinstance(expression, list):
+        if isinstance(expression, (tuple,list)):
 
             expressions = expression[::2]
             operators = expression[1::2]
@@ -963,10 +963,12 @@ def select_from_df(df, expression="run = 1", index=True, indices=None, match_exa
                 col1,operator1,val1 = expressions[0].split()
                 ops1 = str2operator(operator1)
                 
-                if len(val1) == 1:
-                    val1 = int(val1)
-                    
-                sub_df = sub_df.loc[ops1(sub_df[col1], val1)]
+                # check if number is numeric and whether is has a dot (i.e., float). If not, make integer
+                if val1.isnumeric():
+                    if not "." in val1:
+                        val1 = int(val1)
+                
+                sub_df = sub_df.loc[ops1(sub_df[col1], int(val1))]
                 
             if len(expressions) == 2:
                 col1,operator1,val1 = expressions[0].split()
@@ -977,11 +979,13 @@ def select_from_df(df, expression="run = 1", index=True, indices=None, match_exa
                 ops2 = str2operator(operator2)
 
                 # check if we should interpret values invididually as integers
-                if len(val1) == 1:
-                    val1 = int(val1)
+                if val1.isnumeric():
+                    if not "." in val1:
+                        val1 = int(val1)
 
-                if len(val2) == 1:
-                    val2 = int(val2)
+                if val2.isnumeric():
+                    if not "." in val2:
+                        val2 = int(val2)
 
                 sub_df = sub_df.loc[main_ops(ops1(sub_df[col1], val1), ops2(sub_df[col2], val2))]
 
@@ -1024,6 +1028,13 @@ def split_bids_components(fname):
     else:
         print(f"Could not find any element of {ids} in {fname}")
 
+def subjects_in_list(input):
+
+    subj = []
+    for ii in input:
+        subj.append(split_bids_components(ii)["sub"])
+
+    return list(np.unique(np.array(subj)))
 
 def filter_for_nans(array):
     """filter out NaNs from an array"""
