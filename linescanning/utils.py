@@ -968,7 +968,7 @@ def select_from_df(df, expression="run = 1", index=True, indices=None, match_exa
                     if not "." in val1:
                         val1 = int(val1)
                 
-                sub_df = sub_df.loc[ops1(sub_df[col1], int(val1))]
+                sub_df = sub_df.loc[ops1(sub_df[col1], val1)]
                 
             if len(expressions) == 2:
                 col1,operator1,val1 = expressions[0].split()
