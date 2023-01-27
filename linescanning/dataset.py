@@ -47,7 +47,7 @@ class ParseEyetrackerFile():
     Parameters
     ----------
     edf_file: str, list
-        path pointing to the output file of the experiment; can be a list of multiple 
+        path pointing to the output file of the experiment; can be a list of multiple. Ideally, all these files belong to 1 subject, otherwise it tries to write everything to 1 file, which is too much
     subject: int
         subject number in the returned pandas DataFrame (should start with 1, ..., n)
     run: int
@@ -64,6 +64,8 @@ class ParseEyetrackerFile():
         of the first trial. Default = None
     deleted_first_timepoints: int
         number of volumes to delete to correct onset times for deleted volumes
+    h5_file: str, optional
+        Custom path to h5-file in which to store the complete output from `edf_file`. If nothing's specified, it'll output an `eye.h5`-file in the directory of the first edf-file in the list.
 
     Examples
     ----------
@@ -102,7 +104,8 @@ class ParseEyetrackerFile():
         TR=0.105, 
         verbose=False, 
         use_bids=True,
-        nr_vols=None):
+        nr_vols=None,
+        h5_file=None):
 
         if not HEDFPY_AVAILABLE:
             raise ModuleNotFoundError("could not find 'hedfpy', so this functionality is disabled")
@@ -116,8 +119,8 @@ class ParseEyetrackerFile():
         self.high_pass_pupil_f  = high_pass_pupil_f
         self.verbose            = verbose
         self.use_bids           = use_bids
-        self.include_blinks     = False
         self.nr_vols            = nr_vols
+        self.h5_file            = h5_file
 
         # add all files to h5-file
         if isinstance(self.edf_file, str) or isinstance(self.edf_file, list):
@@ -149,9 +152,11 @@ class ParseEyetrackerFile():
 
             self.nr_vols = self.vols(self.func_file)
 
-        h5_file = opj(os.path.dirname(edfs[0]), f"eye.h5")
-        self.ho = hedfpy.HDFEyeOperator(h5_file)
-        if not os.path.exists(h5_file):
+        if not isinstance(self.h5_file, str):
+            self.h5_file = opj(os.path.dirname(edfs[0]), f"eye.h5")
+
+        self.ho = hedfpy.HDFEyeOperator(self.h5_file)
+        if not os.path.exists(self.h5_file):
             for i, edf_file in enumerate(edfs):
 
                 if not os.path.exists(edf_file):
