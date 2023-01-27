@@ -1,6 +1,8 @@
 import numpy as np
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+from matplotlib.lines import Line2D
 import pandas as pd
 import seaborn as sns
 from typing import Union
@@ -24,7 +26,8 @@ class Defaults():
         self.ylim_top = None
         self.xlim_left = 0
         self.xlim_right = None
-        self.set_xlim_zero=False
+        self.set_xlim_zero = False
+        self.legend_handletext = 0.05
 
         if self.xkcd:
             self.fontname = "Humor Sans"
@@ -228,18 +231,20 @@ class LazyPRF(Defaults):
                 labelsize=self.label_size)
 
             for axis in ['top', 'bottom', 'left', 'right']:
-                self.ax.spines[axis].set_linewidth(self.axis_width)
+                self.ax.spines[axis].set_linewidth(0)
             
             if self.full_axis:
                 new_ticks = np.arange(self.vf_extent[0],self.vf_extent[1]+1, 1)
                 self.ax.set_xticks(new_ticks)
                 self.ax.set_yticks(new_ticks)
+            else:
+                self.ax.set_yticks(self.vf_extent)
+                self.ax.set_xticks(self.vf_extent)
 
             if self.sns_trim:
-                sns.despine(offset=self.sns_offset, trim=self.sns_trim)
-        
-        if self.return_obj:
-            return self
+                sns.despine(
+                    offset=self.sns_offset, 
+                    trim=self.sns_trim)
 
 class LazyPlot(Defaults):
     """LazyPlot
@@ -262,10 +267,12 @@ class LazyPlot(Defaults):
         Label of y-axis, by default None
     labels: str, list, optional
         String (if 1 timeseries) or list (with the length of `ts`) of colors, by default None. Labels for the timeseries to be used in the legend
-    title: str, optional
-        Plot title, by default None
-    xkcd: bool, optional
-        Plot the figre in XKCD-style (cartoon), by default False
+    title: str, dict, optional
+        String of dictionary collecting the following keys representing information about the title:
+        >>> title = {
+        >>>     'title' "some title",       # title text
+        >>>     'color': 'k',               # color (default = 'k')
+        >>>     'fontweight': "bold"}       # fontweight (default = 'normal'), can be any of the matplotib fontweight options (e.g., 'italic', 'bold', 'normal' etc.)
     color: str, list, optional
         String (if 1 timeseries) or list (with the length of `ts`) of colors, by default None. If nothing is specified, we'll use `cmap` to create a color palette
     cmap: str, optional
@@ -278,11 +285,11 @@ class LazyPlot(Defaults):
         Font size of titles and axis labels, by default 12
     add_hline: dict, optional
         Dictionary for a horizontal line through the plot, by default None. Collects the following items:
-
-        >>> add_hline = {'pos' 0,       # position
-        >>>              'color': 'k',  # color
-        >>>              'lw': 1,       # linewidth
-        >>>              'ls': '--'}    # linestyle
+        >>> add_hline = {
+        >>>     'pos' 0,       # position
+        >>>     'color': 'k',  # color
+        >>>     'lw': 1,       # linewidth
+        >>>     'ls': '--'}    # linestyle
         You can get the settings above by specifying *add_hline='default'*. Now also accepts *add_hline='mean'* for single inputs
     add_vline: [type], optional
         Dictionary for a vertical line through the plot, by default None. Same keys as `add_hline`
@@ -532,9 +539,27 @@ class LazyPlot(Defaults):
                 fontname=self.fontname, 
                 fontsize=self.font_size)
 
-        if self.title:
+        if isinstance(self.title, (str,dict)):
+            default_dict = {
+                'color': 'k', 
+                'fontweight': 'normal'}
+
+            if isinstance(self.title, str):
+                self.title_dict = {"title": self.title}
+            elif isinstance(self.title, dict):
+                self.title_dict = self.title.copy()
+            else:
+                raise ValueError(f"title input must be a string or dictionary, not {type(self.title)}: '{self.title}'")
+            
+            # add default keys if they're missing in dictionary
+            for key in list(default_dict.keys()):
+                if key not in list(self.title_dict.keys()):
+                    self.title_dict[key] = default_dict[key]
+
             axs.set_title(
-                self.title, 
+                self.title_dict["title"],
+                color=self.title_dict["color"] ,
+                fontweight=self.title_dict["fontweight"],
                 fontname=self.fontname, 
                 fontsize=self.font_size,
                 pad=self.pad_title)
@@ -845,7 +870,7 @@ class LazyBar():
         fancy: bool=False,
         fancy_rounding: float=0.15,
         fancy_pad: float=-0.004,
-        fancy_aspect: float=0.2,
+        fancy_aspect: float=None,
         bar_legend: bool=False,
         **kwargs):
 
@@ -922,6 +947,9 @@ class LazyBar():
         if save_as:
             plt.savefig(self.save_as, transparent=True, dpi=300, bbox_inches='tight')
 
+        if not hasattr(self, "bbox_to_anchor"):
+            self.bbox_to_anchor = None
+
     def plot(self, **kw_sns):
 
         if self.axs == None:
@@ -993,8 +1021,13 @@ class LazyBar():
         # from: https://stackoverflow.com/a/61569240
         if self.fancy:
             new_patches = []
+
             for patch in reversed(self.ff.patches):
-                # print(bb.xmin, bb.ymin,abs(bb.width), abs(bb.height))
+
+                # max of axis divided by 4 gives nice rounding
+                if not isinstance(self.fancy_aspect, (int,float)):
+                    self.fancy_aspect = patch._axes.get_ylim()[-1]/4
+                
                 bb = patch.get_bbox()
                 color = patch.get_facecolor()
                 p_bbox = patches.FancyBboxPatch(
@@ -1033,13 +1066,13 @@ class LazyBar():
                     if self.points_hue != self.hue:
                         multi_strip = True
                             
-                        hue_items = list(np.unique(self.data[self.points_hue].values))
+                        self.hue_items = list(np.unique(self.data[self.points_hue].values))
                         if isinstance(self.points_color, (str,tuple)):
-                            colors = [self.points_color for ii in range(len(hue_items))]
+                            self.hue_colors = [self.points_color for ii in range(len(self.hue_items))]
                         else:
-                            colors = sns.color_palette(self.points_palette, len(hue_items))
+                            self.hue_colors = sns.color_palette(self.points_palette, len(self.hue_items))
 
-                        for it, color in zip(hue_items, colors):
+                        for it, color in zip(self.hue_items, self.hue_colors):
                             df_per_it = self.data[self.data[self.points_hue] == it]
                             sns.stripplot(
                                 data=df_per_it, 
@@ -1079,20 +1112,52 @@ class LazyBar():
                     labels = labels[-len(cond):]
 
                 # filter out handles that correspond to labels
-                self.ff.legend(
-                    handles,
-                    labels,
-                    frameon=False, 
-                    fontsize=self.label_size*0.8)
+                if isinstance(self.bbox_to_anchor, tuple):
+                    self.ff.legend(
+                        handles,
+                        labels,
+                        frameon=False, 
+                        fontsize=self.label_size,
+                        bbox_to_anchor=self.bbox_to_anchor,
+                        handletextpad=self.legend_handletext)
+                else:
+                    self.ff.legend(
+                        handles,
+                        labels,
+                        frameon=False, 
+                        fontsize=self.label_size,
+                        handletextpad=self.legend_handletext)
 
             else:
 
-                # filter out handles that correspond to labels
-                self.ff.legend(
-                    frameon=False, 
-                    fontsize=self.label_size*0.8)
+                if isinstance(self.bbox_to_anchor, tuple):
+                    self.ff.legend(
+                        frameon=False,
+                        fontsize=self.label_size,
+                        bbox_to_anchor=self.bbox_to_anchor,
+                        handletextpad=self.legend_handletext)
+                else:
+                    self.ff.legend(
+                        frameon=False,
+                        fontsize=self.label_size,
+                        handletextpad=self.legend_handletext)  
         else:
-            self.ff.legend([],[], frameon=False)
+            if self.points_legend:
+                if self.add_points:
+                    if isinstance(self.bbox_to_anchor, tuple):
+                        self.ff.legend(
+                            frameon=False,
+                            fontsize=self.label_size,
+                            bbox_to_anchor=self.bbox_to_anchor,
+                            handletextpad=self.legend_handletext)
+                    else:
+                        self.ff.legend(
+                            frameon=False,
+                            fontsize=self.label_size,
+                            handletextpad=self.legend_handletext)                        
+
+            else:
+                self.ff.legend([],[], frameon=False)
                 
         # axis labels and titles
         if self.title:
@@ -1485,3 +1550,79 @@ def conform_ax_to_obj(
         ax=ax)
 
     return ax
+
+class LazyColorbar(Defaults):
+
+    def __init__(
+        self,
+        axs=None,
+        cmap="magma_r",
+        txt=None,
+        vmin=0,
+        vmax=10,
+        ori="vertical",
+        ticks=None,
+        flip_ticks=False,
+        flip_label=False,
+        **kwargs):
+
+        self.axs = axs
+        self.cmap = cmap
+        self.txt = txt
+        self.vmin = vmin
+        self.vmax = vmax
+        self.ori = ori
+        self.ticks = ticks
+        self.flip_ticks = flip_ticks
+        self.flip_label = flip_label
+
+        super().__init__()
+        self.__dict__.update(kwargs)
+        self.update_rc(self.fontname)
+
+        # set ticks to integer intervals if nothing's specified
+        if not isinstance(self.ticks, list):
+            self.ticks = [int(ii) for ii in range(vmin,vmax+1)]
+
+        # make colorbase instance
+        if isinstance(self.cmap, str):
+            self.cmap = mpl.cm.get_cmap(self.cmap, 256)
+
+        # plop everything in class
+        mpl.colorbar.ColorbarBase(
+            self.axs, 
+            orientation=self.ori, 
+            cmap=self.cmap,
+            norm=mpl.colors.Normalize(vmin,vmax),
+            label=self.txt,
+            ticks=self.ticks)
+
+        if self.ori == "vertical":
+            # set font stuff
+            if self.flip_ticks:
+                self.axs.yaxis.set_ticks_position("left")
+
+            if self.flip_label:
+                self.axs.yaxis.set_label_position("left")
+
+            text = self.axs.yaxis.label
+        else:
+            if self.flip_ticks:
+                self.axs.xaxis.set_ticks_position("top")
+
+            if self.flip_label:
+                self.axs.xaxis.set_label_position("top")                      
+                
+            text = self.axs.xaxis.label
+
+        font = mpl.font_manager.FontProperties(size=self.font_size)
+        text.set_font_properties(font)
+
+        # fix ticks
+        self.axs.tick_params(
+            width=self.tick_width, 
+            length=self.tick_length,
+            labelsize=self.label_size)        
+
+        # turn off frame
+        self.axs.set_frame_on(False)    
