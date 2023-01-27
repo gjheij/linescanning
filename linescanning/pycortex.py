@@ -443,6 +443,8 @@ class SavePycortexViews():
         _description_, by default "occipital_inflated"
     zoom: bool, optional
         _description_, by default False
+    base_name: str, optional
+        Basename for the images to save from the pycortex viewer. If None, we'll default to `<subject>`; `_desc-<>.png` is appended.
 
     Example
     ----------
@@ -462,7 +464,9 @@ class SavePycortexViews():
         pivot=0,
         size=(4000,4000),
         data_name="occipital_inflated",
+        base_name=None,
         zoom=False):
+
         self.data_dict = data_dict
         self.subject = subject
         self.fig_dir = fig_dir
@@ -475,6 +479,7 @@ class SavePycortexViews():
         self.specularity = specularity
         self.data_name = data_name
         self.zoom = zoom
+        self.base_name = base_name
 
         self.view = {
             self.data_name:{
@@ -493,18 +498,28 @@ class SavePycortexViews():
         self.params_to_save = list(self.data_dict.keys())
 
     def save_all(self):
+        
+        if not isinstance(self.base_name, str):
+            self.base_name = self.subject
+
         for param_to_save in self.js_handle.dataviews.attrs.keys():
             print(f"saving {param_to_save}")
-            self.save(param_to_save)
+            self.save(
+                param_to_save,
+                self.base_name)
 
-    def save(self, param_to_save):
+    def save(
+        self, 
+        param_to_save,
+        base_name):
 
         self.js_handle.setData([param_to_save])
         time.sleep(1)
         
         # Save images by iterating over the different views and surfaces
         for _, view_params in self.view.items():
-            filename = f"{self.subject}_desc-{param_to_save}.png"
+
+            filename = f"{base_name}_desc-{param_to_save}.png"
             output_path = os.path.join(self.fig_dir, filename)
             #print(view)
             for param_name, param_value in view_params.items():
