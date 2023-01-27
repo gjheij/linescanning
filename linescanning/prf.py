@@ -28,12 +28,33 @@ opj = os.path.join
 
 def normalize_prf(src,targ):
 
+    # check that we have enough parameters
+    for ii,par in zip([src,targ],["source","target"]):
+        if len(ii) < 3:
+            raise ValueError(f"need at least three parameters (x,y,sigma) for '{par}' pRF, got {len(ii)}.")
+
+    # get overlap prior to normalization
+    x = distance_centers(src,targ)/src[2]
+    
+    # normalize
     norm = targ.copy()
     norm[0] -= src[0]
     norm[1] -= src[1]
     norm[2] /= src[2]
 
-    return norm
+    # get new distance
+    x_prime = distance_centers([0,0], norm)
+
+    # shift position so that distances are the same again
+    p_prime = []
+    for ix,ii in enumerate(["x","y"]):
+        corrected_position = norm[ix]/x_prime * x
+        p_prime.append(corrected_position)
+
+    # p_prime only has position, add size back to it
+    p_prime.append(norm[2])
+
+    return p_prime
     
 def read_par_file(prf_file):
 
@@ -2566,6 +2587,11 @@ class SizeResponse():
                 "ecc": np.sqrt(params[:,0]**2+params[:,1]**2),
                 "polar": np.angle(params[:,0]+params[:,1]*1j)
             }
+
+            if params.shape[-1] > 6:
+                params_dict["hrf_deriv"] = params[:,-3]
+                params_dict["hrf_disp"] = params[:,-2]
+
         elif model == "norm":
                 
             params_dict = {
@@ -2588,6 +2614,10 @@ class SizeResponse():
                 "suppression index": (params[:,5]*params[:,6]**2)/(params[:,3]*params[:,2]**2),
                 "ecc": np.sqrt(params[:,0]**2+params[:,1]**2),
                 "polar": np.angle(params[:,0]+params[:,1]*1j)}
+
+            if params.shape[-1] > 10:
+                params_dict["hrf_deriv"] = params[:,-3]
+                params_dict["hrf_dsip"] = params[:,-2]                
         else:
             raise NotImplementedError(f"Im lazy.. Still need to sort out models ['css' and 'dog']")
 
