@@ -1221,15 +1221,14 @@ class Neighbours(SurfaceCalc):
         if self.verbose:
             print(f"Creating subsurfaces for {self.fs_label}")        
                     
-        for h in ["lh","rh"]:
-            if h == "lh":
-                surf = self.lh_surf
-            else:
-                surf = self.rh_surf
+        for mask,surf,attr in zip(
+            ["lh_roi_mask","rh_roi_mask"],
+            [self.lh_surf,self.rh_surf],
+            ["lh_subsurf","rh_subsurf"]):
 
             # create the subsurface
-            subsurface = surf.create_subsurface(vertex_mask=getattr(self, f"{h}_roi_mask"))
-            setattr(self, f"{h}_subsurf", subsurface)
+            subsurface = surf.create_subsurface(vertex_mask=getattr(self, mask))
+            setattr(self, attr, subsurface)
 
         # get the vertices belonging to subsurface
         self.lh_subsurf_v = np.where(self.lh_subsurf.subsurface_vertex_map != stats.mode(self.lh_subsurf.subsurface_vertex_map)[0][0])[0]
