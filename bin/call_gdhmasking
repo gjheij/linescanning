@@ -151,14 +151,14 @@ if left to empty, it will look by default for the following files:
     if output == None:
         masked_out = opj(
           os.environ.get('DIR_DATA_DERIV'), 
-          f"masked_{acq_tag}",
+          f"masked_{acq_tag.lower()}",
           sub_dir, 
           "anat", 
           f"{base}_acq-{acq_tag}_desc-masked_T1w.nii.gz")
 
         mask_out = opj(
           os.environ.get('MASKS'), 
-          f"masked_{acq_tag}",
+          f"masked_{acq_tag.lower()}",
           sub_dir, 
           f"{base}_acq-{acq_tag}_desc-brainmask.nii.gz")          
 
