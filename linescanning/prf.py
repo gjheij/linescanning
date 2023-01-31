@@ -60,7 +60,7 @@ def read_par_file(prf_file):
 
     """read_par_file
 
-    Function to read in files containing pRF-estimates from various sources. Currently, supports the following inputs: `np.ndarray`, `npy`-file, `mat`-file (will read in the data from the last item in `list(prf_file.keys())`), `pkl`-file (assumes has key 'pars' in it). Because we generally save the design matrix as a *.mat*-file, we can use the same function to read in that file and obtain the design matrix in `np.ndarray`-format.
+    Function to read in files containing pRF-estimates from various sources. Currently, supports the following inputs: `np.ndarray`, `npy`-file, `mat`-file (will read in the data from the last item in `list(prf_file.keys())`), `pkl`-file (assumes has key 'pars' in it). Because we generally save the design matrix as a *.mat*-file, we can use the same function to read in that file and obtain the design matrix in `np.ndarray`-format. Inputs `pd.DataFrame` will be converted to `np.ndarray` with :func:`linescanning.prf.Parameters`, assuming certain column names to be present.
 
     Returns
     ----------
@@ -103,6 +103,8 @@ def read_par_file(prf_file):
                     raise TypeError(f"Pickle-file did not arise from 'pRFmodelFitting'. I'm looking for 'pars', but got '{data.keys()}'")
     elif isinstance(prf_file, np.ndarray):
         pars = prf_file.copy()
+    elif isinstance(prf_file, pd.DataFrame):
+        pars = Parameters(prf_file).to_array()
     else:
         raise TypeError(f"Unknown input file '{prf_file}'. Must be one of ['str', 'npy', 'pkl'] or a numpy.ndarray")
 
@@ -1724,6 +1726,11 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
             utils.verbose(f"Reading design matrix from '{self.design_matrix}'", self.verbose)
             self.design_matrix = read_par_file(self.design_matrix)
 
+        # read design matrix if needed
+        if isinstance(self.data, str):
+            utils.verbose(f"Reading data from '{self.data}'", self.verbose)
+            self.data = read_par_file(self.data)            
+
         # adjust design matrix to data
         # make data 2D
         if isinstance(self.data, np.ndarray):
@@ -2060,17 +2067,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                     params_file['D'][hemi],
                     params_file['r2'][hemi]))
             else:
-                params = np.array((
-                    params_file['x'],
-                    params_file['y'],
-                    params_file['prf_size'],
-                    params_file['A'],
-                    params_file['bold_bsl'],
-                    params_file['C'],
-                    params_file['surr_size'],
-                    params_file['B'],
-                    params_file['D'],
-                    params_file['r2']))
+                params = Parameters(params_file, model=model).to_array()
 
         else:
             raise ValueError(f"Unrecognized input type for '{params_file}' ({type(params_file)})")
@@ -3049,3 +3046,149 @@ def baseline_from_dm(dm, n_trs=7):
     shifted_dm = np.zeros_like(dm)
     shifted_dm[..., n_trs:] = dm[..., :-n_trs]
     return np.where((np.sum(dm, axis=(0, 1)) == 0) & (np.sum(shifted_dm, axis=(0, 1)) == 0))[0]
+
+class Parameters():
+
+    def __init__(
+        self,
+        params,
+        model="gauss"):
+
+        self.params = params
+        self.model = model
+
+    def to_df(self):
+
+        if not isinstance(self.params, np.ndarray):
+            raise ValueError(f"Input must be np.ndarray, not '{type(self.params)}'")
+
+        if self.params.ndim == 1:
+            self.params = self.params[np.newaxis,:]
+
+        # see: https://github.com/VU-Cog-Sci/prfpy_tools/blob/master/utils/postproc_utils.py#L377
+        if self.model == "gauss":
+            params_dict = {
+                "x": self.params[:,0], 
+                "y": self.params[:,1], 
+                "prf_size": self.params[:,2],
+                "prf_ampl": self.params[:,3],
+                "bold_bsl": self.params[:,4],
+                "r2": self.params[:,-1],
+                "ecc": np.sqrt(self.params[:,0]**2+self.params[:,1]**2),
+                "polar": np.angle(self.params[:,0]+self.params[:,1]*1j)
+            }
+
+            if self.params.shape[-1] > 6:
+                params_dict["hrf_deriv"] = self.params[:,-3]
+                params_dict["hrf_disp"] = self.params[:,-2]
+
+        elif self.model == "norm":
+                
+            params_dict = {
+                "x": self.params[:,0], 
+                "y": self.params[:,1], 
+                "prf_size": self.params[:,2],
+                "prf_ampl": self.params[:,3],
+                "bold_bsl": self.params[:,4],
+                "surr_ampl": self.params[:,5],
+                "surr_size": self.params[:,6], 
+                "neur_bsl": self.params[:,7],
+                "surr_bsl": self.params[:,8],
+                "A": self.params[:,3], 
+                "B": self.params[:,7], #/params[:,3], 
+                "C": self.params[:,5], 
+                "D": self.params[:,8],
+                "ratio (B/D)": self.params[:,7]/self.params[:,8],
+                "r2": self.params[:,-1],
+                "size ratio": self.params[:,6]/self.params[:,2],
+                "suppression index": (self.params[:,5]*self.params[:,6]**2)/(self.params[:,3]*self.params[:,2]**2),
+                "ecc": np.sqrt(self.params[:,0]**2+self.params[:,1]**2),
+                "polar": np.angle(self.params[:,0]+self.params[:,1]*1j)}
+
+            if self.params.shape[-1] > 10:
+                params_dict["hrf_deriv"] = self.params[:,-3]
+                params_dict["hrf_dsip"] = self.params[:,-2]
+
+        elif self.model == "dog":
+            params_dict = {
+                "x": self.params[:,0], 
+                "y": self.params[:,1], 
+                "prf_size": self.params[:,2],
+                "prf_ampl": self.params[:,3],
+                "bold_bsl": self.params[:,4],
+                "surr_ampl": self.params[:,5],
+                "surr_size": self.params[:,6], 
+                "r2": self.params[:,-1],
+                "size ratio": self.params[:,6]/self.params[:,2],
+                "suppression index": (self.params[:,5]*self.params[:,6]**2)/(self.params[:,3]*self.params[:,2]**2),
+                "ecc": np.sqrt(self.params[:,0]**2+self.params[:,1]**2),
+                "polar": np.angle(self.params[:,0]+self.params[:,1]*1j)}
+
+        elif self.model == "dog":
+            params_dict = {
+                "x": self.params[:,0], 
+                "y": self.params[:,1], 
+                "prf_size": self.params[:,2],
+                "prf_ampl": self.params[:,3],
+                "bold_bsl": self.params[:,4],
+                "surr_ampl": self.params[:,5],
+                "surr_size": self.params[:,6], 
+                "r2": self.params[:,-1],
+                "size ratio": self.params[:,6]/self.params[:,2],
+                "suppression index": (self.params[:,5]*self.params[:,6]**2)/(self.params[:,3]*self.params[:,2]**2),
+                "ecc": np.sqrt(self.params[:,0]**2+self.params[:,1]**2),
+                "polar": np.angle(self.params[:,0]+self.params[:,1]*1j)}     
+            
+            if self.params.shape[-1] > 8:
+                params_dict["hrf_deriv"] = self.params[:,-3]
+                params_dict["hrf_dsip"] = self.params[:,-2]
+
+        elif self.model == "css":
+            params_dict = {
+                "x": self.params[:,0], 
+                "y": self.params[:,1], 
+                "prf_size": self.params[:,2],
+                "prf_ampl": self.params[:,3],
+                "bold_bsl": self.params[:,4],
+                "css_exp": self.params[:,5],
+                "r2": self.params[:,-1],
+                "ecc": np.sqrt(self.params[:,0]**2+self.params[:,1]**2),
+                "polar": np.angle(self.params[:,0]+self.params[:,1]*1j)}     
+            
+            if self.params.shape[-1] > 7:
+                params_dict["hrf_deriv"] = self.params[:,-3]
+                params_dict["hrf_dsip"] = self.params[:,-2]
+
+        else:
+            raise NotImplementedError(f"Im lazy.. Still need to sort out models ['css' and 'dog']")
+
+        return pd.DataFrame(params_dict)
+
+    def to_array(self):
+        
+        if not isinstance(self.params, pd.DataFrame):
+            raise ValueError(f"Input must be pd.DataFrame, not '{type(self.params)}'")
+
+        if self.model == "gauss":
+            item_list = ["x","y","prf_size","prf_ampl","bold_bsl","hrf_deriv","hrf_disp","r2"]
+        elif self.model == "norm":
+            item_list = ["x","y","prf_size","prf_ampl","bold_bsl","surr_ampl","surr_size","neur_bsl","surr_bsl","hrf_deriv","hrf_disp","r2"]
+        elif self.model == "dog":
+            item_list = ["x","y","prf_size","prf_ampl","bold_bsl","surr_ampl","surr_size","hrf_deriv","hrf_disp","r2"]
+        elif self.model == "css":
+            item_list = ["x","y","prf_size","prf_ampl","bold_bsl","css_exp","hrf_deriv","hrf_disp","r2"]
+        else:
+            raise ValueError(f"Model must be one of 'gauss','norm','dog','css'; not '{self.model}'")
+
+        self.parr = []
+
+        # parallel counter in case HRF-parameters are not present
+        ct = 0
+        for ii in item_list:
+            if ii in list(self.params.columns):
+                pars = self.params[ii].values
+                if not np.isnan(pars).all():
+                    self.parr.append(pars[...,np.newaxis])
+                    ct += 1
+            
+        return np.concatenate(self.parr,axis=1)
