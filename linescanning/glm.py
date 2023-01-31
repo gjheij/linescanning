@@ -178,23 +178,24 @@ class GenericGLM():
         # define HRF
         if verbose:
             print("Defining HRF")
-
-        if isinstance(hrf_pars, str):
-            if hrf_pars == "glover":
-                self.hrf = glover_hrf(osf=osf, TR=self.TR, dispersion=self.dispersion, derivative=self.derivative)
-        elif isinstance(hrf_pars, np.ndarray):
-            self.hrf = [hrf_pars]
-        else:
-            dt = 1/self.osf
-            self.time_points = np.linspace(0, 25, np.rint(float(25)/dt).astype(int))
-            self.hrf = [double_gamma(self.time_points, lag=6)]
-            
+        
+        self.hrf = define_hrf(
+            hrf_pars=hrf_pars,
+            osf=osf,
+            TR=TR,
+            dispersion=self.dispersion,
+            derivative=self.derivative)
         
         # convolve stimulus vectors
         if verbose:
             print("Convolve stimulus vectors with HRF")
 
-        self.stims_convolved = convolve_hrf(self.hrf, self.stims, make_figure=self.make_figure, xkcd=self.xkcd)
+        self.stims_convolved = convolve_hrf(
+            self.hrf, 
+            self.stims, 
+            TR=TR,
+            make_figure=self.make_figure, 
+            xkcd=self.xkcd)
 
         if self.osf > 1:
             if verbose:
@@ -421,8 +422,58 @@ def make_stimulus_vector(onset_df, scan_length=None, TR=0.105, osf=None, type='e
 
     return stim_vectors
 
+def define_hrf(
+    hrf_pars="glover", 
+    TR=0.105,
+    osf=1, 
+    dispersion=False,
+    derivative=False):
 
-def convolve_hrf(hrf, stim_v, make_figure=False, xkcd=False):
+    if isinstance(hrf_pars, str):
+        if hrf_pars == "glover":
+            hrf = glover_hrf(
+                osf=osf, 
+                TR=TR, 
+                dispersion=dispersion, 
+                derivative=derivative)
+    elif isinstance(hrf_pars, np.ndarray):
+        hrf = [hrf_pars]
+    elif isinstance(hrf_pars, list):
+        hrf = np.array(
+            [
+                np.ones_like(hrf_pars[1])*hrf_pars[0] *
+                hemodynamic_models.spm_hrf(
+                    tr=TR,
+                    oversampling=1,
+                    time_length=40)[...,np.newaxis],
+                hrf_pars[1] *
+                hemodynamic_models.spm_time_derivative(
+                    tr=TR,
+                    oversampling=1,
+                    time_length=40)[...,np.newaxis],
+                hrf_pars[2] *
+                hemodynamic_models.spm_dispersion_derivative(
+                    tr=TR,
+                    oversampling=1,
+                    time_length=40)[...,np.newaxis]]).sum(
+            axis=0)
+
+        hrf = [np.squeeze(hrf)]
+
+    else:
+        dt = 1/osf
+        time_points = np.linspace(0, 25, np.rint(float(25)/dt).astype(int))
+        hrf = [double_gamma(time_points, lag=6)]
+    
+    return hrf
+
+def convolve_hrf(
+    hrf, 
+    stim_v, 
+    TR=1,
+    make_figure=False, 
+    xkcd=False):
+
     """convolve_hrf
 
     Convolve :func:`linescanning.glm.double_gamma` with :func:`linescanning.glm.make_stimulus_vector`. There's an option to plot the result in a nice overview figure, though python-wise it's not the prettiest.. 
@@ -433,6 +484,8 @@ def convolve_hrf(hrf, stim_v, make_figure=False, xkcd=False):
         HRF across given timepoints with shape (,`x.shape[0]`)
     stim_v: numpy.ndarray, list
         Stimulus vector as per :func:`linescanning.glm.make_stimulus_vector` or numpy array containing one stimulus vector (e.g., a *key* from :func:`linescanning.glm.make_stimulus_vector`)
+    TR: float
+        repetition time of acquisition        
     make_figure: bool, optional
         Create overview figure of HRF, stimulus vector, and convolved stimulus vector, by default False
     osf: [type], optional
@@ -500,9 +553,10 @@ def convolve_hrf(hrf, stim_v, make_figure=False, xkcd=False):
         ax2 = fig.add_subplot(gs[:, 1])
         LazyPlot(
             hrf,
+            xx=list(np.arange(0,hrf.shape[0])*TR),
             axs=ax2,
             title="HRF", 
-            x_label='Time (*osf)',
+            x_label='Time (s)',
             xkcd=xkcd,
             font_size=16)
 
