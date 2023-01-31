@@ -2,9 +2,9 @@ import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
-from matplotlib.lines import Line2D
 import pandas as pd
 import seaborn as sns
+import string
 from typing import Union
 
 class Defaults():
@@ -1625,4 +1625,25 @@ class LazyColorbar(Defaults):
             labelsize=self.label_size)        
 
         # turn off frame
-        self.axs.set_frame_on(False)    
+        self.axs.set_frame_on(False)
+
+def fig_annot(fig, y=1.01, x0_corr=0, x_corr=-0.09, fontsize=28):
+
+    # get figure letters
+    alphabet = list(string.ascii_uppercase)
+
+    # make annotations
+    for ix,ax in enumerate(fig.axes):
+        bbox = ax.get_window_extent().transformed(fig.dpi_scale_trans.inverted())
+        if ix == 0:
+            move_frac = x0_corr/bbox.width
+        else:
+            move_frac = x_corr/bbox.width
+
+        pos = move_frac
+
+        ax.annotate(
+            alphabet[ix], 
+            (pos,y), 
+            fontsize=fontsize, 
+            xycoords="axes fraction")        
