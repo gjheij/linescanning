@@ -1468,7 +1468,7 @@ class LazyHist(Defaults):
 
 def conform_ax_to_obj(
     ax,
-    obj,
+    obj=None,
     title=None,
     x_label=None,
     y_label=None):
@@ -1507,6 +1507,9 @@ def conform_ax_to_obj(
     >>> ax = plotting.conform_ax_to_obj(ax,pl)
     """
     
+    if obj == None:
+        obj = Defaults()
+
     if not isinstance(title, str):
         title = ax.get_title()
 
