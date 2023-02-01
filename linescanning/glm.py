@@ -1,4 +1,4 @@
-from linescanning.plotting import LazyPlot
+from linescanning.plotting import LazyPlot, Defaults
 from nilearn.glm.first_level import first_level
 from nilearn.glm.first_level import hemodynamic_models 
 from nilearn import plotting
@@ -912,3 +912,141 @@ def double_gamma(x, lag=6, a2=12, b1=0.9, b2=0.9, c=0.35, scale=True):
         hrf = (1 - hrf.min()) * (hrf - hrf.min()) / \
             (hrf.max() - hrf.min()) + hrf.min()
     return hrf
+    
+class Posthoc(Defaults):
+
+    def __init__(
+        self,
+        df=None,
+        dv=None,
+        between=None,
+        parametric=True,
+        padjust="fdr_bh",
+        effsize="cohen",
+        axs=None,
+        alpha=0.05,
+        y_pos=0.95,
+        line_separate_factor=-0.065,
+        ast_frac=0.2,
+        ns_annot=False,
+        ns_frac=5):
+
+        super().__init__()
+
+        self.df = df
+        self.dv = dv
+        self.between = between
+        self.parametric = parametric
+        self.padjust = padjust
+        self.effsize = effsize
+        self.axs = axs
+        self.alpha = alpha
+        self.y_pos = y_pos
+        self.line_separate_factor = line_separate_factor
+        self.ast_frac = ast_frac
+        self.ns_frac = ns_frac
+        self.annotate_ns = ns_annot
+
+    @classmethod
+    def sort_posthoc(self, df):
+
+        conditions = np.unique(np.array(list(df["A"].values)+list(df["B"].values)))
+
+        distances = []
+        for contr in range(df.shape[0]): 
+            A = df["A"].iloc[contr]
+            B = df["B"].iloc[contr]
+
+            x1 = np.where(conditions == A)[0][0]
+            x2 = np.where(conditions == B)[0][0]
+
+            distances.append(abs(x2-x1))
+        
+        df["distances"] = distances
+        return df.sort_values("distances", ascending=False)
+
+    def run_posthoc(self):
+
+        try:
+            import pingouin
+        except:
+            raise ImportError(f"Could not import 'pingouin'")
+
+        # FDR-corrected post hocs with Cohen's D effect size
+        self.posthoc = pingouin.pairwise_tests(
+            data=self.df, 
+            dv=self.dv, 
+            between=self.between, 
+            parametric=self.between, 
+            padjust=self.padjust, 
+            effsize=self.effsize)
+
+    def plot_bars(self):
+        
+        if not hasattr(self, "posthoc"):
+            self.run_posthoc()
+
+        self.minmax = list(self.axs.get_ylim())
+        self.conditions = np.unique(self.df[self.between].values)
+
+        # sort posthoc so that bars furthest away are on top (if significant)
+        self.posthoc_sorted = self.sort_posthoc(self.posthoc)
+
+        if "p-corr" in list(self.posthoc_sorted.columns):
+            p_meth = "p-corr"
+        else:
+            p_meth = "p-unc"
+
+        for contr in range(self.posthoc_sorted.shape[0]):
+            p_val = self.posthoc_sorted[p_meth].iloc[contr] 
+            if p_val<self.alpha:
+                
+                if 0.01 < p_val < 0.05:
+                    txt = "*"
+                elif 0.001 < p_val < 0.01:
+                    txt = "**"
+                elif p_val < 0.001:
+                    txt = "***"
+                    
+                style = None
+                f_size = self.font_size
+                dist = self.ast_frac
+
+            else:
+                if self.annotate_ns:
+                    txt = "ns"
+                    style = "italic"
+                    f_size = self.label_size
+                    dist = self.ast_frac*self.ns_frac
+
+            # read indices from output dataframe and conditions
+            if isinstance(txt, str):
+                A = self.posthoc_sorted["A"].iloc[contr]
+                B = self.posthoc_sorted["B"].iloc[contr]
+
+                x1 = np.where(self.conditions == A)[0][0]
+                x2 = np.where(self.conditions == B)[0][0]
+
+                diff = self.minmax[1]-self.minmax[0]
+                y, h, col =  (diff*self.y_pos)+self.minmax[0], diff*0.02, 'k'
+                self.axs.plot(
+                    [x1,x1,x2,x2], 
+                    [y,y+h,y+h,y], 
+                    lw=self.tick_width, 
+                    c=col)
+
+                self.axs.text(
+                    (x1+x2)*.5, 
+                    y+h*dist, 
+                    txt, 
+                    ha='center', 
+                    va='bottom', 
+                    color=col,
+                    fontsize=f_size,
+                    style=style)
+
+                # make subsequent bar lower than first
+                self.y_pos += self.line_separate_factor
+
+                # reset txt
+                txt = None
