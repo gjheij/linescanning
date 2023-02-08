@@ -143,13 +143,30 @@ for par in ${par_files[@]}; do
   if [ ${vols} != ${dyns} ]; then
 
     echo "Output has ${vols} volumes, but PAR-file says ${dyns}"
+
+    # check whether image is anatomical; if vols/dyns > 2, we probably have anatomical images with 2x mag and 2x phase
+    first_idx=0
+    is_anat=$(( ${vols} / ${dyns} ))
+    if [[ ${is_anat} -eq 2 ]]; then
+      second_idx=1
+      anat=0
+      txt=""
+    elif [[ ${is_anat} -eq 4 ]]; then
+      second_idx=2
+      anat=1
+      add_txt=" | dealing with MP2RAGE data"
+    else
+      echo "ERROR in `basename ${0}`: unknown number of image types in ${par}: ${is_anat}. Is this a sequence other than bold (M/P) or MP2RAGE (M/P for INV1/INV2)?"
+      exit 1
+    fi
+
     # check if phase data is interleaved or at the end by looking at the column of image_type in the par-file. 0=mag|3=phase.
     str="=== IMAGE INFORMATION ="
     line_startpar=`grep -n -m 1 "${str}" ${par} | sed  's/\([0-9]*\).*/\1/'`
     image_type_column=(`sed -n "$((${line_startpar}+2)),$ p" ${par} | awk '{ print $5 }' | sed -e 's/[^0-9]//g' | sed 's/\r$//'`)
 
     # If first two numbers are 0, we assume that phase comes after mag
-    if [[ ${image_type_column[0]} -eq ${image_type_column[1]} ]]; then
+    if [[ ${image_type_column[0]} -eq ${image_type_column[${second_idx}]} ]]; then
       txt="Data is not interleaved"
       interleaved=0
     else
@@ -157,9 +174,11 @@ for par in ${par_files[@]}; do
       interleaved=1
     fi
 
-    echo "${txt}; extracting and saving magnitude/phase data"
+    echo "${txt}; extracting and saving magnitude/phase data${add_txt}"
     if [[ ${interleaved} -eq 1 ]]; then
-      PYTHON_CODE=$(cat <<END
+      if [[ ${anat} -eq 0 ]]; then
+        
+        PYTHON_CODE=$(cat <<END
 import nibabel as nb;
 import os;
 import numpy as np;
@@ -174,12 +193,42 @@ nb.Nifti1Image(mag, affine=img.affine, header=img.header).to_filename(out+'.nii.
 nb.Nifti1Image(pha, affine=img.affine, header=img.header).to_filename(out+'_ph.nii.gz');
 END
 )
+      else
+
+        PYTHON_CODE=$(cat <<END
+import nibabel as nb;
+import os;
+import numpy as np;
+opj = os.path.join;
+ff = '${orig_out}';
+img = nb.load(ff);
+data = img.get_fdata();
+inv1_mag = data[...,0];
+inv1_pha = data[...,2];
+inv2_mag = data[...,1];
+inv2_pha = data[...,3];
+out = '${bids_out}';
+nb.Nifti1Image(inv1_mag, affine=img.affine, header=img.header).to_filename(out+'_inv-1_part-mag.nii.gz');
+nb.Nifti1Image(inv1_pha, affine=img.affine, header=img.header).to_filename(out+'_inv-1_part-phase.nii.gz');
+nb.Nifti1Image(inv2_mag, affine=img.affine, header=img.header).to_filename(out+'_inv-2_part-mag.nii.gz');
+nb.Nifti1Image(inv2_pha, affine=img.affine, header=img.header).to_filename(out+'_inv-2_part-phase.nii.gz');
+END
+)
+
+      fi
       python -c "$PYTHON_CODE"
     else
 
       # find where par become phase
-      fslroi ${orig_out} ${bids_out}.nii.gz 0 ${dyns}
-      fslroi ${orig_out} ${bids_out}_ph.nii.gz ${dyns} -1
+      if [[ ${anat} -eq 0 ]]; then
+        fslroi ${orig_out} ${bids_out}.nii.gz 0 ${dyns}
+        fslroi ${orig_out} ${bids_out}_ph.nii.gz ${dyns} -1
+      else
+        fslroi ${orig_out} ${bids_out}_inv-1_part-mag.nii.gz 0 1
+        fslroi ${orig_out} ${bids_out}_inv-1_part-phase.nii.gz 2 3
+        fslroi ${orig_out} ${bids_out}_inv-2_part-mag.nii.gz 1 2
+        fslroi ${orig_out} ${bids_out}_inv-2_part-phase.nii.gz 3 -1
+      fi
     fi
   else
     if [[ ! -f ${bids_out}.nii.gz ]]; then
@@ -196,6 +245,23 @@ END
 
   # check corresponding EPI file
   if [[ ${bids_out} == *"_bold"* ]]; then
+
+    # get TR column
+    tr_column=(`sed -n "$((${line_startpar}+2)),$ p" ${par} | awk '{ print $32 }' | sed 's/\r$//'`)
+
+    # get nr of slices
+    nr_slices=`read_par ${par} "Max. number of slices/locations"`
+    
+    # get location where 0.00 turns into TR
+    tr=${tr_column[$((${nr_slices}+${line_startpar}))]}
+
+    # check if it's not 0
+    if [[ ${tr} == "0.00" ]]; then
+      echo "WARNING: TR=${tr}, this might not be correct.."
+    fi
+
+    call_settr ${bids_out}.nii.gz ${tr}
+
     epi=`echo $(basename ${bids_out} | sed "s|_bold|_epi|g")`
 
     if [ -f $(dirname ${bids_out})/${epi}.nii.gz ]; then
