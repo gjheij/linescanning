@@ -281,9 +281,31 @@ for subID in ${search}; do
             if [[ ${ext} == "gz" ]]; then
               ext="nii.gz"
             fi
+
             out_fn=${bids_dir}/anat/${base}_acq-${DATA}_${inv_tag}_${rec_tag}.${ext}
             if [[ ! -f ${out_fn} ]]; then
               cp ${ff} ${out_fn}
+            fi
+
+          done
+
+          # find T2s or FLAIR
+          for qq in "T2w" "FLAIR"; do
+            img=`find "${output_dir}" -type f \( -name "*${qq}.nii.gz" \) 2>/dev/null`
+            if [ ! -z ${img} ]; then
+              acq=`get_id ${img} acq`
+              if [[ ! -z ${acq} ]]; then
+                acq_tag="_acq${acq}"
+              else
+                acq_tag=""
+              fi
+              out_fn=${bids_dir}/anat/${base}${acq_tag}_${qq}.nii.gz
+              cp ${img} ${out_fn} 2>/dev/null
+
+              json_fn=$(dirname ${img})/$(basename ${img} .nii.gz).json
+              if [ -f ${json_fn} ]; then
+                cp ${json_fn} $(dirname ${out_fn})/$(basename ${out_fn} .nii.gz).json
+              fi
             fi
           done
         fi
@@ -462,6 +484,7 @@ for subID in ${search}; do
         unset IFS
 
         count=0
+        warning=0
         if [[ ! -z ${bold_files[@]} ]]; then
           echo " Found BOLD file(s)"
 
@@ -476,18 +499,17 @@ for subID in ${search}; do
             func=${bold}
             fmap=$(dirname ${bold})/$(basename ${bold} _bold.nii.gz)_epi.nii.gz
             phase=$(dirname ${bold})/$(basename ${bold} .nii.gz)_ph.nii.gz
+            
             task=`task_id ${bold}`
+            acq=`get_id ${bold} acq`
 
-            # -acq needs to be after task to be compatible with fMRIprep
-            tmp_dir=$(dirname ${output_dir})/func
-            if [[ ! -d ${tmp_dir} ]]; then
-              mkdir -p ${tmp_dir}
+            desc=""
+            if [[ ${bold} == *"desc"* ]]; then
+              desc=`get_id ${bold} desc`
             fi
 
             # rename 'bold', 'epi', and 'phase'
             for ext in "_bold.nii.gz" "_epi.nii.gz" "_bold_ph.nii.gz"; do
-            fname=${tmp_dir}/${base}_task-${task}_run-${run}_acq-3DEPI
-              ff=${fname}${ext}
 
               if [[ ${ext} == "_bold.nii.gz" ]]; then
                 orig=${func}
@@ -499,8 +521,14 @@ for subID in ${search}; do
                 orig=${phase}
                 image="phase"
               fi
+              
+              # check if we got description field
+              if [[ ! -z ${desc} ]]; then
+                ff=${bids_dir}/${image}/${base}_task-${task}_run-${run}_acq${acq}_desc${desc}${ext}
+              else
+                ff=${bids_dir}/${image}/${base}_task-${task}_run-${run}_acq${acq}${ext}
+              fi
 
-              ff=${bids_dir}/${image}/${base}_task-${task}_run-${run}_acq-3DEPI${ext}
               if [[ ! -f ${ff} ]]; then
                 if [[ ! -d ${ff} ]]; then
                   mkdir -p $(dirname ${ff})
@@ -512,7 +540,29 @@ for subID in ${search}; do
 
                   json_file=$(dirname ${orig})/$(basename ${orig} .nii.gz).json
                   if [ -f ${json_file} ]; then
-                    cp ${json_file} $(dirname ${ff})/$(basename ${ff} .nii.gz).json
+                    json_bids=$(dirname ${ff})/$(basename ${ff} .nii.gz).json
+                    cp ${json_file} ${json_bids}
+
+                    intended_for=`cat ${json_bids} | grep "IntendedFor"`
+                    if [[ -z ${intended_for} ]]; then
+                      if [[ ${image} == "fmap" ]]; then
+                        # check if json file has IntendedFor
+
+                        base_path=""
+                        if [[ $(basename ${json_bids}) == *"ses"* ]]; then
+                          ses_nr=$(basename ${json_bids} | cut -d"_" -f2)
+                          base_path+="${ses_nr}"
+                        fi
+
+                        warning=1
+                        call_json ${json_bids} IntendedFor,PhaseEncodingDirection ${base_path}/func/$(basename ${json_bids} _epi.json)_bold.nii.gz,j
+                        echo "  WARNING: assuming PE-direction for FIELDMAP=\"j\", please check if this is correct!"
+                      elif [[ ${image} == "func" ]]; then
+                        warning=1
+                        call_json ${json_bids} PhaseEncodingDirection j-
+                        echo "  WARNING: assuming PE-direction for BOLD=\"j-\", please check if this is correct!"
+                      fi
+                    fi
                   fi
                 fi
               else
@@ -608,6 +658,16 @@ if [[ ! -f ${DIR_DATA_HOME}/dataset_description.json ]]; then
 
   cd -
 
+fi
+
+if [[ ${warning} -eq 1 ]]; then
+  echo
+  echo "---------------------------------------------------------------------------------------------------"
+  echo "WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING"
+  echo ""
+  echo "I assumed the PhaseEncoding direction in the FMAP/FUNC-folder; please make sure this is correct!"
+  echo "I also don't have information for the slice timing correction. Please add this yourself."
+  echo "---------------------------------------------------------------------------------------------------"
 fi
 
 #-----------------------------------------------------------------------------
