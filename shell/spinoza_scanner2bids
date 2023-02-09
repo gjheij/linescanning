@@ -144,6 +144,7 @@ for subID in ${search}; do
     sub_name=$(basename ${subID})
   fi
 
+
   if [[ ! -z ${ses} ]]; then
     nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
     base_path=${sub_name}/ses-${nr}
@@ -206,7 +207,6 @@ for subID in ${search}; do
       echo "${sub_name}: could not find input directory \"${input_dir}\""
       continue
     else
-
 
       if [[ ! -d ${bids_dir}/anat || ! -d ${bids_dir}/func ]]; then
 
@@ -331,7 +331,7 @@ for subID in ${search}; do
                 cp ${motion_img} ${fname}
                 cp $(dirname ${motion_img})/$(basename ${motion_img} .nii.gz).json $(dirname ${fname})/$(basename ${fname} .nii.gz).json
               else
-                echo " WARNING: apparently found ${n_motion} motion file(s), but cannot find file with \"motion${run}\" and \"*.nii.gz\""
+                echo "  WARNING: apparently found ${n_motion} motion file(s), but cannot find file with \"motion${run}\" and \"*.nii.gz\""
               fi
             else
               echo "  ${base}_acq-9slice_run-${run}_T1w.nii.gz exists"
@@ -555,12 +555,41 @@ for subID in ${search}; do
                         fi
 
                         warning=1
-                        call_json ${json_bids} IntendedFor,PhaseEncodingDirection ${base_path}/func/$(basename ${json_bids} _epi.json)_bold.nii.gz,j
                         echo "  WARNING: assuming PE-direction for FIELDMAP=\"j\", please check if this is correct!"
+                        call_json ${json_bids} IntendedFor,PhaseEncodingDirection ${base_path}/func/$(basename ${json_bids} _epi.json)_bold.nii.gz,j
                       elif [[ ${image} == "func" ]]; then
                         warning=1
-                        call_json ${json_bids} PhaseEncodingDirection j-
                         echo "  WARNING: assuming PE-direction for BOLD=\"j-\", please check if this is correct!"
+                        call_json ${json_bids} PhaseEncodingDirection j-
+                      fi
+                    fi
+
+                    # add other information that call_parrec2nii would've added by reading the ParFile key that should've been added by call_dcm2niix
+                    par_f=`read_json ${json_bids} ParFile`
+                    if [[ ! -z ${par_f} ]]; then
+                      echo "  Storing information from `basename ${par_f}` in json file"
+                      pars_for_json --merge ${par_f} ${json_bids}
+
+                      # check if we can add slicetimings
+                      if [[ ${image} == "fmap" ]]; then
+                        scan_mode=`read_par ${par_f} "Scan mode"`
+
+                        if [[ ${scan_mode} != "3D" ]]; then
+                          mb_factor=`read_json ${json_bids} MultiBandAccelerationFactor`
+                          if [[ -z ${mb_factor} ]]; then
+                            mb_factor=3
+                            echo "  WARNING: defaulting to multiband factor 3 for slice-timings, please check if this is correct!"
+                          fi
+
+                          tr=`read_json ${json_bids} RepetitionTime`
+                          n_slices=`read_par ${par_f} "Max. number of slices/locations"`
+                          call_slicetiming ${json_bids} ${tr} ${n_slices} ${mb_factor}
+
+                          if [[ $? -ne 0 ]]; then
+                            echo "ERROR in `basename ${0}`: call_slicetiming exited with non-zero code"
+                            exit 1
+                          fi
+                        fi
                       fi
                     fi
                   fi
@@ -666,7 +695,8 @@ if [[ ${warning} -eq 1 ]]; then
   echo "WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING"
   echo ""
   echo "I assumed the PhaseEncoding direction in the FMAP/FUNC-folder; please make sure this is correct!"
-  echo "I also don't have information for the slice timing correction. Please add this yourself."
+  echo "I also might have assumed information about the acceleration factor to get the slice timings.."
+  echo "Please check that this is correct!"
   echo "---------------------------------------------------------------------------------------------------"
 fi
 
