@@ -148,6 +148,10 @@ if [[ ! -z ${ff} ]]; then
 
 fi
 
+# try to add the path to the par file to the bold/epi files for later reference
+source call_bashhelper
+add_par_file ${pathInput} ${pathOutput}
+
 # OPTIONS:
 #
 # usage: dcm2niix [options] <in_folder>
