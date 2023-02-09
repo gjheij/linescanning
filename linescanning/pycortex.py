@@ -465,7 +465,8 @@ class SavePycortexViews():
         size=(4000,4000),
         data_name="occipital_inflated",
         base_name=None,
-        zoom=False):
+        zoom=False,
+        **kwargs):
 
         self.data_dict = data_dict
         self.subject = subject
@@ -480,7 +481,13 @@ class SavePycortexViews():
         self.data_name = data_name
         self.zoom = zoom
         self.base_name = base_name
-
+        
+        if not isinstance(self.data_dict, dict):
+            if isinstance(self.data_dict, np.ndarray):
+                self.data_dict = {"data": cortex.Vertex(self.data_dict, subject=self.subject, **kwargs)}
+            else:
+                self.data_dict = {"data": self.data_dict}
+            
         self.view = {
             self.data_name:{
                 f'surface.{self.subject}.unfold':self.unfold, 
@@ -496,6 +503,7 @@ class SavePycortexViews():
 
         self.js_handle = cortex.webgl.show(self.data_dict)
         self.params_to_save = list(self.data_dict.keys())
+        self.set_view()
 
     def save_all(self):
         
@@ -508,6 +516,14 @@ class SavePycortexViews():
                 param_to_save,
                 self.base_name)
 
+    def set_view(self):
+        # set specified view
+        time.sleep(10)
+        for _, view_params in self.view.items():
+            for param_name, param_value in view_params.items():
+                time.sleep(1)
+                self.js_handle.ui.set(param_name, param_value)   
+
     def save(
         self, 
         param_to_save,
@@ -517,28 +533,22 @@ class SavePycortexViews():
         time.sleep(1)
         
         # Save images by iterating over the different views and surfaces
-        for _, view_params in self.view.items():
-
-            filename = f"{base_name}_desc-{param_to_save}.png"
-            output_path = os.path.join(self.fig_dir, filename)
-            #print(view)
-            for param_name, param_value in view_params.items():
-                time.sleep(1)
-                self.js_handle.ui.set(param_name, param_value)
-                
-            # Save image           
-            self.js_handle.getImage(output_path, size=self.size)
-        
-            # the block below trims the edges of the image:
-            # wait for image to be written
-            while not os.path.exists(output_path):
-                pass
-            time.sleep(1)
-            try:
-                import subprocess
-                subprocess.call(["convert", "-trim", output_path, output_path])
-            except:
-                pass    
+        filename = f"{base_name}_desc-{param_to_save}.png"
+        output_path = os.path.join(self.fig_dir, filename)
+            
+        # Save image           
+        self.js_handle.getImage(output_path, size=self.size)
+    
+        # the block below trims the edges of the image:
+        # wait for image to be written
+        while not os.path.exists(output_path):
+            pass
+        time.sleep(1)
+        try:
+            import subprocess
+            subprocess.call(["convert", "-trim", output_path, output_path])
+        except:
+            pass    
 
 
 def Vertex2D_fix(
