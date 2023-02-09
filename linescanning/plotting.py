@@ -1356,7 +1356,7 @@ class LazyHist(Defaults):
         else:
             self.plot()
 
-        # self.kde = self.return_kde()
+        self.kde = self.return_kde()
 
         if self.save_as:
             if isinstance(self.save_as, list):
