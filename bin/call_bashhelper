@@ -49,7 +49,7 @@ USAGE
       echo "Please specify a key (e.g., \"RepetitionTime\") to read"
     else
       # reads x lines, cuts the :, removes white spaces, and removes carriage return
-      json_key=`cat ${epi_json} | grep ${read_key} | cut -d':' -f2`
+      json_key=`cat ${json_file} | grep ${read_key} | cut -d':' -f2`
       if [ ! -z ${json_key} ]; then
         if [[ ${json_key} == *","* ]]; then
           json_key=`echo ${json_key} | cut -d"," -f1`
@@ -95,11 +95,11 @@ USAGE
     # Check for subject & session flags
     read_lines=50
     par_file=${1}
-    if [ ! -f ${1} ]; then
+    if [[ $# -eq 3 ]]; then
       read_lines=${1}
       par_file=${2}
       read_key=${3}
-    else
+    elif [[ $# -eq 2 ]]; then
       par_file=${1}
       read_key=${2}
     fi
@@ -108,9 +108,71 @@ USAGE
       echo "Please specify a key (e.g., \"number of echoes\") to read"
     else
       # reads x lines, cuts the :, removes white spaces, and removes carriage return
-      par_key=`head -${read_lines} ${par} | grep "${read_key}" | cut -d":" -f2 | xargs | sed 's/\r$//'`
+      par_key=`head -${read_lines} ${par_file} | grep "${read_key}" | cut -d":" -f2 | xargs | sed 's/\r$//'`
       echo ${par_key}
     fi
+
+  fi
+
+}
+
+function add_par_file {
+
+  #---------------------------------------------------------------------------------------------------------
+  # Create help text
+  function Usage {
+      cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+add_par_file
+
+Add the PAR-file to the jsons of newly converted files with dcm2niix. This ensures we retain the 
+link with the PAR-file so we can extract information from it
+
+Args:
+  pathInput   input directory for dcm2niix; where the par-files live
+  pathOutput  output directory for dcm2niix; where the nifti's are stored. If empty, we'll default
+              to pathInput/nifti, just like call_dcm2niix
+
+Usage:
+ add_par_file input_folder output_folder
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+}
+
+  do_stuff=1
+  if [[ $# -lt 1 ]] ; then
+    Usage >&2
+    do_stuff=0
+  elif [[ $# -eq 1 ]]; then
+    pathInput=${1}
+    pathOutput=${pathInput}/nifti
+  elif [[ $# -eq 2 ]]; then
+    pathInput=${1}
+    pathOutput=${2}  
+  fi
+
+  if [[ ${do_stuff} -eq 1 ]]; then
+    for ii in ${pathOutput}/*.nii.gz; do
+      if [[ $(basename ${ii}) == *"_bold.nii.gz"* ]] || [[ $(basename ${ii}) == *"_epi.nii.gz"* ]]; then
+        # cross reference with par files in pathInput
+        for par in ${pathInput}/*; do
+          ext=`fetch_extension ${par}`
+          if [[ ${ext,,} == *"par"* ]]; then
+            pat=`read_par ${par} "Patient name"`
+            prot=`read_par ${par} "Protocol name"`
+
+            # assuming dcm2niix command above did not change!
+            nifti_from_par=${pathOutput}/${pat}_${prot}
+            if [[ ${nifti_from_par}.nii.gz -ef ${ii} ]]; then
+              call_json ${nifti_from_par}.json ParFile ${par}
+            fi
+          fi
+        done
+      fi
+    done
   fi
 
 }
@@ -130,6 +192,11 @@ Calculate the following parameters from a PAR-file:
   - Total readout time (TRT)      | water fat shift/WFS_hz
   - Effective echo spacing (EES)  | TRT/EPI factor+1
   - Phase encoding direction      | in fmriprep convention (e.g., AP='j-')
+  - MagneticFieldStrength         | default 7.0, can be set with env variable FIELD_STRENGTH
+  - EPIFactor                     | -
+  - ProtocolName                  | -
+  - MultibandAccelerationFactor   | if MB_FACTOR is set in the environment (if scan mode != 3D)
+  - Scan mode                     | MS/3D
 
 Args:
   --merge       don't overwrite existing keys
@@ -155,16 +222,24 @@ USAGE
 
     MERGE=""
     par_file=${1}
-    if [ ! -f ${1} ]; then
+    if [[ $# -eq 1 ]]; then
+      par_file=${1}
+      json_file=""
+    elif [[ $# -eq 2 ]]; then
+      par_file=${1}
+      json_file=${2}
+    elif [[ $# -eq 3 ]]; then
       par_file=${2}
       json_file=${3}
       MERGE="--merge"
-    else
-      par_file=${1}
-      json_file=${2}
     fi
 
-    # gyromagnetic reatio
+    # fielstrength
+    if [[ -z ${FIELD_STRENGTH} ]]; then
+      FIELD_STRENGTH=7.0
+    fi
+    
+    # gyromagnetic ratio
     gyro=42.576
 
     # water-fat part per million
@@ -177,13 +252,13 @@ USAGE
     WFS=`read_par ${par_file} "Water Fat shift"`
 
     # WFS (freq)
-    WFS_hz=`echo "${WFS} * ${wf_ppm} * ${gyro}" | bc -l`
+    WFS_hz=`echo "${FIELD_STRENGTH} * ${wf_ppm} * ${gyro}" |bc -l`
 
     # total read out time
-    TRT=`echo "${WFS}/${WFS_hz}" | bc -l`
+    TRT=`echo "${WFS} / ${WFS_hz}" | bc -l`
 
-    # effective echo spacing
-    EES=`echo "${TRT}/${epi_f}+1" | bc -l`
+    # effective echo spacing (EPI factor +1)
+    EES=`echo "${TRT}/(${epi_f}+1)" | bc -l`
 
     # phase encoding direction
     PE=`read_par ${par_file} "Preparation direction"`
@@ -191,6 +266,15 @@ USAGE
 
     # protocol name
     PROT=`read_par ${par_file} "Protocol name"`
+
+    # EPI factor
+    EPI_FACTOR=`read_par ${par_file} "EPI factor"`
+
+    # protocol name
+    PROT_NAME=`read_par ${par_file} "Protocol name"`
+
+    # acquisition scheme
+    AQ=`read_par ${par_file} "Scan mode"`
 
     # flip PE if protocol name is BOLD but json file EPI
     txt=""
@@ -213,13 +297,22 @@ USAGE
     fi
 
     if [[ ! -z ${json_file} ]]; then
-      call_json ${merge} ${json_file} TotalReadoutTime,PhaseEncodingDirection,EffectiveEchoSpacing,ProtocolName ${TRT},${ADD_PE},${EES},${PROT}
+      call_json ${merge} ${json_file} TotalReadoutTime,PhaseEncodingDirection,EffectiveEchoSpacing,ProtocolName,MagneticFieldStrength,WaterFatShift,EPIFactor,ProtocolName,AcquisitionTechnique ${TRT},${ADD_PE},${EES},${PROT},${FIELD_STRENGTH},${WFS},${EPI_FACTOR},${PROT_NAME},${AQ}
+
+      if [[ ! -z ${MB_FACTOR} ]]; then
+        if [[ ${AQ} != "3D" ]]; then
+          call_json ${json_file} MultiBandAccelerationFactor ${MB_FACTOR}
+        fi
+      fi
     else
+      echo "Field:  ${FIELD_STRENGTH}T"
       echo "WFS:    ${WFS}"
       echo "WFS_hz: ${WFS_hz}"
       echo "TRT:    ${TRT}"
       echo "EES:    ${EES}"
-      echo "PE:     ${ADD_PE}${txt}"
+      echo "EPI fc: ${EPI_FACTOR}"
+      echo "Prot:   ${PROT_NAME}"
+      echo "Mode:   ${AQ}"
     fi
   fi
 
