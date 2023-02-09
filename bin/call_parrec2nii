@@ -274,7 +274,7 @@ END
       # try to read TR from EPI json file
       epi_json=$(dirname ${bids_out})/${epi}.json
       if [ -f ${epi_json} ]; then
-        declare -a find_keys=("RepetitionTime" "EchoTime")
+        declare -a find_keys=("EchoTime")
         for key in ${find_keys[@]}; do
           val=`read_json ${epi_json} ${key}`
           if [[ ! -z ${val} ]]; then
@@ -284,29 +284,21 @@ END
             if [[ $? -ne 0 ]]; then
               echo "ERROR: call_json exited with non-zero status"
               exit 1
-            fi            
-
-            # set TR in nifti
-            if [[ ${key} == "RepetitionTime" ]]; then
-              echo "Setting TR to '${val}' in '${bids_out}.nii.gz'"
-              call_settr ${bids_out}.nii.gz ${val}
-
-              if [[ $? -ne 0 ]]; then
-                echo "ERROR: call_settr exited with non-zero status"
-                exit 1
-              fi                 
             fi
           fi
         done
       fi
 
-      echo "Adding basic information to $(basename ${epi_json})"
 
       # add the regular parameters to EPI json
+      echo "Adding basic information to $(basename ${epi_json})"
       pars_for_json --merge ${par} ${epi_json}
 
       # add IntendedFor field
-      call_json ${epi_json} IntendedFor ${base_path}/func/$(basename ${bids_out}).nii.gz
+      call_json ${epi_json} IntendedFor,ConversionSoftware ${base_path}/func/$(basename ${bids_out}).nii.gz,parrec2nii
+
+      call_json ${json_f} ConversionSoftware parrec2nii
+  
     fi
   fi
 
