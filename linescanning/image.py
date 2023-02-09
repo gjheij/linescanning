@@ -1,4 +1,5 @@
 # pylint: disable=no-member,E1130,E1137
+import json
 from linescanning import transform, utils
 import matplotlib.pyplot as plt
 import nibabel as nb
@@ -8,6 +9,53 @@ from sklearn.preprocessing import MinMaxScaler
 import subprocess
 
 opj = os.path.join
+
+def slice_timings_to_json(
+    json_file,
+    nr_slices=None,
+    tr=None,
+    mb_factor=1):
+
+    write_file = True
+    if isinstance(json_file, str):
+        with open(json_file) as f:
+            data = json.load(f)
+    elif isinstance(json_file, dict):
+        write_file = False
+        data = json_file
+    else:
+        raise ValueError(f"Input must be a json-file or dictionary, not {type(json_file)}")
+
+    # TR from json file is usually more reliable
+    if "RepetitionTime" in list(data.keys()):
+        if data["RepetitionTime"] != tr:
+            utils.verbose(f"WARNING: specified TR ({tr}) does not match TR in json file ({data['RepetitionTime']}). Taking TR from json file!", True)
+
+            tr = data["RepetitionTime"]
+
+    # get the list of slice timings
+    st = slice_timings(
+        nr_slices=nr_slices,
+        tr=tr,
+        mb_factor=mb_factor)
+
+    # add slicetiming key
+    st_dict = {"SliceTiming": st}
+    data.update(st_dict)
+    
+    # write file or return updated dictionary
+    if write_file:
+        with open(json_file, 'w') as f:
+            json.dump(data, f, indent=4)
+    else:
+        return data
+
+def slice_timings(
+    nr_slices=None,
+    tr=None,
+    mb_factor=1):
+
+    return list(np.tile(np.linspace(0, tr, int(nr_slices/mb_factor), endpoint=False), mb_factor))
 
 def bin_fov(img, thresh=0,out=None, fsl=False):
     """bin_fov
