@@ -99,6 +99,7 @@ else
   unset IFS
 fi
 
+
 #-----------------------------------------------------------------------------
 # Start clock
 #-----------------------------------------------------------------------------
@@ -146,12 +147,20 @@ for subID in ${search}; do
 
     if [ ! -d ${tmp_folder} ]; then
       echo "Make backup of \"func\" in \"no_nordic\""
-      cp -r ${func_folder} ${tmp_folder} 2>/dev/null
+
+      # only copy nifit's/json's, so that .mat files remain
+      mkdir -p ${tmp_folder}
+      cp -r ${func_folder}/*.nii.gz ${tmp_folder} 2>/dev/null
+      cp -r ${func_folder}/*.json ${tmp_folder} 2>/dev/null
     else
       echo "Backup \"no_nordic\" already exists"
     fi
+    echo "Removing non-NORDIC'ed data in func"
     rm -r ${func_folder}/*.nii.gz 2>/dev/null
   fi
+
+  # add message to json files
+  add_nordic_msg ${tmp_folder} "off"
 
   # check BOLD files
   IMGS=`find "${tmp_folder}" -type f \( -name "*bold.nii.gz" \) 2>/dev/null`
@@ -166,7 +175,9 @@ for subID in ${search}; do
   # check if there's a phase directory
   if [[ -d ${phase_folder} ]]; then
 
+    # add msg to existing json files
     json_msg="Magnitude+phase"
+    add_nordic_msg ${func_folder} ${json_msg}
 
     IMGS=`find "${phase_folder}" -type f \( -name "*bold_ph.nii.gz" \) 2>/dev/null`
     IFS=$'\n' phase_imgs=($(sort <<<"${IMGS[*]}"))
@@ -208,6 +219,8 @@ for subID in ${search}; do
   else
     # magnitude only
     json_msg="Magnitude only"
+    add_nordic_msg ${func_folder} ${json_msg}
+
     for img in ${mag_imgs[@]}; do
 
       if [[ ${SGE} -eq 1 ]]; then
@@ -228,24 +241,13 @@ for subID in ${search}; do
     done
   fi
   
-  # add message to json files
-  echo "Adding {\"Nordic\": \"${json_msg}\"} to json-files"
-  for file in ${func_folder}/*.json; do
-    call_json ${file} "Nordic" "${json_msg}"
-  done
-
-  # add message to json files
-  echo "Adding {\"Nordic\": \"off\"} to original json-files"
-  for file in ${tmp_folder}/*.json; do
-    call_json ${file} "Nordic" "off"
-  done
-
-  # remove any left over unzipped files
-  nii_files=`find ${func_folder} -type f -name "*.nii" 2>/dev/null`
-  if [[ ! -z ${nii_files} ]]; then
-    rm -r ${nii_files} 2>/dev/null
+  if [[ ${SGE} -eq 0 ]]; then
+    # remove any left over unzipped files
+    nii_files=`find ${func_folder} -type f -name "*.nii" 2>/dev/null`
+    if [[ ! -z ${nii_files} ]]; then
+      rm -r ${nii_files} 2>/dev/null
+    fi
   fi
-
 done
 
 #-----------------------------------------------------------------------------

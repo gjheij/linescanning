@@ -359,6 +359,25 @@ function fprep_pe {
   echo $ADD_PE
 }
 
+function add_nordic_msg {
+
+  if [[ $# -ne 2 ]]; then
+    echo "Please specify an input folder and the message to add to the json files"
+  else
+    folder=${1}
+    msg=${2}
+
+    if [[ ! -d ${folder} ]]; then
+      echo "ERROR: input is not a folder"
+    else
+      echo "Adding {\"Nordic\": \"${msg}\"} to json-files"
+      for file in ${folder}/*.json; do
+        call_json ${file} "Nordic" "${msg}"
+      done
+    fi
+  fi
+}
+
 function check_file {
   input=${1}
   if [ -f ${input} ]; then
