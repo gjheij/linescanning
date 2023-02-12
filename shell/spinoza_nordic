@@ -191,12 +191,8 @@ for subID in ${search}; do
 
       # decide on job execution
       if [[ ${SGE} -eq 1 ]]; then
-        run_id=`run_id ${ph_img}`
-        if [[ -z ${run_id} || ${run_id} -eq 0 ]]; then
-          run_id=$((ct+1))
-        fi
-
-        job="qsub -q ${SGE_QUEUE_LONG} -wd ${DIR_LOGS} -pe smp ${smp} -N nordic${run_id}"
+        job_name=$(basename ${mag_img} .nii.gz)
+        job="qsub -q ${SGE_QUEUE_LONG} -wd ${DIR_LOGS} -pe smp ${smp} -N ${job_name}"
         if [ ! -d ${DIR_LOGS} ]; then
           mkdir -p ${DIR_LOGS}
         fi

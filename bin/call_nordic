@@ -83,8 +83,8 @@ fi
 run_id=`run_id ${fn_nordic}`
 
 #-----------------------------------------------------------------------------
-# Create new script
-new_script=$(dirname ${fn_mag})/nordic${run_id}.m
+# Create new script (matlab scripts cannot have hyphens, so switch them out for underscores..)
+new_script=$(dirname ${fn_mag})/$(echo "$(basename ${fn_mag} .nii.gz)" | tr '-' '_').m #nordic${run_id}.m
 if [[ -f ${new_script} ]]; then
   rm -r ${new_script}
 fi
