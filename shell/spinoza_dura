@@ -92,8 +92,10 @@ for subID in ${search}; do
   # collect subject name
   if [[ ! -z ${sub} ]]; then
     sub_name=${SUBJECT_PREFIX}${subID}
+    sub_id=${subID}
   else
     sub_name=$(basename ${subID})
+    sub_id=`get_id ${sub_name} ${SUBJECT_PREFIX}`
   fi
 
   if [[ ! -z ${ses} ]]; then
