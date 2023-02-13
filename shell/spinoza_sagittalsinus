@@ -175,7 +175,7 @@ for subID in ${search}; do
       fi
 
     else
-      echo "${sub_name}: Could not find R2star image. Please make sure you've run pymp2rage and registered the image to mp2rage space"
+      echo "Could not find R2star image in \"${input_dir}\". Please make sure you've run pymp2rage and registered the image to mp2rage space"
       echo " -spinoza_qmrimaps"
       echo " -spinoza_registration"
       continue
@@ -226,7 +226,7 @@ for subID in ${search}; do
 
       else
 
-        echo "${sub_name}: could not find T1-weighted image"
+        echo "Could not find T1w image in \"${input_dir}\""
         continue
 
       fi
