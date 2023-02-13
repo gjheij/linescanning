@@ -127,11 +127,6 @@ for subID in ${search}; do
     MASKED=`find "${output_dir}" -maxdepth 1 -type f \( -name "*${DATA^^}*" -and -name "*masked_T1w.nii.gz" \) 2>/dev/null`
     MASK=`find "${mask_dir}" -type f \( -name "*${DATA^^}*" -and -name "*${search_for_mask}*" \) 2>/dev/null`
 
-    if [[ ! -f ${t1w_fn} ]]; then
-      echo "${sub_name}: missing T1-weighted image"
-      continue
-    fi
-
     # overwrite mode
     if [[ ${OW} -eq 1 ]]; then
       if [[ -d ${output_dir} ]]; then
@@ -150,6 +145,11 @@ for subID in ${search}; do
       echo "**************************************** Processing ${sub_name} ***************************************"
 
       if [[ ! -f ${MASKED} ]]; then
+
+        if [[ ! -f ${t1w_fn} ]]; then
+          echo "No T1w-image in \"${input_dir}\""
+          continue
+        fi
         
         # if we cannot do masking, then just copy the input image as "masked" image
         if [[ ! -z ${MASK} ]]; then
