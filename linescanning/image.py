@@ -733,7 +733,7 @@ def tsnr(img,file_name=None):
     data = img.get_fdata()
     affine = img.affine
     hdr = img.header
-
+    
     mean_d = np.mean(data,axis=-1)
     std_d = np.std(data,axis=-1)
     tsnr = mean_d/std_d
@@ -741,6 +741,6 @@ def tsnr(img,file_name=None):
     mean_tsnr = np.nanmean(np.ravel(tsnr))
 
     if file_name:
-        tsnr_image = nb.Nifti1Image(tsnr,affine=affine, header=hdr).to_filename(file_name)
+        nb.Nifti1Image(tsnr,affine=affine, header=hdr).to_filename(file_name)
 
     return mean_tsnr
