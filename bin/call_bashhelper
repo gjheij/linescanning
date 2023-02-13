@@ -6,6 +6,22 @@ function conda2jupyter {
   conda deactivate
 }
 
+function find_hierarchical_anatomy {
+  if [[ -d ${DIR_DATA_DERIV}/masked_${DATA,,} ]]; then
+    INPUT_DIR=${DIR_DATA_DERIV}/masked_${DATA,,}
+  elif [[ -d ${DIR_DATA_DERIV}/cat12 ]]; then
+    INPUT_DIR=${DIR_DATA_DERIV}/cat12    
+  elif [[ -d ${DIR_DATA_DERIV}/denoised ]]; then
+    INPUT_DIR=${DIR_DATA_DERIV}/denoised
+  elif [[ -d ${DIR_DATA_DERIV}/pymp2rage ]]; then
+    INPUT_DIR=${DIR_DATA_DERIV}/pymp2rage
+  else
+    INPUT_DIR=${DIR_DATA_HOME}
+  fi
+
+  echo $INPUT_DIR
+}
+
 function search_character_substring {
   input=${1}
   searchstring=${2}
@@ -370,7 +386,7 @@ function add_nordic_msg {
     if [[ ! -d ${folder} ]]; then
       echo "ERROR: input is not a folder"
     else
-      echo "Adding {\"Nordic\": \"${msg}\"} to json-files"
+      echo "Adding {\"Nordic\": \"${msg}\"} to json-files in \"${folder}\""
       for file in ${folder}/*.json; do
         call_json ${file} "Nordic" "${msg}"
       done
