@@ -18,7 +18,8 @@ can be useful when you want to submit multiple NORDIC processes to a cluster as 
 template script is overwritten before another has initiated.
 
 Args:
-  -m        use magnitude only
+  --mag     use magnitude only
+  --tsnr    make tSNR images before and after NORDIC
   <mag>     magnitude image
   <phase>   phase image
   <output>  nordic'ed output
@@ -39,8 +40,24 @@ USAGE
 #-----------------------------------------------------------------------------
 # Deal with arguments
 mag_only=0
-while getopts hmv: arg; do
+make_tsnr=0
+while getopts :-:hmv: arg; do
   case ${arg} in
+    -)
+      case "${OPTARG}" in
+        mag)
+          mag_only=1
+          ;;  
+        tsnr)
+          make_tsnr=1
+          ;;   
+        *)
+          if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
+            echo "Unknown option --${OPTARG}"
+            exit 1
+          fi
+          ;;
+      esac;;    
     m)  mag_only=1
         ;;
   esac
@@ -64,6 +81,13 @@ source call_bashhelper
 fn_mag=`fetch_filepath ${IMG_MAGN}`
 fn_phase=`fetch_filepath ${IMG_PHASE}`
 fn_nordic=`fetch_filepath ${IMG_NORDIC}`
+
+# check if datatype != FLOAT64; might crash..
+dtype=`fslval ${file} data_type`
+if [ ${fn_mag} == "FLOAT64" ]; then
+  echo "Changing data_type of magnitude-image from float64 to uint16"
+  call_setdtype ${fn_mag}
+fi
 
 #-----------------------------------------------------------------------------
 # Get extension from input file
@@ -96,8 +120,11 @@ if [[ -f ${fn_mag} && -f ${fn_phase} ]]; then
   make_nordic_script ${fn_mag} ${fn_phase} ${fn_nordic} ${mag_only} ${new_script}
 
   # calculate tSNR before nordic
-  call_tsnr ${fn_mag}
-
+  if [[ ${make_tsnr} -eq 1 ]]; then
+    echo "Calculating tSNR pre-NORDIC"
+    call_tsnr2 --clean ${fn_mag} $(dirname ${fn_mag})/$(basename ${fn_mag} .nii.gz)_tsnr_pre_nordic.nii.gz
+  fi
+  
   # call_matlab = in call_bashhelper
   call_matlab ${new_script}
 
@@ -105,9 +132,6 @@ if [[ -f ${fn_mag} && -f ${fn_phase} ]]; then
     echo "ERROR: matlab exited with non-zero status"
     exit 1
   fi
-
-  # calculate tSNR after nordic
-  call_tsnr ${fn_nordic}.nii
 
 else
   echo "Missing files for NORDIC; need a magnitude & phase image, got \"${IMG_MAGN}\" and \"${IMG_PHASE}\""
@@ -117,4 +141,13 @@ fi
 # Reset extension
 if [[ ${ext_nordic} == "gz" ]]; then
   gzip ${fn_nordic}.nii 2>/dev/null
+  echo "Compressing NORDIC'ed output"
+  nord_file=${fn_nordic}.nii.gz 
+else
+  nord_file=${fn_nordic}.nii
+fi
+
+if [[ ${make_tsnr} -eq 1 ]]; then
+  echo "Calculating tSNR post-NORDIC"
+  call_tsnr2 --clean ${nord_file} $(dirname ${fn_mag})/$(basename ${fn_mag} .nii.gz)_tsnr_post_nordic.nii.gz
 fi

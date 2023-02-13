@@ -189,8 +189,9 @@ data = img.get_fdata();
 mag = data[...,::2];
 pha = data[...,1::2];
 out = '${bids_out}';
-nb.Nifti1Image(mag, affine=img.affine, header=img.header).to_filename(out+'.nii.gz');
-nb.Nifti1Image(pha, affine=img.affine, header=img.header).to_filename(out+'_ph.nii.gz');
+for dd,ext in zip([mag,pha],[".nii.gz","_ph.nii.gz"]):
+  new = nb.Nifti1Image(dd, affine=img.affine, header=img.header);
+  new.to_filename(f"{out}{ext}");
 END
 )
       else
@@ -208,10 +209,9 @@ inv1_pha = data[...,2];
 inv2_mag = data[...,1];
 inv2_pha = data[...,3];
 out = '${bids_out}';
-nb.Nifti1Image(inv1_mag, affine=img.affine, header=img.header).to_filename(out+'_inv-1_part-mag.nii.gz');
-nb.Nifti1Image(inv1_pha, affine=img.affine, header=img.header).to_filename(out+'_inv-1_part-phase.nii.gz');
-nb.Nifti1Image(inv2_mag, affine=img.affine, header=img.header).to_filename(out+'_inv-2_part-mag.nii.gz');
-nb.Nifti1Image(inv2_pha, affine=img.affine, header=img.header).to_filename(out+'_inv-2_part-phase.nii.gz');
+for dd,ext in zip([inv1_mag,inv1_pha,inv2_mag,inv2_ph],["_inv-1_part-mag","_inv-1_part-phase","_inv-2_part-mag","_inv-2_part-phase"]):
+  new = nb.Nifti1Image(dd, affine=img.affine, header=img.header);
+  new.to_filename(out+f"{ext}.nii.gz");
 END
 )
 
@@ -253,17 +253,24 @@ END
     nr_slices=`read_par ${par} "Max. number of slices/locations"`
     
     # get location where 0.00 turns into TR
-    tr=${tr_column[$((${nr_slices}+${line_startpar}))]}
+    tr=${tr_column[${nr_slices}]}
 
     # check if it's not 0
     if [[ ${tr} == "0.00" ]]; then
       echo "WARNING: TR=${tr}, this might not be correct.."
     fi
 
+    echo "Setting TR to ${tr}"
     call_settr ${bids_out}.nii.gz ${tr}
 
-    epi=`echo $(basename ${bids_out} | sed "s|_bold|_epi|g")`
+    # set dtype to uint16
+    dtype=`fslval ${bids_out}.nii.gz data_type`
+    if [ ${dtype} == "FLOAT64" ]; then
+      echo "Changing data_type of ${orig_out} from float64 to uint16"
+      call_setdtype ${bids_out}.nii.gz
+    fi
 
+    epi=`echo $(basename ${bids_out} | sed "s|_bold|_epi|g")`
     if [ -f $(dirname ${bids_out})/${epi}.nii.gz ]; then
       base_path=""
       if [[ ${pat} == *"ses"* ]]; then
@@ -289,17 +296,16 @@ END
         done
       fi
 
-
       # add the regular parameters to EPI json
       echo "Adding basic information to $(basename ${epi_json})"
       pars_for_json --merge ${par} ${epi_json}
 
       # add IntendedFor field
       call_json ${epi_json} IntendedFor,ConversionSoftware ${base_path}/func/$(basename ${bids_out}).nii.gz,parrec2nii
-
       call_json ${json_f} ConversionSoftware parrec2nii
   
     fi
+
   fi
 
 done

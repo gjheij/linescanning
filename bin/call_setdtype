@@ -1,0 +1,43 @@
+#!/usr/bin/env python
+
+import nibabel as nb
+import numpy as np
+import sys
+import ast
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_setdtype
+
+Set the data_type in the header of an input image.
+
+Args:
+    <input file>  file that needs to be edited
+
+Example:
+    call_setdtype func.nii.gz   # defaults to np.uint16
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    if len(argv) < 1:
+        print("\nNOT ENOUGH ARGUMENTS SPECIFIED")
+        print(main.__doc__)
+        sys.exit()
+    # elif len(argv) == 2:
+    #     input_image = argv[0]
+    #     set_dtype   = argv[0]
+    elif len(argv) == 1:
+        input_image = argv[0]
+        set_dtype   = np.uint16   
+    else:
+        raise ValueError(f"Unknown number of arguments ({len(argv)}) specified. Just specify an input file..")
+
+    img = nb.load(input_image)
+    img.set_data_dtype(set_dtype)
+    nb.save(img, input_image)
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

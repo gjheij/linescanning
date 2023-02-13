@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+
+# source helper functions
+source call_bashhelper
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_tsnr2
+
+Calculate the tSNR of an input image and save the tSNR map to a given output file name using FSL
+tools (should be quicker than python implementation)
+
+Args:
+  --clean             remove mean/std images
+  <input file>        string-like path to file to calculate tSNR from
+  <output file>       string-like path to output tSNR map (if empty, defaults to <input file>_tsnr)
+
+Outputs
+    output file         new volume representing the tSNR map
+
+Example:
+    call_tsnr2 [options] func.nii.gz tsnr.nii.gz
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+clean_up=0
+while getopts :-:i:o: argument
+do
+  case ${argument} in
+    -)
+      case "${OPTARG}" in
+        clean)
+          clean_up=1
+          ;;   
+        *)
+          if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
+            echo "Unknown option --${OPTARG}"
+            exit 1
+          fi
+          ;;
+      esac;;   
+    i)  input=${OPTARG}
+          ;;  
+    o)  output=${OPTARG}
+          ;;              
+  esac
+done
+
+if [[ $# -lt 1 ]] ; then
+  Usage >&2
+  exit 1
+fi      
+
+input=${@:$OPTIND:1}
+output=${@:$OPTIND+1:1}
+
+# define output
+input=`fetch_filepath ${input}`   
+if [[ -z ${output} ]]; then
+  output=$(dirname ${input})/$(basename ${input} .nii.gz)_tsnr.nii.gz
+else
+  output=`fetch_filepath ${output}`
+fi
+
+# calculate mean and std deviation
+mean_img=$(dirname ${input})/$(basename ${input} .nii.gz)_mean.nii.gz
+std_img=$(dirname ${input})/$(basename ${input} .nii.gz)_std.nii.gz
+
+fslmaths ${input} -Tmean ${mean_img}
+fslmaths ${input} -Tstd ${std_img}
+fslmaths ${mean_img} -div ${std_img} -thr 0 ${output}
+
+# clean up
+if [ ${clean_up} -eq 1 ]; then
+  rm ${mean_img} ${std_img} 2>/dev/null
+fi

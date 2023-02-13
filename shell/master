@@ -45,6 +45,7 @@ fprep_input=0         # spinoza_fitprfs
 lbl_flag=""           # spinoza_fitprfs
 save_grid=""          # spinoza_fitprfs
 bouds_flag=""         # spinoza_fitprfs
+TSNR_FLAG=""          # spinoza_nordic
 use_bbr=""            # spinoza_fmriprep
 WARP_ONLY=""          # spinoza_fmriprep
 REMOVE_WF=""          # spinoza_fmriprep
@@ -61,7 +62,7 @@ NO_BIAS=""            # spinoza_qmrimaps
 
 # use long options in bash:
 # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options
-declare -a array=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv" "--no_fit" "--fmriprep" "--fprep" "--v1" "--v2" "--no_grid" "--debug" "--no_nordic" "--dcm_fix" "--ow" "--no_bounds")
+declare -a array=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv" "--no_fit" "--fmriprep" "--fprep" "--v1" "--v2" "--no_grid" "--debug" "--no_nordic" "--dcm_fix" "--ow" "--no_bounds" "--tsnr" "--mag")
 
 # sort options array
 IFS=$'\n' opts=($(sort <<<"${array[*]}"))
@@ -83,7 +84,10 @@ do
           ;;                 
         no_nordic)
           NORDIC="--no_nordic"
-          ;;            
+          ;;     
+        tsnr)
+          TSNR_FLAG="--tsnr"
+          ;;                     
         no_bbr)
           use_bbr="--no_bbr"
           ;;
@@ -399,7 +403,8 @@ Args:
   --tc              use trust-constr minimization for both the Gaussian as well as the extended model 
                     (e.g., DoG, CSS, or DN). By default, we'll use trust-constr minimization for both. 
                     It's recommended to at least to Gaussian fitting with trust-constr, and potential 
-                    extended models with L-BGFS. For this, see '-x' flag  
+                    extended models with L-BGFS. For this, see '-x' flag 
+  --tsnr            calculate tSNR before and after NORDIC (spinoza_nordic) and save them as images                     
   --v1              only fit voxels from ?.V1_exvivo.thresh.label; the original dimensions will be main-
                     tained, but timecourses outside of the ROI are set to zero
   --v2              only fit voxels from ?.V2_exvivo.thresh.label; the original dimensions will be main-
@@ -932,7 +937,7 @@ if [[ $? -eq 0 ]]; then
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] NORDIC denoising"
 
-  ${job} ${module_name} ${SGE} ${SUBJECT} ${SESSION} ${DIR_DATA_HOME}
+  ${job} ${module_name} ${SGE} ${SUBJECT} ${SESSION} ${TSNR_FLAG} ${DIR_DATA_HOME}
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: ${module_name} exited with non-zero status"
     exit 1
@@ -959,7 +964,14 @@ if [[ $? -eq 0 ]]; then
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Use nighres to get skull and dura mask"
 
-  ${job} spinoza_dura ${SUBJECT} ${SESSION} ${OW} ${DIR_DATA_DERIV}/cat12 ${DIR_DATA_HOME} ${DIR_DATA_DERIV}/nighres ${DIR_DATA_DERIV}/manual_masks
+  # find hierarchically the anatomy folder (see call_bashhelper)
+  INPUT_DIR=`find_hierarchical_anatomy`
+  
+  ${job} spinoza_dura \
+    ${SUBJECT} \
+    ${SESSION} \
+    ${OW} \
+    ${INPUT_DIR} ${DIR_DATA_HOME} ${DIR_DATA_DERIV}/nighres ${DIR_DATA_DERIV}/manual_masks
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_dura exited with non-zero status"
@@ -991,7 +1003,10 @@ if [[ $? -eq 0 ]]; then
   # DATA = MEMP2RAGE  > arg1 = DIR_DATA_DERIV/pymp2rage
   # DATA = AVERAGE    > arg1 = DIR_DATA_DERIV/ants
 
-  ${job} spinoza_sagittalsinus ${SUBJECT} ${SESSION} ${OW} ${DIR_DATA_DERIV}/pymp2rage ${DIR_DATA_DERIV}/manual_masks ${DRAW_SAG}
+  # find hierarchically the anatomy folder (see call_bashhelper)
+  INPUT_DIR=`find_hierarchical_anatomy`
+
+  ${job} spinoza_sagittalsinus ${SUBJECT} ${SESSION} ${OW} ${INPUT_DIR} ${DIR_DATA_DERIV}/manual_masks ${DRAW_SAG}
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_sagittalsinus exited with non-zero status"
@@ -1019,7 +1034,14 @@ if [[ $? -eq 0 ]]; then
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Combine all masks and apply to image"
 
-  ${job} spinoza_masking ${SUBJECT} ${SESSION} ${OW} ${DIR_DATA_DERIV}/cat12 ${DIR_DATA_DERIV}/masked_${DATA,,} ${DIR_DATA_DERIV}/manual_masks ${DIR_DATA_DERIV}/skullstripped
+  # find hierarchically the anatomy folder (see call_bashhelper)
+  INPUT_DIR=`find_hierarchical_anatomy`
+
+  ${job} spinoza_masking \
+    ${SUBJECT} \
+    ${SESSION} \
+    ${OW} \
+    ${INPUT_DIR} ${DIR_DATA_DERIV}/masked_${DATA,,} ${DIR_DATA_DERIV}/manual_masks ${DIR_DATA_DERIV}/skullstripped
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_masking exited with non-zero status"
@@ -1047,15 +1069,8 @@ if [[ $? -eq 0 ]]; then
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Run FreeSurfer outside of fMRIprep"
 
-  if [[ -d ${DIR_DATA_DERIV}/masked_${DATA,,} ]]; then
-    INPUT_DIR=${DIR_DATA_DERIV}/masked_${DATA,,}
-  elif [[ -d ${DIR_DATA_DERIV}/denoised ]]; then
-    INPUT_DIR=${DIR_DATA_DERIV}/denoised
-  elif [[ -d ${DIR_DATA_DERIV}/pymp2rage ]]; then
-    INPUT_DIR=${DIR_DATA_DERIV}/pymp2rage
-  else
-    INPUT_DIR=${DIR_DATA_HOME}
-  fi
+  # find hierarchically the anatomy folder (see call_bashhelper)
+  INPUT_DIR=`find_hierarchical_anatomy`
 
   ${job} spinoza_freesurfer ${SUBJECT} ${SESSION} ${INPUT_DIR} all ${DIR_DATA_HOME}
 
