@@ -65,7 +65,7 @@ MASKS=${@:$OPTIND+3:1}
 
 if [[ -z ${sub} ]]; then
   # loop through subjects
-  search="${INPUT}/${SUBJECT_PREFIX}*"
+  search="${T1W}/${SUBJECT_PREFIX}*"
 else
   # read specified subjects into array
   IFS=', ' read -r -a search <<< "${sub}"
@@ -114,6 +114,9 @@ for subID in ${search}; do
   outdir_dura=${OUTPUT}/${base_path}/dura
   outdir_skull=${OUTPUT}/${base_path}/skullstrip
 
+  echo
+  echo "**************************************** Processing ${sub_name} ***************************************"
+
   # get INV2-image
   if [[ ${DATA} == "MP2RAGEME" ]]; then
     inv2=`find "${inv2_dir}" -type f \( -name "${sub_name}*" -and -name "*echo-1*" -and -name "*inv-2*" -and -name "*acq-${DATA^^}_*" -and -name "*part-mag*" -and -name "*.nii.gz" \) 2>/dev/null`      
@@ -152,7 +155,7 @@ for subID in ${search}; do
     if [[ -z ${inv2} ]]; then
       echo "${sub_name}: Missing INV2-image. Check ${inv2_dir} for:"
       echo " \"${sub_name}\""
-      echo " \"echo-1\""
+      echo " \"echo-1\" (if DATA==MP2RAGEME)"
       echo " \"inv-2\""
       echo " \"${search_for}\""
       echo " \"part-mag\""
@@ -160,22 +163,19 @@ for subID in ${search}; do
     fi
 
     if [[ -z ${t1w} ]]; then
-      echo "${sub_name}: Missing T1-weighted image. Check your input directory in the master script."
+      echo "No T1w-image in \"${input_dir}\""
       continue
     fi
 
     if [[ -z ${t1map} ]]; then
-      echo "${sub_name}: Missing T1map image. Check your input directory in the master script."
+      echo "No T1map-image in \"${input_dir}\""
       continue
     fi
 
     if [[ -z ${inv2_mask} ]]; then
-      echo "${sub_name}: Missing INV2-mask image. Run brain extraction on INV2 first."
+      echo "No brain mask \"*spm_mask\" in \"${mask_dir}\""
       continue
     fi
-
-    echo
-    echo "**************************************** Processing ${sub_name} ***************************************"
 
     if [[ ! -d ${outdir_dura} ]]; then
       mkdir -p ${outdir_dura}
