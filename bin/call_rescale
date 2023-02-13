@@ -52,7 +52,10 @@ Example:
     else:
         out = input_image
 
-    cmd_txt = f"ImageMath 3 {out} RescaleImage {input_image} {min_range} {max_range}"
+    img = nb.load(input_image)
+    hdr = img.header
+    dim = hdr["dim"][0]
+    cmd_txt = f"ImageMath {dim} {out} RescaleImage {input_image} {min_range} {max_range}"
 
     try:
         os.system(cmd_txt)
