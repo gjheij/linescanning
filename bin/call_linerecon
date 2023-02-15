@@ -50,6 +50,7 @@ USAGE
 # Deal with arguments
 do_nordic="on"
 DEBUG=0
+n_echos=1
 while getopts :-:hnm:r: argument
 do
   case ${argument} in
@@ -91,7 +92,7 @@ RAW=${@:$OPTIND:1}
 LSD=${@:$OPTIND+1:1}
 OUT=${@:$OPTIND+2:1}
 
-if [[ -z ${n_echos} ]]; then
+if [[ ${n_echos} -gt 1 ]]; then
   multiecho=0
 else
   multiecho=1
