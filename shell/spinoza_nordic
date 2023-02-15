@@ -191,15 +191,19 @@ for subID in ${search}; do
     dim=`fslval ${mag_img} dim0`
     if [[ ${dim} -gt 3 ]]; then
       
-      # check if json has "NORDIC" field; definitely do nordic if there's no json file
+      # check if json has "NORDIC" field; definitely do nordic if there's no json file; also do it if there's no nifti in func/
       do_nordic=1
       json_f=${func_folder}/$(basename ${mag_img} .nii.gz).json
       if [[ -f ${json_f} ]]; then
-        did_nordic=`cat ${json_f} | grep "Nordic"`
-        if [[ ! -z ${did_nordic} ]]; then
-          do_nordic=0
-        else
+        if [[ ! -f ${func_folder}/$(basename ${mag_img}) ]]; then
           do_nordic=1
+        else
+          did_nordic=`cat ${json_f} | grep "Nordic"`
+          if [[ ! -z ${did_nordic} ]]; then
+            do_nordic=0
+          else
+            do_nordic=1
+          fi
         fi
       fi
       
@@ -208,15 +212,17 @@ for subID in ${search}; do
 
         # check if there's a phase directory
         if [[ ${mag_only} -eq 0 ]]; then
-          tt="[phase+magnitude]"
-
-          # get corresponding phase image or insert magnitude image
+          # get corresponding phase image or insert magnitude image; if no phase, run magnitude only
           ph_img=${phase_folder}/$(basename ${mag_img} .nii.gz)_ph.nii.gz
           if [[ ! -f ${ph_img} ]]; then
-            echo "Could not find phase image for \"${mag_img}\""
-            continue
+            echo "No phase image for $(basename ${mag_img}); switching to magnitude-only"
+            mag_only=1
           fi
+        fi
 
+        # check if we switched or not..
+        if [[ ${mag_only} -eq 0 ]]; then
+          tt="[phase+magnitude]"
         else
           mag_flag="--mag"
           tt="[magnitude only]"
