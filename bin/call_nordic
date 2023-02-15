@@ -15,7 +15,9 @@ call_nordic
 Applies the NORDIC algorithm to whole-brain data. Requires the magnitude image, the phase image, and
 an output name. We'll try to read the run-ID from the input file to create a template script. This
 can be useful when you want to submit multiple NORDIC processes to a cluster as it avoids that the
-template script is overwritten before another has initiated.
+template script is overwritten before another has initiated. If you want .nii output from NORDIC, 
+rather than .nii.gz, set the output file to .nii. Internally, we'll convert any .nii file to .nii.gz
+for other operations. If the output file has .nii extension, the final output will not be gzip'ed
 
 Args:
   --mag     use magnitude only
@@ -25,11 +27,12 @@ Args:
   <output>  nordic'ed output
 
 Usage:
-  call_nordic [-m] <mag file> <phase file> <nordic output>
+  call_nordic [options] <mag file> <phase file> <nordic output>
 
 Example:
-  call_nordic func_mag.nii.gz func_phase.nii.gz func_nordic.nii.gz      # mag + phase
-  call_nordic -m func_mag.nii.gz func_phase.nii.gz func_nordic.nii.gz   # mag only
+  call_nordic func_mag.nii.gz func_phase.nii.gz func_nordic.nii.gz          # mag + phase
+  call_nordic --mag func_mag.nii.gz func_phase.nii.gz func_nordic.nii.gz    # mag only
+  call_nordic --tsnr func_mag.nii.gz func_phase.nii.gz func_nordic.nii.gz   # calculate tSNR
 
 ---------------------------------------------------------------------------------------------------
 
@@ -82,6 +85,19 @@ fn_mag=`fetch_filepath ${IMG_MAGN}`
 fn_phase=`fetch_filepath ${IMG_PHASE}`
 fn_nordic=`fetch_filepath ${IMG_NORDIC}`
 
+ext_mag=`fetch_extension ${IMG_MAGN}`
+if [[ ${ext_mag} == "gz" ]]; then
+  nii_mag=".nii.gz"
+else
+  nii_mag=".nii"
+  gzip ${fn_mag}
+fi
+
+ext_ph=`fetch_extension ${IMG_PHASE}`
+if [[ ${ext_ph} == "nii" ]]; then
+  gzip ${fn_phase}
+fi
+
 # check if datatype != FLOAT64; might crash..
 dtype=`fslval ${fn_mag} data_type`
 if [ ${fn_mag} == "FLOAT64" ]; then
@@ -89,19 +105,20 @@ if [ ${fn_mag} == "FLOAT64" ]; then
   call_setdtype ${fn_mag}
 fi
 
+json_mag=$(dirname ${fn_mag})/$(basename ${fn_mag} ${nii_mag}).json
+call_json ${json_mag} "Nordic" "off"
+
 #-----------------------------------------------------------------------------
 # Get extension from input file
 ext_nordic=`fetch_extension ${fn_nordic}`
 
 # nordic output
 if [[ ${ext_nordic} == "gz" ]]; then
-  fn_nordic=$(dirname ${fn_nordic})/$(basename ${fn_nordic} .nii.gz)
-elif [[ ${ext_nordic} == "nii" ]]; then
-  fn_nordic=$(dirname ${fn_nordic})/$(basename ${fn_nordic} .nii)
+  nii_ext=".nii.gz"
 else
-  echo "ERROR in `basename ${0}`: unrecognized extension \"${ext_nordic}\" for NORDIC output"
-  exit 1
+  nii_ext=".nii"
 fi
+fn_nordic=$(dirname ${fn_nordic})/$(basename ${fn_nordic} ${nii_ext})
 
 # try to get run-ID from input file
 run_id=`run_id ${fn_nordic}`
@@ -122,7 +139,7 @@ if [[ -f ${fn_mag} && -f ${fn_phase} ]]; then
   # calculate tSNR before nordic
   if [[ ${make_tsnr} -eq 1 ]]; then
     echo "Calculating tSNR pre-NORDIC"
-    call_tsnr2 --clean ${fn_mag} $(dirname ${fn_mag})/$(basename ${fn_mag} .nii.gz)_tsnr_pre_nordic.nii.gz
+    call_tsnr2 --clean ${fn_mag} $(dirname ${fn_mag})/$(basename ${fn_mag} ${nii_ext})_tsnr_pre_nordic${nii_ext}
   fi
   
   # call_matlab = in call_bashhelper
@@ -139,15 +156,26 @@ fi
 
 #-----------------------------------------------------------------------------
 # Reset extension
+
 if [[ ${ext_nordic} == "gz" ]]; then
   gzip ${fn_nordic}.nii 2>/dev/null
   echo "Compressing NORDIC'ed output"
-  nord_file=${fn_nordic}.nii.gz 
+  nord_file=${fn_nordic}${nii_ext}
 else
-  nord_file=${fn_nordic}.nii
+  nord_file=${fn_nordic}${nii_ext}
 fi
 
+# add json message
+if [[ ${mag_only} -eq 1 ]]; then
+  msg="Magnitude only"
+else
+  msg="Phase+Magnitude"
+fi
+
+call_json ${fn_nordic}.json "Nordic" ${msg}
+
+# make post NORDIC tSNR
 if [[ ${make_tsnr} -eq 1 ]]; then
   echo "Calculating tSNR post-NORDIC"
-  call_tsnr2 --clean ${nord_file} $(dirname ${fn_mag})/$(basename ${fn_mag} .nii.gz)_tsnr_post_nordic.nii.gz
+  call_tsnr2 --clean ${nord_file} $(dirname ${fn_mag})/$(basename ${fn_mag} ${nii_ext})_tsnr_post_nordic${nii_ext}
 fi

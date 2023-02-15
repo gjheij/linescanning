@@ -174,9 +174,6 @@ for subID in ${search}; do
     fi
   fi
 
-  # add message to json files
-  add_nordic_msg ${tmp_folder} "off"
-
   # check BOLD files
   IMGS=`find "${tmp_folder}" -type f \( -name "*bold.nii.gz" \) 2>/dev/null`
   IFS=$'\n' mag_imgs=($(sort <<<"${IMGS[*]}"))
@@ -187,83 +184,81 @@ for subID in ${search}; do
     exit 1
   fi
 
-  # check if there's a phase directory
-  if [[ -d ${phase_folder} ]]; then
+  # loop through magnitude images
+  for mag_img in ${mag_imgs[@]}; do
 
-    # add msg to existing json files
-    json_msg="Magnitude+phase"
-    add_nordic_msg ${func_folder} ${json_msg}
-
-    # loop through magnitude images
-    for mag_img in ${mag_imgs[@]}; do
-
-      # check if dim>3
-      dim=`fslval ${mag_img} dim0`
-      if [[ ${dim} -gt 3 ]]; then
-
-        # get corresponding phase image
-        ph_img=${phase_folder}/$(basename ${mag_img} .nii.gz)_ph.nii.gz
-        if [[ -f ${ph_img} ]]; then
-
-          # decide on job execution
-          if [[ ${SGE} -eq 1 ]]; then
-            job_name=$(basename ${mag_img} .nii.gz)
-            job="qsub -q ${SGE_QUEUE_LONG} -wd ${DIR_LOGS} -pe smp ${smp} -N ${job_name}"
-            if [ ! -d ${DIR_LOGS} ]; then
-              mkdir -p ${DIR_LOGS}
-            fi
-          else
-            # print message
-            echo "Running NORDIC.."
-            echo " -mag:    ${mag_img}"
-            echo " -phase:  ${ph_img}"
-            echo " -type:   [phase]"        
-          fi
-
-          # run if basenames of phase and magnitude match
-          if [[ $(basename ${ph_img} _ph.nii.gz) == $(basename ${mag_img} .nii.gz) ]]; then
-            out=${func_folder}/$(basename ${mag_img})
-            ${job} ${DIR_SCRIPTS}/bin/call_nordic ${tsnr_flag} ${mag_img} ${ph_img} ${out}
-          else
-            echo "ERROR in `basename ${0}`: mismatch between \"$(basename ${ph_img} _ph.nii.gz)\" & \"$(basename ${mag_img} .nii.gz)\""
-          fi
-        
+    # check if dim>3
+    dim=`fslval ${mag_img} dim0`
+    if [[ ${dim} -gt 3 ]]; then
+      
+      # check if json has "NORDIC" field; definitely do nordic if there's no json file
+      do_nordic=1
+      json_f=${func_folder}/$(basename ${mag_img} .nii.gz).json
+      if [[ -f ${json_f} ]]; then
+        did_nordic=`cat ${json_f} | grep "Nordic"`
+        if [[ ! -z ${did_nordic} ]]; then
+          do_nordic=0
         else
-          echo "Could not find phase image for \"${mag_img}\""
+          do_nordic=1
         fi
       fi
-    done
-
-  else
-    # magnitude only
-    json_msg="Magnitude only"
-    add_nordic_msg ${func_folder} ${json_msg}
-
-    for img in ${mag_imgs[@]}; do
-
-      # check if dim>3
-      dim=`fslval ${mag_img} dim0`
-      if [[ ${dim} -gt 3 ]]; then
       
-        if [[ ${SGE} -eq 1 ]]; then
-          run_id=`run_id ${img}`
-          if [[ -z ${run_id} || ${run_id} -eq 0 ]]; then
-            run_id=$((ct+1))
+      # run nordic
+      if [[ ${do_nordic} -eq 1 ]]; then
+
+        # check if there's a phase directory
+        if [[ ${mag_only} -eq 0 ]]; then
+          tt="[phase+magnitude]"
+
+          # get corresponding phase image or insert magnitude image
+          ph_img=${phase_folder}/$(basename ${mag_img} .nii.gz)_ph.nii.gz
+          if [[ ! -f ${ph_img} ]]; then
+            echo "Could not find phase image for \"${mag_img}\""
+            continue
           fi
 
-          job="qsub -q ${SGE_QUEUE_LONG} -wd ${DIR_LOGS} -pe smp ${smp} -N nordic${run_id}"
+        else
+          mag_flag="--mag"
+          tt="[magnitude only]"
+          ph_img=${mag_img}
+        fi
+
+        # decide on job execution
+        if [[ ${SGE} -eq 1 ]]; then
+          job_name=$(basename ${mag_img} .nii.gz)
+          job="qsub -q ${SGE_QUEUE_LONG} -wd ${DIR_LOGS} -pe smp ${smp} -N ${job_name}"
           if [ ! -d ${DIR_LOGS} ]; then
             mkdir -p ${DIR_LOGS}
           fi
         else
-          echo "Running NORDIC on \"${img}\" [mag-only]"
+          # print message
+          echo "Running NORDIC.."
+          echo " -mag:    ${mag_img}"
+          echo " -phase:  ${ph_img}"
+          echo " -type:   ${tt}"        
         fi
-        out=${func_folder}/$(basename ${mag_img})
-        ${job} ${DIR_SCRIPTS}/bin/call_nordic --mag ${tsnr_flag} ${img} ${img} ${out}
+
+        # run if basenames of phase and magnitude match
+        if [[ $(basename ${ph_img} _ph.nii.gz) == $(basename ${mag_img} .nii.gz) ]]; then
+          out=${func_folder}/$(basename ${mag_img})
+          ${job} ${DIR_SCRIPTS}/bin/call_nordic \
+            ${mag_flag} \
+            ${tsnr_flag} \
+            ${mag_img} ${ph_img} ${out}
+
+          if [[ $? -ne 0 ]]; then
+            echo "ERROR in `basename ${0}`: call_nordic exited with non-zero status"
+            continue
+          fi
+        else
+          echo "ERROR in `basename ${0}`: mismatch between \"$(basename ${ph_img} _ph.nii.gz)\" & \"$(basename ${mag_img} .nii.gz)\""
+        fi
+      else
+        echo "Found NORDIC tag; ${mag_img} already NORDIC'ed"
       fi
-    done
-  fi
-  
+    fi
+  done
+
   if [[ ${SGE} -eq 0 ]]; then
     # remove any left over unzipped files
     nii_files=`find ${func_folder} -type f -name "*.nii" 2>/dev/null`
@@ -271,6 +266,7 @@ for subID in ${search}; do
       rm -r ${nii_files} 2>/dev/null
     fi
   fi
+
 done
 
 #-----------------------------------------------------------------------------
