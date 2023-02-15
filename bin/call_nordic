@@ -100,7 +100,7 @@ fi
 
 # check if datatype != FLOAT64; might crash..
 dtype=`fslval ${fn_mag} data_type`
-if [ ${fn_mag} == "FLOAT64" ]; then
+if [ ${dtype} == "FLOAT64" ]; then
   echo "Changing data_type of magnitude-image from float64 to uint16"
   call_setdtype ${fn_mag}
 fi
