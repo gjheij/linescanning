@@ -537,7 +537,7 @@ function get_id {
     part_after_task=${func#*$tag}
     if [[ ! -z ${part_after_task} ]]; then
       # use brute force underscore as delimiter an pray your sequences have been set correctly
-      tag=$(echo ${part_after_task} | cut -d'_' -f1)
+      tag=$(echo ${part_after_task} | cut -d'_' -f1 | cut -d"-" -f2)
     else
       # could not derive task; assume its pRF
       tag=""
@@ -851,8 +851,8 @@ function make_nordic_script {
     echo "clear;"
     echo "addpath(genpath('${DIR_SCRIPTS}/misc'));"
     echo "ARG.DIROUT              = '$(dirname ${3})/';"
-    echo "ARG.temporal_phase      = 1;"
-    echo "ARG.phase_filter_width  = 10;"
+    # echo "ARG.temporal_phase      = 1;"
+    # echo "ARG.phase_filter_width  = 10;"
     echo "ARG.magnitude_only      = ${4};"
     echo ""
     echo "nordic_template('${1}', '${2}', '$(basename ${3})', ARG);"

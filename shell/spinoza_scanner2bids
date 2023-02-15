@@ -30,7 +30,8 @@ Input options:
                       sessions are converted using 'call_pydcm2niix', but this flag points it to 'call
                       _dcm2niix', the same that is used for line-scanning sessions. It pipes the output 
                       from dcm2niix to a log file to monitor 'Catastrophic errors'. It then tries to 
-                      convert these with 'parrec2nii', which comes with the python pacakge 'nibabel'
+                      convert these with 'parrec2nii', which comes with the python pacakge 'nibabel'.
+
 Example:
   spinoza_scanner2bids /path/to/project_root /path/to/your/project/sourcedata     # regular
   spinoza_scanner2bids -n 1/path/to/project_root /path/to/your/project/sourcedata # regular|ses-1
@@ -126,7 +127,7 @@ source call_bashhelper
 #-----------------------------------------------------------------------------
 echo
 echo "==================================================================================================="
-printf "Convert raw data to nifti using dcm2niix\n"
+printf "Convert raw data to nifti using dcm2niix/parrec2nii\n"
 start=`date +%s`
 start_date=`date`
 
@@ -210,9 +211,15 @@ for subID in ${search}; do
 
       if [[ ! -d ${bids_dir}/anat || ! -d ${bids_dir}/func ]]; then
 
+        if [[ ${dcm_fix} -eq 1 ]]; then
+          intro_txt="Regular session, but with call_parrec2nii fix for big PAR/REC files"
+        else
+          intro_txt="Line-scanning session; using call_dcm2niix"
+        fi
+
         echo
         echo "**************************************** Processing ${sub_name} ***************************************"
-        echo "Line-scanning session; using call_dcm2niix"
+        echo ${intro_txt}
 
         if [[ ! -d ${bids_dir}/anat ]]; then
           mkdir -p ${bids_dir}/anat
@@ -474,22 +481,24 @@ for subID in ${search}; do
 
         # check for more whole-brainy stuff
         if [[ ${DCM_FIX} -eq 0 ]]; then
-          bold_files=`find "${input_dir}" -type f \( -name "*acq-3DEPI*" -and -name "*bold.nii.gz" \) 2>/dev/null`
+          b_files=`find "${input_dir}" -type f \( -name "*acq-3DEPI*" -and -name "*bold.nii.gz" \) 2>/dev/null`
         else
-          bold_files=`find "${input_dir}" -type f \( -name "*bold.nii.gz" \) 2>/dev/null`
+          b_files=`find "${input_dir}" -type f \( -name "*bold.nii.gz" \) 2>/dev/null`
         fi
 
         # sort array (https://stackoverflow.com/questions/7442417/how-to-sort-an-array-in-bash)
-        IFS=$'\n' bold_files=($(sort <<<"${bold_files[*]}"))
+        IFS=$'\n' bold_files=($(sort <<<"${b_files[*]}"))
         unset IFS
 
         count=0
-        warning=0
+        mb_warning=0
+        pe_warning=0
         if [[ ! -z ${bold_files[@]} ]]; then
           echo " Found BOLD file(s)"
 
           for bold in ${bold_files[@]}; do
 
+            echo $bold
             # fetch run
             run=`run_id ${bold}`
             if [[ ${run} -eq 0 ]]; then
@@ -521,14 +530,22 @@ for subID in ${search}; do
                 orig=${phase}
                 image="phase"
               fi
-              
-              # check if we got description field
-              if [[ ! -z ${desc} ]]; then
-                ff=${bids_dir}/${image}/${base}_task-${task}_run-${run}_acq${acq}_desc${desc}${ext}
-              else
-                ff=${bids_dir}/${image}/${base}_task-${task}_run-${run}_acq${acq}${ext}
-              fi
 
+              # check if we got acquisition; if we also got desc, add it to acq, as fMRIprep doesn't like the desc- field
+              if [[ ! -z ${acq} ]]; then
+                add_acq="_acq-${acq}"
+                if [[ ! -z ${desc} ]]; then
+                  add_acq+="${desc}"
+                fi
+              else
+                add_acq=""
+                if [[ ! -z ${desc} ]]; then
+                  add_acq="_acq-${desc}"
+                fi
+              fi              
+
+              # compile filename
+              ff=${bids_dir}/${image}/${base}_task-${task}_run-${run}${add_acq}${ext}
               if [[ ! -f ${ff} ]]; then
                 if [[ ! -d ${ff} ]]; then
                   mkdir -p $(dirname ${ff})
@@ -543,10 +560,10 @@ for subID in ${search}; do
                     json_bids=$(dirname ${ff})/$(basename ${ff} .nii.gz).json
                     cp ${json_file} ${json_bids}
 
+                    # check if json file has IntendedFor
                     intended_for=`cat ${json_bids} | grep "IntendedFor"`
                     if [[ -z ${intended_for} ]]; then
                       if [[ ${image} == "fmap" ]]; then
-                        # check if json file has IntendedFor
 
                         base_path=""
                         if [[ $(basename ${json_bids}) == *"ses"* ]]; then
@@ -554,13 +571,8 @@ for subID in ${search}; do
                           base_path+="${ses_nr}"
                         fi
 
-                        warning=1
-                        echo "  WARNING: assuming PE-direction for FIELDMAP=\"j\", please check if this is correct!"
-                        call_json ${json_bids} IntendedFor,PhaseEncodingDirection ${base_path}/func/$(basename ${json_bids} _epi.json)_bold.nii.gz,j
-                      elif [[ ${image} == "func" ]]; then
-                        warning=1
-                        echo "  WARNING: assuming PE-direction for BOLD=\"j-\", please check if this is correct!"
-                        call_json ${json_bids} PhaseEncodingDirection j-
+                        # add IntendedFor
+                        call_json ${json_bids} IntendedFor ${base_path}/func/$(basename ${json_bids} _epi.json)_bold.nii.gz
                       fi
                     fi
 
@@ -578,6 +590,7 @@ for subID in ${search}; do
                           mb_factor=`read_json ${json_bids} MultiBandAccelerationFactor`
                           if [[ -z ${mb_factor} ]]; then
                             mb_factor=3
+                            mb_warning=1
                             echo "  WARNING: defaulting to multiband factor 3 for slice-timings, please check if this is correct!"
                           fi
 
@@ -590,6 +603,24 @@ for subID in ${search}; do
                             exit 1
                           fi
                         fi
+                      fi
+                    fi
+
+                    # check PhaseEncodingDirection
+                    phase_enc_dir=`cat ${json_bids} | grep "PhaseEncodingDirection"`
+                    if [[ -z ${phase_enc_dir} ]]; then
+                      if [[ ${image} == "fmap" ]]; then
+                        ph_dir="j"
+                      elif [[ ${image} == "func" ]]; then
+                        ph_dir="j-"
+                      else
+                        ph_dir=""
+                      fi
+
+                      if [[ ! -z ${ph_dir} ]]; then
+                        pe_warning=1
+                        echo "  WARNING: assuming PE-direction for ${image^^}=\"${ph_dir}\", please check if this is correct!"
+                        call_json ${json_bids} PhaseEncodingDirection ${ph_dir}
                       fi
                     fi
                   fi
@@ -694,8 +725,14 @@ if [[ ${warning} -eq 1 ]]; then
   echo "---------------------------------------------------------------------------------------------------"
   echo "WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING"
   echo ""
-  echo "I assumed the PhaseEncoding direction in the FMAP/FUNC-folder; please make sure this is correct!"
-  echo "I also might have assumed information about the acceleration factor to get the slice timings.."
+  if [[ ${pe_warning} -eq 1 ]]; then
+    echo "I assumed the PhaseEncoding direction in the FMAP/FUNC-folder; please make sure this is correct!"
+  fi
+
+  if [[ ${mb_warning} -eq 1 ]]; then
+    echo "I might have assumed information about the acceleration factor to get the slice timings.."
+  fi
+
   echo "Please check that this is correct!"
   echo "---------------------------------------------------------------------------------------------------"
 fi
