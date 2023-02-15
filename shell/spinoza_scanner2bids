@@ -211,7 +211,7 @@ for subID in ${search}; do
 
       if [[ ! -d ${bids_dir}/anat || ! -d ${bids_dir}/func ]]; then
 
-        if [[ ${dcm_fix} -eq 1 ]]; then
+        if [[ ${DCM_FIX} -eq 1 ]]; then
           intro_txt="Regular session, but with call_parrec2nii fix for big PAR/REC files"
         else
           intro_txt="Line-scanning session; using call_dcm2niix"
