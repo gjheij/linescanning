@@ -302,7 +302,7 @@ for subID in ${search}; do
             if [ ! -z ${img} ]; then
               acq=`get_id ${img} acq`
               if [[ ! -z ${acq} ]]; then
-                acq_tag="_acq${acq}"
+                acq_tag="_acq-${acq}"
               else
                 acq_tag=""
               fi
