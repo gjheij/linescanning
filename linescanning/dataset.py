@@ -37,8 +37,39 @@ def check_input_is_list(obj, var=None, list_element=0, matcher="func_file"):
     else:
         return attr
 
+class SetAttributes():
 
-class ParseEyetrackerFile():
+    def __init__(self):
+
+        # store ParseEyetracker attributes
+        self.eye_attributes = [
+            "df_eye",
+            "df_blink",
+            "df_space_func",
+            "df_space_eye",
+            "df_space_eye"
+        ]
+
+        # store ParseExptoolsFile attributes
+        self.exp_attributes = [
+            "df_onsets",
+            "df_rts",
+            "df_accuracy"
+        ]        
+
+        # store ParseFuncFile attributes
+        self.func_attributes = [
+            "df_func_psc",
+            "df_func_raw",
+            "df_func_zscore",
+            "df_func_ica",
+            "df_func_acomp"
+        ]
+
+        # combine them all for Dataset-class
+        self.all_attributes = self.eye_attributes+self.exp_attributes+self.func_attributes
+
+class ParseEyetrackerFile(SetAttributes):
 
     """ParseEyetrackerFile
 
@@ -106,6 +137,8 @@ class ParseEyetrackerFile():
         use_bids=True,
         nr_vols=None,
         h5_file=None):
+
+        super().__init__()
 
         if not HEDFPY_AVAILABLE:
             raise ModuleNotFoundError("could not find 'hedfpy', so this functionality is disabled")
@@ -180,12 +213,11 @@ class ParseEyetrackerFile():
 
         else:
             self.ho.open_hdf_file()
+        
+        # set them for internal reference
+        for attr in self.eye_attributes:
+            setattr(self, attr, [])
 
-        self.df_eye         = []
-        self.df_blinks      = []
-        self.df_space_func  = []
-        self.df_space_eye   = []
-        self.df_saccades    = []
         for i, edf_file in enumerate(edfs):
 
             if self.verbose:
@@ -426,7 +458,7 @@ class ParseEyetrackerFile():
 
         return nr_vols
 
-class ParseExpToolsFile(ParseEyetrackerFile):
+class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
 
     """ParseExpToolsFile()
 
@@ -527,8 +559,12 @@ class ParseExpToolsFile(ParseEyetrackerFile):
         self.event_names                    = event_names
         self.__dict__.update(kwargs)
 
+        # set attributes
+        SetAttributes.__init__(self)
+
         if self.edfs != None:
-            super().__init__(
+            ParseEyetrackerFile.__init__(
+                self,
                 self.edfs, 
                 subject=self.sub, 
                 func_file=self.funcs, 
@@ -544,9 +580,11 @@ class ParseExpToolsFile(ParseEyetrackerFile):
             self.tsv_file = [self.tsv_file]
 
         if isinstance(self.tsv_file, list):
-            df_onsets = []
-            df_rts = []
-            df_accuracy = []
+            
+            # set them for internal reference
+            for attr in self.exp_attributes:
+                setattr(self, attr, [])
+
             for run, onset_file in enumerate(self.tsv_file):
 
                 if self.use_bids:
@@ -580,33 +618,33 @@ class ParseExpToolsFile(ParseEyetrackerFile):
                     duration=duration)
 
                 # append to df
-                df_onsets.append(self.get_onset_df(index=False))
+                self.df_onsets.append(self.get_onset_df(index=False))
 
                 # check if we got RTs
                 try:
-                    df_rts.append(self.get_rts_df(index=False))
+                    self.df_rts.append(self.get_rts_df(index=False))
                 except:
                     pass
 
                 # check if we got accuracy (only if RT_relative_to != 'start')
                 try:
-                    df_accuracy.append(self.get_accuracy(index=False))
+                    self.df_accuracy.append(self.get_accuracy(index=False))
                 except:
                     pass
 
 
             # concatemate df
-            self.df_onsets = pd.concat(df_onsets).set_index(['subject', 'run', 'event_type'])
+            self.df_onsets = pd.concat(self.df_onsets).set_index(['subject', 'run', 'event_type'])
 
             # rts
             try:
-                self.df_rts = pd.concat(df_rts).set_index(['subject', 'run'])
+                self.df_rts = pd.concat(self.df_rts).set_index(['subject', 'run'])
             except:
                 pass
 
             # accuracy
             try:
-                self.df_accuracy = pd.concat(df_accuracy).set_index(['subject', 'run'])
+                self.df_accuracy = pd.concat(self.df_accuracy).set_index(['subject', 'run'])
             except:
                 pass
 
@@ -1642,7 +1680,7 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                 self.report_obj.generate_report()
 
                 if self.verbose:
-                    print(f" Saving report to {str(self.report_obj.out_dir/self.report_obj.out_filename)}")                                      
+                    print(f" Saving report to {str(self.report_obj.out_dir/self.report_obj.out_filename)}")
 
     def preprocess_func_file(
         self, 
@@ -2253,7 +2291,7 @@ order={self.poly_order}). """
         else:
             return df
 
-class Dataset(ParseFuncFile):
+class Dataset(ParseFuncFile,SetAttributes):
     """Dataset
 
     Main class for retrieving, formatting, and preprocessing of all datatypes including fMRI (2D), eyetracker (*.edf), physiology (*.log [WIP]), and experiment files derived from `Exptools2` (*.tsv). If you leave `subject` and `run` empty, these elements will be derived from the file names. So if you have BIDS-like files, leave them empty and the dataframe will be created for you with the correct subject/run IDs. 
@@ -2302,20 +2340,17 @@ class Dataset(ParseFuncFile):
         if self.verbose:
             print("DATASET")
         
-        self.read_attributes = [
-            'df_func_psc', 
-            'df_func_raw', 
-            'df_retro_zscore', 
-            'df_onsets', 
-            'df_space_func', 
-            'blink_events']
+        # set attributes
+        SetAttributes.__init__(self)
 
         if isinstance(func_file, str) and func_file.endswith(".h5"):
-            if self.verbose:
-                print(f" Reading from {func_file}")
             self.from_hdf(func_file)
         else:
-            super().__init__(func_file, verbose=self.verbose, **kwargs)
+            ParseFuncFile.__init__(
+                self,
+                func_file, 
+                verbose=self.verbose, 
+                **kwargs)
 
         if self.verbose:
             print("\nDATASET: created")
@@ -2432,7 +2467,7 @@ class Dataset(ParseFuncFile):
         if self.verbose:
             print(f"Saving to {self.h5_file}")
 
-        for attr in self.read_attributes:
+        for attr in self.all_attributes:
             if hasattr(self, attr):
                 
                 if self.verbose:
@@ -2454,14 +2489,12 @@ class Dataset(ParseFuncFile):
 
     def from_hdf(self, input_file=None):
 
-        if input_file == None:
-            if hasattr(self, "lsprep_full"):
-                self.h5_file = opj(self.lsprep_full, "dataset.h5")
-            else:
-                raise ValueError("No output file specified")
+        if not isinstance(input_file, str):
+            raise ValueError("No output file specified")
         else:
             self.h5_file = input_file
-
+        
+        utils.verbose(f"Reading from {self.h5_file}", self.verbose)
         hdf_store = pd.HDFStore(self.h5_file)
         hdf_keys = hdf_store.keys()
         for key in hdf_keys:
@@ -2473,6 +2506,39 @@ class Dataset(ParseFuncFile):
             setattr(self, key, hdf_store.get(key))
 
         hdf_store.close()         
+
+    def to_hdf(self, output_file=None, overwrite=False):
+
+        if output_file == None:
+            raise ValueError("No output file specified")
+        else:
+            self.h5_file = output_file
+
+        if overwrite:
+            if os.path.exists(self.h5_file):
+                store = pd.HDFStore(self.h5_file)
+                store.close()
+                os.remove(self.h5_file)
+
+        utils.verbose(f"Saving to {self.h5_file}", self.verbose)
+        for attr in self.all_attributes:
+            if hasattr(self, attr):
+                
+                if self.verbose:
+                    utils.verbose(f" Storing attribute: {attr}", self.verbose)
+                    
+                add_df = getattr(self, attr)
+                if os.path.exists(self.h5_file):
+                    add_df.to_hdf(self.h5_file, key=attr, append=True, mode='r+', format='t')
+                else:
+                    store = pd.HDFStore(self.h5_file)
+                    store.close()
+                    add_df.to_hdf(self.h5_file, key=attr, mode='w', format='t')
+        
+        utils.verbose("Done", self.verbose)
+
+        store = pd.HDFStore(self.h5_file)
+        store.close()    
 
     def to4D(self, fname=None, desc=None, dtype=None, mask=None):
 
