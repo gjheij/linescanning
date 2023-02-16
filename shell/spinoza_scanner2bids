@@ -555,6 +555,9 @@ for subID in ${search}; do
                   echo "  renaming ${image}-file to `basename ${ff}`"
                   cp ${orig} ${ff}
 
+                  # also reorient to LPI because dcm2niix does AIL, parrec2nii does RPI woohoo.. Fun.
+                  call_reorient -i ${ff}
+
                   json_file=$(dirname ${orig})/$(basename ${orig} .nii.gz).json
                   if [ -f ${json_file} ]; then
                     json_bids=$(dirname ${ff})/$(basename ${ff} .nii.gz).json
