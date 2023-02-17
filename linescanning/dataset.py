@@ -138,7 +138,7 @@ class ParseEyetrackerFile(SetAttributes):
         nr_vols=None,
         h5_file=None):
 
-        super().__init__()
+        super().__init__(self)
 
         if not HEDFPY_AVAILABLE:
             raise ModuleNotFoundError("could not find 'hedfpy', so this functionality is disabled")
