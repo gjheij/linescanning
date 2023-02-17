@@ -44,7 +44,7 @@ class SetAttributes():
         # store ParseEyetracker attributes
         self.eye_attributes = [
             "df_eye",
-            "df_blink",
+            "df_blinks",
             "df_space_func",
             "df_space_eye",
             "df_space_eye"
