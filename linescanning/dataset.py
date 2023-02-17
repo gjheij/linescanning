@@ -47,7 +47,8 @@ class SetAttributes():
             "df_blinks",
             "df_space_func",
             "df_space_eye",
-            "df_space_eye"
+            "df_space_eye",
+            "df_saccades"
         ]
 
         # store ParseExptoolsFile attributes
@@ -138,7 +139,7 @@ class ParseEyetrackerFile(SetAttributes):
         nr_vols=None,
         h5_file=None):
 
-        super().__init__(self)
+        super().__init__()
 
         if not HEDFPY_AVAILABLE:
             raise ModuleNotFoundError("could not find 'hedfpy', so this functionality is disabled")
@@ -186,7 +187,7 @@ class ParseEyetrackerFile(SetAttributes):
             self.nr_vols = self.vols(self.func_file)
 
         if not isinstance(self.h5_file, str):
-            self.h5_file = opj(os.path.dirname(edfs[0]), f"eye.h5")
+            self.h5_file = opj(os.path.dirname(edfs[0]), f"eye.h5")       
 
         self.ho = hedfpy.HDFEyeOperator(self.h5_file)
         if not os.path.exists(self.h5_file):
@@ -213,7 +214,7 @@ class ParseEyetrackerFile(SetAttributes):
 
         else:
             self.ho.open_hdf_file()
-        
+
         # set them for internal reference
         for attr in self.eye_attributes:
             setattr(self, attr, [])
