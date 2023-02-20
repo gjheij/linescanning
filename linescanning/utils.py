@@ -1,6 +1,7 @@
 import csv
 import fnmatch
 import json
+import math
 import matplotlib.colors as mcolors
 import nibabel as nb
 from nilearn.signal import _standardize
@@ -96,6 +97,14 @@ def str2operator(ops):
         return operator.ne
     elif ops == "is" or ops == "==" or ops == "=":
         return operator.eq
+    elif ops == "gt" or ops == ">":
+        return operator.gt
+    elif ops == "lt" or ops == "<":
+            return operator.lt
+    elif ops == "ge" or ops == ">=":
+        return operator.ge
+    elif ops == "le" or ops == "<=":
+            return operator.le
     else:
         raise NotImplementedError()
 
@@ -554,15 +563,15 @@ def get_matrixfromants(mat, invert=False):
         (4,4) array representing the transformation matrix
     """
 
-    try:
+    if mat.endswith(".mat"):
         genaff = io.loadmat(mat)
         key = list(genaff.keys())[0]
         matrix = np.hstack((genaff[key][0:9].reshape(
             3, 3), genaff[key][9:].reshape(3, 1)))
         matrix = np.vstack([matrix, [0, 0, 0, 1]])
-    except:
-        # assuming I just got a matrix
+    elif mat.endswith(".txt"):
         matrix = np.loadtxt(mat)
+
         
     if invert == True:
         matrix = np.linalg.inv(matrix)
@@ -651,43 +660,6 @@ def read_chicken_csv(chicken_file, return_type="lps"):
                         [0,0,1]])
 
         return LPS@coord
-
-def fix_slicetiming(json_dir, TR=1.5, slc=60):
-
-    """fix_slicetiming
-
-    Function to fix the slicetiming in json file. Assumes there already is a key called SliceTiming in the json files. You'll only need to specify the directory the json-files are in, the TR, (default = 1.5), and the number of slices (default = 60)
-
-    Parameters
-    ----------
-    json_dir: str
-        path to folder containing json files
-    TR: float
-        repetition time
-    slc: int
-        number of slices
-
-    Returns
-    ----------
-    str
-        updated json-file
-
-    Example
-    ----------
-    >>> fix_slicetiming('path/to/folder/with/json', TR=1.5, slc=60)
-    """
-
-    op = os.listdir(json_dir)
-
-    for ii in op:
-        if ii.endswith('.json'):
-            with open(opj(json_dir,ii)) as in_file:
-                data = json.load(in_file)
-
-            data['SliceTiming'] = list(np.tile(np.linspace(0, TR, int(slc/3), endpoint=False), 3))
-
-            with open(opj(json_dir,ii), 'w') as out_file:
-                json.dump(data, out_file, indent=4)
 
 class VertexInfo:
 
@@ -1018,8 +990,8 @@ def split_bids_components(fname):
 
                     comp = comp.split(".")[ex]
                 
-                if i == "run":
-                    comp = int(comp)
+                # if i == "run":
+                #     comp = int(comp)
 
                 comps[i] = comp
 
