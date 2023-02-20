@@ -161,7 +161,6 @@ Example:
             new_brainmask.to_filename(freesurfer_brainmask)
             new_brainmask.to_filename(opj(fsdir, 'mri', 'brain.finalsurfs.manedit.mgz'))
 
-            print("Done")
         except:
             print("Cannot perform this operation. Make sure all files are present")
             sys.exit(1)
@@ -169,18 +168,19 @@ Example:
     else:
 
         print("Creating new brainmask.mgz with outside-mask only")
-        new_brainmask = image.math_img('(((brain_mask > 0) - outside ) > 0) * t1w',
-                                    brain_mask=freesurfer_brainmask_auto,
-                                    outside=manual_outside_mask,
-                                    t1w=freesurfer_t1w)
+        new_brainmask = image.math_img(
+            '(((brain_mask > 0) - outside ) > 0) * t1w',
+            brain_mask=freesurfer_brainmask_auto,
+            outside=manual_outside_mask,
+            t1w=freesurfer_t1w)
 
         new_brainmask.to_filename(freesurfer_brainmask)
         new_brainmask.to_filename(opj(fsdir, 'mri', 'brain.finalsurfs.manedit.mgz'))
 
-        print("Done, now run the following command (append other options like '--sge' if you like):")
+    print("Done, now run the following command (append other options like '--sge' if you like):")
 
-        cmd = f"call_freesurfer -s {os.path.basename(fsdir)} -r23 -e {start_stage}"
-        print(cmd)
+    cmd = f"call_freesurfer -s {os.path.basename(fsdir)} -r23 -e {start_stage}"
+    print(cmd)
 
 if __name__ == "__main__":
     main(sys.argv[1:])
