@@ -224,10 +224,10 @@ for subID in ${search}; do
   if [[ ! -z ${remove_wf} ]]; then
     if [[ ${remove_wf} == "all" ]]; then
       txt="Removing single_subject_${subID}_wf"
-      rm_dir=${workdir}/fmriprep_wf/single_subject_${subID}_wf
+      rm_dir=${workdir}/fmriprep*wf/single_subject_${subID}_wf
     elif [[ ${remove_wf} == "surf" ]]; then
       txt="Removing surface_recon_wf"
-      rm_dir=${workdir}/fmriprep_wf/single_subject_${subID}_wf/anat_preproc_wf/surface_recon_wf
+      rm_dir=${workdir}/fmriprep*wf/single_subject_${subID}_wf/anat_preproc_wf/surface_recon_wf
     else
       echo "ERROR in `basename ${0}`: invalid option \"${remove_wf}\". Must be \"surf\" or \"all\""
       exit 1
