@@ -13,13 +13,20 @@ that the warp files are specified in the last argument, as that's what the scrip
 of warps from.
 
 Args:
-  -v            turn on verbose
+  -v|--verbose  Turn on verbose
+  --<metric>    Flag to use a given metric. Available options are: 'cc' (cross-correlation), 'mi',
+                (mutual information) [default], 'mattes', 'ms' (mean squares), 'demons', 'gc' (glo-
+                bal correlation), 'icp' (euclidian), 'pse' (point-set expectation), 'jhct' (jensen-
+                havrda-charvet-tsallis), 'igdm'
+                For instance, to use 'Mutual Information', use '--mi', for 'Bspline' 5th order, use 
+                '--bspl5'.
+                For now it's not possible to set the metrics for different stages separately. The 
+                same metric is used for all stages. By default, 'Cross-correlation' is used for 
+                SyN-diffeomorphic registration (the final stage). The rigid-body and affine stages
+                before the SyN-registration can be altered.
   -i <invert>   invert given warp files (0=no|1=yes; leave empty for 'no'). If you have multiple
                 warp files, specify a space-separated list between quotes as inversion tag; if not
                 everything will be set to 'do not invert'
-  -t <interp>   interpolation type: 'lin' (linear), 'nn' (NearestNeighbor), mul (MultiLabel), gau 
-                (Gaussian), bspl<order>, cws (CosineWindowedSinc), wws (WelchWindowedSinc), hws 
-                (HammingWindowedSinc), lws (LanczosWindowedSinc), gen (GenericLabel); default = 'nn'
   <ref>         space to warp file to
   <moving>      file to warp
   <output>      moving-in-ref output name
@@ -45,12 +52,53 @@ source call_bashhelper
 # Check for subject flag
 while getopts vi:t: argument
 do
-    case ${argument} in
-      i)  invert=${OPTARG}
-            ;;
-      t)  interp=${OPTARG}
-            ;;
-    esac
+  case ${argument} in
+    -)
+      case "${OPTARG}" in
+        lin)
+          INT="Linear"
+          ;;
+        nn)
+          INT="NearestNeighbor"
+          ;;
+        mul)
+          INT="MultiLabel"
+          ;;         
+        gau)
+          INT="Gaussian"
+          ;;               
+        bspl*)
+          INT="BSpline[$(basename ${OPTARG} | cut -c 5)]"
+          ;;       
+        cws)
+          INT="CosineWindowedSinc"
+          ;;
+        wws)
+          INT="WelchWindowedSinc"
+          ;;
+        hws)
+          INT="HammingWindowedSinc"
+          ;;
+        lws)
+          INT="LanczosWindowedSinc"
+          ;;                                                                                      
+        verbose)
+          VERBOSE="--verbose 1"
+          VERB=1
+          ;;
+        *)
+          if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
+            echo "Unknown option --${OPTARG}"
+            exit 1
+          fi
+          ;;
+      esac;;        
+    i)  invert=${OPTARG}
+          ;;
+    v)  VERBOSE=""
+        VERB=0
+          ;;          
+  esac
 done
 
 if [[ $# -lt 4 ]] ; then
@@ -66,45 +114,6 @@ if [[ -z ${invert} ]]; then
   INV=0
 else
   INV=${invert}
-  # for i in ${INV[@]}; do echo $i; done
-fi
-
-if [[ "${@}" == *"-v"* ]]; then
-  VERBOSE="--verbose 1"
-  VERB=1
-else
-  VERBOSE=""
-  VERB=0
-fi
-
-if [[ -z ${interp} ]]; then
-  INT="NearestNeighbor"
-else
-  if [[ ${interp} == "lin" ]]; then
-    INT="Linear"
-  elif [[ ${interp} == "nn" ]]; then
-    INT="NearestNeighbor"
-  elif [[ ${interp} == "mul" ]]; then
-    INT="MultiLabel"    
-  elif [[ ${interp} == "gau" ]]; then
-    INT="Gaussian"
-  elif [[ ${interp} == *"bspl"* ]]; then
-    INT="BSpline[$(basename ${interp} | cut -c 5)]"
-  elif [[ ${interp} == "cws" ]]; then
-    INT="CosineWindowedSinc"
-  elif [[ ${interp} == "wws" ]]; then
-    INT="WelchWindowedSinc"
-  elif [[ ${interp} == "hws" ]]; then
-    INT="HammingWindowedSinc"
-  elif [[ ${interp} == "lws" ]]; then
-    INT="LanczosWindowedSinc"
-  elif [[ ${interp} == "gen" ]]; then
-    INT="GenericLabel"    
-  else
-    echo "Invalid interpolation type specified:"
-    Usage
-    exit 1
-  fi
 fi
 
 IFS=' ' read -ra LIST <<< ${INV[@]}
