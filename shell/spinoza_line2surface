@@ -178,7 +178,7 @@ for f in ${ff[@]}; do
     else
       interp="nn"
     fi
-    call_antsapplytransforms -i 1 -t ${interp} ${fs_ref} ${f} ${transform_fs} ${from_fs_to_ses2}
+    call_antsapplytransforms -i 1 --${interp} ${fs_ref} ${f} ${transform_fs} ${from_fs_to_ses2}
 
     if [[ $? != 0 ]]; then
       echo

@@ -74,7 +74,7 @@ fi
 # 2) register partial FOV to whole-brain with mask
 echo " Register partial FOV to whole-brain with mask"
 XFM=$(dirname ${OUT})/$(basename ${OUT} .nii.gz)_desc-
-call_antsregistration -t lin -x ${MASK} ${REF} ${MOV} ${XFM} rigid
+call_antsregistration --lin -x ${MASK} ${REF} ${MOV} ${XFM}
 
 if [[ $? -ne 0 ]]; then
   echo "ERROR in `basename ${0}`: call_antsregistration exited with non-zero status"

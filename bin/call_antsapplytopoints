@@ -37,7 +37,7 @@ Args:
   <warp files>    all warp files in order of application; if multiple warp files
 
 Usage:
-  call_antsapplytopoints <-i> <input csv> <output csv> <warp file>
+  call_antsapplytopoints[ <-i>] <input csv> <output csv> <warp file>
 
 Example:
   call_antsapplytopoints point_in_space1.csv point_in_space2.csv genaff.mat

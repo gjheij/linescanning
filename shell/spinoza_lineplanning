@@ -180,8 +180,7 @@ if [[ ! -f ${genaff} ]] && [[ ${genaff} != "identity" ]]; then
   call_antsregistration \
     ${anat_session2} \
     ${anat_session1} \
-    $(dirname ${genaff})/$(basename ${genaff} genaff.mat) \
-    rigid
+    $(dirname ${genaff})/$(basename ${genaff} genaff.mat) 
 else
   echo "ANTs matrix mapping fs to ses${session}     = ['`basename ${genaff}`']"
 fi

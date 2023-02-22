@@ -171,7 +171,7 @@ for dir in ${search}; do
           if [[ ! -z ${mat_file} && ! -z ${warp_file} ]]; then
             echo "Warping MNI152_T1_1mm_Dil3_sagsinus_mask to subject space"
 
-            call_antsapplytransforms -i "1 0" -t gen ${fn_nuisance} ${mni_mask} ${fn_mni} "${mat_file} ${warp_file}"
+            call_antsapplytransforms -i "1 0" --gen ${fn_nuisance} ${mni_mask} ${fn_mni} "${mat_file} ${warp_file}"
 
             if [[ $? -ne 0 ]]; then
               echo "ERROR in `basename ${0}`: call_antsapplytransforms exited with non-zero status"

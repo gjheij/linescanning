@@ -146,7 +146,7 @@ def ants_applytrafo(fixed, moving, trafo=None, invert=0, interp='nn', output=Non
 
     # build command
     try:
-        cmd_txt = f'call_antsapplytransforms -i "{inv_list}" -t {interp} {fix} {mov} {output} "{trafo_list}"'
+        cmd_txt = f'call_antsapplytransforms -i "{inv_list}" --{interp} {fix} {mov} {output} "{trafo_list}"'
         if verbose:
             print(cmd_txt)
         os.system(cmd_txt)
@@ -171,7 +171,7 @@ def ants_applytrafo(fixed, moving, trafo=None, invert=0, interp='nn', output=Non
     else:
         raise FileNotFoundError(f"Could not find file '{output}'")
 
-def ants_applytopoints(chicken_file, output_file, trafo_file):
+def ants_applytopoints(chicken_file, output_file, trafo_file, invert=1):
     """ants_applytopoints
 
     Wrapper for antsApplyTransformToPoints to warp a coordinate specified in `chicken_file` to a new space using `trafo_file`. Run :func:`linescanning.utils.make_chicken_csv` and `call_antsregistration` from 1 space to another first.
@@ -180,12 +180,12 @@ def ants_applytopoints(chicken_file, output_file, trafo_file):
     ----------
     chicken_file: str
         output from linescanning.utils.make_chicken_csv containing the coordinate that needs to be warped
-    
     output_file: str
         output csv file containing the warped point in LPS-convention! Swap the first and second dimensions to make the coordinate RAS
-
     trafo_file: str
-        ANTs-transformation file mapping between the spaces. You can also specify 'identity', in which case 'call_makeitkident' will be called
+        ANTs-transformation file mapping between the spaces. You can also specify 'identity', in which case 'call_createident' will be called
+    invert: int, optional
+        invert the specified transformation; this is the case where you have a coordinate in space A, and the transformation is from space A-to-B, and you'd like the coordinate in space B. This might seem counterintuitive, but this is how the transformations are applied within `antsApplyTransformsToPoints`. 
 
     Returns
     ----------
@@ -208,7 +208,7 @@ def ants_applytopoints(chicken_file, output_file, trafo_file):
         if not output_file.endswith("csv"):
             raise ValueError(f"{output_file} must have extension 'csv'..")
 
-    cmd = f"antsApplyTransformsToPoints -d 3 -i {chicken_file} -o {output_file} -t [{trafo_file},1]"
+    cmd = f"antsApplyTransformsToPoints -d 3 -i {chicken_file} -o {output_file} -t [{trafo_file},{invert}]"
     os.system(cmd)
     # print(cmd)
 

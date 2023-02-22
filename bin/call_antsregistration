@@ -3,7 +3,11 @@
 #$ -cwd
 #$ -j Y
 #$ -V
-#$ -pe smp 5
+#$ -pe smp 1
+
+#-----------------------------------------------------------------------------
+# source bash helper functions
+source call_bashhelper
 
 function Usage {
     cat <<USAGE
@@ -11,30 +15,76 @@ function Usage {
 ---------------------------------------------------------------------------------------------------
 call_antsregistration
 
-This scripts makes the call to antsRegistration a little easier, as you'll only have to provide the
+This scripts makes the call to 'antsRegistration' a little easier, as you'll only have to provide the
 reference image, the moving image, the output-prefix, the type of registration and an initial trans-
 formation file (optional, will be included if specified, otherwise ignored).
 
-Arguments:
-  -v            Turn on verbose level 1
+Flagged arguments:
+  -v|--verbose  Turn on verbose
+  --<metric>    Flag to use a given metric. Available options are: 'cc' (cross-correlation), 'mi',
+                (mutual information) [default], 'mattes', 'ms' (mean squares), 'demons', 'gc' (glo-
+                bal correlation), 'icp' (euclidian), 'pse' (point-set expectation), 'jhct' (jensen-
+                havrda-charvet-tsallis), 'igdm'
+                For instance, to use 'Mutual Information', use '--mi', for 'Bspline' 5th order, use 
+                '--bspl5'.
+                For now it's not possible to set the metrics for different stages separately (rigid>
+                affine>SyN). The same metric is used for all stages. By default, 'Cross-correlation'
+                is used for SyN-diffeomorphic registration (the final stage). The rigid-body and af-
+                fine stages before the SyN-registration can be altered.
   -x <mask>     Image masks to limit voxels considered by the metric
   -i <initial>  the initial moving transform(s) which get immediately incorporated into the compo-
                 site transform
-  -t <interp>   interpolation type: 'lin' (linear), 'nn' (NearestNeighbor), mul (MultiLabel), gau 
+  -g <step>     gradient step for transformation (default is 0.1)
+  -s <smooth>   smoothing kernels to use. Must match the number of stages you'd like to perform.
+                With more stages, the moving image can more around more, so reduce the number of 
+                levels if you're interested in finer registrations. Defaults to '4x3x2x1' for a 4
+                stage registration, and reduces with every stage not done. So for 3 stages, it de-
+                faults to '3x2x1', down to '1' for 1 stage. Format must be identical to the examples
+                above, so values separated by 'x', without spaces, with the number of values corres-
+                ponding to the number of stages to perform
+  -c <converg>  convergence values to use. Must match the number of stages you'd like to perform (in
+                concert with the optionally specified '-s <smooth>' kernels) or '-n <level>' flags.
+                Defaults to '1000x500x250x100' for a 4 stage registration, and reduces with every 
+                stage not done. So for 3 stages, it defaults to '500x250x100', down to '100' for 1 
+                stage. Format must be identical to the examples above, so values separated by 'x',
+                without spaces, with the number of values corresponding to the number of stages to
+                perform
+  -r <shrink>   shrink values to use. Must match the number of stages you'd like to perform (in
+                concert with the optionally specified '-s <smooth>' kernels) or '-n <level>' flags.
+                Defaults to '8x4x2x1' for a 4 stage registration, and reduces with every stage not 
+                done. So for 3 stages, it defaults to '4x2x1', down to '1' for 1 stage. Format must 
+                be identical to the examples above, so values separated by 'x', without spaces, 
+                with the number of values corresponding to the number of stages to perform            
+  --<interp>    interpolation type: 'lin' (linear), 'nn' (NearestNeighbor), mul (MultiLabel), gau 
                 (Gaussian), bspl<order>, cws (CosineWindowedSinc), wws (WelchWindowedSinc), hws 
                 (HammingWindowedSinc), lws (LanczosWindowedSinc), gen (GenericLabel); default = 'nn'
+                For instance, to use 'Linear' interpolation, use '--lin', for 'GenericLabel', use
+                '--gen'
+  -n <levels>   number of levels to use (default = 4)
+  --rigid       use rigid-body registration
+  --affine      use affine registration
+  --syn         use SyN-diffeomorphic registration
+  --histo       maps to '--use-histogram-matching', sets it to True
+  --no_collapse maps to '--collapse-output-transforms', sets it to False (default = True). safest 
+                bet is to keep --collapse-output-transforms to 1 so you always get the same output 
+                regardless of affine or rigid registration (with --no_collapse & rigid body, the
+                output suffix is '0Rigid', rather than '0GenericAffine'). In the latter, all linear
+                transformations are collapsed in the same file, which makes filenaming later on more
+                predictable.
+  --no_winsor   don't winsorize the image prior to registration
+
+Positional arguments (after options):
   <reference>   Reference image
   <moving>      Moving image
-  <output>      Basename (incl path) for output files ('genaff' will be appended)
-  <reg type>    Registration type
+  <output>      Basename (incl path) for output files ('genaff'/'rigid' will be appended)
 
 Usage:
-  call_antsregistration <fixed> <moving> <output prefix> <type of reg (rigid|affine|syn) <initial>
+  call_antsregistration [options] <fixed> <moving> <output prefix>
 
 Example:
   call_antsregistration -i initial.txt ref.nii.gz mov.nii.gz out_ rigid
   call_antsregistration -v ref.nii.gz mov.nii.gz out_ syn
-  call_antsregistration -x mask.nii.gz -t lwc ref.nii.gz mov.nii.gz out_ syn
+  call_antsregistration -x mask.nii.gz --lws ref.nii.gz mov.nii.gz out_ syn
 
 ---------------------------------------------------------------------------------------------------
 
@@ -43,21 +93,208 @@ USAGE
 }
 
 #-----------------------------------------------------------------------------
-# Exit if we do not have enough arguments. The initial moving transform is op-
-# tional, so we need at least 4 arguments
+# Exit if we do not have enough arguments. The initial moving transform is optional, so we need at least 4 arguments
 
 # Check for subject flag
-while getopts vi:t:x: argument
+VERBOSE=""
+VERB=0
+metric="MI"
+INT="NearestNeighbor"
+TYPE="rigid"
+use_hist=0
+collapse_output=1
+n_levels=4
+winsorize=1
+converg=""
+shrink=""
+smooth=""
+gradient_step=0.1
+while getopts :-:vi:t:x:n:s:c:r:g: argument
 do
   case ${argument} in
+    -)
+      case "${OPTARG}" in
+        cc)
+          metric="CC"
+          ;;
+        mi)
+          metric="MI"
+          ;;
+        mattes)
+          metric="Mattes"
+          ;;
+        ms)
+          metric="MeanSquares"
+          ;;
+        demons)
+          metric="Demons"
+          ;;
+        gc)
+          metric="GC"
+          ;;
+        icp)
+          metric="ICP"
+          ;;
+        pse)
+          metric="PSE"
+          ;;      
+        jhct)
+          metric="JHCT"
+          ;;   
+        idgm)
+          metric="IDGM"
+          ;;
+        lin)
+          INT="Linear"
+          ;;
+        nn)
+          INT="NearestNeighbor"
+          ;;
+        mul)
+          INT="MultiLabel"
+          ;;         
+        gau)
+          INT="Gaussian"
+          ;;               
+        bspl*)
+          INT="BSpline[$(basename ${OPTARG} | cut -c 5)]"
+          ;;       
+        cws)
+          INT="CosineWindowedSinc"
+          ;;
+        wws)
+          INT="WelchWindowedSinc"
+          ;;
+        hws)
+          INT="HammingWindowedSinc"
+          ;;
+        lws)
+          INT="LanczosWindowedSinc"
+          ;;
+        gen)
+          INT="GenericLabel"
+          ;;          
+        rigid)
+          TYPE="rigid"
+          ;;  
+        affine)
+          TYPE="affine"
+          ;;  
+        syn)
+          INT="syn"
+          ;;        
+        histo)
+          use_hist=1
+          ;;                                                                                          
+        verbose)
+          VERBOSE="--verbose 1"
+          VERB=1
+          ;;
+        no_collapse)
+          collapse_output=0
+          ;;        
+        no_winsor)
+          winsorize=0
+          ;;
+        *)
+          if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
+            echo "Unknown option --${OPTARG}"
+            exit 1
+          fi
+          ;;
+      esac;;      
     x)  mask=${OPTARG}
           ;;
     i)  initial=${OPTARG}
-          ;;          
-    t)  interp=${OPTARG}
           ;;
+    n)  n_levels=${OPTARG}
+          ;;   
+    s)  smooth=${OPTARG}
+          ;;   
+    c)  converg=${OPTARG}
+          ;;   
+    r)  shrink=${OPTARG}
+          ;;            
+    g)  gradient_step=${OPTARG}
+          ;;                                    
+    v)  VERBOSE=""
+        VERB=0
+          ;;              
   esac
 done
+
+# function to derive the convergence, smoothing, shrinking parameters.
+function check_stage_inputs {
+  
+  in_type=${1}
+  if [[ ${in_type} == "converge" ]]; then
+    arr=${converg}
+    defaults=1000x500x250x100
+  elif [[ ${in_type} == "shrink" ]]; then
+    arr=${shrink}
+    defaults=8x4x2x1
+  elif [[ ${in_type} == "smooth" ]]; then
+    arr=${smooth}
+    defaults=4x3x2x1
+  else
+    echo "ERROR in `basename ${0}`: unknown input type \"${in_type}\". Must be one of \"converge\", \"shrink\", or \"smooth\""
+    exit 1
+  fi
+  
+  IFS="x"
+  if [[ -z ${arr} ]]; then
+
+    # parse defaults in array
+    read -ra parsed <<< "$defaults"
+
+    # invert indices
+    tmp=`echo ${parsed[@]} | rev`
+    IFS=' ' read -ra parsed_inv <<< "$tmp"
+
+    # get indices
+    par_inv=${parsed_inv[@]:0:${n_levels}}
+
+    # invert indices
+    par=`echo ${par_inv[@]} | rev`
+
+    # combine with 'x'
+    par=`echo ${par[@]} | sed 's/ /x/g'`
+  else
+    read -r -a parsed <<< "$arr"
+    if [[ ${#parsed[@]} -ne ${n_levels} ]]; then
+      echo "  Got more values for \"${in_type}\" (`echo ${arr}`) than levels ($n_levels)"
+      exit 1
+    else
+      par=${arr}
+    fi
+  fi
+
+  unset IFS
+  echo ${par}
+}
+
+# check if we got custom inputs, whether we should use defaults, and whether specified values match the number of levels specified
+# if check_stage_inputs fails, the returned value will be the error message, so we can conveniently make a traceback
+shrink=`check_stage_inputs shrink`
+if [[ $? -ne 0 ]]; then
+  echo "ERROR in `basename ${0}`: check_stage_inputs exited with non-zero status:"
+  echo ${shrink}
+  exit 1
+fi
+
+converg=`check_stage_inputs converge`
+if [[ $? -ne 0 ]]; then
+  echo "ERROR in `basename ${0}`: check_stage_inputs exited with non-zero status:"
+  echo ${converg}
+  exit 1
+fi
+
+smooth=`check_stage_inputs smooth`
+if [[ $? -ne 0 ]]; then
+  echo "ERROR in `basename ${0}`: check_stage_inputs exited with non-zero status:"
+  echo ${smooth}
+  exit 1
+fi
 
 if [[ $# -lt 4 ]] ; then
   echo "NOT ENOUGH ARGUMENTS SPECIFIED"
@@ -68,49 +305,6 @@ fi
 REF=${@:$OPTIND:1}
 MOV=${@:$OPTIND+1:1}
 OUT=${@:$OPTIND+2:1}
-TYPE=${@:$OPTIND+3:1}
-
-if [[ "${@}" == *"-v"* ]]; then
-  VERB=1
-  VERBOSE="--verbose 1"
-else
-  VERB=0
-  VERBOSE=""
-fi
-
-if [[ -z ${interp} ]]; then
-  INT="NearestNeighbor"
-else
-  if [[ ${interp} == "lin" ]]; then
-    INT="Linear"
-  elif [[ ${interp} == "nn" ]]; then
-    INT="NearestNeighbor"
-  elif [[ ${interp} == "mul" ]]; then
-    INT="MultiLabel"    
-  elif [[ ${interp} == "gau" ]]; then
-    INT="Gaussian"
-  elif [[ ${interp} == *"bspl"* ]]; then
-    INT="BSpline[$(basename ${interp} | cut -c 5)]"
-  elif [[ ${interp} == "cws" ]]; then
-    INT="CosineWindowedSinc"
-  elif [[ ${interp} == "wws" ]]; then
-    INT="WelchWindowedSinc"
-  elif [[ ${interp} == "hws" ]]; then
-    INT="HammingWindowedSinc"
-  elif [[ ${interp} == "lws" ]]; then
-    INT="${INT}"
-  elif [[ ${interp} == "gen" ]]; then
-    INT="GenericLabel"    
-  else
-    echo "Invalid interpolation type specified:"
-    Usage
-    exit 1
-  fi
-fi
-
-#-----------------------------------------------------------------------------
-# source bash helper functions
-source call_bashhelper
 
 #-----------------------------------------------------------------------------
 # set flag to extract first volume from 4D image to 0
@@ -134,7 +328,7 @@ if [[ -f ${REF} && -f ${MOV} ]]; then
   if [[ $ext_fixed == "gz" ]] || [[ $ext_fixed == "nii" ]]; then
     :
   else
-    echo "No nifti file detected. Not really sure how to deal with this. Exiting."
+    echo "ERROR in `basename ${0}`; No nifti file detected. Not really sure how to deal with this. Exiting."
     exit 1
   fi
 
@@ -184,7 +378,7 @@ if [[ -f ${REF} && -f ${MOV} ]]; then
     if [[ `fslval ${FIXED} dim0` != `fslval ${MOVING} dim0` ]]; then
       echo "Input files have different dimensions. Fix this before continuing."
       echo " Fixed image:   `fslval ${FIXED} dim0`"
-      echo " Moving image:  `fslval ${MOVING} dim0`g"
+      echo " Moving image:  `fslval ${MOVING} dim0`"
       exit 1
     fi
 
@@ -207,7 +401,7 @@ if [[ ! -z ${initial} ]]; then
   filename="${fname%.*}"
 
   if [[ $ext != "txt" ]]; then
-    echo "${initial} is not a text file. It should be if it's an initial moving transform file"
+    echo "ERROR in `basename ${0}`: \"${initial}\" is not a text file. It should be if it's an initial moving transform file"
     exit 1
   else
     # If we have an initial moving transform matrix, insert this line in the command
@@ -225,94 +419,65 @@ if [[ ! -z ${mask} ]]; then
   MASK=$(echo "-x [NULL,${mask}]")
 fi
 
+# check for windsorizing
+if [[ ${winsorize} -eq 1 ]]; then
+  winsorize_flag="--winsorize-image-intensities [0.005,0.995]"
+else
+  winsorize_flag=""
+fi
+
 #-----------------------------------------------------------------------------
 # Now we need to start building the command based on the fourth argument.
+if [[ ${metric} == "CC" ]]; then
+  val=2
+elif [[ ${metric} == "MI" ]] || [[ ${metric} == "Mattes" ]]; then
+  val=32
+else
+  val=""
+fi
+
 if [[ ${TYPE,,} == "rigid" ]]; then
-  # echo "Registration type selected: Rigid"
-  cmd() {
-    antsRegistration $5 -d 3 --float 1 -z 1 $4 -n $6 $7 \
-      -o [$3] \
-      -u 0 \
-      -w [0.005,0.995] \
-      -t Rigid[0.1] \
-      -m MI[$1,$2,1,32,Regular,0.25] \
-      -c [1000x500x250x100,1e-6,10] \
-      -f 8x4x2x1 \
-      -s 4x3x2x1vox
-  }
-
+  cmd="""antsRegistration ${VERBOSE} -d 3 --float 1 -z 1 ${INITIAL} --interpolation ${INT} ${MASK} --output [${OUT}] --use-histogram-matching ${use_hist} ${winsorize_flag} --transform Rigid[${gradient_step}] --metric ${metric}[${FIXED},${MOVING},1,${val},Regular,0.25] --convergence [${converg},1e-6,10] --shrink-factors ${shrink} --smoothing-sigmas ${smooth}vox --collapse-output-transforms ${collapse_output}"""
 elif [[ ${TYPE,,} == "affine" ]]; then
-  # echo "Registration type selected: Syn"
-  cmd() {
-    antsRegistration $5 -d 3 --float 1 -z 1 $4 -n $6 $7 \
-      --output [$3]  \
-      --use-histogram-matching 0  \
-      --winsorize-image-intensities [0.005,0.995]  \
-      --transform Rigid[0.1]  \
-      --metric MI[$1,$2,1,32,Regular,0.25]  \
-      --convergence [1000x500x250x100,1e-6,10]  \
-      --shrink-factors 8x4x2x1  \
-      --smoothing-sigmas 4x3x2x1vox  \
-      --transform Affine[0.1]  \
-      --metric MI[$1,$2,1,32,Regular,0.25]  \
-      --convergence [1000x500x250x100,1e-6,10]  \
-      --shrink-factors 8x4x2x1  \
-      --smoothing-sigmas 4x3x2x1vox 
-  }
-
+  cmd="""antsRegistration ${VERBOSE} -d 3 --float 1 -z 1 ${INITIAL} --interpolation ${INT} ${MASK} --output [${OUT}] --use-histogram-matching ${use_hist} ${winsorize_flag} --transform Rigid[${gradient_step}] --metric ${metric}[${FIXED},${MOVING},1,${val},Regular,0.25] --convergence [${converg},1e-6,10] --shrink-factors ${shrink} --smoothing-sigmas ${smooth}vox --transform Affine[${gradient_step}] --metric ${metric}[$1,${MOVING},1,${val},Regular,0.25] --convergence [${converg},1e-6,10] --shrink-factors ${shrink} --smoothing-sigmas ${smooth}vox --collapse-output-transforms ${collapse_output}"""
 elif [[ ${TYPE,,} == "syn" ]]; then
-  # echo "Registration type selected: Syn"
-  cmd() {
-    antsRegistration $5 -d 3 --float 1 -z 1 $4 -n $6 $7 \
-      --output [$3]  \
-      --use-histogram-matching 0  \
-      --winsorize-image-intensities [0.005,0.995]  \
-      --transform Rigid[0.1]  \
-      --metric MI[$1,$2,1,32,Regular,0.25]  \
-      --convergence [1000x500x250x100,1e-6,10]  \
-      --shrink-factors 8x4x2x1  \
-      --smoothing-sigmas 4x3x2x1vox  \
-      --transform Affine[0.1]  \
-      --metric MI[$1,$2,1,32,Regular,0.25]  \
-      --convergence [1000x500x250x100,1e-6,10]  \
-      --shrink-factors 8x4x2x1  \
-      --smoothing-sigmas 4x3x2x1vox \
-      --transform SyN[0.1,2,0]  \
-      --metric CC[$1,$2,1,4]  \
-      --convergence [1000x500x250x100,1e-6,10]  \
-      --shrink-factors 8x4x2x1  \
-      --smoothing-sigmas 4x3x2x1vox
-  }
-
+  cmd="""antsRegistration ${VERBOSE} -d 3 --float 1 -z 1 ${INITIAL} --interpolation ${INT} ${MASK} --output [${OUT}]  --use-histogram-matching ${use_hist} ${winsorize_flag} --transform Rigid[${gradient_step}] --metric ${metric}[${FIXED},${MOVING},1,${val},Regular,0.25] --convergence [${converg},1e-6,10] --shrink-factors ${shrink} --smoothing-sigmas ${smooth}vox --transform Affine[${gradient_step}] --convergence [${converg},1e-6,10] --shrink-factors ${shrink} --smoothing-sigmas ${smooth}vox --collapse-output-transforms ${collapse_output}"""
 else
   echo "Unknown registration type \"${TYPE}\" specified"
   Usage >&2
   exit 1
 fi
 
-#       $1          $2        $3         $4           $5         $6        $7
-cmd "${FIXED}" "${MOVING}" "${OUT}" "${INITIAL}" "${VERBOSE}" "${INT}" "${MASK}"
+if [[ ${VERB} -eq 1 ]]; then
+  echo ${cmd}
+fi
+
+# echo command to text file
+cmd_f=${OUT}command.txt
+if [ -f ${cmd_f} ]; then
+  rm ${cmd_f} 2>/dev/null
+fi
+
+echo ${cmd} >> ${OUT}command.txt
 
 # Execute command
+${cmd}
+
+# rename
 if [[ -f ${OUT}0GenericAffine.mat ]]; then
-  # echo "  Found a pre-run registration file, renaming it"
   mv ${OUT}0GenericAffine.mat ${OUT}genaff.mat
+fi
+
+# this file is created if --collapse-output-transforms is set to 0 and you did rigid-body registration; safest bet is to keep --collapse-output-transforms to 1 so you always get the same output 
+if [[ -f ${OUT}0Rigid.mat ]]; then
+  mv ${OUT}0Rigid.mat ${OUT}rigid.mat
 fi
 
 # remove temporary file
 if [[ ${extract_moving} -eq 1 ]]; then
-  if [ ${VERB} -eq 1 ]; then
-    echo "Removing temporary moving file"
-  fi
-
   rm ${MOVING} 2>/dev/null
 fi
 
-# remove temporary file
 if [[ ${extract_fixed} -eq 1 ]]; then
-  if [ ${VERB} -eq 1 ]; then
-    echo "Removing temporary fixed file"
-  fi
-
   rm ${FIXED} 2>/dev/null
 fi

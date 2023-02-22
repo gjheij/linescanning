@@ -139,7 +139,7 @@ if [[ ! -z ${matrix_file} ]]; then
     # for the mask image (wm), we use a GenericLabel interpolation, for the T1w-images a linear
 
     if [[ ${do_we_have_wm} -eq 1 ]]; then
-        call_antsapplytransforms -t gen ${wm_file} ${wm_file} $(dirname ${out_file})/wm_$(basename $out_file) ${matrix_file}
+        call_antsapplytransforms --gen ${wm_file} ${wm_file} $(dirname ${out_file})/wm_$(basename $out_file) ${matrix_file}
         if [[ $? -ne 0 ]]; then
             echo "ERROR in `basename ${0}`: call_antsapplytransforms exited with non-zero status (wm-file)"
             exit 1
@@ -148,13 +148,13 @@ if [[ ! -z ${matrix_file} ]]; then
         wm_flag="--wmseg=${wm_file}"
     fi
 
-    call_antsapplytransforms -t lin ${t1head} ${t1head} $(dirname ${out_file})/t1head_$(basename $out_file) ${matrix_file}
+    call_antsapplytransforms --lin ${t1head} ${t1head} $(dirname ${out_file})/t1head_$(basename $out_file) ${matrix_file}
     if [[ $? -ne 0 ]]; then
         echo "ERROR in `basename ${0}`: call_antsapplytransforms exited with non-zero status (t1head-file)"
         exit 1
     fi
 
-    call_antsapplytransforms -t lin ${wm_file} ${wm_file} $(dirname ${out_file})/t1brain_$(basename $out_file) ${matrix_file}
+    call_antsapplytransforms --lin ${wm_file} ${wm_file} $(dirname ${out_file})/t1brain_$(basename $out_file) ${matrix_file}
     if [[ $? -ne 0 ]]; then
         echo "ERROR in `basename ${0}`: call_antsapplytransforms exited with non-zero status (t1brain-file)"
         exit 1
@@ -176,7 +176,7 @@ fi
 # Check if we should warp functional stuff
 if [[ ! -z ${initial} ]]; then
     initial=`fetch_filepath ${initial}`
-    call_antsapplytransforms -t lin ${t1head} ${epi_file} $(dirname ${out_file})/bold_in_t1head.nii.gz ${initial}
+    call_antsapplytransforms --lin ${t1head} ${epi_file} $(dirname ${out_file})/bold_in_t1head.nii.gz ${initial}
     epi_file=$(dirname ${out_file})/bold_in_t1head.nii.gz
 fi
 
