@@ -79,13 +79,13 @@ do
     -)
       case "${OPTARG}" in
         rigid)
-          reg_type="rigid"
+          reg_type="--rigid"
           ;;
         syn)
-          reg_type="syn"
+          reg_type="--syn"
           ;;
         affine)
-          reg_type="affine"
+          reg_type="--affine"
           ;;  
         sge)
           SGE=1
@@ -234,12 +234,8 @@ for subID in ${search}; do
         # decide registration strategy
         if [[ -z ${reg_type} ]]; then
           if [[ ${TYPE,,} == "mni" ]]; then
-            type_reg="syn"
-          else
-            type_reg="rigid"
+            reg_type="--syn"
           fi
-        else
-          type_reg=${reg_type}
         fi
 
         # decide how to execute 
@@ -250,7 +246,7 @@ for subID in ${search}; do
         fi
 
         echo "Registering $(basename ${moving}) to $(basename ${fixed}) [${type_reg^^}]"
-        ${job} ${fixed} ${moving} ${output_dir}/${base}_${ext} ${type_reg}
+        ${job} ${reg_type} ${fixed} ${moving} ${output_dir}/${base}_${ext}
 
         if [[ ${SGE} -eq 1 ]]; then
           echo "Waiting to check qstat.."
