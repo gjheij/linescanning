@@ -302,7 +302,7 @@ for subID in ${search}; do
 
           # define command
           if [[ ! -f ${output} ]]; then
-            if [[ ${reg_type} == "syn" ]]; then
+            if [[ ${reg_type} == "--syn" ]]; then
               matrices="${outGenAff} ${outWarp}"
               invert="0 0"
             else
