@@ -6,6 +6,26 @@ function conda2jupyter {
   conda deactivate
 }
 
+function reverse_array {
+  array=("${@}")
+  min=0
+  max=$(( ${#array[@]} -1 ))
+
+  while [[ min -lt max ]]
+  do
+      # Swap current first and last elements
+      x="${array[$min]}"
+      array[$min]="${array[$max]}"
+      array[$max]="$x"
+
+      # Move closer
+      (( min++, max-- ))
+  done
+
+  IFS=" "
+  read -ra arr <<< "$array"
+}
+
 function find_hierarchical_anatomy {
   if [[ -d ${DIR_DATA_DERIV}/masked_${DATA,,} ]]; then
     INPUT_DIR=${DIR_DATA_DERIV}/masked_${DATA,,}
@@ -392,6 +412,21 @@ function add_nordic_msg {
       done
     fi
   fi
+}
+
+function fn_exists {
+
+  if [[ $# -eq 0 ]]; then
+    echo "ERROR in function: please specify an input"
+  else
+    func=${1}
+    FN=`type -t ${func}`
+    if [[ -z ${FN} ]]; then
+      echo "Didn't find ${func}"
+      exit 1
+    fi
+  fi
+  
 }
 
 function check_file {
