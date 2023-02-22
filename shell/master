@@ -19,50 +19,53 @@ job="bash"
 
 # Allocate input arguments to variables
 #
-DEBUG=""              # spinoza_linerecon
-NORDIC=""             # spinoza_linerecon
-OW=""                 # multiple (overwrite mode)
-verb_flag=""          # multiple (turn on verboses)
-FREEVIEW=""           # spinoza_bestvertex
-VERT=""               # spinoza_bestvertex
-PROC=""               # spinoza_brainextraction
-raw_flag=""           # spinoza_denoising
-SGE=""                # spinoza_denoising/spinoza_nordic/spinoza_linerecon/spinoza_registration
-COMB_ONLY=""          # spinoza_extractregions
-CLIP=""               # spinoza_fitprfs
-CLIP_FLAG=""          # spinoza_fitprfs
-TASK_ID=""            # spinoza_fitprfs
-MODEL=""              # spinoza_fitprfs
-GRID=""               # spinoza_fitprfs
-MULTIPLE_DESIGNS=""   # spinoza_fitprfs
-FIT_HRF=""            # spinoza_fitprfs
-psc_flag=""           # spinoza_fitprfs
-zscore_flag=""        # spinoza_fitprfs
-raw_flag=""           # spinoza_fitprfs
-use_constr=""         # spinoza_fitprfs
-fit_flag=""           # spinoza_fitprfs
-fprep_input=0         # spinoza_fitprfs
-lbl_flag=""           # spinoza_fitprfs
-save_grid=""          # spinoza_fitprfs
-bouds_flag=""         # spinoza_fitprfs
-TSNR_FLAG=""          # spinoza_nordic
-use_bbr=""            # spinoza_fmriprep
-WARP_ONLY=""          # spinoza_fmriprep
-REMOVE_WF=""          # spinoza_fmriprep
-run_local=""          # spinoza_fmriprep/spinoza_fitprfs
-LAYER_FLAG=""         # spinoza_layering
-GDH_FLAG=""           # spinoza_mgdm
-REG_TYPE=""           # spinoza_registration
-DRAW_SAG="itk"        # spinzoa_sagittalsinus
-SES_TYPE=""           # spinoza_scanner2bids
-ADD_INV=""            # spinoza_scanner2bids
-DCM_FIX=""            # spinoza_scanner2bids
-UPs=""                # spinoza_qmrimaps
-NO_BIAS=""            # spinoza_qmrimaps
+DEBUG=""                  # spinoza_linerecon
+NORDIC=""                 # spinoza_linerecon
+OW=""                     # multiple (overwrite mode)
+verb_flag=""              # multiple (turn on verboses)
+FREEVIEW=""               # spinoza_bestvertex
+VERT=""                   # spinoza_bestvertex
+PROC=""                   # spinoza_brainextraction
+raw_flag=""               # spinoza_denoising
+SGE=""                    # spinoza_denoising/spinoza_nordic/spinoza_linerecon/spinoza_registration
+COMB_ONLY=""              # spinoza_extractregions
+CLIP=""                   # spinoza_fitprfs
+CLIP_FLAG=""              # spinoza_fitprfs
+TASK_ID=""                # spinoza_fitprfs
+MODEL=""                  # spinoza_fitprfs
+GRID=""                   # spinoza_fitprfs
+MULTIPLE_DESIGNS=""       # spinoza_fitprfs
+FIT_HRF=""                # spinoza_fitprfs
+psc_flag=""               # spinoza_fitprfs
+zscore_flag=""            # spinoza_fitprfs
+raw_flag=""               # spinoza_fitprfs
+use_constr=""             # spinoza_fitprfs
+fit_flag=""               # spinoza_fitprfs
+fprep_input=0             # spinoza_fitprfs
+lbl_flag=""               # spinoza_fitprfs
+save_grid=""              # spinoza_fitprfs
+bouds_flag=""             # spinoza_fitprfs
+highres_flag=""           # spinoza_freesurfer
+XOPTS_=""                 # spinoza_freesurfer
+expert_flag=""            # spinoza_freesurfer
+TSNR_FLAG=""              # spinoza_nordic
+use_bbr=""                # spinoza_fmriprep
+WARP_ONLY=""              # spinoza_fmriprep
+REMOVE_WF=""              # spinoza_fmriprep
+run_local=""              # spinoza_fmriprep/spinoza_fitprfs
+LAYER_FLAG=""             # spinoza_layering
+GDH_FLAG=""               # spinoza_mgdm
+REG_TYPE=""               # spinoza_registration
+DRAW_SAG="itk"            # spinzoa_sagittalsinus
+SES_TYPE=""               # spinoza_scanner2bids
+ADD_INV=""                # spinoza_scanner2bids
+DCM_FIX=""                # spinoza_scanner2bids
+UPs=""                    # spinoza_qmrimaps
+NO_BIAS=""                # spinoza_qmrimaps
 
 # use long options in bash:
 # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options
-declare -a array=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv" "--no_fit" "--fmriprep" "--fprep" "--v1" "--v2" "--no_grid" "--debug" "--no_nordic" "--dcm_fix" "--ow" "--no_bounds" "--tsnr" "--mag")
+declare -a array=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv" "--no_fit" "--fmriprep" "--fprep" "--v1" "--v2" "--no_grid" "--debug" "--no_nordic" "--dcm_fix" "--ow" "--no_bounds" "--tsnr" "--mag" "--no_highres" "--xopts-use" "--xopts-clean" "--xopts-overwrite")
 
 # sort options array
 IFS=$'\n' opts=($(sort <<<"${array[*]}"))
@@ -207,11 +210,24 @@ do
           ;;  
         ow)
           OW="-o"
-          ;;                       
+          ;;     
+        no_highres)
+          highres_flag="--no_highres"
+          ;;             
+        xopts-use)
+          XOPTS_="--xopts-use"
+          ;;             
+        xopts-clean)
+          XOPTS_="--xopts-clean"
+          ;;               
+        xopts-overwrite)
+          XOPTS_="--xopts-overwrite"
+          ;;                               
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
-            echo "Unknown option --${OPTARG}, possible options are:"
             for ii in ${opts[@]}; do echo " ${ii}"; done
+            echo
+            echo "Unknown option \"--${OPTARG}\", see above for possible option"
             echo "Enter \"`basename ${0}`\" what these flags do"
             exit 1
           fi
@@ -333,6 +349,7 @@ Args:
                       - spinoza_profiling; specify the type of file to use
                       - spinoza_fitprfs; specify the constraints to use for fitting. Should be format-
                         ted as -x "<gaussian>,<extended>". E.g., '-x tc,bgfs'
+                      - spinoza_freesurfer: add expert option file
   --affine          use 'affine'-registration (spinoza_registration)
   --bgfs            use L-BGFS minimization for both the Gaussian as well as the extended model (e.g.,
                     DoG, CSS, or DN). By default, we'll use trust-constr minimization for both. It's
@@ -383,6 +400,7 @@ Args:
   --no_fit          spinoza_fitprfs; stop right after saving out averaged data. This was useful for 
                     meto switch to percent-signal change without requiring a re-fit.                    
   --no_freeview     disable FreeView during vertex selection (spinoza_bestvertex)
+  --no_highres      disable high-res functionality for FreeSurfer
   --no_nordic       turn off NORDIC denoising during reconstruction of line-scanning data
   --ups             maps to '-u' in spinoza_qmrimaps; turn on Universal Pulses
   --remove_wf       maps to '-r all' in spinoza_fmriprep; removes full fmriprep_wf folder. Be careful
@@ -405,13 +423,16 @@ Args:
                     It's recommended to at least to Gaussian fitting with trust-constr, and potential 
                     extended models with L-BGFS. For this, see '-x' flag 
   --tsnr            calculate tSNR before and after NORDIC (spinoza_nordic) and save them as images                     
-  --v1              only fit voxels from ?.V1_exvivo.thresh.label; the original dimensions will be main-
-                    tained, but timecourses outside of the ROI are set to zero
-  --v2              only fit voxels from ?.V2_exvivo.thresh.label; the original dimensions will be main-
-                    tained, but timecourses outside of the ROI are set to zero
+  --v1              only fit voxels from ?.V1_exvivo.thresh.label; the original dimensions will be 
+                    maintained, but timecourses outside of the ROI are set to zero
+  --v2              only fit voxels from ?.V2_exvivo.thresh.label; the original dimensions will be 
+                    maintained, but timecourses outside of the ROI are set to zero
   --verbose         turn on verbose for pRF-fitting (spinoza_fitprfs)
   --warp_only       spinoza_fmriprep; skip full processing, but make new 'boldref'-images and copy 
                     bold-to-T1w registration files
+  --xopts-use       maps to '-xopts-use' for existing expert option file; use existing file
+  --xopts-clean     maps to '-xopts-clean' for existing expert option file; delete existing file
+  --xopts-overwrite maps to '-xopts-overwrite' for existing expert option file; use new file
 
 Usage:
   master -m <MODULES TO RUN>
@@ -1072,7 +1093,21 @@ if [[ $? -eq 0 ]]; then
   # find hierarchically the anatomy folder (see call_bashhelper)
   INPUT_DIR=`find_hierarchical_anatomy`
 
-  ${job} spinoza_freesurfer ${SUBJECT} ${SESSION} ${INPUT_DIR} all ${DIR_DATA_HOME}
+  # check for expert file
+  if [ ! -z ${KWARGS} ]; then
+    expert_flag="-x ${KWARGS}"
+  fi
+  
+  ${job} spinoza_freesurfer \
+    ${SUBJECT} \
+    ${SESSION} \
+    ${highres_flag} \
+    ${expert_flag} \
+    ${XOPTS_} \
+    ${run_local} \
+    ${SGE} \
+    ${OW} \
+    ${INPUT_DIR} all ${DIR_DATA_HOME}
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_freesurfer exited with non-zero status"

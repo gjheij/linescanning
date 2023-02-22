@@ -18,10 +18,19 @@ stage we should run (default is 'all'), and where to look for a T2w-image if the
 Usage:
   spinoza_freesurfer [options] <directory with anats> <stage> <T2-directory>
 
-Arguments:
+Flagged arguments:
   -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
   -n <session>        session ID (e.g., 1, 2, or n)
-  -o                  overwrite existing files
+  -o|--ow             overwrite existing files
+  -x <file>           use expert file
+  --sge               Submit the script to a cluster using a template script
+  --local             Force local processing even though cluster is available
+  --no_highres        Turn of highres mode by setting '-highres' flag empty
+  --xopts-use         maps to '-xopts-use' for existing expert option file; use existing file
+  --xopts-clean       maps to '-xopts-clean' for existing expert option file; delete existing file
+  --xopts-overwrite   maps to '-xopts-overwrite' for existing expert option file; use new file
+
+Positional arguments:
   <anat folder>       folder containing the T1w-file. In 'master', we'll look through various fol-
                       ders. In order of priority:
                         -'<derivatives>/masked_${DATA,,}'
@@ -39,42 +48,90 @@ General approach for segmentation:
   - Fix skullstrip:   call_freesurfer -s <subj ID> -o gcut                    ~10 minutes
   - Run autorecon2:   call_freesurfer -s <subj ID> -r 2                       ~few hours
   - Fix errors with:
-      - norm; then run call_freesurfer -s ${SUBJECT_PREFIX}001 -r 23 -e cp                 ~few hours
-      - pia;  then run call_freesurfer -s ${SUBJECT_PREFIX}001 -r 23 -e pial               ~few hours
+      - norm; then run call_freesurfer -s ${SUBJECT_PREFIX}001 -r 23 -e cp    ~few hours
+      - pia;  then run call_freesurfer -s ${SUBJECT_PREFIX}001 -r 23 -e pial  ~few hours
 
 You can specify in which directory to look for anatomical scans in the first argument. Usually,
-this is one of the following options: DIR_DATA_HOME if we should use the T1w in the project/${SUBJECT_PREFIX}xxx
-/anat directory, or DIR_DATA_DERIV/pymp2rage to use T1w-images derived from pymp2rage, or DIR_DATA_
-DERIV/masked_mp2rage to use T1w-images where the dura and sagittal sinus are masked out (should be
-default!). In any case, it assumes that the file is in YOURINPUT/${SUBJECT_PREFIX}xxx/ses-1/. If the input is
-equal to the DIR_DATA_HOME variable, this will be recognize and 'anat' will be appended to YOURINPUT
-/${SUBJECT_PREFIX}xxx/ses-1/anat.
+this is one of the following options: DIR_DATA_HOME if we should use the T1w in the project/
+${SUBJECT_PREFIX}xxx/anat directory, or DIR_DATA_DERIV/pymp2rage to use T1w-images derived from 
+pymp2rage, or DIR_DATA_DERIV/masked_mp2rage to use T1w-images where the dura and sagittal sinus 
+are masked out (should be default!). In any case, it assumes that the file is in YOURINPUT/
+${SUBJECT_PREFIX}xxx/ses-1/. If the input is equal to the DIR_DATA_HOME variable, this will 
+be recognize and 'anat' will be appended to YOURINPUT/${SUBJECT_PREFIX}xxx/ses-1/anat.
 
 You can also specify a directory where the T2-weighted image is located. Do this the same way as de-
-scribed above. To you path, ${SUBJECT_PREFIX}xxx/ses-x will be appended if the input path is not equal to DIR_DATA
-_HOME. Again, if it is, ${SUBJECT_PREFIX}xxx/ses-x/anat will be appended as well.
+scribed above. To you path, ${SUBJECT_PREFIX}xxx/ses-x will be appended if the input path is not 
+equal to DIR_DATA_HOME. Again, if it is, ${SUBJECT_PREFIX}xxx/ses-x/anat will be appended as well.
 
 Example:
   spinoza_freesurfer DIR_DATA_DERIV/masked_mp2rage all DIR_DATA_HOME
   spinoza_freesurfer -s 001 -n 1 DIR_DATA_ANAT all DIR_DATA_HOME
 
+Notes:
+  When an expert options is passed, it will be copied to scripts/expert-options. Future calls to 
+  recon-all, the user MUST explicitly specify how to treat this file. Options are (1) use the file 
+  ('--xopts-use'), or (2) delete it ('--xopts-clean'). If this file exsts and the user specifies 
+  another expert options file, then the user must also specify '--xopts-overwrite'.
+
 ---------------------------------------------------------------------------------------------------
 
 USAGE
-    exit 1
 }
 
 # Check for subject & session flags
 OW=0
-while getopts os:n: argument
+freeview_flag=""
+highres_flag=""
+sge_flag=""
+expert_flag=""
+while getopts :-:os:n:x: argument
 do
   case ${argument} in
+    -)
+      case "${OPTARG}" in     
+        freeview)
+          FREEVIEW=1
+          ;;            
+        force_exec)
+          FORCE_EXEC=1
+          ;;          
+        sge)
+          sge_flag="--sge"
+          ;;        
+        local)
+          sge_flag="--local"
+          ;;   
+        ow)
+          OW=1
+          ;;          
+        no_highres)
+          highres_flag="--no_highres"
+          ;;             
+        xopts-use)
+          XOPTS_="--xopts-use"
+          ;;             
+        xopts-clean)
+          XOPTS_="--xopts-clean"
+          ;;               
+        xopts-overwrite)
+          XOPTS_="--xopts-overwrite"
+          ;;                                                                                     
+        *)
+          if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
+            Usage >&2
+            echo "Unknown option --${OPTARG}"
+            exit 1
+          fi
+          ;;
+      esac;;   
     s)  sub=${OPTARG}
           ;;
     n)  ses=${OPTARG}
           ;;
     o)  OW=1
-          ;;          
+          ;; 
+    x)  EXPERT_FILE=${OPTARG}
+          ;;           
   esac
 done
 
@@ -95,6 +152,18 @@ else
   IFS=', ' read -r -a search <<< "${sub}"
   search=${search[@]}
   unset IFS
+fi
+
+# check if we got expert file
+if [[ ! -z ${EXPERT_FILE} ]]; then
+  if [[ ! -f ${EXPERT_FILE} ]]; then
+    echo "ERROR in `basename ${0}`: specified expert file \"${EXPERT_FILE}\" does not exist"
+    exit 1
+  fi
+  expert_flag="-x ${EXPERT_FILE}"
+else
+  XOPTS_=""
+  expert_flag=""
 fi
 
 #-----------------------------------------------------------------------------
@@ -155,7 +224,18 @@ for subID in ${search}; do
   # run if input exists
   if [[ ! -z ${input_t1w} ]]; then
 
-    if [[ ! -d ${SUBJECTS_DIR}/${sub_name} ]]; then
+    # execute either when there's no directory, or when there's no files in /surf
+    execute=0
+    if [[ -d ${SUBJECTS_DIR}/${sub_name} ]]; then
+      nr_files=`ls -l ${SUBJECTS_DIR}/${sub_name}/surf | grep "total" | cut -d' ' -f2`
+      if [ ${nr_files} -eq 0 ]; then
+        execute=1
+      fi
+    else
+      execute=1
+    fi
+
+    if [[ ${execute} -eq 1 ]]; then
 
       echo
       echo "**************************************** Processing ${sub_name} ***************************************"
@@ -179,6 +259,7 @@ for subID in ${search}; do
               echo 
               exit 1
             elif [ ${ct} -eq 1 ]; then
+              echo "Including T2w: \"${input_t2w}\""
               T2_flag="-p ${input_t2w}"
             else
               echo "ERROR in `basename ${0}`: not sure what went wrong.."
@@ -196,17 +277,23 @@ for subID in ${search}; do
       fi
 
       # cmd
-      call_freesurfer -s ${sub_name} -t ${input_t1w} -r ${STAGE} ${T2_flag} -v \"7.2.0\"
+      call_freesurfer \
+        -s ${sub_name} \
+        -t ${input_t1w} \
+        -r ${STAGE} \
+        ${T2_flag} \
+        ${highres_flag} \
+        ${expert_flag} \
+        ${XOPTS_} \
+        ${sge_flag}
 
     else
       echo "${sub_name}: FreeSurfer already ran"
     fi
 
   else
-
-    echo "No T1-weighted image found"
+    echo "No T1-weighted image found in \"${T1_DIR}\""
     continue
-
   fi
 
 done

@@ -3,6 +3,7 @@
 #---------------------------------------------------------------------------------------------------------
 # check if there's is a setup file containing the major paths and source it if it exists
 call_loadsetup
+source call_bashhelper
 
 #---------------------------------------------------------------------------------------------------------
 # Create help text
@@ -25,12 +26,9 @@ Usage:
                   -e <edit type> -o <other editing options> [other options]
 Args:
   -s <subj ID>        subject ID as per output of FreeSurfer (e.g., 'sub-001')
-
   -t <t1 input>       T1-weighted image (not necessary if you're running debugging mode)
-
   -p <t2 input>       T2-weighted image (not necessary, but recommended for better pial-surface
                       segmentation
-
   -r <recon stage>    Which stage of recon-all should be run; combinations are possible!
                       Possible options are:
                         'all' = all stages (Perform all reconstruction steps, including
@@ -42,23 +40,22 @@ Args:
                         '12'  = autorecon1 and autorecon2 (do your edits after this step)
                         '23'  = autorecon2 and autorecon3 (perform any edits and re-run with
                                 '-e flag')
-
   -e <edit type>      What type of edit did you perform after autorecon2?
                       Possible options are:
                         'cp'  = you made normalization edits  > runs -autorecon2-cp
                         'wm'  = you made white matter edits   > runs -autorecon2-wm
                         'pial'= you made pial edits           > runs -autorecon-pial
-
   -o <other editing>  Here you can specify the gcut-option to remove latched on pial surface
-
-
-  -v <version>        FreeSurfer version if multiple are available. Note that fMRIprep only 
-                      uses 6.0.0, which is a bit worse at dealing with T2-images.
+  -x <expert opts>    expert option file that maps to '-expert'. 
   --freeview          Open FreeView automatically (default is NO!)
   --force_exec        Force execution even though directory exists already
   --sge               Submit the script to a cluster using a template script
   --local             Force local processing even though cluster is available
   --no_highres        Turn of highres mode by setting '-highres' flag empty
+  --xopts-use         maps to '-xopts-use' for existing expert option file; use existing file
+  --xopts-clean       maps to '-xopts-clean' for existing expert option file; delete existing 
+                      file
+  --xopts-overwrite   maps to '-xopts-overwrite' for existing expert option file; use new file
 
 Instructions for editing (from Andrew Jahn's YouTube series):
   - Control points (intensity normalization errors):
@@ -68,10 +65,10 @@ Instructions for editing (from Andrew Jahn's YouTube series):
 
     1.) Open freeview with 'call_freeview <subj ID> surf 0'
     2.) Find slices where the problems begins and starts (easiest in axial view)
-    3.) To add control points, click 'File'>'New point set'>name it 'control.dat'>select 'brainmask.mgz'
-        as tempalte
-    4.) Left-click voxels that are white matter but not included in the WM-boundary. Space out control
-        points by a few mm
+    3.) To add control points, click 'File'>'New point set'>name it 'control.dat'>select 'brain-
+        mask.mgz' as tempalte
+    4.) Left-click voxels that are white matter but not included in the WM-boundary. Space out 
+        control points by a few mm
     5.) When you're done, click on 'File'>'Save Point Set as'>'control.dat' in the 'tmp'-folder
     6.) Re-run with call_freesurfer -s sub-001 -r 23 -e cp
 
@@ -81,17 +78,19 @@ Instructions for editing (from Andrew Jahn's YouTube series):
     1.) Make a back-up of the directory
     2.) Run call_freesurfer -s <subj ID> -o gcut
     3.) This outputs a file called brainmask.gcut.mgz
-    4.) If this has fixed the problem, run call_freesurfer -s <subj ID> -r 23 (leave '-e' empty so we
-        know you did gcut)
+    4.) If this has fixed the problem, run call_freesurfer -s <subj ID> -r 23 (leave '-e' empty so 
+        we know you did gcut)
 
   - Pial edits:
-    If the above strategy was not successful, you can try more aggressive skullstripping, but this u
-    sually does more harm than good. In that case, pial-edits are recommended.
+    If the above strategy was not successful, you can try more aggressive skullstripping, but this 
+    usually does more harm than good. In that case, pial-edits are recommended.
 
     1.) Open freeview with 'call_freeview <subj ID> surf 0'
-    2.) Make sure 'brainmask.mgz' is highlighted, and press 'recon-edit' icon (head with 'R' and pencil)
+    2.) Make sure 'brainmask.mgz' is highlighted, and press 'recon-edit' icon (head with 'R' and 
+        pencil)
     3.) To remove voxels, pressing 'shift'+left mouse
-    4.) Find slices where the problems begins and starts (easiest in axial view). Be conservative though!
+    4.) Find slices where the problems begins and starts (easiest in axial view). Be conservative 
+        though!
     5.) When you're done, press 'File'>'Save Volume'
     6.) Re-run with call_freesurfer -s sub-001 -r 23 -e pial
 
@@ -104,10 +103,15 @@ Example (TL;DR):
   After pial edits:       call_freesurfer -s <subj ID> -r 23 -e pial
   Include T2 after FS v6: call_freesurfer -s <subj ID> -r 23 -e wm -p <T2 image>
 
+Notes:
+  When an expert options is passed, it will be copied to scripts/expert-options. Future calls to 
+  recon-all, the user MUST explicitly specify how to treat this file. Options are (1) use the file 
+  ('--xopts-use'), or (2) delete it ('--xopts-clean'). If this file exsts and the user specifies 
+  another expert options file, then the user must also specify '--xopts-overwrite'.
+
 ---------------------------------------------------------------------------------------------------
 
 USAGE
-    exit 1
 }
 
 #-----------------------------------------------------------------------------
@@ -115,8 +119,10 @@ USAGE
 FREEVIEW=0
 FORCE_EXEC=0
 SGE=""
-NO_HIGHRES="-hires"
-while getopts :-:hs:t:p:r:e:o:f:c:v: arg
+highres_flag="-hires"
+XOPTS_=""
+EXPERT_FILE=""
+while getopts :-:hs:t:p:r:e:o:f:c:x: arg
 do
   case ${arg} in
     -)
@@ -134,13 +140,21 @@ do
           SGE="LOCAL"
           ;;   
         no_highres)
-          NO_HIGHRES=""
-          ;;                                                      
+          highres_flag=""
+          ;;             
+        xopts-use)
+          XOPTS_="-xopts-use"
+          ;;             
+        xopts-clean)
+          XOPTS_="-xopts-clean"
+          ;;               
+        xopts-overwrite)
+          XOPTS_="-xopts-overwrite"
+          ;;              
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
-            echo "Unknown option --${OPTARG}, possible options are:"
-            for ii in ${opts[@]}; do echo " ${ii}"; done
-            echo "Enter \"`basename ${0}`\" what these flags do"
+            Usage >&2
+            echo "Unknown option --${OPTARG}"
             exit 1
           fi
           ;;
@@ -157,8 +171,8 @@ do
           ;;
     o)  option=${OPTARG}
           ;;
-    v)  VERSION=${OPTARG}
-          ;;            
+    x)  EXPERT_FILE=${OPTARG}
+          ;;                      
   esac
 done
 
@@ -186,6 +200,31 @@ if [[ -z ${SGE} ]]; then
   fi
 fi
 
+# check if we got expert file
+if [[ ! -z ${EXPERT_FILE} ]]; then
+  if [[ ! -f ${EXPERT_FILE} ]]; then
+    echo "ERROR in `basename ${0}`: specified expert file \"${EXPERT_FILE}\" does not exist"
+    exit 1
+  fi
+  expert_flag="-expert ${EXPERT_FILE}"
+  echo "Expert options: \"${EXPERT_FILE}\""
+
+  # check if there's an expert-options file already and whether the user has specified a protocol
+  if [[ -f ${SUBJECTS_DIR}/${subj_ID}/scripts/expert-options ]]; then
+    if [[ -z ${XOPTS_} ]]; then
+      echo "ERROR in `basename ${0}`: an expert-options file was specified, but one already exists."
+      echo "Please specify the protocol to deal with this with one of the following flags:"
+      echo "  1) --xopts-use;       use the existing file"
+      echo "  2) --xopts-clean;     delete the existing file"
+      echo "  3) --xopts-overwrite; use a new file"
+      exit 1
+    fi
+  fi
+else
+  XOPTS_=""
+  expert_flag=""
+fi
+
 #-----------------------------------------------------------------------------
 # Create function that submits or runs stuff locally
 CMD(){
@@ -198,65 +237,64 @@ CMD(){
 
   if [[ ${SGE} == "SGE" ]]; then
     echo "Submitting job to cluster"
+    parallel_flag="-parallel"
+    mp_flag="-openmp 12"
+    submit=1
+  else
+    parallel_flag=""
+    mp_flag=""
+    submit=0
+  fi
 
-    # delete previously existing file
-    fs_script=${PATH_HOME}/freesurfer/${1}_${2}.sh
-    if [[ -f ${fs_script} ]]; then
-      rm -r ${fs_script}
-    fi
+  # delete previously existing file
+  fs_script=${PATH_HOME}/freesurfer/${PROJECT}/${1}_${2}.sh
+  echo $fs_script
+  if [[ -f ${fs_script} ]]; then
+    rm -r ${fs_script}
+  fi
 
-    # bash will complain if you want to create a file but the directory doesn't exist
-    if [[ ! -d $(dirname ${fs_script}) ]]; then
-      mkdir -p $(dirname ${fs_script})
-    fi
+  # bash will complain if you want to create a file but the directory doesn't exist
+  if [[ ! -d $(dirname ${fs_script}) ]]; then
+    mkdir -p $(dirname ${fs_script})
+  fi
 
-    # remove old log file
-    if [ -f $(dirname ${fs_script})/$(basename ${fs_script} .sh).log ]; then
-      rm $(dirname ${fs_script})/$(basename ${fs_script} .sh).log
-    fi 
+  # remove old log file
+  if [ -f $(dirname ${fs_script})/$(basename ${fs_script} .sh).log ]; then
+    rm $(dirname ${fs_script})/$(basename ${fs_script} .sh).log
+  fi 
 
-    # If you have ran FreeSurfer in fMRIprep, fsaverage will miss a few labels that
-    # FreeSurfer v7 has. Hence, we need to specify that we want to use version 6,
-    # otherwise it will throw errors
+  # If you have ran FreeSurfer in fMRIprep, fsaverage will miss a few labels that
+  # FreeSurfer v7 has.
 
-    if [[ ! -z ${VERSION} ]]; then
-      version=${VERSION}
-    else
-      version="7.2.0"
-    fi
+  # check if function exists, will throw an error if it doesn't exist
+  fn_exists freesurfer
+  echo "Using FreeSurfer from: `which freesurfer`"
 
-    echo "Using FreeSurfer version: ${version}"
-
-    # echo "${SUBJECTS_DIR}"
-    (
-    echo "#!/bin/bash"
-    echo "#$ -S /bin/bash"
-    echo "#$ -N $(basename ${fs_script} .sh)"
-    echo "#$ -wd ${SUBJECTS_DIR}"
-    echo "#$ -o $(dirname ${fs_script})/$(basename ${fs_script} .sh).log"
-    echo "#$ -j Y"
-    echo "#$ -q ${SGE_QUEUE_LONG}"
-    echo "#$ -V"
-    echo ""
-    echo "module load freesurfer/${version}"
-    echo "export FREESURFER=/packages/freesurfer/${version}"
-    echo "export SUBJECTS_DIR=${SUBJECTS_DIR}"
-    echo "recon-all -subjid ${1} ${4} ${NO_HIGHRES} -parallel -openmp 12 ${3} ${5}"
-    ) > ${fs_script}
-    
+  # echo "${SUBJECTS_DIR}"
+  (
+  echo "#!/bin/bash"
+  echo "#$ -S /bin/bash"
+  echo "#$ -N $(basename ${fs_script} .sh)"
+  echo "#$ -wd ${SUBJECTS_DIR}"
+  echo "#$ -o $(dirname ${fs_script})/$(basename ${fs_script} .sh).log"
+  echo "#$ -j Y"
+  echo "#$ -q ${SGE_QUEUE_LONG}"
+  echo "#$ -V"
+  echo ""
+  echo "export SUBJECTS_DIR=${SUBJECTS_DIR}"
+  echo "recon-all -subjid ${1} ${4} ${highres_flag} ${parallel_flag} ${mp_flag} ${3} ${5} ${expert_flag} ${XOPTS_}"
+  ) > ${fs_script}
+  
+  if [[ ${submit} -eq 1 ]]; then
     qsub ${fs_script}
-
     echo "Now wait until the program has finished and do some editing in FreeView if required."
     echo "Waiting to qstat.."
     sleep 5
     qstat
-
   else
-
     echo "Running FreeSurfer locally"
-    recon-all -subjid ${1} ${4} ${NO_HIGHRES} ${3} ${5}
+    bash ${fs_script}
     echo "Now do some editing in FreeView if required."
-
   fi
 
 }
