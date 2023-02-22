@@ -203,7 +203,7 @@ for subID in ${search}; do
 
   # check number of T1w-files
   T1_DIR=${T1}/${base_path}
-  input_t1w=`find "${T1_DIR}" -type f \( -name "*T1w*" -and -name "*${DATA^^}*" -and -name "*.nii.gz" \) 2>/dev/null`
+  input_t1w=`find "${T1_DIR}" -type f \( -name "${sub_name}*" -and -name "*${DATA^^}*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
 
   ct=0; for ii in ${input_t1w[@]}; do ((ct++)); done
   if [ ${ct} -gt 1 ]; then
