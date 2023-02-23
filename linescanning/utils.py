@@ -935,12 +935,9 @@ def select_from_df(df, expression="run = 1", index=True, indices=None, match_exa
                 col1,operator1,val1 = expressions[0].split()
                 ops1 = str2operator(operator1)
                 
-                # check if number is numeric and whether is has a dot (i.e., float). If not, make integer
-                if val1.isnumeric():
-                    if not "." in val1:
-                        val1 = int(val1)
-                
-                sub_df = sub_df.loc[ops1(sub_df[col1], val1)]
+                # use dtype of whatever dtype the colum is
+                search_value = np.array([val1], dtype=type(sub_df.reset_index()[col1].values[0]))
+                sub_df = sub_df.loc[ops1(sub_df[col1], search_value[0])]
                 
             if len(expressions) == 2:
                 col1,operator1,val1 = expressions[0].split()
@@ -951,15 +948,10 @@ def select_from_df(df, expression="run = 1", index=True, indices=None, match_exa
                 ops2 = str2operator(operator2)
 
                 # check if we should interpret values invididually as integers
-                if val1.isnumeric():
-                    if not "." in val1:
-                        val1 = int(val1)
+                search_value1 = np.array([val1], dtype=type(sub_df.reset_index()[col1].values[0]))[0]
+                search_value2 = np.array([val2], dtype=type(sub_df.reset_index()[col2].values[0]))[0]
 
-                if val2.isnumeric():
-                    if not "." in val2:
-                        val2 = int(val2)
-
-                sub_df = sub_df.loc[main_ops(ops1(sub_df[col1], val1), ops2(sub_df[col2], val2))]
+                sub_df = sub_df.loc[main_ops(ops1(sub_df[col1], search_value1), ops2(sub_df[col2], search_value2))]
 
         # first check if we should do indexing
         if index != None:
