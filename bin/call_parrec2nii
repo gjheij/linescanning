@@ -21,7 +21,9 @@ Parameters
 ----------
   --take-avg-tr       Take the average over all TRs from the par file, rather than the first in the
                       sequence of TRs 
-  -i <input>          PAR-file or folder containing PAR-files to be processed. Always needed!
+  -i <input>          PAR-file or folder containing PAR-files to be processed. You can also specify
+                      the log-file from 'dcm2niix' to look for catastrophic errors. One of these 
+                      options is always needed!
   -o <output folder>  output folder. If empty, it will use <input folder>/nifti
   -c <compress>       create nii's ("n") or nii.gz's (default)
 
@@ -98,13 +100,52 @@ if [[ -z ${pathInput} ]]; then
   exit 1
 fi
 
+# check if input is directory or loose file
 pathInput=`fetch_filepath ${pathInput}`
+if [[ -d ${pathInput} ]]; then
+  ff=`find ${pathInput} -type f -iname "*.par" 2>/dev/null`
+elif [[ -f ${pathInput} ]]; then
+  if [[ $(basename ${pathInput}) == *".txt"* ]]; then
+    # do same stuff as in call_dcm2niix
+    tmp=`cat ${pathInput} | grep "Catastrophic" | cut -d"." -f2 | xargs | sed 's/\r$//'`
+    IFS=$' ' tmp2=($(sort <<<"${tmp[*]}"))
+    unset IFS
+
+    # find actual par file (dcm2niix log file does not have extension)
+    ff=()
+    for par in ${tmp2[@]}; do
+      par_fn=`find $(dirname ${par}) -type f -iname "$(basename ${par})*.par" 2>/dev/null`
+      if [ -f ${par_fn} ]; then
+        ff+=(${par_fn})
+      fi
+    done    
+  else
+    ff=${pathInput}
+  fi
+else
+  echo "ERROR in `basename ${0}`: input \"${pathInput}\" does not exist. Please specify a PAR-file, the log.txt from dcm2niix, or a directory containing PAR-files"
+  exit 1
+fi
+
+IFS=$'\n' par_files=($(sort <<<"${ff[*]}"))
+unset IFS
+
+if [[ ${#par_files[@]} -eq 0 ]]; then
+  echo "nothing to do.."
+  exit 0
+fi
+
+# deal with output directory
 if [[ -z ${pathOutput} ]]; then
   if [ -f ${pathInput} ]; then
     pathOutput=$(dirname ${pathInput})/nifti
   else
     pathOutput=${pathInput}/nifti
   fi
+fi
+
+if [[ ! -d ${pathOutput} ]]; then
+  mkdir -p ${pathOutput}
 fi
 
 # -z : gz compress images (y/o/i/n/3, default n) [y=pigz, o=optimal pigz, i=internal:zlib, n=no, 3=no,3D]
@@ -119,20 +160,6 @@ fi
 
 #-----------------------------------------------------------------------------
 # Run it
-
-if [[ ! -d ${pathOutput} ]]; then
-  mkdir -p ${pathOutput}
-fi
-
-# check if input is directory or loose file
-if [[ -d ${pathInput} ]]; then
-  ff=`find ${pathInput} -type f -iname "*.par" 2>/dev/null`
-else
-  ff=${pathInput}
-fi
-
-IFS=$'\n' par_files=($(sort <<<"${ff[*]}"))
-unset IFS
 for par in ${par_files[@]}; do
   ext=`fetch_extension ${par}`
   orig_out=${pathOutput}/$(basename ${par} .${ext}).nii.gz
