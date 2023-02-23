@@ -21,6 +21,8 @@ car (not produced by parrec2nii); some information (e.g., RepetitionTime) could 
 
 Parameters
 ----------
+  --take-avg-tr       Take the average over all TRs from the par file, rather than the first in the
+                      sequence of TRs 
   -i <input folder>   folder containing the files to be processed. Always needed!
   -o <output folder>  output folder. If empty, it will use <input folder>/nifti
   -c <compress>       create nii's ("n") or nii.gz's ("o"; default)
@@ -40,9 +42,23 @@ USAGE
 
 # Allocate input arguments to variables
 #
-while getopts i:o:c:v: argument
+prot_flag=""
+while getopts :-:i:o:c:v: argument
 do
   case ${argument} in
+    -)
+      case "${OPTARG}" in     
+        take-avg-tr)
+          prot_flag="--take-avg-tr"
+          ;;            
+        *)
+          if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
+            Usage >&2
+            echo "Unknown option --${OPTARG}"
+            exit 1
+          fi
+          ;;
+      esac;;   
     i)  pathInput=${OPTARG}
           ;;
     o)  pathOutput=${OPTARG}
@@ -142,7 +158,7 @@ if [[ ! -z ${ff} ]]; then
   for par in ${par_files[@]}; do
     par_fn=`find $(dirname ${par}) -type f -iname "$(basename ${par})*.par" 2>/dev/null`
     if [ -f ${par_fn} ]; then
-      call_parrec2nii -i ${par_fn} -o ${pathOutput}
+      call_parrec2nii ${prot_flag} -i ${par_fn} -o ${pathOutput}
     fi
   done
 

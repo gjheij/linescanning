@@ -62,10 +62,11 @@ ADD_INV=""                # spinoza_scanner2bids
 DCM_FIX=""                # spinoza_scanner2bids
 UPs=""                    # spinoza_qmrimaps
 NO_BIAS=""                # spinoza_qmrimaps
+PROT_FLAG=""              # spinoza_scanner2bids
 
 # use long options in bash:
 # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options
-declare -a array=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv" "--no_fit" "--fmriprep" "--fprep" "--v1" "--v2" "--no_grid" "--debug" "--no_nordic" "--dcm_fix" "--ow" "--no_bounds" "--tsnr" "--mag" "--no_highres" "--xopts-use" "--xopts-clean" "--xopts-overwrite")
+declare -a array=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv" "--no_fit" "--fmriprep" "--fprep" "--v1" "--v2" "--no_grid" "--debug" "--no_nordic" "--dcm_fix" "--ow" "--no_bounds" "--tsnr" "--mag" "--no_highres" "--xopts-use" "--xopts-clean" "--xopts-overwrite" "--take-avg-tr")
 
 # sort options array
 IFS=$'\n' opts=($(sort <<<"${array[*]}"))
@@ -222,7 +223,10 @@ do
           ;;               
         xopts-overwrite)
           XOPTS_="--xopts-overwrite"
-          ;;                               
+          ;;
+        take-avg-tr)
+          PROT_FLAG="--take-avg-tr"
+          ;;             
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             for ii in ${opts[@]}; do echo " ${ii}"; done
@@ -418,6 +422,8 @@ Args:
                     submits jobs to cluster
   --surface         use Wagstyl's equivolumetric layering function
   --syn             use 'syn'-registration (spinoza_registration)
+  --take-avg-tr     Take the average over all TRs from the par file, rather than the first in the se-
+                    quence of TRs   
   --tc              use trust-constr minimization for both the Gaussian as well as the extended model 
                     (e.g., DoG, CSS, or DN). By default, we'll use trust-constr minimization for both. 
                     It's recommended to at least to Gaussian fitting with trust-constr, and potential 
@@ -654,6 +660,7 @@ if [[ $? -eq 0 ]]; then
     ${OW} \
     ${ADD_INV} \
     ${DCM_FIX} \
+    ${PROT_FLAG} \
     ${DIR_DATA_HOME} ${DIR_DATA_SOURCE}
 
   echo "[${module}] DONE" && echo

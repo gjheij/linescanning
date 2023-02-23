@@ -31,6 +31,8 @@ Input options:
                       _dcm2niix', the same that is used for line-scanning sessions. It pipes the output 
                       from dcm2niix to a log file to monitor 'Catastrophic errors'. It then tries to 
                       convert these with 'parrec2nii', which comes with the python pacakge 'nibabel'.
+  --take-avg-tr       Take the average over all TRs from the par file, rather than the first in the
+                      sequence of TRs 
 
 Example:
   spinoza_scanner2bids /path/to/project_root /path/to/your/project/sourcedata     # regular
@@ -70,6 +72,7 @@ OW=0
 SES_TYPE="regular"
 ADD_INV=0
 DCM_FIX=0
+prot_flag=""
 while getopts :-:os:n: argument
 do
   case ${argument} in
@@ -84,7 +87,10 @@ do
         dcm_fix)
           DCM_FIX=1
           SES_TYPE="lines"
-          ;;             
+          ;;  
+        take-avg-tr)
+          prot_flag="--take-avg-tr"
+          ;;                       
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}, did you mean \"--lines\"?"
@@ -235,7 +241,7 @@ for subID in ${search}; do
           echo "Directory exists, skipping conversion."
         else
           echo "Converting files to nifti-format"
-          call_dcm2niix -i ${input_dir} -o ${output_dir}
+          call_dcm2niix ${prot_flag} -i ${input_dir} -o ${output_dir}
         fi
 
         echo "BIDSifying data .."

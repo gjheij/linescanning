@@ -213,6 +213,88 @@ USAGE
 
 }
 
+function tr_from_par {
+  #---------------------------------------------------------------------------------------------------------
+  # Create help text
+  function Usage {
+      cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+tr_from_par
+
+Extract the TR from a PAR-file. This is done by reading the 'dtime' column, getting the 
+unique values, then taking the mean (if 'average') over np.diff(), or its first element
+('first') 
+
+Args:
+  <par file>    PAR/par file to read
+  <protocol>    which TR to take: either the average over all TRs ('average'), or the first ('first')
+
+Returns:
+  RepetitionTime
+
+Usage:
+ tr_from_par some_file.par average [default]
+ tr_from_par some_file.par first
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+}
+
+  if [[ $# -lt 1 ]] ; then
+    Usage >&2
+  else
+
+    par=${1}
+    prot=${2}
+
+    if [[ -z ${prot} ]]; then
+      prot="average"
+    fi
+
+    # fetch where parameters begin
+    str="=== IMAGE INFORMATION ="
+    line_startpar=`grep -n -m 1 "${str}" ${par} | sed  's/\([0-9]*\).*/\1/'`
+
+    # get TR column
+    tr_column=(`sed -n "$((${line_startpar}+2)),$ p" ${par} | awk '{ print $32 }' | sed 's/\r$//'`)
+
+    tr_file=$(dirname ${par})/tr.txt
+    if [[ -f ${tr_file} ]]; then
+      rm -r ${tr_file}
+    fi
+    
+    # echo list of TRs to tmp file to use np.diff
+    echo ${tr_column[@]} >> ${tr_file}
+
+    # define python code
+    PYTHON_CODE="""
+try:
+  import numpy as np;
+  trs = np.unique(np.loadtxt('${tr_file}'));
+  isi = np.diff(trs);
+  if '${prot}' == 'average': 
+    tr = isi.mean();
+  else:
+    tr = isi[0];
+  print(tr);
+except:
+  print(999);
+"""
+
+    # run python code
+    tr="$(python -c "$PYTHON_CODE")"
+
+    # remove tmp file
+    if [[ -f ${tr_file} ]]; then
+      rm -r ${tr_file}
+    fi
+
+    echo ${tr}
+  fi  
+}
+
 function pars_for_json {
 
   #---------------------------------------------------------------------------------------------------------

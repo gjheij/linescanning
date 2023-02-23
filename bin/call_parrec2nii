@@ -19,6 +19,8 @@ the par-file; some information (e.g., RepetitionTime) could be missing.
 
 Parameters
 ----------
+  --take-avg-tr       Take the average over all TRs from the par file, rather than the first in the
+                      sequence of TRs 
   -i <input>          PAR-file or folder containing PAR-files to be processed. Always needed!
   -o <output folder>  output folder. If empty, it will use <input folder>/nifti
   -c <compress>       create nii's ("n") or nii.gz's (default)
@@ -37,9 +39,23 @@ USAGE
 
 # Allocate input arguments to variables
 #
-while getopts i:o:c:v: argument
+prot="first"
+while getopts :-:i:o:c:v: argument
 do
   case ${argument} in
+    -)
+      case "${OPTARG}" in     
+        take-avg-tr)
+          prot="average"
+          ;;            
+        *)
+          if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
+            Usage >&2
+            echo "Unknown option --${OPTARG}"
+            exit 1
+          fi
+          ;;
+      esac;;      
     i)  pathInput=${OPTARG}
           ;;
     o)  pathOutput=${OPTARG}
@@ -246,22 +262,20 @@ END
   # check corresponding EPI file
   if [[ ${bids_out} == *"_bold"* ]]; then
 
-    # get TR column
-    tr_column=(`sed -n "$((${line_startpar}+2)),$ p" ${par} | awk '{ print $32 }' | sed 's/\r$//'`)
-
-    # get nr of slices
-    nr_slices=`read_par ${par} "Max. number of slices/locations"`
-    
     # get location where 0.00 turns into TR
-    tr=${tr_column[${nr_slices}]}
+    tr="tr_from_par ${par} ${prot}"
 
-    # check if it's not 0
-    if [[ ${tr} == "0.00" ]]; then
+    # check if it's not 999 (= errpr message from tr_from_par) or 0.0
+    if [[ ${tr} -eq 999 ]]; then
+      echo "ERROR: could not read TR from par-file.. Setting to 1"
+      tr=1
+    elif [[ ${tr} == "0.00" ]]; then
       echo "WARNING: TR=${tr}, this might not be correct.."
     fi
 
-    echo "Setting TR to ${tr}"
+    echo "Setting TR to ${tr} in func; adding to json too"
     call_settr ${bids_out}.nii.gz ${tr}
+    call_json ${json_f} RepetitionTime ${tr}
 
     # set dtype to uint16
     dtype=`fslval ${bids_out}.nii.gz data_type`
