@@ -799,38 +799,56 @@ class NideconvFitter():
 
 
     def plot_hrf_across_depth(
-        self, 
-        axs=None, 
-        figsize=(8,8), 
-        cmap='viridis', 
-        ci_color="#cccccc", 
-        ci_alpha=0.6, 
-        order=2, 
-        save_as=None, 
+        self,
+        axs=None,
+        figsize=(8,8),
+        cmap='viridis',
+        color=None,
+        ci_color="#cccccc",
+        ci_alpha=0.6,
+        order=2,
+        save_as=None,
+        invert=False,
         **kwargs):
 
         if not hasattr(self, "all_voxels_in_event"):
             self.plot_timecourses(make_figure=False)
-        
+
         self.max_vals = np.array([np.amax(self.all_voxels_in_event[ii]) for ii in range(len(self.all_voxels_in_event))])
-        cf = CurveFitter(self.max_vals, order=order, verbose=False)
-        
+
         if not axs:
-            
             fig,axs = plt.subplots(figsize=figsize)
 
-        color_list = sns.color_palette(cmap, len(self.max_vals))
+        if isinstance(cmap, str):
+            color_list = sns.color_palette(cmap, len(self.max_vals))
+        else:
+            color_list = [color for _ in self.max_vals]
+
+        self.depths = np.linspace(0,100,num=len(self.max_vals))
+        if invert:
+            self.max_vals = self.max_vals[::-1]
+
+        cf = CurveFitter(self.max_vals, x=self.depths, order=order, verbose=False)
         for ix, mark in enumerate(self.max_vals):
             axs.plot(cf.x[ix], mark, 'o', color=color_list[ix], alpha=ci_alpha)
 
-        plotting.LazyPlot(
+        pl = plotting.LazyPlot(
             cf.y_pred_upsampled,
             xx=cf.x_pred_upsampled,
             axs=axs,
             error=cf.ci_upsampled,
             color=ci_color,
-            x_label="CSF                        voxels                       WM",
+            x_ticks=[0,50,100],
+            x_label="depth (%)",
             **kwargs)
+
+        for pos,tag in zip([(0.02,0.02),(0.85,0.02)],["pial","wm"]):
+            axs.annotate(
+                tag,
+                pos,
+                fontsize=pl.font_size,
+                xycoords="axes fraction"
+            )
 
         if save_as:
             fig.savefig(save_as, dpi=300, bbox_inches='tight')
