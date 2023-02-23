@@ -247,10 +247,10 @@ USAGE
   else
 
     par=${1}
-    prot=${2}
+    use_case=${2}
 
-    if [[ -z ${prot} ]]; then
-      prot="average"
+    if [[ -z ${use_case} ]]; then
+      use_case="average"
     fi
 
     # fetch where parameters begin
@@ -274,7 +274,7 @@ try:
   import numpy as np;
   trs = np.unique(np.loadtxt('${tr_file}'));
   isi = np.diff(trs);
-  if '${prot}' == 'average': 
+  if '${use_case}' == 'average': 
     tr = isi.mean();
   else:
     tr = isi[0];

@@ -39,14 +39,14 @@ USAGE
 
 # Allocate input arguments to variables
 #
-prot="first"
+use_case="first"
 while getopts :-:i:o:c:v: argument
 do
   case ${argument} in
     -)
       case "${OPTARG}" in     
         take-avg-tr)
-          prot="average"
+          use_case="average"
           ;;            
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
@@ -263,10 +263,10 @@ END
   if [[ ${bids_out} == *"_bold"* ]]; then
 
     # get location where 0.00 turns into TR
-    tr="tr_from_par ${par} ${prot}"
+    tr=`tr_from_par ${par} ${use_case}`
 
     # check if it's not 999 (= errpr message from tr_from_par) or 0.0
-    if [[ ${tr} -eq 999 ]]; then
+    if [[ "${tr}" == "999" ]]; then
       echo "ERROR: could not read TR from par-file.. Setting to 1"
       tr=1
     elif [[ ${tr} == "0.00" ]]; then
