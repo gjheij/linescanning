@@ -182,7 +182,6 @@ for subID in ${search}; do
           -n ${nr} \
           -o ${DENOISE} \
           -r ${PYBEST_SPACE} \
-          -e ${PYBEST_ENV} \
           -f ${FPREP} \
           -c ${cpu} \
           -z ${PYBEST_NORM} \

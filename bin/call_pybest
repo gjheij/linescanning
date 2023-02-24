@@ -66,7 +66,7 @@ ses_input=""
 output_dir=${DIR_DATA_DERIV}/pybest
 input_dir=${DIR_DATA_DERIV}/fmriprep
 raw=1
-while getopts :-:s:n:o:s:f:c:e:z:v:r:t: arg; do
+while getopts :-:s:n:o:s:f:c:z:v:r:t: arg; do
   case $arg in
     -)
       case "${OPTARG}" in
@@ -92,8 +92,6 @@ while getopts :-:s:n:o:s:f:c:e:z:v:r:t: arg; do
           ;;
     c)  n_slots=${OPTARG}
           ;;
-    e)  env=${OPTARG}
-          ;;
     t)  task_ids=(${OPTARG})
           ;;          
   esac
@@ -101,20 +99,6 @@ done
 
 if [[ $# -lt 4 ]] ; then
   Usage >&2
-  exit 1
-fi
-
-#-----------------------------------------------------------------------------
-## ACTIVATE ENVIRONMENT WITH PYBEST IN IT (default is fmriprep_denoising)
-# Check if specified environment exists, otherwise check for default
-if [[ ! -z $env ]]; then
-  check_env=${env}
-fi
-
-conda_env=`conda info --envs | grep -A0 "${check_env}" | cut -d' ' -f1  `
-if [[ -z ${conda_env} ]]; then
-  echo
-  echo "ERROR in `basename ${0}`: could not find conda environment \"${check_env}\""
   exit 1
 fi
 
@@ -149,8 +133,6 @@ if [[ ! -z ${n_slots} ]]; then
 fi
 
 #
-# source activate ${env}
-source activate ${conda_env}
 if [[ ! -d ${output_dir}/sub-${sub} ]]; then
   mkdir -p ${output_dir}/sub-${sub}
 fi 
