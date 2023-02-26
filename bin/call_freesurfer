@@ -357,6 +357,8 @@ CHECK_INPUTS(){
       if [[ ${reuse_t2} -eq 1 ]]; then
         if [[ -f ${SUBJECTS_DIR}/${subj_ID}/mri/T2.mgz ]]; then
           T2_flag="-T2pial"
+        elif [[ -f ${SUBJECTS_DIR}/${subj_ID}/mri/FLAIR.mgz ]]; then
+          T2_flag="-FLAIRpial"
         fi
       fi
     else
