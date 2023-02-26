@@ -163,6 +163,11 @@ for task_id in ${task_ids[@]}; do
 
       pybest ${sub_input} ${ses_input} --task ${task_id} --space ${in_space} --hemi ${hemi} ${cpu_input} --verbose ERROR --save-all ${input_dir}
 
+      if [[ $? -ne 0 ]]; then
+        echo "ERROR in `basename ${0}`: pybest existed with non-zero status"
+        exit 1
+      fi
+
       if [ ${raw} -eq 1 ]; then
         echo "Un-zcoring output from pybest"
         call_unzscore \
@@ -179,5 +184,10 @@ for task_id in ${task_ids[@]}; do
     done
   else
     pybest ${sub_input} ${ses_input} --task ${task_id} --space ${in_space} --verbose ERROR --save-all ${input_dir}
+
+    if [[ $? -ne 0 ]]; then
+      echo "ERROR in `basename ${0}`: pybest existed with non-zero status"
+      exit 1
+    fi    
   fi
 done
