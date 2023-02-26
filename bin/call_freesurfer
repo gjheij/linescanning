@@ -51,6 +51,9 @@ Args:
   --force_exec        Force execution even though directory exists already
   --sge               Submit the script to a cluster using a template script
   --local             Force local processing even though cluster is available
+  --no_t2             Do not reuse T2 with autorecon3. Must be used in concert with '-e' and
+                      '-r'. By default, we'll re-use the T2 if present. Same flag should be 
+                      used for not re-using FLAIR images
   --no_highres        Turn of highres mode by setting '-highres' flag empty
   --xopts-use         maps to '-xopts-use' for existing expert option file; use existing file
   --xopts-clean       maps to '-xopts-clean' for existing expert option file; delete existing 
@@ -122,6 +125,7 @@ SGE=""
 highres_flag="-hires"
 XOPTS_=""
 EXPERT_FILE=""
+reuse_t2=1
 while getopts :-:hs:t:p:r:e:o:f:c:x: arg
 do
   case ${arg} in
@@ -141,7 +145,10 @@ do
           ;;   
         no_highres)
           highres_flag=""
-          ;;             
+          ;; 
+        no_t2)
+          reuse_t2=0
+          ;;            
         xopts-use)
           XOPTS_="-xopts-use"
           ;;             
@@ -235,6 +242,10 @@ CMD(){
   # $4 = T1_flag
   # $5 = T2_flag
 
+  # check if function exists, will throw an error if it doesn't exist
+  fn_exists freesurfer
+  echo "Using FreeSurfer from: `which freesurfer`"
+
   if [[ ${SGE} == "SGE" ]]; then
     echo "Submitting job to cluster"
     parallel_flag="-parallel"
@@ -265,10 +276,6 @@ CMD(){
 
   # If you have ran FreeSurfer in fMRIprep, fsaverage will miss a few labels that
   # FreeSurfer v7 has.
-
-  # check if function exists, will throw an error if it doesn't exist
-  fn_exists freesurfer
-  echo "Using FreeSurfer from: `which freesurfer`"
 
   # echo "${SUBJECTS_DIR}"
   (
@@ -301,33 +308,45 @@ CMD(){
 
 CHECK_INPUTS(){
 
+  T1_flag=""
+  T2_flag=""
   if [ -z ${T1} ]; then
-
-    if [[ ${1} != "all" || ${1} != *"1"* ]]; then
+    if [[ ${1} == "all" || ${1} == *"1"* ]]; then
       echo "Could not find T1-weighted image"
       exit 1
     fi
   else
-    # make sure full path is specified by checking if the first character of the 
-    # string is separator
-    if [[ `echo ${T1:0:1}` != "/" ]]; then
-      T1=${PWD}/${T1}
+    if [[ ${1} == "all" || ${1} == *"1"* ]]; then
+      T1=`fetch_filepath ${T1}`
+      T1_flag="-i ${T1}"
     fi
-
-    T1_flag="-i ${T1}"
   fi
 
   if [[ ! -z ${T2} ]]; then
     # also got a T2 weighted image
-    if [[ `echo ${T2:0:1}` != "/" ]]; then
-      T2=${PWD}/${T2}
-    fi
+    T2=`fetch_filepath ${T2}`
 
     # check if input if FLAIR or T2
     if [[ ${T2} == *"T2w.nii.gz"* ]]; then
-      T2_flag="-T2 ${T2} -T2pial"
+      if [[ ${1} == "all" ]]; then
+        T2_flag="-T2 ${T2} -T2pial"
+      else
+        if [[ ${reuse_t2} -eq 1 ]]; then
+          T2_flag="-T2pial"
+        else
+          T2_flag=""
+        fi
+      fi
     elif [[ ${T2} == *"FLAIR.nii.gz"* ]]; then
-      T2_flag="-FLAIR ${T2} -FLAIRpial"
+      if [[ ${1} == "all" ]]; then
+        T2_flag="-FLAIR ${T2} -FLAIRpial"
+      else
+        if [[ ${reuse_t2} -eq 1 ]]; then
+          T2_flag="-FLAIRpial"
+        else
+          T2_flag=""
+        fi
+      fi
     else
       echo "ERROR in `basename ${0}`: file must end with T2w.nii.gz or FLAIR.nii.gz"
       exit 1
@@ -343,6 +362,34 @@ ISRUNNING(){
   if [[ -f ${is_running} ]]; then
     rm -r ${is_running}
   fi
+}
+
+CHECK_EXECUTION(){
+
+  # execute either when there's no directory, or when there's no files in /surf, or force_exec=1
+  execute=0
+
+  if [[ -d ${SUBJECTS_DIR}/${subj_ID} ]]; then
+    if [[ ! -d ${SUBJECTS_DIR}/${subj_ID}/surf ]]; then
+      reason="directory \"${SUBJECTS_DIR}/${subj_ID}\" is empty"
+      execute=1
+    else
+      nr_files=`ls -l ${SUBJECTS_DIR}/${subj_ID}/surf | grep "total" | cut -d' ' -f2`
+      if [ ${nr_files} -eq 0 ]; then
+        reason="directory \"${SUBJECTS_DIR}/${subj_ID}/surf\" is empty"
+        execute=1
+      fi
+    fi
+    
+    if [ ${FORCE_EXEC} -eq 1 ]; then
+      reason="--force_exec was specified"
+      execute=1
+    fi
+  else
+    reason="new FreeSurfer subject"
+    execute=1
+  fi
+  
 }
 
 #-----------------------------------------------------------------------------
@@ -427,14 +474,14 @@ else
       echo "You want to run all stages of recon-all but specified the \"edit\" flag. This is not necessary"
     fi
 
-    if [[ -d ${SUBJECTS_DIR}/${subj_ID} ]]; then
-      if [ ${FORCE_EXEC} -eq 0 ]; then
-        echo "This step is already complete"
-      else
-        CMD "${subj_ID}" "${stage}" "-all"
-      fi
-    else
+    # check execution; sets 'execution' and 'reason' variables
+    CHECK_EXECUTION
+
+    if [[ ${execute} -eq 1 ]]; then
+      echo "Reason to execute: ${reason}"
       CMD "${subj_ID}" "${stage}" "-all" "${T1_flag}" "${T2_flag}"
+    else
+      echo "This step is already complete; use '--force_exec' to force execution"    
     fi
 
   elif [[ ${stage} == "12" ]]; then
@@ -452,6 +499,9 @@ else
     CMD "${subj_ID}" "${stage}" "-autorecon1 -autorecon2" "${T1_flag}" "${T2_flag}"
 
   elif [ ${stage} == "23" ]; then
+
+    # check for T1 and T2 flags; the actual inputs are not required, but the flags must be present 
+    CHECK_INPUTS ${stage}
 
     # remove running job
     ISRUNNING
@@ -492,10 +542,14 @@ else
     # check for T1 and T2
     CHECK_INPUTS ${stage}
 
-    if [[ -d ${SUBJECTS_DIR}/${subj_ID} ]]; then
-      echo "This step is already complete"
-    else
+    # check execution; sets 'execution' and 'reason' variables
+    CHECK_EXECUTION
+
+    if [[ ${execute} -eq 1 ]]; then
+      echo "Reason to execute: ${reason}"
       CMD "${subj_ID}" "${stage}" "-autorecon1" "${T1_flag}" "${T2_flag}"
+    else
+      echo "This step is already complete; use '--force_exec' to force execution"
     fi
 
   elif [[ ${stage} == "2" ]]; then

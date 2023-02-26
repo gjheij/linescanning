@@ -3,6 +3,7 @@
 #---------------------------------------------------------------------------------------------------------
 # check if there's is a setup file containing the major paths and source it if it exists
 call_loadsetup
+source call_bashhelper
 
 #---------------------------------------------------------------------------------------------------------
 # Create help text
@@ -21,11 +22,17 @@ Usage:
 Flagged arguments:
   -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
   -n <session>        session ID (e.g., 1, 2, or n)
+  -e <start>          start stage (maps to '-r' from 'call_freesurfer'). Must be one of 'pial', 
+                      'cp', or 'wm' if <freesurfer stage> != 'all'
   -o|--ow             overwrite existing files
   -x <file>           use expert file
-  --sge               Submit the script to a cluster using a template script
+  --force_exec        Force execution even though directory exists already
   --local             Force local processing even though cluster is available
   --no_highres        Turn of highres mode by setting '-highres' flag empty
+  --no_t2             Do not reuse T2 with autorecon3. Must be used in concert with '-e' and
+                      '-r'. By default, we'll re-use the T2 if present. Same flag should be 
+                      used for not re-using FLAIR images  
+  --sge               Submit the script to a cluster using a template script
   --xopts-use         maps to '-xopts-use' for existing expert option file; use existing file
   --xopts-clean       maps to '-xopts-clean' for existing expert option file; delete existing file
   --xopts-overwrite   maps to '-xopts-overwrite' for existing expert option file; use new file
@@ -84,7 +91,9 @@ freeview_flag=""
 highres_flag=""
 sge_flag=""
 expert_flag=""
-while getopts :-:os:n:x: argument
+force_flag=""
+use_t2_flag=""
+while getopts :-:os:n:x:e: argument
 do
   case ${argument} in
     -)
@@ -93,7 +102,7 @@ do
           FREEVIEW=1
           ;;            
         force_exec)
-          FORCE_EXEC=1
+          force_flag="--force_exec"
           ;;          
         sge)
           sge_flag="--sge"
@@ -106,7 +115,10 @@ do
           ;;          
         no_highres)
           highres_flag="--no_highres"
-          ;;             
+          ;;  
+        no_t2)
+          use_t2_flag="--no_t2"
+          ;;                       
         xopts-use)
           XOPTS_="--xopts-use"
           ;;             
@@ -131,7 +143,9 @@ do
     o)  OW=1
           ;; 
     x)  EXPERT_FILE=${OPTARG}
-          ;;           
+          ;;  
+    e)  start_flag="-e ${OPTARG}"
+          ;;                     
   esac
 done
 
@@ -146,7 +160,7 @@ T2=${@:$OPTIND+2:1}
 
 if [[ -z ${sub} ]]; then
   # loop through subjects
-  search="${INPUT}/${SUBJECT_PREFIX}*"
+  search="${T1}/${SUBJECT_PREFIX}*"
 else
   # read specified subjects into array
   IFS=', ' read -r -a search <<< "${sub}"
@@ -226,13 +240,26 @@ for subID in ${search}; do
 
     # execute either when there's no directory, or when there's no files in /surf
     execute=0
-    if [[ -d ${SUBJECTS_DIR}/${sub_name} ]]; then
-      nr_files=`ls -l ${SUBJECTS_DIR}/${sub_name}/surf | grep "total" | cut -d' ' -f2`
-      if [ ${nr_files} -eq 0 ]; then
+
+    if [[ ${STAGE} != "all" ]]; then
+      execute=1
+    else
+      if [[ -d ${SUBJECTS_DIR}/${sub_name} ]]; then
+        if [[ ! -d ${SUBJECTS_DIR}/${sub_name}/surf ]]; then
+          execute=1
+        else
+        nr_files=`ls -l ${SUBJECTS_DIR}/${sub_name}/surf | grep "total" | cut -d' ' -f2`
+          if [ ${nr_files} -eq 0 ]; then
+            execute=1
+          fi
+        fi
+
+        if [ ! -z ${force_flag} ]; then
+          execute=1
+        fi        
+      else
         execute=1
       fi
-    else
-      execute=1
     fi
 
     if [[ ${execute} -eq 1 ]]; then
@@ -277,15 +304,25 @@ for subID in ${search}; do
       fi
 
       # cmd
+      if [[ ${STAGE} != "all" ]]; then
+        if [[ -z ${start_flag} ]]; then
+          echo "ERROR in `basename ${0}`: recon-all stages \"${STAGE}\" is/are requested, but it's not specified as of which stage to start autorecon. Please specify the \"-e\" flag with one of \"pial\", \"wm\", or \"cp\" as input"
+          exit 1
+        fi
+      fi
+
       call_freesurfer \
         -s ${sub_name} \
         -t ${input_t1w} \
         -r ${STAGE} \
+        ${start_flag} \
         ${T2_flag} \
         ${highres_flag} \
         ${expert_flag} \
         ${XOPTS_} \
-        ${sge_flag}
+        ${sge_flag} \
+        ${use_t2_flag} \
+        ${force_flag} \
 
     else
       echo "${sub_name}: FreeSurfer already ran"

@@ -63,10 +63,14 @@ DCM_FIX=""                # spinoza_scanner2bids
 UPs=""                    # spinoza_qmrimaps
 NO_BIAS=""                # spinoza_qmrimaps
 PROT_FLAG=""              # spinoza_scanner2bids
+FS_stage="all"            # spinoza_freesurfer
+FORCE_FLAG=""             # spinoza_freesurfer
+START_STAGE=""            # spinoza_freesurfer
+use_t2_flag=""            # spinoza_freesurfer
 
 # use long options in bash:
 # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options
-declare -a array=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv" "--no_fit" "--fmriprep" "--fprep" "--v1" "--v2" "--no_grid" "--debug" "--no_nordic" "--dcm_fix" "--ow" "--no_bounds" "--tsnr" "--mag" "--no_highres" "--xopts-use" "--xopts-clean" "--xopts-overwrite" "--take-avg-tr")
+declare -a array=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv" "--no_fit" "--fmriprep" "--fprep" "--v1" "--v2" "--no_grid" "--debug" "--no_nordic" "--dcm_fix" "--ow" "--no_bounds" "--tsnr" "--mag" "--no_highres" "--xopts-use" "--xopts-clean" "--xopts-overwrite" "--take-avg-tr" "--force_exec" "--no_t2")
 
 # sort options array
 IFS=$'\n' opts=($(sort <<<"${array[*]}"))
@@ -226,7 +230,13 @@ do
           ;;
         take-avg-tr)
           PROT_FLAG="--take-avg-tr"
-          ;;             
+          ;;
+        force_exec)
+          FORCE_FLAG="--force_exec"
+          ;;           
+        no_t2)
+          use_t2_flag="--no_t2"
+          ;;           
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             for ii in ${opts[@]}; do echo " ${ii}"; done
@@ -262,8 +272,10 @@ do
     u)  CONF=${OPTARG}
           ;;
     r)  ROI=${OPTARG}
+        FS_stage=${OPTARG}
           ;;       
     e)  n_echoes=${OPTARG}
+        START_STAGE=${OPTARG}
           ;;
     i)  images=${OPTARG}
           ;;             
@@ -271,7 +283,7 @@ do
 done
 
 # source helper functions
-source ${DIR_SCRIPTS}/shell/spinoza_setup
+source ${SETUP_FILE}
 source call_bashhelper
 
 # set the execute flag
@@ -302,7 +314,12 @@ Args:
   -c                list of values used for clipping of design matrix. Format must be [<top>,<bot-
                     tom>,<left>,<right>]. Negative values will be set to zero within 'linescanning.
                     prf.get_prfdesign'
-  -e <n_echoes>     Specify the amount of echoes of the acquisition
+  -e <echos|stage>  used for:
+                      - spinoza_linerecon: specify the amount of echoes of the acquisition
+                      - spinoza_freesurfer: maps to '-e' from call_freesurfer; sets the stage as of
+                        which to start autorecon. Should be used in concert with '-r', and must be
+                        one of 'pial' (for pial edits), 'wm' (for white matter edits), or 'cp' if
+                        you added control points. See 'call_freesurfer' for more information
   -h <hemisphere>   used for lineplanning, denotes which hemisphere to process
   -i <image path>   specify custom path to PNG's for pRF-fitting. This allows deviation from the 
                     standard path that 'spinoza_fitprfs' will be looking for
@@ -326,7 +343,10 @@ Args:
                     noza_fitprfs & spinoza_bestvertex
   -q <info mod>     query the usage-information of a given module number: e.g., master -m 00 -q
                     brings up the help-text from module 00 (spinoza_lineplanning)
-  -r <roi>          Set label file for 'spinoza_bestvertex' or ROI for 'spinoza_extractregions'
+  -r <roi|stage>    Used for:
+                      - spinoza_bestvertex: set label file (default is 'V1.exvivo_thresh'
+                      - spinoza_extractregions: ROI to extract (default is 'cerebrum')
+                      - spinoza_freesurfer: which stage to use (maps to '-r' from call_freesurfer)
   -s <subject>      Subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
   -t <type|task>    used for;
                       - spinoza_fmriprep: to run either the 'anat' workflow only, or also include func
@@ -371,6 +391,7 @@ Args:
                     tive SANLM-filtering, bias correction, and intensity normalization. Can some-
                     times be overkill, so generally we use CAT12 for the additional segmentations
                     and brain extraction
+  --force_exec      force the execution of FreeSurfer even though directory exists already
   --fv              use FreeView to draw sinus mask (spinoza_sagittalsinus) 
   --fsl             use FSLeyes to draw sinus mask (spinoza_sagittalsinus) 
   --gdh             use custom implementation of MGDM (via call_gdhmgdm) that also considers extra
@@ -406,6 +427,9 @@ Args:
   --no_freeview     disable FreeView during vertex selection (spinoza_bestvertex)
   --no_highres      disable high-res functionality for FreeSurfer
   --no_nordic       turn off NORDIC denoising during reconstruction of line-scanning data
+  --no_t2           do not reuse T2 with autorecon3. Must be used in concert with '-e' and '-r'. By 
+                    default, we'll re-use the T2 if present. Same flag should be used for not re-using 
+                    FLAIR images  
   --ups             maps to '-u' in spinoza_qmrimaps; turn on Universal Pulses
   --remove_wf       maps to '-r all' in spinoza_fmriprep; removes full fmriprep_wf folder. Be careful
                     with this one! Mainly used for debugging of a single subject. Use \"--remove_surf
@@ -1104,6 +1128,11 @@ if [[ $? -eq 0 ]]; then
   if [ ! -z ${KWARGS} ]; then
     expert_flag="-x ${KWARGS}"
   fi
+
+  # check -f we got '-e' flag
+  if [[ ! -z ${START_STAGE} ]]; then
+    START_STAGE="-e ${START_STAGE}"
+  fi   
   
   ${job} spinoza_freesurfer \
     ${SUBJECT} \
@@ -1114,7 +1143,10 @@ if [[ $? -eq 0 ]]; then
     ${run_local} \
     ${SGE} \
     ${OW} \
-    ${INPUT_DIR} all ${DIR_DATA_HOME}
+    ${START_STAGE} \
+    ${FORCE_FLAG} \
+    ${use_t2_flag} \
+    ${INPUT_DIR} ${FS_stage} ${DIR_DATA_HOME}
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_freesurfer exited with non-zero status"
