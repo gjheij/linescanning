@@ -352,7 +352,16 @@ CHECK_INPUTS(){
       exit 1
     fi
   else
-    T2_flag=""
+    # for stage != 'all', check if there's a T2.mgz file in the mri folder if no T2 image was specified
+    if [[ ${1} != "all" || ${1} != *"1"* ]]; then
+      if [[ ${reuse_t2} -eq 1 ]]; then
+        if [[ -f ${SUBJECTS_DIR}/${subj_ID}/mri/T2.mgz ]]; then
+          T2_flag="-T2pial"
+        fi
+      fi
+    else
+      T2_flag=""
+    fi
   fi
 
 }
