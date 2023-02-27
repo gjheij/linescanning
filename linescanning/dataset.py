@@ -250,10 +250,10 @@ class ParseEyetrackerFile(SetAttributes):
             self.df_space_eye.append(self.fetch_eye_tracker_time())
             self.df_saccades.append(self.fetch_saccades())
 
-        self.df_blinks = pd.concat(self.df_blinks).set_index(['subject', 'run', 'event_type'])
-        self.df_space_func = pd.concat(self.df_space_func).set_index(['subject', 'run', 't'])
-        self.df_space_eye = pd.concat(self.df_space_eye).set_index(['subject', 'run', 't'])
-        self.df_saccades = pd.concat(self.df_saccades).set_index(['subject', 'run', 'event_type'])
+        self.df_blinks = pd.concat(self.df_blinks).set_index(['subject','run','event_type'])
+        self.df_space_func = pd.concat(self.df_space_func).set_index(['subject','run', 't'])
+        self.df_space_eye = pd.concat(self.df_space_eye).set_index(['subject','run','eye','t'])
+        self.df_saccades = pd.concat(self.df_saccades).set_index(['subject','run','event_type'])
 
     def fetch_blinks_run(self, run=1, return_type='df'):
         blink_df = utils.select_from_df(
@@ -312,8 +312,8 @@ class ParseEyetrackerFile(SetAttributes):
         self.time_period = [self.session_start_EL_time,self.session_stop_EL_time]
 
         eye = self.ho.eye_during_period(self.time_period, alias)
-
         if self.verbose:
+            print(" Eye:         ", eye)
             print(" Sample rate: ", self.sample_rate)
             print(" Start time:  ", self.time_period[0])
             print(" Stop time:   ", self.time_period[1])
@@ -321,7 +321,7 @@ class ParseEyetrackerFile(SetAttributes):
         # set some stuff required for successful plotting with seconds on the x-axis
         n_samples = int(self.time_period[1]-self.time_period[0])
         duration_sec = n_samples*(1/self.sample_rate)
-        
+
         if self.verbose:
             print(" Duration:     {}s [{} samples]".format(duration_sec, n_samples))
 
@@ -337,8 +337,8 @@ class ParseEyetrackerFile(SetAttributes):
         if self.verbose:
             print(f" Fetching:     {extract}")
 
-        df_space_eye = {} 
-        for extr in extract:
+        tf = [] 
+        for par_ix,extr in enumerate(extract):
             data = np.squeeze(
                 self.ho.signal_during_period(
                     time_period=self.time_period, 
@@ -346,14 +346,31 @@ class ParseEyetrackerFile(SetAttributes):
                     signal=extr, 
                     requested_eye=eye).values)
 
-            df_space_eye[extr] = data
+            if data.ndim < 2:
+                data = data[...,np.newaxis]
+                
+            tmp = []
+            for ix,ii in enumerate(list(eye)):
+
+                tmp_df = pd.DataFrame(data[:,ix], columns=[extr])
+                if par_ix == len(extr)-1:
+                    tmp_df["eye"] = ii
+                    tmp_df["t"] = list((1/self.sample_rate)*np.arange(data.shape[0]))
+
+                tmp.append(tmp_df)
+
+            tmp = pd.concat(tmp)
+            tf.append(tmp)
+
+        df_space_eye = pd.concat(tf, axis=1)
         
         # nothing to resample if nr_vols==None
         df_space_func = {}
         if isinstance(nr_vols, int):
             rs_col = list(df_space_eye.keys())
             for col in rs_col:
-                df_space_func[col] = glm.resample_stim_vector(df_space_eye[col], nr_vols)   
+                rs = glm.resample_stim_vector(df_space_eye[col], nr_vols)   
+                df_space_func[col] = rs
 
                 # high-pass filter
                 df_space_func[f"{col}_hp"] = preproc.highpass_dct(
@@ -407,11 +424,12 @@ class ParseEyetrackerFile(SetAttributes):
                 df_saccades[tt] = mm
 
         # build dataframe with relevant information
+        self.tmp_df = df_space_eye.copy()
         df_space_eye = pd.DataFrame(df_space_eye)
         df_space_func = pd.DataFrame(df_space_func)
 
         # index
-        df_space_eye['subject'], df_space_eye['run'], df_space_eye['t'] = self.sub, self.run, list((1/self.sample_rate)*np.arange(df_space_eye.shape[0]))
+        df_space_eye['subject'], df_space_eye['run'] = self.sub, self.run
 
         # index
         df_space_func['subject'], df_space_func['run'], df_space_func['t'] = self.sub, self.run, list(TR*np.arange(df_space_func.shape[0]))
