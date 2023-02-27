@@ -319,18 +319,9 @@ class ParseEyetrackerFile(SetAttributes):
             print(" Stop time:   ", self.time_period[1])
 
         # set some stuff required for successful plotting with seconds on the x-axis
-        div = False
-        if self.sample_rate == 500:
-            n_samples = int(self.time_period[1]-self.time_period[0])/2
-            duration_sec = n_samples*(1/self.sample_rate)*2
-
-            div = True
-        elif self.sample_rate == 1000:
-            n_samples = int(self.time_period[1]-self.time_period[0])
-            duration_sec = n_samples*(1/self.sample_rate)
-        else:
-            raise ValueError(f"Did not recognize sample_rate of {self.sample_rate}")
-
+        n_samples = int(self.time_period[1]-self.time_period[0])
+        duration_sec = n_samples*(1/self.sample_rate)
+        
         if self.verbose:
             print(" Duration:     {}s [{} samples]".format(duration_sec, n_samples))
 
