@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 
-SETUP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SETUP_FILE="${SETUP_DIR}/spinoza_setup"
-REPO_DIR=$(dirname ${SETUP_DIR})
-PATH_HOME=$(dirname $(dirname ${SETUP_DIR}))
-export PATH_HOME=${PATH_HOME}
+export SETUP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export SETUP_FILE="${SETUP_DIR}/spinoza_setup"  # copy to some location
+export REPO_DIR=$(dirname ${SETUP_DIR})         # point to linescanning repo (arbitrary)
+export PATH_HOME=$(dirname ${REPO_DIR})         # point to folder for temp/logs files
 
 # source helper functions
 source ${REPO_DIR}/bin/call_bashhelper
@@ -106,10 +105,6 @@ if [[ $1 == "setup" ]]; then
         git clone ${PACKAGE_LINK}
       fi
       cd ${PATH_HOME}/${package,,}
-      # switch to new-hrf branch of prfpy
-      if [[ ${package,,} == "prfpy" ]]; then
-        git checkout new_hrf
-      fi
       python setup.py develop
       cd ..
     else
@@ -127,12 +122,13 @@ fi
 export PLACE="SGE"
 export SGE_QUEUE_LONG="long.q@jupiter"
 export SGE_QUEUE_SHORT="short.q@jupiter"
+export OMP_NUM_THREADS=1 
 
 # MATLAB
 export MRRECON=/packages/matlab/toolbox/MRecon/3.0.541  
 export MATLAB_CMD="matlab -nosplash -nodisplay -batch" # find with 'which matlab'
 export SPM_PATH=${PATH_HOME}/spm12    
-export SKIP_LINES=30                                    
+export SKIP_LINES=34                               
 
 # fMRIPREP
 export MRIQC_SIMG=${PATH_HOME}/mriqc/containers_bids-mriqc--0.15.1.simg
@@ -197,9 +193,6 @@ export PRF=${DIR_DATA_DERIV}/prf
 # Make executables available in environment
 export PATH=${PATH}:${DIR_SCRIPTS}/bin
 export PATH=${PATH}:${DIR_SCRIPTS}/shell
-
-# chmod -R 775 ${DIR_SCRIPTS}/bin
-# chmod -R 775 ${DIR_SCRIPTS}/shell
 
 # Store acquisitions file file in data folder
 if [[ -f ${DIR_SCRIPTS}/misc/acq.txt ]]; then

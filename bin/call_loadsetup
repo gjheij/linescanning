@@ -2,10 +2,9 @@
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
-setupFile=$(dirname ${DIR})/shell/spinoza_setup
-if [[ -f ${setupFile} ]]; then
+if [[ -f ${SETUP_FILE} ]]; then
   #echo loading in setup file
-  source ${setupFile}
+  source ${SETUP_FILE}
 else
   echo please run script from directory containing the scripts
   echo e.g., ${PATH_HOME}/programs

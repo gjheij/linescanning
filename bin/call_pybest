@@ -4,7 +4,7 @@
 #$ -cwd
 #$ -V
 
-source ${DIR_SCRIPTS}/shell/spinoza_setup
+source ${SETUP_FILE}
 
 #---------------------------------------------------------------------------------------------------------
 # Create help text

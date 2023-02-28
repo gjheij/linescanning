@@ -592,7 +592,7 @@ for subID in ${search}; do
                       pars_for_json --merge ${par_f} ${json_bids}
 
                       # check if we can add slicetimings
-                      if [[ ${image} == "fmap" ]]; then
+                      if [[ ${image} != "phase" ]]; then
                         scan_mode=`read_par ${par_f} "Scan mode"`
 
                         if [[ ${scan_mode} != "3D" ]]; then
