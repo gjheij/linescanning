@@ -146,20 +146,22 @@ fi
 for task_id in ${task_ids[@]}; do
   echo "Running pybest on task: \"${task_id}\""
   if [[ ${in_space} == "fsnative" || ${in_space} == "fsaverage" ]]; then
+    
+    # save standard deviation and mean in tmp/ folder (pkl files)
+    if [ ${raw} -eq 1 ]; then
+      echo "Saving average/standard deviation"
+      call_unzscore \
+        -s ${sub} \
+        -n ${ses} \
+        -o ${DIR_DATA_DERIV}/pybest \
+        -f ${input_dir} \
+        -t ${task_id} \
+        -p ${in_space} \
+        --pre
+    fi
+
     for hemi in "L" "R"; do
 
-      if [ ${raw} -eq 1 ]; then
-        echo "Saving average/standard deviation"
-        call_unzscore \
-          -s ${sub} \
-          -n ${ses} \
-          -o ${DIR_DATA_DERIV}/pybest \
-          -f ${input_dir} \
-          -t ${task_id} \
-          -p ${in_space} \
-          -h ${hemi} \
-          --pre
-      fi
 
       pybest ${sub_input} ${ses_input} --task ${task_id} --space ${in_space} --hemi ${hemi} ${cpu_input} --verbose ERROR --save-all ${input_dir}
 
@@ -168,20 +170,21 @@ for task_id in ${task_ids[@]}; do
         exit 1
       fi
 
-      if [ ${raw} -eq 1 ]; then
-        echo "Un-zcoring output from pybest"
-        call_unzscore \
-          -s ${sub} \
-          -n ${ses} \
-          -o ${DIR_DATA_DERIV}/pybest \
-          -f ${input_dir} \
-          -t ${task_id} \
-          -p ${in_space} \
-          -h ${hemi} \
-          --post
-      fi
-
     done
+
+    # undo z-scoring
+    if [ ${raw} -eq 1 ]; then
+      echo "Un-zcoring output from pybest"
+      call_unzscore \
+        -s ${sub} \
+        -n ${ses} \
+        -o ${DIR_DATA_DERIV}/pybest \
+        -f ${input_dir} \
+        -t ${task_id} \
+        -p ${in_space} \
+        --post
+    fi
+    
   else
     pybest ${sub_input} ${ses_input} --task ${task_id} --space ${in_space} --verbose ERROR --save-all ${input_dir}
 
