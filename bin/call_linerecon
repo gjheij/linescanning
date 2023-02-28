@@ -93,9 +93,9 @@ LSD=${@:$OPTIND+1:1}
 OUT=${@:$OPTIND+2:1}
 
 if [[ ${n_echos} -gt 1 ]]; then
-  multiecho=0
-else
   multiecho=1
+else
+  multiecho=0
 fi
 
 #-----------------------------------------------------------------------------
