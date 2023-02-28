@@ -1300,7 +1300,6 @@ class LazyHist(Defaults):
         save_as=None, 
         axs=None, 
         xkcd=False,
-        font_size=None,
         title=None,
         figsize=(8,8),
         kde=False,
@@ -1327,7 +1326,6 @@ class LazyHist(Defaults):
         self.axs            = axs
         self.xkcd           = xkcd
         self.title          = title
-        self.font_size      = font_size
         self.figsize        = figsize
         self.kde            = kde
         self.kde_kwargs     = kde_kwargs
@@ -1347,6 +1345,7 @@ class LazyHist(Defaults):
         self.kwargs         = kwargs
 
         super().__init__()
+        self.__dict__.update(kwargs)
         self.__dict__.update(self.kde_kwargs)
         self.update_rc(self.fontname)
 
