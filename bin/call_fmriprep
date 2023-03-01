@@ -131,11 +131,11 @@ source call_bashhelper # gives access to default fMRIprep container
 if [[ ! -z ${KWARGS_FILE} ]]; then
 
   echo "Including kwargs from \"${KWARGS_FILE}\":"  
-  flags_from_setup=("--cifti-output" "--bids-filter-file" "--task-id" "--use-syn-sdc" "--bold2t1w-init")
-  flags=()
-  args=()
-  kwargs=()
   
+  # exclude these flags; these should be specified in spinoza_setup or command line
+  flags_from_setup=("--cifti-output" "--bids-filter-file" "--task-id" "--use-syn-sdc" "--bold2t1w-init")
+  
+  kwargs=()
   while read -r line; do
 
     re="[[:space:]]+"
@@ -152,8 +152,6 @@ if [[ ! -z ${KWARGS_FILE} ]]; then
     else
       echo "${line}"
       kwargs+=(${line})
-      flags+=(${fl})
-      args+=(${ar})
     fi
   done < ${KWARGS_FILE}
 fi
