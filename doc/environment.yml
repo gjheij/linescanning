@@ -1,9 +1,34 @@
+name: slowpy
 channels:
   - conda-forge
+  - intel
+  - defaults
 dependencies:
-  - python>=3.8
-  - pandoc
+  - python=3.9
+  - ipython
   - ipykernel
-  - pip
-  - pip:
-    - nbsphinx
+  - numpy
+  - nipype
+  - pandas
+  - nibabel
+  - nilearn
+  - lmfit
+  - cython
+  - pytables
+  - statsmodels
+  - numexpr
+  - jcc
+  - traitlets
+  - stack_data
+  - pexpect
+  - pickleshare
+  - backcall
+  - future
+  - lxml
+  - requests
+  - mamba
+  - cookiecutter
+  - ca-certificates
+  - certifi
+  - openssl
+prefix: /home/heij@spinozacentre.knaw.nl/.conda/envs/slowpy
