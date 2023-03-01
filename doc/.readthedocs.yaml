@@ -4,6 +4,8 @@ conda:
   environment: doc/environment.yml
 
 build:
+  tools:
+    python: "mambaforge-4.10"
   jobs:
     pre_create_environment:
       - echo "Command run at 'pre_create_environment' step"
