@@ -42,6 +42,10 @@ Arguments:
                   ject functional data with the '-t' flag; if you want ALL your tasks to be included,
                   use '-t func'. If you have a specific task that needs to be processed (in case ano-
                   ther task is already done), use '-t <task_id>'
+  -k <kwargs>     specify a file with additional arguments, similar to FreeSurfer's expert options.
+                  See linescanning/misc/fprep_options for an example. Please make sure you have a 
+                  final empty white space at the end of the file, otherwise the parser gets confu-
+                  sed. For VSCode: https://stackoverflow.com/a/44704969
   <anat dir>      directory containing the anatomical data. Can also be the regular project root
                   folder if you want fMRIprep do the surface reconstruction
   <derivatives>   output folder for fMRIprep; generally this will be <project>/derivatives
@@ -70,7 +74,8 @@ fi
 bbr_flag=""
 warp_only=""
 run_local=0
-while getopts :-:ls:r:n:f:m:c: argument
+kwargs_file=""
+while getopts :-:ls:r:n:f:m:c:k: argument
 do
 case ${argument} in
     -)
@@ -102,6 +107,8 @@ case ${argument} in
           ;;
     r)  remove_wf=${OPTARG}
           ;;  
+    k)  kwargs_file="-k ${OPTARG}"
+          ;;            
   esac
 done
 
@@ -279,7 +286,8 @@ for subID in ${search}; do
     ${confFile} \
     ${task_id} \
     ${bbr_flag} \
-    ${warp_only}
+    ${warp_only} \
+    ${kwargs_file}
 
   if [[ $? != 0 ]]; then
     echo "ERROR in `basename ${0}`: call_fmriprep did not execute cleanly"

@@ -52,6 +52,7 @@ TSNR_FLAG=""              # spinoza_nordic
 use_bbr=""                # spinoza_fmriprep
 WARP_ONLY=""              # spinoza_fmriprep
 REMOVE_WF=""              # spinoza_fmriprep
+kwargs_file=""            # spinoza_fmriprep
 run_local=""              # spinoza_fmriprep/spinoza_fitprfs
 LAYER_FLAG=""             # spinoza_layering
 GDH_FLAG=""               # spinoza_mgdm
@@ -76,7 +77,7 @@ declare -a array=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--
 IFS=$'\n' opts=($(sort <<<"${array[*]}"))
 unset IFS
 
-while getopts :-:wjqom:s:h:n:t:l:v:p:x:u:r:e:i:c: arg
+while getopts :-:wjqom:s:h:n:t:l:v:p:x:u:r:e:i:c:k: arg
 do
   case ${arg} in
     -)
@@ -278,7 +279,9 @@ do
         START_STAGE=${OPTARG}
           ;;
     i)  images=${OPTARG}
-          ;;             
+          ;;
+    k)  kwargs_file="-k `readlink -f ${OPTARG}`"
+          ;;          
   esac
 done
 
@@ -323,6 +326,10 @@ Args:
   -h <hemisphere>   used for lineplanning, denotes which hemisphere to process
   -i <image path>   specify custom path to PNG's for pRF-fitting. This allows deviation from the 
                     standard path that 'spinoza_fitprfs' will be looking for
+  -k <file>         specify a file with additional arguments, similar to FreeSurfer's expert options.
+                    See linescanning/misc/fprep_options for an example. Please make sure you have a 
+                    final empty white space at the end of the file, otherwise the parser gets confu-
+                    sed. For VSCode: https://stackoverflow.com/a/44704969
   -l <which mod>    look for a module number given a string to search for (e.g., master -l layer); 
                     can also be used with:
                     - spinoza_bestvertex to use a particular label-file (default = V1_exvivo.thresh).
@@ -1202,7 +1209,18 @@ if [[ $? -eq 0 ]]; then
     ANAT_DIR=${DIR_DATA_HOME}
   fi
 
-  ${job} spinoza_fmriprep ${WARP_ONLY} ${use_bbr} ${run_local} ${SUBJECT} ${SESSION} ${confFile} ${REMOVE_WF} -f ${DIR_DATA_HOME} -m ${TYPE} ${ANAT_DIR} ${DIR_DATA_DERIV} ${DIR_DATA_HOME}
+  ${job} spinoza_fmriprep \
+    ${WARP_ONLY} \
+    ${use_bbr} \
+    ${run_local} \
+    ${SUBJECT} \
+    ${SESSION} \
+    ${confFile} \
+    ${REMOVE_WF} \
+    ${kwargs_file} \
+    -f ${DIR_DATA_HOME} \
+    -m ${TYPE} \
+    ${ANAT_DIR} ${DIR_DATA_DERIV} ${DIR_DATA_HOME}
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_fmriprep exited with non-zero status"

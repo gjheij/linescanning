@@ -39,7 +39,9 @@ Arguments:
                     -b flag (binding point) if SGE is specified!
   -x <config>       specify config file to guide fMRIprep
   -t <task ID>      limit the preprocessing to a certain task; instead of this flag you can also 
-                    use a configuration file to make the criteria more explicit                
+                    use a configuration file to make the criteria more explicit
+  -k <kwargs>       use a file containing additional arguments for fMRIprep. Make sure file has
+                    has trailing new line. For VSCode: https://stackoverflow.com/a/44704969
   --warp_only       skip fMRIPrep, but re-do the 'boldref'-images and copy the bold-to-T1w warps
   --sge             run fMRIPrep with singularity-configuration. Default singularity image should 
                     be specified in the setup file (if can with 'spinoza_fmriprep'). Otherwise,
@@ -72,7 +74,8 @@ fprep_container=${FPREP_SIMG}
 project=${DIR_DATA_HOME}
 work=${PATH_HOME}/fmriprep/${PROJECT}
 pref="sub-"
-while getopts :-:us:m:r:d:c:i:b:w:l:x:t: arg
+KWARGS_FILE=""
+while getopts :-:us:m:r:d:c:i:b:w:l:x:t:k: arg
 do
   case ${arg} in
     -)
@@ -110,7 +113,9 @@ do
     x)  CONFIG=${OPTARG}
           ;;
     t)  TASK_ID=${OPTARG}
-          ;;        
+          ;;
+    k)  KWARGS_FILE=${OPTARG}
+          ;;
   esac
 done
 
@@ -121,6 +126,37 @@ fi
 
 #-----------------------------------------------------------------------------
 source call_bashhelper # gives access to default fMRIprep container
+
+# check kwargs file
+if [[ ! -z ${KWARGS_FILE} ]]; then
+
+  echo "Including kwargs from \"${KWARGS_FILE}\":"  
+  flags_from_setup=("--cifti-output" "--bids-filter-file" "--task-id" "--use-syn-sdc" "--bold2t1w-init")
+  flags=()
+  args=()
+  kwargs=()
+  
+  while read -r line; do
+
+    re="[[:space:]]+"
+    if [[ $line =~ $re ]]; then
+      fl=`echo ${line} | cut -d" " -f1`
+      ar=`echo ${line} | cut -d" " -f2`
+    else
+      fl=${line}
+      ar=""
+    fi
+    
+    if [[ "${flags_from_setup[@]}" =~ "${fl}" ]]; then
+      echo "WARNING: \"${fl}\" flag specified in kwargs-file, but this setting is defined in \"${SETUP_FILE}\". Skipping.."
+    else
+      echo "${line}"
+      kwargs+=(${line})
+      flags+=(${fl})
+      args+=(${ar})
+    fi
+  done < ${KWARGS_FILE}
+fi
 
 #-----------------------------------------------------------------------------
 if [[ -z ${subj_ID} ]]; then
@@ -218,7 +254,6 @@ if [[ ! -z ${fprep_container} && -f ${fprep_container} ]]; then
     binding=${BIND}
   fi
 
-
   if [[ ! -f ${fprep_container} ]]; then
     echo "Could not find singularity image \"${fprep_container}\" for fmriprep.."
     exit 1
@@ -254,26 +289,32 @@ fi
 if [[ ${WARP_ONLY} -eq 0 ]]; then
 
   # execute the fMRIPrep command
-  ${run_cmd} \
-    ${project} \
-    ${output_dir} \
-    participant \
-    --participant-label ${subj_ID} \
-    --skip-bids-validation \
-    --md-only-boilerplate \
-    --fs-license-file ${license} \
-    --output-spaces ${FPREP_OUT_SPACES} \
-    --fs-subjects-dir ${FS} \
-    --stop-on-first-crash \
-    ${bbr_flag} \
-    ${cifti_flag} \
-    ${syn_flag} \
-    ${config_flag} \
-    ${task_flag} \
-    ${init_flag} \
-    ${anat_only_flag} \
-    ${nthread_flag} \
-    -w ${work}
+  cmd="""
+${run_cmd} \
+  ${project} \
+  ${output_dir} \
+  participant \
+  --participant-label ${subj_ID} \
+  --skip-bids-validation \
+  --md-only-boilerplate \
+  --fs-license-file ${license} \
+  --output-spaces ${FPREP_OUT_SPACES} \
+  --fs-subjects-dir ${FS} \
+  --stop-on-first-crash \
+  ${bbr_flag} \
+  ${cifti_flag} \
+  ${syn_flag} \
+  ${config_flag} \
+  ${task_flag} \
+  ${init_flag} \
+  ${anat_only_flag} \
+  ${nthread_flag} \
+  -w ${work} \
+  ${kwargs[@]}
+"""
+
+  # execute
+  ${cmd}
   
   if [[ $? != 0 ]]; then
     echo
@@ -285,7 +326,7 @@ if [[ ${WARP_ONLY} -eq 0 ]]; then
 else
   echo "Skipping fMRIPrep, continuing to \"boldref\" and \"bold-to-T1w\" files"
 fi
-
+exit 1
 #-----------------------------------------------------------------------------
 # fMRIPrep's boldref seems to be messy lately (snow-like noise pattern instead of an image)
 bold_files=`find ${derivatives}/fmriprep/*${subj_ID}/ -type f -name "*preproc_bold.nii.gz" 2>/dev/null`
