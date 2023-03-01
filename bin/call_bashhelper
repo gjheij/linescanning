@@ -26,6 +26,17 @@ function reverse_array {
   read -ra arr <<< "$array"
 }
 
+function recache_mpl_fonts {
+  
+  cache_file=`find ~/.cache/matplotlib -type f -name "*fontlist*"`
+  if [[ ! -z ${cache_file} ]]; then
+    rm -r ${cache_file} 2>/dev/null
+  fi
+
+  python_code="""import matplotlib.font_manager; matplotlib.font_manager._load_fontmanager(try_read_cache=False);"""
+  python3 -c "${python_code}"
+}
+
 function find_hierarchical_anatomy {
   if [[ -d ${DIR_DATA_DERIV}/masked_${DATA,,} ]]; then
     INPUT_DIR=${DIR_DATA_DERIV}/masked_${DATA,,}
