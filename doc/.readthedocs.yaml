@@ -1,7 +1,7 @@
 version: 2
 
 conda:
-  environment: environment.yml
+  environment: doc/environment.yml
 
 build:
   jobs:
@@ -13,4 +13,4 @@ build:
 
 # Build from the docs/ directory with Sphinx
 sphinx:
-  configuration: conf.py
+  configuration: doc/conf.py
