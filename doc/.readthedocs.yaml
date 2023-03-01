@@ -1,9 +1,18 @@
 version: 2
 
+conda:
+  environment: doc/environment.yml
+
 build:
   tools:
-    python: "3.8"
-
+    python: 3.8
+  jobs:
+    pre_create_environment:
+      - echo "Command run at 'pre_create_environment' step"
+    post_build:
+      - echo "Command run at 'post_build' step"
+      - echo `date`
+      
 # Build from the docs/ directory with Sphinx
 sphinx:
   configuration: doc/conf.py
