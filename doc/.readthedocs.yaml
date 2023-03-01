@@ -4,8 +4,6 @@ conda:
   environment: environment.yml
 
 build:
-  tools:
-    python: "3.9"
   jobs:
     pre_create_environment:
       - echo "Command run at 'pre_create_environment' step"
