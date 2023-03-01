@@ -202,8 +202,7 @@ MOCK_MODULES = [
     'hedfpy', 
     'nideconv',
     'niworkflows',
-    'niworkflows.reports',
-    'scikit-image']
+    'niworkflows.reports']
                 
 for mod_name in MOCK_MODULES:
     sys.modules[mod_name] = mock.Mock()
