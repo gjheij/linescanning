@@ -64,18 +64,14 @@ Arguments:
                                     transient
 
 Options:                                  
-    --hrf           Fit the HRF during pRF-fitting. If `True`, the fitting will consist of two 
-                    stages: first, a regular fitting without HRF estimation. Then, the fitting 
-                    object of that fit is inserted as `previous_gaussian_fitter` into a new fitter 
-                    object with HRF estimation turned on. Default = False.
+    --bgfs          use L-BGFS minimization for both the Gaussian as well as the extended model. Use 
+                    the -x flag if you want different minimizers for both stages                      
     --clip          clip the edges of design matrix in the space of 'n_pix' (by default = 100). 
                     You will need to calculate how many pixels are to be set to zero given the vi-
                     sual field of the subject in the scanner (with a screensize of [1920,1080]px
                     and height of 39.3cm). Format needs to be '--clip "a,b,c,d"' or --clip [a,b,c,d]
                     to ensure it's read in like a list. Negative values will be set to zero within
                     `linescanning.prf.get_prfdesign`
-    -g|--grid       only run a grid-fit with the specified model
-    -v|--verbose    print some stuff to a log-file
     --file_ending   Overwrite default search-targets from pybest/fMRIPrep output. E.g., for fMRI-
                     Prep, we look for 'bold.func.gii' and 'desc-denoised_bold.npy' for Pybest. With
                     <file_ending> you can specify to use the volumetric data from fMRIPrep (e.g., 
@@ -84,30 +80,35 @@ Options:
                     If you want to provide cifti's or nifti's, we assume everything's been prepro-
                     cessed appropriately. There's no filtering, percent-signal changing or other
                     stuff.
-    --zscore        Do NOT convert the data to percent signal change. If you do want percent signal
-                    change, the input directory needs to be unzscored data.
-                    PSC will be calculated following M. Aqil's strategy:
-                        psc = signals*100/(mean(signals)) - median(signals_without_stimulus)
+    -g|--grid       only run a grid-fit with the specified model
+    --hrf           Fit the HRF during pRF-fitting. If `True`, the fitting will consist of two 
+                    stages: first, a regular fitting without HRF estimation. Then, the fitting 
+                    object of that fit is inserted as `previous_gaussian_fitter` into a new fitter 
+                    object with HRF estimation turned on. Default = False.
                     This will ensure the baseline of periods without stimulus are set to zero.
-    --overwrite     If specified, we'll overwrite existing Gaussian parameters. If not, we'll look
-                    for a file with ['model-gauss', 'stage-iter', 'params.npy'] in *outputdir* and,
-                    if it exists, inject it in the normalization model (if `model=norm`)  
-    --tc            use trust-constr minimization for both the Gaussian as well as the extended mo-
-                    del. 
-                    Use the -x flag if you want different minimizers for both stages
-    --bgfs          use L-BGFS minimization for both the Gaussian as well as the extended model. Use 
-                    the -x flag if you want different minimizers for both stages                      
-    --no_fit        Stop the process before fitting, right after saving out averaged data. This was 
-                    useful for me to switch to percent-signal change without requiring a re-fit.
+    --merge_ses     Pool the data across all sessions for averaging. 
     --no_bounds     Turn off grid bounds; sometimes parameters fall outside the grid parameter 
                     bounds, causing 'inf' values. This is especially troublesome when fitting a
                     single timecourse. If you trust your iterative fitter, you can turn off the 
                     bounds and let the iterative take care of the parameters                    
+    --no_fit        Stop the process before fitting, right after saving out averaged data. This was 
+                    useful for me to switch to percent-signal change without requiring a re-fit.
+    --overwrite     If specified, we'll overwrite existing Gaussian parameters. If not, we'll look
+                    for a file with ['model-gauss', 'stage-iter', 'params.npy'] in *outputdir* and,
+                    if it exists, inject it in the normalization model (if `model=norm`)  
     --raw           use unzscore'd data from pybest; do not percent-signal change.
+    --tc            use trust-constr minimization for both the Gaussian as well as the extended mo-
+                    del. 
+                    Use the -x flag if you want different minimizers for both stages
     --v1            only fit voxels from ?.V1_exvivo.thresh.label; the original dimensions will be 
                     maintained, but timecourses outside of the ROI are set to zero
     --v2            only fit voxels from ?.V2_exvivo.thresh.label; the original dimensions will be 
                     maintained, but timecourses outside of the ROI are set to zero
+    -v|--verbose    print some stuff to a log-file
+    --zscore        Do NOT convert the data to percent signal change. If you do want percent signal
+                    change, the input directory needs to be unzscored data.
+                    PSC will be calculated following M. Aqil's strategy:
+                        psc = signals*100/(mean(signals)) - median(signals_without_stimulus)
 
 Example:
   call_prf -s 001 -n 1 -t 2R -o /path/derivatives/prf -i /path/to/pybest/sub-001 -p /path/png
@@ -140,9 +141,10 @@ Example:
     lbl         = None
     save_grid   = True
     grid_bounds = True   
+    merge_sessions = False
 
     try:
-        opts = getopt.getopt(argv,"ghs:n:t:o:i:p:m:x:u:c:v:",["help", "sub=", "model=", "ses=", "task=", "out=", "in=", "png=", "params=", "grid", "space=", "hrf", "n_pix=", "clip=", "verbose", "file_ending=", "zscore", "overwrite", "constr=", "tc", "bgfs", "no_fit", "raw", "cut_vols=", "v1", "v2", "no_grid"])[0]
+        opts = getopt.getopt(argv,"ghs:n:t:o:i:p:m:x:u:c:v:",["help", "sub=", "model=", "ses=", "task=", "out=", "in=", "png=", "params=", "grid", "space=", "hrf", "n_pix=", "clip=", "verbose", "file_ending=", "zscore", "overwrite", "constr=", "tc", "bgfs", "no_fit", "raw", "cut_vols=", "v1", "v2", "no_grid", "merge_ses"])[0]
     except getopt.GetoptError:
         print("ERROR while reading arguments; did you specify an illegal argument?")
         print(main.__doc__)
@@ -203,7 +205,9 @@ Example:
             lbl = "V2_exvivo.thresh"
             roi_tag = "V2"
         elif opt in ("--no_bounds"):
-            grid_bounds = False   
+            grid_bounds = False  
+        elif opt in ("--merge_ses"):
+            merge_sessions = True               
         elif opt in ("--no_grid"):
             save_grid = False
             if grid_only:
@@ -240,21 +244,17 @@ Example:
                     screen_set["right"]
                 ]
 
-    out = f"sub-{sub}"
-    if ses != None:
-        out += f"_ses-{ses}"
-    
-    if task != None:
-        out += f"_task-{task}"
+    # Create output directory
+    if not os.path.exists(outputdir):
+        os.makedirs(outputdir, exist_ok=True)
 
     # Create design matrix if it doesn't exists
     design_file = opj(outputdir, f'design_task-{task}.mat')
     if os.path.isfile(design_file):
-        if verbose:
-            print(f"Design matrix: {design_file}", flush=True)
+        utils.verbose(f"Design matrix: {design_file}", verbose)
         design_matrix = io.loadmat(design_file)
     else:
-        print("Creating new design matrix", flush=True)
+        utils.verbose(f"Creating new design matrix", verbose)
         if os.path.isdir(png_dir):
             try:
                 dm = prf.get_prfdesign(png_dir, n_pix=n_pix, dm_edges_clipping=clip_dm)
@@ -282,41 +282,84 @@ Example:
     search_for = ["run-", f"task-{task}", file_ending]
     if space != None:
         search_for += [f"space-{space}"]
-
-    # no space means native BOLD
-    files = utils.get_file_from_substring(search_for, inputdir)
     
-    if verbose:
-        print("Loading in data", flush=True)
+    # set output base
+    out = f"sub-{sub}"
+
+    # find all files in input folder
+    found_files = utils.FindFiles(inputdir, extension=file_ending).files
+    files = utils.get_file_from_substring(search_for, found_files)
+    if merge_sessions:
+        out += f"_ses-avg"
+
+        # fetch which session IDs
+        ses = []
         for ff in files:
-            print(f" {ff}", flush=True)
+            comps = utils.split_bids_components(ff)
+            ses.append(comps["ses"])
+        unique_ses = list(np.unique(np.array(ses, dtype=int)))
+
+    else:
+        if ses != None:
+            out += f"_ses-{ses}"        
+
+        if isinstance(ses, int):
+            unique_ses = [ses]
+        else:
+            unique_ses = []
+    
+    if task != None:
+        out += f"_task-{task}"
     
     # convert to psc according to baseline (as per Serge Dumoulin).
     if psc:
-        if verbose:
-            print("Converting to percent signal change and fix baseline", flush=True)
+        utils.verbose("Converting to percent signal change and fix baseline", verbose)
       
         # default baseline is 19 volumes
         baseline = 19-cut_vols
 
     if not files[0].endswith(".nii.gz") and not files[0].endswith(".nii"):
         
-        # get unique run-IDs
-        run_ids = []
-        for ii in files:
-            run_ids.append(utils.split_bids_components(ii)["run"])
-
-        run_ids = np.unique(np.array(run_ids))
-
         # chunk into L/R pairs
         hemi_pairs = []
 
-        for run in run_ids:
-            pair = []
-            for ii in ["L","R"]:
-                pair.append(utils.get_file_from_substring([f"run-{run}_", f"hemi-{ii}"], files))
+        if len(unique_ses) > 0:
+            utils.verbose(f"Including data for session(s): {unique_ses}", verbose)
+            for ses in unique_ses:
+                
+                # get session-specific files
+                ses_files = utils.get_file_from_substring([f"ses-{ses}"], files)
 
-            hemi_pairs.append(pair)
+                utils.verbose("Loading in data", verbose)
+                for ff in ses_files:
+                    print(f" {ff}", flush=True)
+
+                # get unique run-IDs
+                run_ids = []
+                for ii in ses_files:
+                    run_ids.append(utils.split_bids_components(ii)["run"])
+
+                run_ids = np.unique(np.array(run_ids))
+
+                for run in run_ids:
+                    pair = utils.get_file_from_substring([f"run-{run}_"], ses_files)
+                    hemi_pairs.append(pair)
+        else:
+
+            utils.verbose("Loading in data", verbose)
+            for ff in files:
+                utils.verbose(f" {ff}", verbose)
+
+            # get unique run-IDs
+            run_ids = []
+            for ii in files:
+                run_ids.append(utils.split_bids_components(ii)["run"])
+
+            run_ids = np.unique(np.array(run_ids))
+
+            for run in run_ids:
+                pair = utils.get_file_from_substring([f"run-{run}_"], files)
+                hemi_pairs.append(pair)
 
         # load them in
         prf_tc_data = []
@@ -357,6 +400,7 @@ Example:
             axis=0)
 
     if space == "fsnative":
+
         # vertices per hemi
         n_verts = [ii.shape[-1] for ii in hemi_data]
 
@@ -368,13 +412,12 @@ Example:
             n_verts_fs.append(verts)
 
         if n_verts_fs != n_verts:
-            raise ValueError(f"Mismatch between number of vertices in pRF-analysis ({n_verts}) and FreeSurfer ({n_verts_fs})..?\nYou're probably using an older surface reconstruction. Check if you've re-ran fMRIprep again with new FreeSurfer-segment")
+            raise ValueError(f"Mismatch between number of vertices in pRF-analysis ({n_verts}) and FreeSurfer ({n_verts_fs})..? You're probably using an older surface reconstruction. Check if you've re-ran fMRIprep again with new FreeSurfer-segmentation")
 
         # check if there's ROI-specific fitting
         if isinstance(lbl, str):
 
-            print(f"Label: {lbl}", flush=True)
-
+            utils.verbose(f"Label: {lbl}", verbose)
             from linescanning import optimal
 
             # load in surfaces
@@ -393,15 +436,13 @@ Example:
             out += f"_roi-{roi_tag}"
 
     # cut volumes at the beginning of the timeseries. Also subtract number of volumes from baseline
-    if verbose:
-        print(f"Cutting {cut_vols} from beginning of timeseries", flush=True)
+    utils.verbose(f"Cutting {cut_vols} from beginning of timeseries", verbose)
     
     m_prf_tc_data = m_prf_tc_data[cut_vols:,:]
     design = design_matrix[list(design_matrix.keys())[-1]][...,cut_vols:]
 
     # save files
-    if verbose:
-        print("Saving averaged data", flush=True)
+    utils.verbose("Saving averaged data", verbose)
         
     np.save(opj(outputdir, f'{out}_hemi-LR_desc-avg_bold.npy'), m_prf_tc_data)
     np.save(opj(outputdir, f'{out}_hemi-L_desc-avg_bold.npy'), m_prf_tc_data[:,:n_verts[0]])
@@ -412,11 +453,9 @@ Example:
         # assume TR (read from gifti if possible)
         if giftis:
             tr = dataset.ParseGiftiFile(pair[0]).TR_sec
-            if verbose:
-                print(f"Setting TR to {tr}", flush=True)
+            utils.verbose(f"Setting TR to {tr}", verbose)
         else:
-            if verbose:
-                print("Could not find func-file, setting TR to 1.5; CHECK THIS!", flush=True)
+            utils.verbose("Could not find func-file, setting TR to 1.5; CHECK THIS!", verbose)
             tr = 1.5        
 
         # plop everything if pRFmodelFitting object
@@ -428,7 +467,7 @@ Example:
             old_params = utils.get_file_from_substring([out, 'model-gauss', f'stage-{stage}', 'params.pkl'], outputdir, return_msg=None)
             if verbose:
                 if old_params != None:
-                    print(f"Injecting '{old_params}' into {model}-model", flush=True)
+                    utils.verbose(f"Injecting '{old_params}' into {model}-model", verbose)
         else:
             old_params = None
 
@@ -479,7 +518,7 @@ Example:
                 fix_bold_baseline=psc,
                 constraints=constraints,
                 save_grid=save_grid,
-                use_grid_bounds=grid_bounds
+                use_grid_bounds=grid_bounds,
                 nr_jobs=1)
 
             stage2.fit()    

@@ -52,6 +52,7 @@ Options:
   --grid          only run grid fit, skip iterative fit
   --hrf           fit the HRF during pRF-fitting. See 'call_prf' for more information
   --local         run locally even though we have SGE available.
+  --merge_ses     average pRF data from all sessions
   --multi_design  specifies that for all runs in the dataset have run-/task-specific screenshot di-
                   rectories. This requires that the directory names you saved must match your naming 
                   scheme of functional files as we'll match on run-/task-ID
@@ -117,6 +118,7 @@ cut_vols=""
 lbl_flag=""
 save_grid=""
 bounds_flag=""
+merge_flag=""
 while getopts :-:los:n:m:t:x:c:v: argument
 do
   case ${argument} in
@@ -166,7 +168,11 @@ do
           ;;      
         no_bounds)
           bounds_flag="--no_bounds"
-          ;;                
+          ;;     
+        merge_ses)
+          merge_flag="--merge_ses"
+          ses_id="avg"
+          ;;                      
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}"
@@ -240,16 +246,24 @@ for subID in ${search}; do
 
   if [[ ! -z ${ses} ]]; then
     nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
-    base_path=${sub_name}/ses-${nr}
-    base=${sub_name}_ses-${nr}
+    ses_id="ses-${nr}"
+    base_path=${sub_name}/${ses_id}
+    base=${sub_name}_${ses_id}
   else
     base_path=${sub_name}
     base=${sub_name}
   fi
 
-  input_dir=${INPUT}/${base_path}
-  prf_dir=${OUTPUT}/${base_path}
-  png_dir=${PNG}/${base_path}
+  # give path to subject root if merge session = True
+  if [[ -z ${merge_flag} ]]; then
+    input_dir=${INPUT}/${base_path}
+    prf_dir=${OUTPUT}/${base_path}
+  else
+    input_dir=${INPUT}/${sub_name}
+    prf_dir=${OUTPUT}/${sub_name}
+  fi
+
+  png_dir=${PNG}/${sub_name}
 
   # check if we got model specification
   if [[ -z ${model} ]]; then
@@ -285,8 +299,7 @@ for subID in ${search}; do
     fi
     full_input=${input_dir}/${use_dir}
   elif [[ $(basename ${INPUT}) == "fmriprep" ]]; then
-    full_input=${input_dir}/func
-  else
+    # internally, call_prf uses utils.FindFiles, which searches for files recursively. No futher addition is required
     full_input=${input_dir}
   fi
 
@@ -343,6 +356,7 @@ for subID in ${search}; do
         if [[ ${task} != "rest" ]]; then
 
           echo "Dealing with task-ID: ${task}"
+
           # decide on design matrix for tasks in TASK_SES1
           if [[ ${multi_design} -eq 0 ]]; then
 
@@ -356,12 +370,23 @@ for subID in ${search}; do
 
             if [[ -f ${DIR_DATA_HOME}/code/design_task-${task}.mat ]]; then
               echo "Creating symlink to ${PROJECT}/code/design_task-${task}.mat"
-              ln -s ${DIR_DATA_HOME}/code/design_task-${task}.mat ${prf_dir}/design_task-${task}.mat
+              ln -s ${DIR_DATA_HOME}/code/design_task-${task}.mat ${prf_dir}/design_task-${task}.mat 2>/dev/null
               use_pngdir=${DIR_DATA_HOME}/code/design_task-${task}.mat
             elif [[ -f ${prf_dir}/design_task-${task}.mat ]]; then
               use_pngdir=${prf_dir}/design_task-${task}.mat
             else
-              use_pngdir=${PNGS_DIR[0]}
+              if [[ ! -z ${PNGS_DIR} ]]; then
+                use_pngdir=${PNGS_DIR[0]}
+              else
+                echo
+                echo "---------------------------------------------------------------------------------------------------"
+                echo "ERROR in `basename ${0}`: could not find png's in \"${png_dir}\""
+                echo "Some solutions could be:"
+                echo " - Create \"${DIR_DATA_HOME}/code/design_task-${task}.mat\""
+                echo " - Create \"${prf_dir}/design_task-${task}.mat\""
+                echo " - Put directories containing \"Screenshots\"-directory in \"${png_dir}\""
+                exit 1
+              fi
 
               # check if directory contains png-files
               if [[ -z `find ${use_pngdir} -type f \( -name "*.png" \) 2>/dev/null` ]]; then
@@ -373,18 +398,29 @@ for subID in ${search}; do
           else
             # how cool; list comprehension-like structure in bash
             # https://stackoverflow.com/a/6721137
-            task_dirs=($(for x in ${PNGS_DIR[@]}; do if [[ ${x} == *"task-${task}"* ]]; then echo ${x}; fi done))
-            if [[ ! -z ${task_dirs} ]]; then
-              use_pngdir=${task_dirs[0]}
+            if [[ ! -z ${PNGS_DIR} ]]; then
+              task_dirs=($(for x in ${PNGS_DIR[@]}; do if [[ ${x} == *"task-${task}"* ]]; then echo ${x}; fi done))
+              if [[ ! -z ${task_dirs} ]]; then
+                use_pngdir=${task_dirs[0]}
 
-              # check if directory contains png-files
-              if [[ -z `find ${use_pngdir} -type f \( -name "*.png" \) 2>/dev/null` ]]; then
-                echo "ERROR in `basename ${0}`: no *.png-files in \"${use_pngdir}\""
+                # check if directory contains png-files
+                if [[ -z `find ${use_pngdir} -type f \( -name "*.png" \) 2>/dev/null` ]]; then
+                  echo "ERROR in `basename ${0}`: no *.png-files in \"${use_pngdir}\""
+                  continue
+                fi
+              else
+                echo "ERROR in `basename ${0}`: could not find \"task-${task}\" folders"
                 continue
               fi
             else
-              echo "ERROR in `basename ${0}`: could not find \"task-${task}\" folders"
-              continue
+              echo
+              echo "---------------------------------------------------------------------------------------------------"
+              echo "ERROR in `basename ${0}`: could not find png's in \"${png_dir}\""
+              echo "Some solutions could be:"
+              echo " - Create \"${DIR_DATA_HOME}/code/design_task-${task}.mat\""
+              echo " - Create \"${prf_dir}/design_task-${task}.mat\""
+              echo " - Put directories containing \"Screenshots\"-directory in \"${png_dir}\""
+              exit 1
             fi
           fi
 
@@ -428,7 +464,7 @@ for subID in ${search}; do
             job="python"
           else
             if [[ ${run_locally} -eq 0 ]]; then
-              job="qsub -q ${SGE_QUEUE_LONG} -pe smp 1 -wd ${prf_dir} -N s${sub_id}_${task}"
+              job="qsub -q ${SGE_QUEUE_LONG} -pe smp 1 -wd ${prf_dir} -N ${sub_name}_ses-${}"
             elif [[ ${run_locally} -eq 1 ]]; then
               job="python"
             else
@@ -457,7 +493,8 @@ for subID in ${search}; do
             ${use_constr} \
             ${fit_flag} \
             ${cut_vols} \
-            ${bounds_flag}
+            ${bounds_flag} \
+            ${merge_flag}
           
           if [[ $? -ne 0 ]]; then
             echo "ERROR in `basename ${0}`: call_prf did not execute cleanly"
