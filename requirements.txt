@@ -6,7 +6,7 @@ scipy>1.8.1
 jinja2==3.0.1
 scikit-image==0.19.2
 scikit-learn
-nbsphinx>=0.8.5
+nbsphinx
 kneed
 statsmodels
 nipype
