@@ -50,6 +50,8 @@ USAGE
 source call_bashhelper
 
 # Check for subject flag
+INT="Linear"
+VERB=0
 while getopts vi:t: argument
 do
   case ${argument} in
@@ -95,8 +97,8 @@ do
       esac;;        
     i)  invert=${OPTARG}
           ;;
-    v)  VERBOSE=""
-        VERB=0
+    v)  VERBOSE="--verbose 1"
+        VERB=1
           ;;          
   esac
 done
