@@ -38,16 +38,49 @@ function recache_mpl_fonts {
 }
 
 function find_hierarchical_anatomy {
-  if [[ -d ${DIR_DATA_DERIV}/masked_${DATA,,} ]]; then
-    INPUT_DIR=${DIR_DATA_DERIV}/masked_${DATA,,}
-  elif [[ -d ${DIR_DATA_DERIV}/cat12 ]]; then
-    INPUT_DIR=${DIR_DATA_DERIV}/cat12    
-  elif [[ -d ${DIR_DATA_DERIV}/denoised ]]; then
-    INPUT_DIR=${DIR_DATA_DERIV}/denoised
-  elif [[ -d ${DIR_DATA_DERIV}/pymp2rage ]]; then
-    INPUT_DIR=${DIR_DATA_DERIV}/pymp2rage
-  else
+  stage=${1}
+
+  INPUT_DIR=""
+  if [[ ${stage} -eq 1 ]]; then
     INPUT_DIR=${DIR_DATA_HOME}
+  elif [[ ${stage} -eq 2 ]]; then
+    if [[ -d ${DIR_DATA_DERIV}/pymp2rage ]]; then
+      INPUT_DIR=${DIR_DATA_DERIV}/pymp2rage
+    else
+      INPUT_DIR=${DIR_DATA_HOME}
+    fi
+  elif [[ ${stage} -eq 2 ]]; then
+    if [[ -d ${DIR_DATA_DERIV}/denoised ]]; then
+      INPUT_DIR=${DIR_DATA_DERIV}/denoised
+    elif [[ -d ${DIR_DATA_DERIV}/pymp2rage ]]; then
+      INPUT_DIR=${DIR_DATA_DERIV}/pymp2rage
+    else
+      INPUT_DIR=${DIR_DATA_HOME}
+    fi
+  elif [[ ${stage} -eq 3 ]]; then
+    if [[ -d ${DIR_DATA_DERIV}/cat12 ]]; then
+      INPUT_DIR=${DIR_DATA_DERIV}/cat12    
+    elif [[ -d ${DIR_DATA_DERIV}/denoised ]]; then
+      INPUT_DIR=${DIR_DATA_DERIV}/denoised
+    elif [[ -d ${DIR_DATA_DERIV}/pymp2rage ]]; then
+      INPUT_DIR=${DIR_DATA_DERIV}/pymp2rage
+    else
+      INPUT_DIR=${DIR_DATA_HOME}
+    fi    
+  elif [[ ${stage} -eq 4 ]]; then
+    if [[ -d ${DIR_DATA_DERIV}/masked_${DATA,,} ]]; then
+      INPUT_DIR=${DIR_DATA_DERIV}/masked_${DATA,,}
+    elif [[ -d ${DIR_DATA_DERIV}/cat12 ]]; then
+      INPUT_DIR=${DIR_DATA_DERIV}/cat12    
+    elif [[ -d ${DIR_DATA_DERIV}/denoised ]]; then
+      INPUT_DIR=${DIR_DATA_DERIV}/denoised
+    elif [[ -d ${DIR_DATA_DERIV}/pymp2rage ]]; then
+      INPUT_DIR=${DIR_DATA_DERIV}/pymp2rage
+    else
+      INPUT_DIR=${DIR_DATA_HOME}
+    fi        
+  else
+    echo "ERROR in find_hierarchical_anatomy: invalid stage code \"${stage}\""
   fi
 
   echo $INPUT_DIR
