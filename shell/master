@@ -45,6 +45,7 @@ fprep_input=0             # spinoza_fitprfs
 lbl_flag=""               # spinoza_fitprfs
 save_grid=""              # spinoza_fitprfs
 bouds_flag=""             # spinoza_fitprfs
+merge_flag=""             # spinoza_fitprfs
 highres_flag=""           # spinoza_freesurfer
 XOPTS_=""                 # spinoza_freesurfer
 expert_flag=""            # spinoza_freesurfer
@@ -71,7 +72,7 @@ use_t2_flag=""            # spinoza_freesurfer
 
 # use long options in bash:
 # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options
-declare -a array=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv" "--no_fit" "--fmriprep" "--fprep" "--v1" "--v2" "--no_grid" "--debug" "--no_nordic" "--dcm_fix" "--ow" "--no_bounds" "--tsnr" "--mag" "--no_highres" "--xopts-use" "--xopts-clean" "--xopts-overwrite" "--take-avg-tr" "--force_exec" "--no_t2")
+declare -a array=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv" "--no_fit" "--fmriprep" "--fprep" "--v1" "--v2" "--no_grid" "--debug" "--no_nordic" "--dcm_fix" "--ow" "--no_bounds" "--tsnr" "--mag" "--no_highres" "--xopts-use" "--xopts-clean" "--xopts-overwrite" "--take-avg-tr" "--force_exec" "--no_t2" "--merge_ses")
 
 # sort options array
 IFS=$'\n' opts=($(sort <<<"${array[*]}"))
@@ -237,7 +238,10 @@ do
           ;;           
         no_t2)
           use_t2_flag="--no_t2"
-          ;;           
+          ;;
+        merge_ses)
+          merge_flag="--merge_ses"
+          ;;                     
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             for ii in ${opts[@]}; do echo " ${ii}"; done
@@ -415,6 +419,7 @@ Args:
                     Uses a custom pipeline for converting the files in a veeery specific way. If not
                     specified, we'll assume a regular scan-session of whole-brain data.
   --local           maps to '-l' in spinoza_fmriprep & spinoza_fitprfs; runs the process locally.
+  --merge_ses       average pRF data from all sessions
   --multi_design    specifies that for all runs in the dataset have run-/task-specific screenshot di-
                     rectories. This requires that the directory names you saved must match your naming 
                     scheme of functional files as we'll match on run-/task-ID (spinoza_fitprfs)
@@ -928,12 +933,7 @@ if [[ $? -eq 0 ]]; then
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Perform bias field correction and SANLM-filtering"
   
-  if [[ -d ${DIR_DATA_DERIV}/pymp2rage ]]; then
-    INPUT_DIR=${DIR_DATA_DERIV}/pymp2rage
-  else
-    INPUT_DIR=${DIR_DATA_HOME}
-  fi
-
+  INPUT_DIR=`find_hierarchical_anatomy 1` 
   ${job} spinoza_biassanlm ${SUBJECT} ${SESSION} ${NO_BIAS} ${INPUT_DIR} ${DIR_DATA_DERIV}/denoised
 
   if [[ $? -ne 0 ]]; then
@@ -966,7 +966,8 @@ if [[ $? -eq 0 ]]; then
   if [[ ${DO_STUFF} ==  "inv2" ]]; then
     ${job} spinoza_brainextraction ${SUBJECT} ${SESSION} ${DIR_DATA_DERIV}/ants ${DIR_DATA_DERIV}/skullstripped ${DIR_DATA_DERIV}/manual_masks FSL
   elif [[ ${DO_STUFF} == "cat12" ]]; then
-    ${job} spinoza_brainextraction ${SUBJECT} ${SESSION} ${OW} ${PROC} ${DIR_DATA_DERIV}/denoised ${DIR_DATA_DERIV}/cat12 ${DIR_DATA_DERIV}/manual_masks cat12
+    INPUT_DIR=`find_hierarchical_anatomy 2`
+    ${job} spinoza_brainextraction ${SUBJECT} ${SESSION} ${OW} ${PROC} ${INPUT_DIR} ${DIR_DATA_DERIV}/cat12 ${DIR_DATA_DERIV}/manual_masks cat12
   fi
 
   if [[ $? -ne 0 ]]; then
@@ -1022,9 +1023,6 @@ if [[ $? -eq 0 ]]; then
 
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Use nighres to get skull and dura mask"
-
-  # find hierarchically the anatomy folder (see call_bashhelper)
-  INPUT_DIR=`find_hierarchical_anatomy`
   
   ${job} spinoza_dura \
     ${SUBJECT} \
@@ -1063,8 +1061,8 @@ if [[ $? -eq 0 ]]; then
   # DATA = AVERAGE    > arg1 = DIR_DATA_DERIV/ants
 
   # find hierarchically the anatomy folder (see call_bashhelper)
-  INPUT_DIR=`find_hierarchical_anatomy`
-
+  INPUT_DIR=`find_hierarchical_anatomy 3`
+  
   ${job} spinoza_sagittalsinus ${SUBJECT} ${SESSION} ${OW} ${INPUT_DIR} ${DIR_DATA_DERIV}/manual_masks ${DRAW_SAG}
 
   if [[ $? -ne 0 ]]; then
@@ -1094,7 +1092,7 @@ if [[ $? -eq 0 ]]; then
   echo "[${module}] Combine all masks and apply to image"
 
   # find hierarchically the anatomy folder (see call_bashhelper)
-  INPUT_DIR=`find_hierarchical_anatomy`
+  INPUT_DIR=`find_hierarchical_anatomy 3`
 
   ${job} spinoza_masking \
     ${SUBJECT} \
@@ -1129,7 +1127,7 @@ if [[ $? -eq 0 ]]; then
   echo "[${module}] Run FreeSurfer outside of fMRIprep"
 
   # find hierarchically the anatomy folder (see call_bashhelper)
-  INPUT_DIR=`find_hierarchical_anatomy`
+  INPUT_DIR=`find_hierarchical_anatomy 4`
 
   # check for expert file
   if [ ! -z ${KWARGS} ]; then
@@ -1338,6 +1336,7 @@ if [[ $? -eq 0 ]]; then
     ${lbl_flag} \
     ${save_grid} \
     ${bouds_flag} \
+    ${merge_flag} \
     ${PRF_INPUT} ${DIR_DATA_DERIV}/prf ${PNG_DIR}
 
   if [[ $? -ne 0 ]]; then
