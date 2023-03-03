@@ -384,6 +384,7 @@ class LazyPlot(Defaults):
         markers=None,
         x_ticks=None,
         y_ticks=None,
+        plot_alpha=1,
         **kwargs):
 
         self.array              = ts
@@ -394,6 +395,7 @@ class LazyPlot(Defaults):
         self.y_label            = y_label
         self.title              = title
         self.xkcd               = xkcd
+        self.plot_alpha         = plot_alpha
         self.color              = color
         self.figsize            = figsize
         self.cmap               = cmap
@@ -442,7 +444,10 @@ class LazyPlot(Defaults):
                 self.color = [self.color]
             
         if isinstance(self.array, list):
-            
+
+            if isinstance(self.plot_alpha, (int,float)):
+                self.plot_alpha = [self.plot_alpha]
+
             if isinstance(self.color, str):
                 self.color = [self.color]
 
@@ -509,7 +514,8 @@ class LazyPlot(Defaults):
                     label=lbl, 
                     lw=use_width, 
                     ls=use_style,
-                    marker=self.markers[idx])
+                    marker=self.markers[idx],
+                    alpha=self.plot_alpha[idx])
 
                 # plot shaded error bars
                 if isinstance(self.error, (list,np.ndarray)):
