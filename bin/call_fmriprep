@@ -201,6 +201,11 @@ fi
 
 #-----------------------------------------------------------------------------
 # Set default FS-license if none specified
+if [[ ! -z ${FS_LICENSE} ]]; then
+  license=${FS_LICENSE}
+fi
+
+# make -l flag overwrite environmental variable
 if [[ ! -z ${LIC} ]]; then
   license=${LIC}
 fi
@@ -252,8 +257,25 @@ if [[ ! -z ${fprep_container} && -f ${fprep_container} ]]; then
     binding=${BIND}
   fi
 
+
   if [[ ! -f ${fprep_container} ]]; then
     echo "Could not find singularity image \"${fprep_container}\" for fmriprep.."
+    exit 1
+  fi
+
+  # check if FS license is within binding point
+  if [[ ${binding} != *"$license"* ]]; then
+    echo
+    echo "---------------------------------------------------------------------------------------------------"
+    echo "ERROR in `basename ${0}`; license file \"${license}\" cannot be accessed due to your binding point (\"${binding}\"). Please make sure the file on somewhere along the binding-path"
+    exit 1
+  fi
+
+  # check if project root is within binding point
+  if [[ ${binding} != *"${project}"* ]]; then
+    echo
+    echo "---------------------------------------------------------------------------------------------------"
+    echo "ERROR in `basename ${0}`; your project root \"${project}\" cannot be accessed due to your binding point (\"${binding}\"). Please make sure the file on somewhere along the binding-path"
     exit 1
   fi
 
@@ -373,7 +395,6 @@ for tt in "fwd" "inv"; do
       else
         fprep_dir=${output_dir}
       fi
-
 
       out_xfm=${fprep_dir}/${base_dir}/func/${wf_name}_from-${m}_mode-image_xfm.txt
       cp ${xfm} ${out_xfm}
