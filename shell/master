@@ -899,11 +899,8 @@ if [[ $? -eq 0 ]]; then
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Create sagittal sinus mask using the MNI-mask & T1w/T2w-ratio"
 
-  if [[ -d ${DIR_DATA_DERIV}/pymp2rage ]]; then
-    INPUT_DIR=${DIR_DATA_DERIV}/pymp2rage
-  else
-    INPUT_DIR=${DIR_DATA_HOME}
-  fi
+  # find anatomy directory hierarchically
+  INPUT_DIR=`find_hierarchical_anatomy 2`
 
   ${job} spinoza_sinusfrommni ${SUBJECT} ${SESSION} ${OW} ${INPUT_DIR} ${DIR_DATA_DERIV}/ants ${DIR_DATA_DERIV}/manual_masks
 
@@ -933,7 +930,9 @@ if [[ $? -eq 0 ]]; then
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Perform bias field correction and SANLM-filtering"
   
-  INPUT_DIR=`find_hierarchical_anatomy 1` 
+  # find anatomy directory hierarchically
+  INPUT_DIR=`find_hierarchical_anatomy 2`
+  
   ${job} spinoza_biassanlm ${SUBJECT} ${SESSION} ${NO_BIAS} ${INPUT_DIR} ${DIR_DATA_DERIV}/denoised
 
   if [[ $? -ne 0 ]]; then
@@ -966,7 +965,9 @@ if [[ $? -eq 0 ]]; then
   if [[ ${DO_STUFF} ==  "inv2" ]]; then
     ${job} spinoza_brainextraction ${SUBJECT} ${SESSION} ${DIR_DATA_DERIV}/ants ${DIR_DATA_DERIV}/skullstripped ${DIR_DATA_DERIV}/manual_masks FSL
   elif [[ ${DO_STUFF} == "cat12" ]]; then
+    # find anatomy directory hierarchically
     INPUT_DIR=`find_hierarchical_anatomy 2`
+
     ${job} spinoza_brainextraction ${SUBJECT} ${SESSION} ${OW} ${PROC} ${INPUT_DIR} ${DIR_DATA_DERIV}/cat12 ${DIR_DATA_DERIV}/manual_masks cat12
   fi
 
@@ -1024,6 +1025,9 @@ if [[ $? -eq 0 ]]; then
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Use nighres to get skull and dura mask"
   
+  # find anatomy directory hierarchically
+  INPUT_DIR=`find_hierarchical_anatomy 3`
+
   ${job} spinoza_dura \
     ${SUBJECT} \
     ${SESSION} \
@@ -1060,7 +1064,7 @@ if [[ $? -eq 0 ]]; then
   # DATA = MEMP2RAGE  > arg1 = DIR_DATA_DERIV/pymp2rage
   # DATA = AVERAGE    > arg1 = DIR_DATA_DERIV/ants
 
-  # find hierarchically the anatomy folder (see call_bashhelper)
+  # find anatomy directory hierarchically
   INPUT_DIR=`find_hierarchical_anatomy 3`
   
   ${job} spinoza_sagittalsinus ${SUBJECT} ${SESSION} ${OW} ${INPUT_DIR} ${DIR_DATA_DERIV}/manual_masks ${DRAW_SAG}
@@ -1091,7 +1095,7 @@ if [[ $? -eq 0 ]]; then
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Combine all masks and apply to image"
 
-  # find hierarchically the anatomy folder (see call_bashhelper)
+  # find anatomy directory hierarchically
   INPUT_DIR=`find_hierarchical_anatomy 3`
 
   ${job} spinoza_masking \
@@ -1126,7 +1130,7 @@ if [[ $? -eq 0 ]]; then
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Run FreeSurfer outside of fMRIprep"
 
-  # find hierarchically the anatomy folder (see call_bashhelper)
+  # find anatomy directory hierarchically
   INPUT_DIR=`find_hierarchical_anatomy 4`
 
   # check for expert file
@@ -1201,11 +1205,8 @@ if [[ $? -eq 0 ]]; then
     confFile=""
   fi
 
-  if [[ -d ${DIR_DATA_DERIV}/masked_${DATA,,} ]]; then
-    ANAT_DIR=${DIR_DATA_DERIV}/masked_${DATA,,}
-  else
-    ANAT_DIR=${DIR_DATA_HOME}
-  fi
+  # find anatomy directory hierarchically
+  INPUT_DIR=`find_hierarchical_anatomy 4`
 
   ${job} spinoza_fmriprep \
     ${WARP_ONLY} \
@@ -1218,7 +1219,7 @@ if [[ $? -eq 0 ]]; then
     ${kwargs_file} \
     -f ${DIR_DATA_HOME} \
     -m ${TYPE} \
-    ${ANAT_DIR} ${DIR_DATA_DERIV} ${DIR_DATA_HOME}
+    ${INPUT_DIR} ${DIR_DATA_DERIV} ${DIR_DATA_HOME}
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_fmriprep exited with non-zero status"
