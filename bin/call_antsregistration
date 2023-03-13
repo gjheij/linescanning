@@ -181,7 +181,7 @@ do
           TYPE="affine"
           ;;  
         syn)
-          INT="syn"
+          TYPE="syn"
           ;;        
         histo)
           use_hist=1
