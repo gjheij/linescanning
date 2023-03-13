@@ -384,7 +384,7 @@ class LazyPlot(Defaults):
         markers=None,
         x_ticks=None,
         y_ticks=None,
-        plot_alpha=1,
+        plot_alpha=None,
         **kwargs):
 
         self.array              = ts
@@ -445,8 +445,11 @@ class LazyPlot(Defaults):
             
         if isinstance(self.array, list):
 
-            if isinstance(self.plot_alpha, (int,float)):
-                self.plot_alpha = [self.plot_alpha]
+            if not isinstance(self.plot_alpha, list):
+                if self.plot_alpha == None:
+                    self.plot_alpha = [1 for ii in range(len(self.array))]
+                else:
+                    self.plot_alpha = [self.plot_alpha]
 
             if isinstance(self.color, str):
                 self.color = [self.color]
@@ -466,13 +469,12 @@ class LazyPlot(Defaults):
                     raise ValueError(
                         f"Length color list ({len(self.color_list)}) does not match length of data list ({len(self.array)})")
                         
-            for idx, el in enumerate(self.array):
+            for idx,el in enumerate(self.array):
                 
                 # decide on line-width
                 if isinstance(self.line_width, list):
                     if len(self.line_width) != len(self.array):
-                        raise ValueError(
-                            f"Length of line width lenghts {len(self.line_width)} does not match length of data list ({len(self.array)}")
+                        raise ValueError(f"Length of line width lenghts {len(self.line_width)} does not match length of data list ({len(self.array)}")
 
                     use_width = self.line_width[idx]
                 elif isinstance(self.line_width, (int,float)):
