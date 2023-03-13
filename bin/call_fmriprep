@@ -257,22 +257,21 @@ if [[ ! -z ${fprep_container} && -f ${fprep_container} ]]; then
     binding=${BIND}
   fi
 
-
   if [[ ! -f ${fprep_container} ]]; then
     echo "Could not find singularity image \"${fprep_container}\" for fmriprep.."
     exit 1
   fi
 
   # check if FS license is within binding point
-  if [[ ${binding} != *"$license"* ]]; then
+  if [[ ${license} != *"${binding}"* ]]; then
     echo
     echo "---------------------------------------------------------------------------------------------------"
-    echo "ERROR in `basename ${0}`; license file \"${license}\" cannot be accessed due to your binding point (\"${binding}\"). Please make sure the file on somewhere along the binding-path"
+    echo "ERROR in call_fmriprep; license file \"${license}\" cannot be accessed due to your binding point (\"${binding}\"). Please make sure the file on somewhere along the binding-path"
     exit 1
   fi
 
   # check if project root is within binding point
-  if [[ ${binding} != *"${project}"* ]]; then
+  if [[ ${project} != *"${binding}"* ]]; then
     echo
     echo "---------------------------------------------------------------------------------------------------"
     echo "ERROR in `basename ${0}`; your project root \"${project}\" cannot be accessed due to your binding point (\"${binding}\"). Please make sure the file on somewhere along the binding-path"
@@ -346,7 +345,7 @@ ${run_cmd} \
 else
   echo "Skipping fMRIPrep, continuing to \"boldref\" and \"bold-to-T1w\" files"
 fi
-exit 1
+
 #-----------------------------------------------------------------------------
 # fMRIPrep's boldref seems to be messy lately (snow-like noise pattern instead of an image)
 bold_files=`find ${derivatives}/fmriprep/*${subj_ID}/ -type f -name "*preproc_bold.nii.gz" 2>/dev/null`
