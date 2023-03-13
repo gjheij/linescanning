@@ -450,6 +450,8 @@ class LazyPlot(Defaults):
                     self.plot_alpha = [1 for ii in range(len(self.array))]
                 else:
                     self.plot_alpha = [self.plot_alpha]
+                    if len(self.plot_alpha) != len(self.array):
+                        raise ValueError(f"Alpha list ({len(self.plot_alpha)}) does not match length of data list ({len(self.array)})")                        
 
             if isinstance(self.color, str):
                 self.color = [self.color]
@@ -459,6 +461,8 @@ class LazyPlot(Defaults):
                     self.markers = [None for ii in range(len(self.array))]
                 else:
                     self.markers = [self.markers]
+                    if len(self.markers) != len(self.array):
+                        raise ValueError(f"Marker list ({len(self.markers)}) does not match length of data list ({len(self.array)})")                    
 
             # decide on color scheme
             if not isinstance(self.color, list):
@@ -466,8 +470,7 @@ class LazyPlot(Defaults):
             else:
                 self.color_list = self.color
                 if len(self.color_list) != len(self.array):
-                    raise ValueError(
-                        f"Length color list ({len(self.color_list)}) does not match length of data list ({len(self.array)})")
+                    raise ValueError(f"Length color list ({len(self.color_list)}) does not match length of data list ({len(self.array)})")
                         
             for idx,el in enumerate(self.array):
                 
