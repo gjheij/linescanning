@@ -45,6 +45,7 @@ Args:
                         'cp'  = you made normalization edits  > runs -autorecon2-cp
                         'wm'  = you made white matter edits   > runs -autorecon2-wm
                         'pial'= you made pial edits           > runs -autorecon-pial
+                        'aseg'= edits to aseg.presurf.mgz     > runs -autorecon2-noaseg
   -o <other editing>  Here you can specify the gcut-option to remove latched on pial surface
   -x <expert opts>    expert option file that maps to '-expert'. 
   --freeview          Open FreeView automatically (default is NO!)
@@ -126,6 +127,7 @@ highres_flag="-hires"
 XOPTS_=""
 EXPERT_FILE=""
 reuse_t2=1
+allowed_edits=("cp" "wm" "pial" "aseg")
 while getopts :-:hs:t:p:r:e:o:f:c:x: arg
 do
   case ${arg} in
@@ -292,17 +294,17 @@ CMD(){
   echo "recon-all -subjid ${1} ${4} ${highres_flag} ${parallel_flag} ${mp_flag} ${3} ${5} ${expert_flag} ${XOPTS_}"
   ) > ${fs_script}
   
-  if [[ ${submit} -eq 1 ]]; then
-    qsub ${fs_script}
-    echo "Now wait until the program has finished and do some editing in FreeView if required."
-    echo "Waiting to qstat.."
-    sleep 5
-    qstat
-  else
-    echo "Running FreeSurfer locally"
-    bash ${fs_script}
-    echo "Now do some editing in FreeView if required."
-  fi
+  # if [[ ${submit} -eq 1 ]]; then
+  #   qsub ${fs_script}
+  #   echo "Now wait until the program has finished and do some editing in FreeView if required."
+  #   echo "Waiting to qstat.."
+  #   sleep 5
+  #   qstat
+  # else
+  #   echo "Running FreeSurfer locally"
+  #   bash ${fs_script}
+  #   echo "Now do some editing in FreeView if required."
+  # fi
 
 }
 
@@ -517,26 +519,20 @@ else
     # remove running job
     ISRUNNING
 
-    # You did some editing, let's find out what you did and what you want to re-run
-    #   'cp'  = you made normalization edits  > runs -autorecon2-cp
-    #   'wm'  = you made white matter edits   > runs -autorecon2-wm
-    #   'pial'= you made pial edits           > runs -autorecon2-pial
-
-    # recon-all -subjid ${1} ${4} -hires -parallel openmp 12 ${3} ${5}
-
     if [[ ! -z ${edit} ]]; then
 
-      if [[ "${edit}" == "cp" ]] || [[ "${edit}" == "wm" ]] || [[ "${edit}" == "pial" ]]; then
-        :
-      else
+      # check if specified edit stage is an allowed option
+      if [[ ! " ${allowed_edits[*]} " =~ " ${edit} " ]]; then
         Usage >&2
         echo
-        echo "ERROR: To run this mode, you need to specify \"cp\", \"wm\", \"pial\" to let me know your type of edit.."
+        echo "ERROR: To run this mode, you need to specify \"cp\", \"wm\", \"pial\", or \"aseg\" to let me know your type of edit.."
         exit 1
       fi
 
       if [[ ${edit} == "pial" ]]; then
         edit_flag="-autorecon-pial -autorecon3"
+      elif [[ ${edit} == "aseg" ]]; then
+        edit_flag="-autorecon2-noaseg -autorecon3"
       else
         edit_flag="-autorecon2-${edit} -autorecon3"
       fi
@@ -547,8 +543,6 @@ else
     CMD "${subj_ID}" "${stage}" "${edit_flag}" "${T1_flag}" "${T2_flag}"
 
   elif [[ ${stage} == "1" ]]; then
-
-    # recon-all -subjid ${1} ${4} -hires -parallel openmp 12 ${3} ${5}
 
     # check for T1 and T2
     CHECK_INPUTS ${stage}

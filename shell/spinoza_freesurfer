@@ -93,6 +93,7 @@ sge_flag=""
 expert_flag=""
 force_flag=""
 use_t2_flag=""
+allowed_edits=("cp" "wm" "pial" "aseg")
 while getopts :-:os:n:x:e: argument
 do
   case ${argument} in
@@ -306,7 +307,7 @@ for subID in ${search}; do
       # cmd
       if [[ ${STAGE} != "all" ]]; then
         if [[ -z ${start_flag} ]]; then
-          echo "ERROR in `basename ${0}`: recon-all stages \"${STAGE}\" is/are requested, but it's not specified as of which stage to start autorecon. Please specify the \"-e\" flag with one of \"pial\", \"wm\", or \"cp\" as input"
+          echo "ERROR in `basename ${0}`: recon-all stages \"${STAGE}\" is/are requested, but it's not specified as of which stage to start autorecon. Please specify the \"-e\" flag with one of \"${allowed_edits[@]}\" as input"
           exit 1
         fi
       fi
