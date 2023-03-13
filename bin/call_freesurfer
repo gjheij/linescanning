@@ -294,17 +294,17 @@ CMD(){
   echo "recon-all -subjid ${1} ${4} ${highres_flag} ${parallel_flag} ${mp_flag} ${3} ${5} ${expert_flag} ${XOPTS_}"
   ) > ${fs_script}
   
-  # if [[ ${submit} -eq 1 ]]; then
-  #   qsub ${fs_script}
-  #   echo "Now wait until the program has finished and do some editing in FreeView if required."
-  #   echo "Waiting to qstat.."
-  #   sleep 5
-  #   qstat
-  # else
-  #   echo "Running FreeSurfer locally"
-  #   bash ${fs_script}
-  #   echo "Now do some editing in FreeView if required."
-  # fi
+  if [[ ${submit} -eq 1 ]]; then
+    qsub ${fs_script}
+    echo "Now wait until the program has finished and do some editing in FreeView if required."
+    echo "Waiting to qstat.."
+    sleep 5
+    qstat
+  else
+    echo "Running FreeSurfer locally"
+    bash ${fs_script}
+    echo "Now do some editing in FreeView if required."
+  fi
 
 }
 
