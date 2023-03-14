@@ -251,9 +251,11 @@ class ParseEyetrackerFile(SetAttributes):
             self.df_saccades.append(self.fetch_saccades())
 
         self.df_blinks = pd.concat(self.df_blinks).set_index(['subject','run','event_type'])
-        self.df_space_func = pd.concat(self.df_space_func).set_index(['subject','run', 't'])
         self.df_space_eye = pd.concat(self.df_space_eye).set_index(['subject','run','eye','t'])
         self.df_saccades = pd.concat(self.df_saccades).set_index(['subject','run','event_type'])
+
+        if len(self.df_space_func) > 0:
+            self.df_space_func = pd.concat(self.df_space_func).set_index(['subject','run','eye','t'])
 
     def fetch_blinks_run(self, run=1, return_type='df'):
         blink_df = utils.select_from_df(
@@ -337,7 +339,8 @@ class ParseEyetrackerFile(SetAttributes):
         if self.verbose:
             print(f" Fetching:     {extract}")
 
-        tf = [] 
+        tf = []
+        tf_rs = []
         for par_ix,extr in enumerate(extract):
             data = np.squeeze(
                 self.ho.signal_during_period(
@@ -350,9 +353,43 @@ class ParseEyetrackerFile(SetAttributes):
                 data = data[...,np.newaxis]
                 
             tmp = []
+            tmp_rs = []
             for ix,ii in enumerate(list(eye)):
+                
+                if isinstance(nr_vols, int):
+                    rs = glm.resample_stim_vector(data[:,ix], nr_vols)
+                    hp = preproc.highpass_dct(
+                        rs, 
+                        self.high_pass_pupil_f,
+                        TR=TR)[0]
+                    
+                    psc = np.squeeze(
+                        utils.percent_change(
+                            hp, 
+                            0,
+                            baseline=hp.shape[0]))
+                    
+                    tmp_rs_df =  pd.DataFrame({
+                        f"{extr}": rs,
+                        f"{extr}_hp": hp,
+                        f"{extr}_hp_psc": psc})
+                    
+                    if par_ix == len(extr)-1:
+                        tmp_rs_df["eye"] = ii
+                        tmp_rs_df["t"] = list((1/self.sample_rate)*np.arange(rs.shape[0]))
 
-                tmp_df = pd.DataFrame(data[:,ix], columns=[extr])
+                    tmp_rs.append(tmp_rs_df)
+                
+                psc = np.squeeze(
+                    utils.percent_change(
+                        data[:,ix], 
+                        0,
+                        baseline=hp.shape[0]))
+                
+                tmp_df =  pd.DataFrame({
+                    f"{extr}": data[:,ix],
+                    f"{extr}_psc": psc})
+                    
                 if par_ix == len(extr)-1:
                     tmp_df["eye"] = ii
                     tmp_df["t"] = list((1/self.sample_rate)*np.arange(data.shape[0]))
@@ -362,30 +399,15 @@ class ParseEyetrackerFile(SetAttributes):
             tmp = pd.concat(tmp)
             tf.append(tmp)
 
+            if len(tmp_rs) > 0:
+                tmp_df = pd.concat(tmp_rs)
+                tf_rs.append(tmp_df)
+                    
         df_space_eye = pd.concat(tf, axis=1)
         
         # nothing to resample if nr_vols==None
-        df_space_func = {}
-        if isinstance(nr_vols, int):
-            rs_col = list(df_space_eye.keys())
-            for col in rs_col:
-                rs = glm.resample_stim_vector(df_space_eye[col], nr_vols)   
-                df_space_func[col] = rs
-
-                # high-pass filter
-                df_space_func[f"{col}_hp"] = preproc.highpass_dct(
-                    df_space_func[col], 
-                    self.high_pass_pupil_f,
-                    TR=TR)[0]
-
-                # percent signal change
-                for hh in [col,f"{col}_hp"]:
-                    dd = df_space_func[hh]
-                    df_space_func[f"{hh}_psc"] = np.squeeze(
-                        utils.percent_change(
-                            dd, 
-                            0,
-                            baseline=dd.shape[0]))
+        if len(tf_rs) > 0:
+            df_space_func = pd.concat(tf_rs, axis=1)
 
         # add start time to it
         start_exp_time = trial_times.iloc[0, :][-1]
