@@ -135,3 +135,9 @@ acq.txt
 # mac files & busy resources
 ._*
 .nfs*
+
+# eyetracking output
+examples/eye.gaz*
+examples/eye.h5
+examples/eye.msg
+examples/preprocess_run_1_0_L.pdf
