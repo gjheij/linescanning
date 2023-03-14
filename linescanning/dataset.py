@@ -365,14 +365,21 @@ class ParseEyetrackerFile(SetAttributes):
                     
                     psc = np.squeeze(
                         utils.percent_change(
-                            hp, 
+                            rs, 
                             0,
                             baseline=hp.shape[0]))
                     
+                    psc_hp = np.squeeze(
+                        utils.percent_change(
+                            hp, 
+                            0,
+                            baseline=hp.shape[0]))                    
+                    
                     tmp_rs_df =  pd.DataFrame({
                         f"{extr}": rs,
+                        f"{extr}_psc": psc,
                         f"{extr}_hp": hp,
-                        f"{extr}_hp_psc": psc})
+                        f"{extr}_hp_psc": psc_hp})
                     
                     if par_ix == len(extr)-1:
                         tmp_rs_df["eye"] = ii
