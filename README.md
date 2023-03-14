@@ -54,6 +54,9 @@ At the Spinoza Centre for Neuroimaging, there is an environment called `preproc`
   source full_path_to_your_setup_file
   export SUBJECTS_DIR=$DIR_DATA_DERIV/freesurfer
   export FS_LICENSE=$your_folder/license.txt
+
+  module load itksnap/3.8.0 # 3.6.0-qt4 if you only see black panels
+  module load fsl/6.5.0.2
   ```
 
 ### Stand-alone
