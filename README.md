@@ -10,6 +10,53 @@ This repository contains all of the tools used during the acquisition and postpr
 This package is still in development and its API might change. Documentation for this package can be found at [readthedocs](https://linescanning.readthedocs.io/en/latest/) (not up to date)
 
 ## Installation
+
+### Spinoza
+
+At the Spinoza Centre for Neuroimaging, there is an environment called `preproc` which is fully configured for this repository. Follow these steps to set it up on your local system:
+
+- Make sure `conda` is configured with `/packages/development/anaconda/3-8/condabin/conda`. Do this when you don't see `(base)` in your terminal. This should add a bunch of things to your `~/.bashrc` file:
+  ```bash
+  /packages/development/anaconda/3-8/condabin/conda init
+  ```
+
+- Activate environment:
+  ```bash
+  conda activate preproc
+  ```
+
+- Copy the `setup` file to a location of your preference. Ideally, you should have a `programs` and a `projects`-folder in your personal processing folder (`your_folder`). I advise you to put the `spinoza_setup`-file at the root of those folders:
+  ```bash
+  your_folder=/data1/projects/<some_project>/<your_name>
+  cp /packages/development/anaconda/3-8/git/linescanning/shell/spinoza_setup $your_folder
+  ```
+
+- Change at least the following fields:
+  ```bash
+  # path to your setup file
+  export SETUP_FILE="${SETUP_DIR}/spinoza_setup"
+
+  # PROJECT
+  export DIR_PROJECTS="YOUR_PROJECT_FOLDER"
+  export PROJECT="YOUR_PROJECT_NAME"
+  export TASK_SES1=("YOUR_TASK_NAMES")
+  ```
+
+- Symlink `freesurfer`-license file or [download your own license](https://surfer.nmr.mgh.harvard.edu/registration.html):
+  ```bash
+  your_license=$your_folder/license.txt
+  ln -s /packages/freesurfer/7.2.0/license.txt $your_folder/license.txt
+  ```
+
+- Add the following to your `~/.bash_profile`:
+  ```bash
+  # path to your setup file
+  source full_path_to_your_setup_file
+  export SUBJECTS_DIR=$DIR_DATA_DERIV/freesurfer
+  export FS_LICENSE=$your_folder/license.txt
+  ```
+
+### Stand-alone
 To install, clone the repository and run `bash linescanning/shell/spinoza_setup setup`. This will make the executables in the `bin` and `shell` folders available, install additionally required packages (such as `pRFpy`, `Pycortex`, `Nighres`, `Pybest`, `ITK-Snap`, and `Nideconv`). You can either choose to activate the accompanying `environment.yml`-file (`ACTIVATE_CONDA=1` in `spinoza_setup`; = Default!) or install it in your own environment/python installation (set `ACTIVATE_CONDA=0` in `spinoza_setup`). Installations of `FSL`, `SPM` (+`CAT12`-toolbox), `fMRIprep` and `FreeSurfer` are expected to exist on your system.
 
 ## Updating
