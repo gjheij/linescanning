@@ -391,7 +391,7 @@ class ParseEyetrackerFile(SetAttributes):
                     utils.percent_change(
                         data[:,ix], 
                         0,
-                        baseline=hp.shape[0]))
+                        baseline=data[:,ix].shape[0]))
                 
                 tmp_df =  pd.DataFrame({
                     f"{extr}": data[:,ix],
