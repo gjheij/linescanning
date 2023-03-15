@@ -255,7 +255,9 @@ class ParseEyetrackerFile(SetAttributes):
         self.df_saccades = pd.concat(self.df_saccades).set_index(['subject','run','event_type'])
 
         if len(self.df_space_func) > 0:
-            self.df_space_func = pd.concat(self.df_space_func).set_index(['subject','run','eye','t'])
+            # check if all elements are dataframes
+            if all(isinstance(x, pd.DataFrame) for x in self.df_space_func):
+                self.df_space_func = pd.concat(self.df_space_func).set_index(['subject','run','eye','t'])
 
     def fetch_blinks_run(self, run=1, return_type='df'):
         blink_df = utils.select_from_df(
@@ -341,6 +343,7 @@ class ParseEyetrackerFile(SetAttributes):
 
         tf = []
         tf_rs = []
+        df_space_func = None
         for par_ix,extr in enumerate(extract):
             data = np.squeeze(
                 self.ho.signal_during_period(
@@ -455,13 +458,13 @@ class ParseEyetrackerFile(SetAttributes):
         # build dataframe with relevant information
         self.tmp_df = df_space_eye.copy()
         df_space_eye = pd.DataFrame(df_space_eye)
-        df_space_func = pd.DataFrame(df_space_func)
 
         # index
         df_space_eye['subject'], df_space_eye['run'] = self.sub, self.run
 
         # index
-        df_space_func['subject'], df_space_func['run'], df_space_func['t'] = self.sub, self.run, list(TR*np.arange(df_space_func.shape[0]))
+        if isinstance(df_space_func, pd.DataFrame):
+            df_space_func['subject'], df_space_func['run'] = self.sub, self.run
 
         # index
         df_blink_events = pd.DataFrame(onsets, columns=['onset'])
