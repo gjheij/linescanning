@@ -247,7 +247,7 @@ if [[ ! -z ${IMG} ]]; then
 fi
 
 # Define command line
-if [[ ! -z ${fprep_container} && -f ${fprep_container} ]]; then
+if [[ -f ${fprep_container} ]]; then
 
   #-----------------------------------------------------------------------------
   # Set default binding point if none specified
@@ -260,7 +260,7 @@ if [[ ! -z ${fprep_container} && -f ${fprep_container} ]]; then
   if [[ ! -f ${fprep_container} ]]; then
     echo "Could not find singularity image \"${fprep_container}\" for fmriprep.."
     exit 1
-  fi
+  fi 
 
   # check if FS license is within binding point
   if [[ ${license} != *"${binding}"* ]]; then
