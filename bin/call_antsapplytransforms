@@ -83,7 +83,13 @@ do
           ;;
         lws)
           INT="LanczosWindowedSinc"
-          ;;                                                                                      
+          ;;    
+        gen)
+          INT="GenericLabel"
+          ;;
+        mul)
+          INT="MultiLabel"
+          ;;                  
         verbose)
           VERBOSE="--verbose 1"
           VERB=1
