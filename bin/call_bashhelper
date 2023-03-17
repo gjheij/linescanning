@@ -79,6 +79,12 @@ function find_hierarchical_anatomy {
     else
       INPUT_DIR=${DIR_DATA_HOME}
     fi        
+  elif [[ ${stage} -eq 5 ]]; then
+    if [[ -d ${DIR_DATA_DERIV}/masked_${DATA,,} ]]; then
+      INPUT_DIR=${DIR_DATA_DERIV}/masked_${DATA,,}
+    else
+      INPUT_DIR=${DIR_DATA_HOME}
+    fi           
   else
     echo "ERROR in find_hierarchical_anatomy: invalid stage code \"${stage}\""
   fi
@@ -422,8 +428,13 @@ USAGE
     # effective echo spacing (EPI factor +1)
     EES=`echo "${TRT}/(${epi_f}+1)" | bc -l`
 
-    # phase encoding direction
-    PE=`read_par ${par_file} "Preparation direction"`
+    # phase encoding direction; check variable in setup file
+    if [ -z ${PE_DIR_BOLD} ]; then
+      PE=`read_par ${par_file} "Preparation direction"`
+    else
+      PE=${PE_DIR_BOLD}
+    fi
+
     ADD_PE=`fprep_pe ${PE}`
 
     # protocol name
@@ -444,18 +455,18 @@ USAGE
       if [[ -f ${json_file} ]]; then
         if [[ $(basename ${json_file}) == *"epi.json"* ]]; then
           ADD_PE=`fprep_pe ${PE} 1`
-          txt="; flipped for epi_json"
+          txt="flipped for epi_json"
         else
           ADD_PE=`fprep_pe ${PE} 0`
-          txt="; not flipped"
+          txt="not flipped"
         fi
       else
         ADD_PE=`fprep_pe ${PE} 0`
-        txt="; not flipped"
+        txt="not flipped"
       fi
     elif [[ ${PROT} == *"_epi"* ]]; then
       ADD_PE=`fprep_pe ${PE} 1`
-      txt="; flipped for epi.par"
+      txt="flipped for epi_json"
     fi
 
     if [[ ! -z ${json_file} ]]; then
@@ -475,6 +486,7 @@ USAGE
       echo "EPI fc: ${EPI_FACTOR}"
       echo "Prot:   ${PROT_NAME}"
       echo "Mode:   ${AQ}"
+      echo "PE:     ${PE} (${ADD_PE}) [${txt}]"
     fi
   fi
 
