@@ -269,7 +269,6 @@ The way the pipeline is set up is a remnant from my time in Berlin, where I lear
 
 Below is the ``help``-information from the ``master`` script:
 ::
-
   ===================================================================================================
                               MASTER SCRIPT FOR LINE SCANNING ANALYSIS
   ===================================================================================================
@@ -284,33 +283,46 @@ Below is the ``help``-information from the ``master`` script:
   Have fun!
 
   Args:
-    -c                List used for clipping of design matrix. Format must be:
-                      [<top>,<bottom>,<left>,<right>]
-    -e <n_echoes>     Specify the amount of echoes of the acquisition
+    -c                list of values used for clipping of design matrix. Format must be [<top>,<bot-
+                      tom>,<left>,<right>]. Negative values will be set to zero within 'linescanning.
+                      prf.get_prfdesign'
+    -e <echos|stage>  used for:
+                        - spinoza_linerecon: specify the amount of echoes of the acquisition
+                        - spinoza_freesurfer: maps to '-e' from call_freesurfer; sets the stage as of
+                          which to start autorecon. Should be used in concert with '-r', and must be
+                          one of 'pial' (for pial edits), 'wm' (for white matter edits), or 'cp' if
+                          you added control points. See 'call_freesurfer' for more information
     -h <hemisphere>   used for lineplanning, denotes which hemisphere to process
     -i <image path>   specify custom path to PNG's for pRF-fitting. This allows deviation from the 
                       standard path that 'spinoza_fitprfs' will be looking for
-    -l <which mod>    look for a module number given a string to search for (e.g., master -l layer); can
-                      also be used with:
+    -k <file>         specify a file with additional arguments, similar to FreeSurfer's expert options.
+                      See linescanning/misc/fprep_options for an example. Please make sure you have a 
+                      final empty white space at the end of the file, otherwise the parser gets confu-
+                      sed. For VSCode: https://stackoverflow.com/a/44704969
+    -l <which mod>    look for a module number given a string to search for (e.g., master -l layer); 
+                      can also be used with:
                       - spinoza_bestvertex to use a particular label-file (default = V1_exvivo.thresh).
                         If label file is being specified, the following applies:
                           - File must live in SUBJECTS_DIR/<subject>/label
                           - File must be preceded by '?h.', representing a file for both hemispheres 
                             separately
-                          - Can be either a FreeSurfer-defined label file or gitfi-files (e.g., 'handknob
-                            _fsnative.gii' means there's a 'lh.handknob_fsnative.gii' and 'rh.handknob_
-                            fsnative.gii' file)
+                          - Can be either a FreeSurfer-defined label file or gitfi-files (e.g., 'hand-
+                            knob_fsnative.gii' means there's a 'lh.handknob_fsnative.gii' and 'rh.hand-
+                            knob_fsnative.gii' file)
     -m <module>       always required, specifies which module to run. Multiple modules should be com-
                       ma separated
     -n <session>      session nr, used to create file structure according to BIDS. Specify '-n none' if 
                       you don't want to differentiate between sessions
-    -o                turn on overwrite mode; removes subject-specific directories or crucial files so 
+    -o|--ow           turn on overwrite mode; removes subject-specific directories or crucial files so 
                       that the process is re-ran.
     -p <prf_model>    switch to specify what type of model to use for the pRF-modeling. Enabled for spi-
                       noza_fitprfs & spinoza_bestvertex
     -q <info mod>     query the usage-information of a given module number: e.g., master -m 00 -q
                       brings up the help-text from module 00 (spinoza_lineplanning)
-    -r <roi>          Set label file for 'spinoza_bestvertex' or ROI for 'spinoza_extractregions'
+    -r <roi|stage>    Used for:
+                        - spinoza_bestvertex: set label file (default is 'V1.exvivo_thresh'
+                        - spinoza_extractregions: ROI to extract (default is 'cerebrum')
+                        - spinoza_freesurfer: which stage to use (maps to '-r' from call_freesurfer)
     -s <subject>      Subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
     -t <type|task>    used for;
                         - spinoza_fmriprep: to run either the 'anat' workflow only, or also include func
@@ -325,21 +337,40 @@ Below is the ``help``-information from the ``master`` script:
                       linescanning/misc/fmriprep_config.json is used; above that, fmriprep_con-
                       fig2.json is used. Enter '-u none' if you have multiple sessions and you want
                       to process everything without filtering
-    -v <vertices>     manually insert vertices to use as "best_vertex" (module 18). Should be format-
-                      ted as -v "lh,rh" (please use two vertices; one for left hemi and one for right
-                      hemi > makes life easier)
+    -v <vertices>       - spinoza_bestvertex: manually insert vertices to use as "best_vertex" (module 
+                          18). Should be formatted as -v "lh,rh" (please use two vertices; one for left 
+                          hemi and one for right hemi > makes life easier)
+                        - spinoza_fitprfs: number of volumes to cut from the beginning of the timeseries
     -w <wagstyl>      Use Wagstyl's equivolumetric layering for layerification. Use Nighres otherwise
                       accepted options are 'gauss' for Gaussian model, and 'norm' for Normalization
                       model. Should/can be use for module 17, pRF-fitting
-    -x <**kwargs>     Can be used for a variety of options by setting it to ANYTHING other than empty. 
+    -x <kwargs>       Can be used for a variety of options by setting it to ANYTHING other than empty. 
                       Usages include:
                         - spinoza_profiling; specify the type of file to use
+                        - spinoza_fitprfs; specify the constraints to use for fitting. Should be format-
+                          ted as -x "<gaussian>,<extended>". E.g., '-x tc,bgfs'
+                        - spinoza_freesurfer: add expert option file
+    --ap|pa|lr|rl     Specifies the phase-encoding direction for the BOLD run. The phase-encoding for the 
+                      FMAP will be automatically inverted. This flag can be specified to be a bit more 
+                      flexible than using the PE_DIR_BOLD-variable in the setup file                      
     --affine          use 'affine'-registration (spinoza_registration)
+    --bgfs            use L-BGFS minimization for both the Gaussian as well as the extended model (e.g.,
+                      DoG, CSS, or DN). By default, we'll use trust-constr minimization for both. It's
+                      recommended to at least to Gaussian fitting with trust-constr, and potential ex-
+                      tended models with L-BGFS. For this, see '-x' flag
     --comb_only       skip nighres, only do combination of segmentations. Works with '-o' flag. 
+    --dcm_fix         Extremely large par/rec's cannot be converted with 'dcm2niix'. Normal fMRI sessions
+                      are converted using 'call_pydcm2niix', but this flag points it to 'call_dcm2niix',
+                      the same that is used for line-scanning sessions. It pipes the output from dcm2niix
+                      to a log file to monitor 'Catastrophic errors'. It then tries to convert these with
+                      'parrec2nii', which comes with the python pacakge 'nibabel'
+    --f(mri)prep      use output from fMRIPrep as input for pRF-fitting. Default is the output fro py-
+                      best
     --full            Do full processing with CAT12, assuming module 8 was skipped. This does itera-
                       tive SANLM-filtering, bias correction, and intensity normalization. Can some-
                       times be overkill, so generally we use CAT12 for the additional segmentations
                       and brain extraction
+    --force_exec      force the execution of FreeSurfer even though directory exists already
     --fv              use FreeView to draw sinus mask (spinoza_sagittalsinus) 
     --fsl             use FSLeyes to draw sinus mask (spinoza_sagittalsinus) 
     --gdh             use custom implementation of MGDM (via call_gdhmgdm) that also considers extra
@@ -348,27 +379,48 @@ Below is the ``help``-information from the ``master`` script:
     --grid            maps to '-g' in spinoza_fitprfs; runs gridfit only
     --hrf             also fit the HRF during pRF-fitting (spinoza_fitprfs)
     --itk             use ITK-Snap to draw sinus mask (spinoza_sagittalsinus) [default]
+    --inv             in case a session contains line-scanning data but also high resolution anatomical
+                      data that you'd like to process as per usual, use this flag to also copy in the
+                      INV1/INV2 images into the 'anat'-folder of the session. This will allow you to 
+                      run spinoza_qmrimaps as usual.
     --lines           specifies that we're dealing with a line-scanning session (spinoza_scanner2bids). 
                       Uses a custom pipeline for converting the files in a veeery specific way. If not
                       specified, we'll assume a regular scan-session of whole-brain data.
     --local           maps to '-l' in spinoza_fmriprep & spinoza_fitprfs; runs the process locally.
-    --multi_design    specifies that for all runs in the dataset have run-/task-specific screenshot direc-
-                      tories. This requires that the directory names you saved must match your naming 
+    --merge_ses       average pRF data from all sessions
+    --multi_design    specifies that for all runs in the dataset have run-/task-specific screenshot di-
+                      rectories. This requires that the directory names you saved must match your naming 
                       scheme of functional files as we'll match on run-/task-ID (spinoza_fitprfs)
     --nighres         use nighres-software for cortex reconstruction (spinoza_cortexrecon) or equivolu-
                       metric layering (spinoza_layering)
     --no_bbr          maps to '--force-no-bbr' in call_fmriprep
     --no_biascorr     maps to '-b' in spinoza_biassanlm; don't perform bias correction after denoising
-    --no_clip         spinoza_fitprfs; ensures that the design matrix is NOT clipped, despite the possible
-                      presence of screen delimiter files  
+    --no_bounds       Turn off grid bounds; sometimes parameters fall outside the grid parameter bounds, 
+                      causing 'inf' values. This is especially troublesome when fitting a single time-
+                      course. If you trust your iterative fitter, you can turn off the bounds and let 
+                      the iterative take care of the parameters  
+    --no_clip         spinoza_fitprfs; ensures that the design matrix is NOT clipped, despite the pos-
+                      sible presence of screen delimiter files
+    --no_grid         Don't save out gridsearch parameters
+    --no_fit          spinoza_fitprfs; stop right after saving out averaged data. This was useful for 
+                      meto switch to percent-signal change without requiring a re-fit.                    
     --no_freeview     disable FreeView during vertex selection (spinoza_bestvertex)
+    --no_highres      disable high-res functionality for FreeSurfer
+    --no_lpi          do not reorient files to LPI. If you want to use NORDIC or use fMRIprep's outputs 
+                      on more raw data, I'd advise you to reorient to LPI and to NOT use this flag. 
+                      This flag is mainly here because it can take some time with big files which slows 
+                      down debugging.  
+    --no_nordic       turn off NORDIC denoising during reconstruction of line-scanning data
+    --no_t2           do not reuse T2 with autorecon3. Must be used in concert with '-e' and '-r'. By 
+                      default, we'll re-use the T2 if present. Same flag should be used for not re-using 
+                      FLAIR images  
     --ups             maps to '-u' in spinoza_qmrimaps; turn on Universal Pulses
     --remove_wf       maps to '-r all' in spinoza_fmriprep; removes full fmriprep_wf folder. Be careful
-                      with this one! Mainly used for debugging of a single subject. Use \"--remove_surf_wf\"
-                      to specifically remove the surface reconstruction folder when you have new FreeSurfer
-                      output that fMRIPrep needs to use
-    --remove_surf_wf  Remove surface reconstruction workflow folder; refreshes the surfaces used for regi-
-                      stration and transformation
+                      with this one! Mainly used for debugging of a single subject. Use \"--remove_surf
+                      _wf\"to specifically remove the surface reconstruction folder when you have new 
+                      FreeSurfer output that fMRIPrep needs to use
+    --remove_surf_wf  Remove surface reconstruction workflow folder; refreshes the surfaces used for 
+                      registration and transformation
     --rigid           use 'rigid-body' registration (spinoza_registration)
     --sge             passes '--sge' on to:
                         -spinoza_linerecon
@@ -378,16 +430,34 @@ Below is the ``help``-information from the ``master`` script:
                       submits jobs to cluster
     --surface         use Wagstyl's equivolumetric layering function
     --syn             use 'syn'-registration (spinoza_registration)
-    --verbose         turn on verbose
-    --warp_only       spinoza_fmriprep; skip full processing, but make new 'boldref'-images and copy bold-
-                      to-T1w registration files
+    --take-avg-tr     Take the average over all TRs from the par file, rather than the first in the se-
+                      quence of TRs   
+    --tc              use trust-constr minimization for both the Gaussian as well as the extended model 
+                      (e.g., DoG, CSS, or DN). By default, we'll use trust-constr minimization for both. 
+                      It's recommended to at least to Gaussian fitting with trust-constr, and potential 
+                      extended models with L-BGFS. For this, see '-x' flag 
+    --tsnr            calculate tSNR before and after NORDIC (spinoza_nordic) and save them as images                     
+    --v1              only fit voxels from ?.V1_exvivo.thresh.label; the original dimensions will be 
+                      maintained, but timecourses outside of the ROI are set to zero
+    --v2              only fit voxels from ?.V2_exvivo.thresh.label; the original dimensions will be 
+                      maintained, but timecourses outside of the ROI are set to zero
+    --verbose         turn on verbose for pRF-fitting (spinoza_fitprfs)
+    --warp_only       spinoza_fmriprep; skip full processing, but make new 'boldref'-images and copy 
+                      bold-to-T1w registration files
+    --xopts-use       maps to '-xopts-use' for existing expert option file; use existing file
+    --xopts-clean     maps to '-xopts-clean' for existing expert option file; delete existing file
+    --xopts-overwrite maps to '-xopts-overwrite' for existing expert option file; use new file
 
   Usage:
     master -m <MODULES TO RUN>
     master -m 01,02,03,04 (comma-separated for running multiple modules in succession)
     master -m 00 -q   (print help-text of module 00)
     master -l mgdm    (fetch module number mgdm-module)
-    master -m 02 -n prf -x 2
+    master -m 02 -n 2 --lines (line-scanning session)
+    master -m 02 -n 2 --lines --inv (line-scanning session + high resolution anatomies)
+    master -m 15 -t func (run fMRIPrep on available tasks)
+    master -m 15 -t scenes (run fMRIPrep on scenes-task only)
+    master -m 17 -p norm (run pRF-fitting with Normalization model)
 
   Additional options:
     - Specify a subject to run (for certain modules):   master -m <module> -s <subj-ID>
@@ -396,11 +466,11 @@ Below is the ``help``-information from the ``master`` script:
     - Specify a particular session to use:              master -m <module> -n 1
     - Specify processing type fMRIprep (anat|func)      master -m <module> -t anat
 
-  Available modules:                                     Script                           Time (pp)
-    -00:  Register anat ses-1 to ms ses-1 for planning   (spinoza_lineplanning)
-    -01:  Make new session for subject                   (spinoza_bidssession)
-    -02:  Convert raw files to nifti                     (spinoza_scanner2bids)
-    -03:  Reconstruction of line data                    (spinoza_linerecon)
+  Available modules:                                     Script                           hh:mm:ss
+    -00:  Register anat ses-1 to ms ses-1 for planning   (spinoza_lineplanning)           00:06:00
+    -01:  Make new session for subject                   (spinoza_bidssession)            00:00:01
+    -02:  Convert raw files to nifti                     (spinoza_scanner2bids)           00:02:00
+    -03:  Reconstruction of line data                    (spinoza_linerecon)              00:10:00
     -04:  Estimate T1's from mp2rage and memp2rage       (spinoza_qmrimaps)               00:01:30
     -05a: Register T1 from memp2rage to T1 from mp2rage  (spinoza_registration)           00:03:00
     -05b: Register T1 from mp2rage to MNI152             (spinoza_registration)           01:05:00
@@ -427,6 +497,7 @@ Below is the ``help``-information from the ``master`` script:
     -26:  Sample a dataset across depth with Nighres     (spinoza_profiling)              00:20:00
 
   --END--
+  ---------------------------------------------------------------------------------------------------
  
 All of these modules loop, by default, through *all* the subjects present in ``$DIR_PROJECTS/$PROJECT`` (which is defined as ``DIR_DATA_HOME``. Also by default, it assumes that we only want to process ``ses-1``. To steer the pipeline towards particular directories, such as individual subjects, you can use additional flags when calling the ``master`` script. For instance:
 
@@ -460,7 +531,12 @@ First, we need to convert our DICOMs/PARRECs to nifti-files. We can do this by p
         │   └── sub-001_ses-1_task-2R_run-3_Logs
         └── Raw files (DICOMs/PARRECs)
 
-Once you've put the files there, you can run ``module 02``. This will convert your data to nifti's and store them according to BIDS. You can use the ``-n`` flag to specify with which session we're dealing. This creates the folder structure outlined above. If you also have phase data from your BOLD, then it creates an additional `phase`-folder, which can be used for ``NORDIC`` later on. If you have a non-linescanning acquisition (i.e., standard whole-brain-ish data), we'll set the coordinate system to `LPI` for all image. This ensures we can use later outputs from fMRIprep_ on our native data, which will help if you want to combine segmentations from different software packages (affine matrices are always a pain; check [here](https://nipy.org/nibabel/coordinate_systems.html) for a good explanation). If you have extremely large par/rec files, `dcm2niix` [might fail](https://github.com/rordenlab/dcm2niix/issues/659). To work around this, we monitor these error and attempt to re-run the conversion with [call_parrec2nii](https://github.com/gjheij/linescanning/blob/main/bin/call_parrec2nii), which wraps `parrec2nii` that comes with nibabel. To do this, use the `--dcm_fix` flag. Additionally, we also try to read the phase-encoding direction from the PAR-file, but this is practically impossible. So there's two ways to automatically populate the `PhaseEncodingDirection` field in your json files: 1) Set the `export PE_DIR_BOLD=<value>` in the setup file, with one of `AP`, `PA`, `LR`, or `RL`. This sets the phase-encoding direction for the BOLD-data; this value is automatically switched for accompanying fieldmaps; 2) use one of the following flags in your call to `master`: `--ap`, `--pa`, `--lr` or `--rl`. This again sets the phase-encoding for the BOLD-data, and assumes that the direction is opposite for the fieldmaps; 3) Manually change the value in your json files after processing.
+Once you've put the files there, you can run ``module 02``. This will convert your data to nifti's and store them according to BIDS. You can use the ``-n`` flag to specify with which session we're dealing. This creates the folder structure outlined above. If you also have phase data from your BOLD, then it creates an additional `phase`-folder, which can be used for ``NORDIC`` later on. If you have a non-linescanning acquisition (i.e., standard whole-brain-ish data), we'll set the coordinate system to `LPI` for all image. This ensures we can use later outputs from fMRIprep_ on our native data, which will help if you want to combine segmentations from different software packages (affine matrices are always a pain; check [here](https://nipy.org/nibabel/coordinate_systems.html) for a good explanation). If you have extremely large par/rec files, `dcm2niix` [might fail](https://github.com/rordenlab/dcm2niix/issues/659). To work around this, we monitor these error and attempt to re-run the conversion with [call_parrec2nii](https://github.com/gjheij/linescanning/blob/main/bin/call_parrec2nii), which wraps `parrec2nii` that comes with nibabel. To do this, use the `--dcm_fix` flag. Additionally, we also try to read the phase-encoding direction from the PAR-file, but this is practically impossible. So there's two ways to automatically populate the `PhaseEncodingDirection` field in your json files: 
+
+1) Accept defaults: `AP` for BOLD and `PA` for FMAP 
+2) Set the `export PE_DIR_BOLD=<value>` in the setup file, with one of `AP`, `PA`, `LR`, or `RL`. This sets the phase-encoding direction for the BOLD-data. This value is automatically switched for accompanying fieldmaps
+3) use one of the following flags in your call to `master`: `--ap`, `--pa`, `--lr` or `--rl`. This again sets the phase-encoding for the BOLD-data, and assumes that the direction is opposite for the fieldmaps
+4) Manually change the value in your json files after processing.
 
 .. code:: bash
 
