@@ -31,7 +31,9 @@ Arguments:
   --warp_only     skips fMRIPrep, but creates new boldref images and copies the bold-to-T1w warps
                   to the subject's output folder
   -s <subject>    subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
-  -n <session>    session ID (e.g., 1, 2, or none)
+  -n <session>    session ID (e.g., 1, 2, or none); used to check for T1w-image. fMRIprep will do all
+                  sessions it finds in the project root regardless of this argument. Use the bids fil-
+                  ter file ('-k' flag) if you want fMRIPrep to to specific sessions/tasks/acquisitions.
   -c <config>     configuration file as specified in /misc/fmriprep_config?.json
   -f <func dir>   directory containing functional data; used after running FreeSurfer outside of
                   fMRIprep <optional>
@@ -41,11 +43,11 @@ Arguments:
   -t <task>       By default, the pipeline is setup to run fMRIPrep with '--anat-only'. You can in-
                   ject functional data with the '-t' flag; if you want ALL your tasks to be included,
                   use '-t func'. If you have a specific task that needs to be processed (in case ano-
-                  ther task is already done), use '-t <task_id>'
+                  ther task is already done), use '-t <task_id>'.
   -k <kwargs>     specify a file with additional arguments, similar to FreeSurfer's expert options.
                   See linescanning/misc/fprep_options for an example. Please make sure you have a 
                   final empty white space at the end of the file, otherwise the parser gets confu-
-                  sed. For VSCode: https://stackoverflow.com/a/44704969
+                  sed. For VSCode: https://stackoverflow.com/a/44704969. If you run with master, the '-u' flag maps onto this
   <anat dir>      directory containing the anatomical data. Can also be the regular project root
                   folder if you want fMRIprep do the surface reconstruction
   <derivatives>   output folder for fMRIprep; generally this will be <project>/derivatives
@@ -269,7 +271,7 @@ for subID in ${search}; do
     if [[ ${run_local} -eq 1 ]]; then
       job="call_fmriprep"
     else
-      job="qsub -q ${SGE_QUEUE_LONG} -pe smp 1 -N fprep_${sub_id} -o ${workdir} ${DIR_SCRIPTS}/bin/call_fmriprep"
+      job="qsub -q ${SGE_QUEUE_LONG} -pe smp 1 -N ${sub_name}_desc-fmriprep -o ${workdir} ${DIR_SCRIPTS}/bin/call_fmriprep"
     fi 
   else
     job="call_fmriprep"
