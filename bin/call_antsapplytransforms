@@ -52,7 +52,7 @@ source call_bashhelper
 # Check for subject flag
 INT="Linear"
 VERB=0
-while getopts vi:t: argument
+while getopts :-:vi:t: argument
 do
   case ${argument} in
     -)
