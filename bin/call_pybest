@@ -66,13 +66,19 @@ ses_input=""
 output_dir=${DIR_DATA_DERIV}/pybest
 input_dir=${DIR_DATA_DERIV}/fmriprep
 raw=1
-while getopts :-:s:n:o:s:f:c:z:v:r:t: arg; do
+while getopts :-:s:n:o:f:c:v:r:t: arg; do
   case $arg in
     -)
       case "${OPTARG}" in
         no_raw)
           raw=0
-          ;;                                               
+          ;;  
+        fsaverage)
+          in_space="fsaverage"
+          ;; 
+        fsnative)
+          in_space="fsnative"
+          ;;                                                          
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}"

@@ -15,7 +15,8 @@ function Usage {
 spinoza_denoising
 
 wrapper for call_pybest that does the denoising of fMRI-data based on the confound file created
-during the preprocessing with fmriprep.
+during the preprocessing with fmriprep. By default, it will use FSNative, unless the PYBEST_SPACE
+variable in the setup file says something else, or if the '--fsaverage' flag is specified
 
 Usage:
   spinoza_denoising [options] <fmriprep directory> <pybest output directory>
@@ -28,6 +29,10 @@ Arguments:
   -o                  overwrite existing files
   -c|--sge            submit job to cluster (called with 'master -m <module> --sge')
   --no_raw            do NOT unzscore the output from pybest (default is to do so)
+  --fsaverage         overwrite PYBEST_SPACE-variable and use FSAverage for pybest (defaults to fs-
+                      native)
+  --fsnative          overwrite PYBEST_SPACE-variable and use FSNative for pybest (defaults to fs-
+                      native)
   <project root>      base directory containing the derivatives and the subject's folders.
   <derivatives>       path to the derivatives folder
 
@@ -50,6 +55,12 @@ task_flag=""
 raw_flag=""
 smp=1
 SGE=0
+
+# check if variable is set in setup file
+if [[ -z ${PYBEST_SPACE} ]]; then
+  PYBEST_SPACE="fsnative"
+fi
+
 while getopts :-:os:n:t::c argument
 do
   case ${argument} in
@@ -61,6 +72,12 @@ do
         sge)
           SGE=1
           ;;          
+        fsaverage)
+          PYBEST_SPACE="fsaverage"
+          ;; 
+        fsnative)
+          PYBEST_SPACE="fsnative"
+          ;;                     
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}"
@@ -162,29 +179,19 @@ for subID in ${search}; do
         echo
         echo "**************************************** Processing ${sub_name} ***************************************"
 
-        # check if spinoza_setup contains PYBEST_SPACE and PYBEST_NORM
-        if [[ -z ${PYBEST_SPACE} ]]; then
-          PYBEST_SPACE="fsnative"
-        fi
-
-        if [[ -z ${PYBEST_SPACE} ]]; then
-          PYBEST_NORM="zscore"
-        fi
-
         # append sub
         if [[ ${job} != "bash" ]]; then
-          sub_job=${job}" -N pyb_${sub_id}"
+          job="${job} -N ${base}_desc-pybest"
         fi
 
         # full path is needed for qsub
-        ${sub_job} ${DIR_SCRIPTS}/bin/call_pybest \
+        ${job} ${DIR_SCRIPTS}/bin/call_pybest \
           -s ${sub_id} \
           -n ${nr} \
           -o ${DENOISE} \
           -r ${PYBEST_SPACE} \
           -f ${FPREP} \
           -c ${cpu} \
-          -z ${PYBEST_NORM} \
           ${task_flag} \
           ${raw_flag}
 

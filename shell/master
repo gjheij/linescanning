@@ -62,6 +62,8 @@ DRAW_SAG="itk"            # spinzoa_sagittalsinus
 SES_TYPE=""               # spinoza_scanner2bids
 ADD_INV=""                # spinoza_scanner2bids
 DCM_FIX=""                # spinoza_scanner2bids
+pe_dir_flag=""            # spinoza_scanner2bids
+reorient_flag=""          # spinoza_scanner2bids
 UPs=""                    # spinoza_qmrimaps
 NO_BIAS=""                # spinoza_qmrimaps
 PROT_FLAG=""              # spinoza_scanner2bids
@@ -69,10 +71,11 @@ FS_stage="all"            # spinoza_freesurfer
 FORCE_FLAG=""             # spinoza_freesurfer
 START_STAGE=""            # spinoza_freesurfer
 use_t2_flag=""            # spinoza_freesurfer
+space_flag=""             # spinoza_denoising
 
 # use long options in bash:
 # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options
-declare -a array=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv" "--no_fit" "--fmriprep" "--fprep" "--v1" "--v2" "--no_grid" "--debug" "--no_nordic" "--dcm_fix" "--ow" "--no_bounds" "--tsnr" "--mag" "--no_highres" "--xopts-use" "--xopts-clean" "--xopts-overwrite" "--take-avg-tr" "--force_exec" "--no_t2" "--merge_ses")
+declare -a array=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv" "--no_fit" "--fmriprep" "--fprep" "--v1" "--v2" "--no_grid" "--debug" "--no_nordic" "--dcm_fix" "--ow" "--no_bounds" "--tsnr" "--mag" "--no_highres" "--xopts-use" "--xopts-clean" "--xopts-overwrite" "--take-avg-tr" "--force_exec" "--no_t2" "--merge_ses" "--fsaverage" "--fsnative" "--ap" "--pa" "--lr" "--rl" "--no_lpi")
 
 # sort options array
 IFS=$'\n' opts=($(sort <<<"${array[*]}"))
@@ -241,7 +244,28 @@ do
           ;;
         merge_ses)
           merge_flag="--merge_ses"
-          ;;                     
+          ;;    
+        fsaverage)
+          space_flag="--fsaverage"
+          ;;                      
+        fsnative)
+          space_flag="--fsnative"
+          ;;        
+        ap)
+          pe_dir_flag="--ap"
+          ;;          
+        pa)
+          pe_dir_flag="--pa"
+          ;;         
+        lr)
+          pe_dir_flag="--lr"
+          ;;         
+        rl)
+          pe_dir_flag="--rl"
+          ;;
+        no_lpi)
+          reorient_flag="--no_lpi"
+          ;;          
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             for ii in ${opts[@]}; do echo " ${ii}"; done
@@ -385,6 +409,9 @@ Args:
                       - spinoza_fitprfs; specify the constraints to use for fitting. Should be format-
                         ted as -x "<gaussian>,<extended>". E.g., '-x tc,bgfs'
                       - spinoza_freesurfer: add expert option file
+  --ap|pa|lr|rl     Specifies the phase-encoding direction for the BOLD run. The phase-encoding for the 
+                    FMAP will be automatically inverted. This flag can be specified to be a bit more 
+                    flexible than using the PE_DIR_BOLD-variable in the setup file                      
   --affine          use 'affine'-registration (spinoza_registration)
   --bgfs            use L-BGFS minimization for both the Gaussian as well as the extended model (e.g.,
                     DoG, CSS, or DN). By default, we'll use trust-constr minimization for both. It's
@@ -438,6 +465,10 @@ Args:
                     meto switch to percent-signal change without requiring a re-fit.                    
   --no_freeview     disable FreeView during vertex selection (spinoza_bestvertex)
   --no_highres      disable high-res functionality for FreeSurfer
+  --no_lpi          do not reorient files to LPI. If you want to use NORDIC or use fMRIprep's outputs 
+                    on more raw data, I'd advise you to reorient to LPI and to NOT use this flag. 
+                    This flag is mainly here because it can take some time with big files which slows 
+                    down debugging.  
   --no_nordic       turn off NORDIC denoising during reconstruction of line-scanning data
   --no_t2           do not reuse T2 with autorecon3. Must be used in concert with '-e' and '-r'. By 
                     default, we'll re-use the T2 if present. Same flag should be used for not re-using 
@@ -688,7 +719,6 @@ if [[ $? -eq 0 ]]; then
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Convert raw files to nifti"
 
-
   ${job} spinoza_scanner2bids \
     ${SES_TYPE} \
     ${SUBJECT} \
@@ -697,6 +727,8 @@ if [[ $? -eq 0 ]]; then
     ${ADD_INV} \
     ${DCM_FIX} \
     ${PROT_FLAG} \
+    ${pe_dir_flag} \
+    ${reorient_flag} \
     ${DIR_DATA_HOME} ${DIR_DATA_SOURCE}
 
   echo "[${module}] DONE" && echo
@@ -1205,8 +1237,8 @@ if [[ $? -eq 0 ]]; then
     confFile=""
   fi
 
-  # find anatomy directory hierarchically
-  INPUT_DIR=`find_hierarchical_anatomy 4`
+  # find anatomy directory hierarchically; look for masked_? otherwise default to home folder
+  INPUT_DIR=`find_hierarchical_anatomy 5`
 
   ${job} spinoza_fmriprep \
     ${WARP_ONLY} \
@@ -1251,7 +1283,15 @@ if [[ $? -eq 0 ]]; then
     TASK_ID="-t ${TYPE}"
   fi   
 
-  ${job} spinoza_denoising ${raw_flag} ${SUBJECT} ${SESSION} ${SGE} ${OW} ${TASK_ID} ${DIR_DATA_DERIV}/fmriprep ${DIR_DATA_DERIV}/pybest
+  ${job} spinoza_denoising \
+    ${raw_flag} \
+    ${SUBJECT} \
+    ${SESSION} \
+    ${SGE} \
+    ${OW} \
+    ${TASK_ID} \
+    ${space_flag} \
+    ${DIR_DATA_DERIV}/fmriprep ${DIR_DATA_DERIV}/pybest
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_denoising exited with non-zero status"
