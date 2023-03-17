@@ -14,7 +14,7 @@ of warps from.
 
 Args:
   -v|--verbose  Turn on verbose
-  --<metric>    Flag to use a given metric. Available options are: 'cc' (cross-correlation), 'mi',
+  --<interp>    Flag to use a given metric. Available options are: 'cc' (cross-correlation), 'mi',
                 (mutual information) [default], 'mattes', 'ms' (mean squares), 'demons', 'gc' (glo-
                 bal correlation), 'icp' (euclidian), 'pse' (point-set expectation), 'jhct' (jensen-
                 havrda-charvet-tsallis), 'igdm'
@@ -34,11 +34,11 @@ Args:
                 surrounded by double brackets
 
 Usage:
-  call_antsapplytransforms -i <invert 0=no|1=yes> -t <interp> <ref> <moving> <output> <warp files>
+  call_antsapplytransforms -i <invert 0=no|1=yes> --<interp> <ref> <moving> <output> <warp files>
 
 Example:
   call_antsapplytransforms ref.nii.gz mov.nii.gz out.nii.gz genaff.mat
-  call_antsapplytransforms -i 1 -t lin ref.nii.gz mov.nii.gz out.nii.gz genaff.mat
+  call_antsapplytransforms -i 1 --lin ref.nii.gz mov.nii.gz out.nii.gz genaff.mat
   call_antsapplytransforms -i "0 1" ref.nii.gz mov.nii.gz out.nii.gz "genaff1.mat genaff2.mat"
 
 ---------------------------------------------------------------------------------------------------
