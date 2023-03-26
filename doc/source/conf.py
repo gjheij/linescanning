@@ -189,6 +189,7 @@ texinfo_documents = [
 ]
 
 MOCK_MODULES = [
+    'cortex',
     'pycortex', 
     'nitime', 
     'nitime.timeseries', 
