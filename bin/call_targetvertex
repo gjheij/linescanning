@@ -4,7 +4,7 @@ import ast
 import os
 import numpy as np
 import sys, getopt
-from linescanning import optimal, pycortex
+from linescanning import optimal
 import warnings
 warnings.filterwarnings('ignore')
 opj = os.path.join
@@ -31,15 +31,15 @@ Parameters
                     = V1_exvivo.thresh. It should be following the nomenclature of FreeSurfer but 
                     omitting the 'lh'/'rh' to include both hemispheresin the analysis
     -o|--out        Output file containing translation and rotation values
-    -u|--use-prf    Exclude pRF in the calculation of the best vertex even if you have a pRF-para-
-                    meter file to only use surface (anatomical) information. Does not re-
-                    quire an argument. Specifying this flag means you want to include it
+    -u|--use-prf    Include pRF in the calculation of the best vertex even if you have a pRF-para-
+                    meter file to only use surface (anatomical) information
     -v|--vert       list of manually specified vertices instead of based on surface calculation.
                     use the format [5875,8872] with the first vertex in left hemisphere and se-
                     cond in right hemisphere.
     -f|--freeview   Disable FreeView while verifying vertex location. Only do this if you already 
                     know where it's located!
     -p|--prf_file   File containing the pRF-estimates. Required if '--use-prf' is specified
+    -e|--use_epi    Use EPI intensity data from fmriprep
 
 Returns
 ----------
@@ -74,13 +74,14 @@ Notes
     out         = None
     roi         = "V1_exvivo.thresh"
     use_prf     = False
+    use_epi     = False
     verts       = None
     open_fv     = True
     deriv       = None
     prf_file    = None
 
     try:
-        opts = getopt.getopt(argv,"fuhd:s:t:r:o:b:v:m:n:p:",["help", "deriv=", "sub=", "roi=", "out=", "vert=", "use-prf", "no-freeview", "prf_file="])[0]
+        opts = getopt.getopt(argv,"fuhd:s:t:r:o:b:v:m:n:p:",["help", "deriv=", "sub=", "roi=", "out=", "vert=", "use-prf", "no-freeview", "prf_file=", "use-epi"])[0]
     except getopt.GetoptError:
         print("ERROR IN ARGUMENT HANDLING!")
         print(main.__doc__)
@@ -100,6 +101,8 @@ Notes
             deriv = arg
         elif opt in ("-p", "--prf_file"):
             prf_file = arg
+        elif opt in ("-e", "--use-epi"):
+            use_epi = True
         elif opt in ("-u", "--use-prf"):
             use_prf = True                        
         elif opt in ("-f", "--no-freeview"):
@@ -120,10 +123,10 @@ Notes
         except:
             raise ValueError(f"You used '{verts}'. Make sure to use '[x,y,z]' (comma-separated and no spaces)")
     
-    print(deriv)
     optimal.target_vertex(
         subject,
         prf_file=prf_file,
+        use_epi=use_epi,
         deriv=deriv, 
         vert=verts,
         use_prf=use_prf,
