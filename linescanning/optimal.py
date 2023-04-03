@@ -75,6 +75,7 @@ def target_vertex(
     subject,
     deriv=None,
     prf_file=None,
+    use_epi=False,
     webshow=True,
     out=None,
     roi="V1_exvivo.thresh",
@@ -99,6 +100,8 @@ def target_vertex(
         Path to derivatives folder of the project. Generally should be the path specified with `DIR_DATA_DERIV` in the bash environment
     prf_file: str, optional
         File containing the pRF-estimates. Required if '--use-prf' is specified
+    use_epi: bool
+        Allows you to include EPI intensity measures when selecting a vertex; this can be useful to get away from veins. Default = False
     webshow: bool
         Start `FreeView` for visual verification. During debugging this is rather cumbersome, so you can turn it off by specifying `webshow=False`
     roi: str, optional
@@ -119,13 +122,14 @@ def target_vertex(
     Example
     ----------
     >>> # use Gaussian iterative parameters to find target vertex for sub-001 in V1_exvivo.thresh by using the default derivatives folders
-    >>> optimal.target_vertex("sub-001", 
-    >>>                       deriv="/path/to/derivatives",
-    >>>                       prf_file="gaussian_pars.pkl", 
-    >>>                       use_prf=True,                         # default
-    >>>                       out="line_pycortex.csv",              # default
-    >>>                       roi="V1_exvivo.thresh",               # default
-    >>>                       webshow=True)                         # default
+    >>> optimal.target_vertex(
+    >>>     "sub-001", 
+    >>>     deriv="/path/to/derivatives",
+    >>>     prf_file="gaussian_pars.pkl", 
+    >>>     use_prf=True,                         # default
+    >>>     out="line_pycortex.csv",              # default
+    >>>     roi="V1_exvivo.thresh",               # default
+    >>>     webshow=True)                         # default
     """
 
     # check if we can read DIR_DATA_DERIV if necessary
@@ -176,24 +180,36 @@ def target_vertex(
             subject=subject, 
             deriv=deriv, 
             prf_file=prf_file, 
-            fs_label=roi)
+            use_epi=use_epi,
+            fs_label=roi,
+            model=model)
 
         #----------------------------------------------------------------------------------------------------------------
         # Set the cutoff criteria based on which you'd like to select a vertex
     
         check = False
         while check == False:
-
+            
+            a_val = 0
+            b_val = 0
+            c_val = 0
+            d_val = 0
             if not isinstance(vert, np.ndarray):
                 print("Set thresholds (leave empty and press [ENTER] to not use a particular property):")
                 # get user input with set_threshold > included the possibility to have only pRF or structure only!
                 if hasattr(BV_, 'prf'):
-                    size_val    = set_threshold(name="pRF size (beta)", borders=(0,5), set_default=round(min(BV_.prf.size),2))
-                    r2_val      = set_threshold(name="r2 (variance)", borders=(0,1), set_default=round(max(BV_.prf.r2),2))
-                    ecc_val     = set_threshold(name="eccentricity", borders=(0,15), set_default=round(min(BV_.prf.ecc),2))
+                    size_val    = set_threshold(name="pRF size (beta)", borders=(0,5), set_default=round(BV_.prf.df_prf.prf_size.max(),2))
+                    r2_val      = set_threshold(name="r2 (variance)", borders=(0,1), set_default=round(BV_.prf.df_prf.r2.min(),2))
+                    ecc_val     = set_threshold(name="eccentricity", borders=(0,15), set_default=round(BV_.prf.df_prf.ecc.max(),2))
                     pol_val_lh  = set_threshold(name="polar angle lh", borders=(0,np.pi), set_default=round(np.pi,2))
                     pol_val_rh  = set_threshold(name="polar angle rh", borders=(-np.pi,0), set_default=round(-np.pi,2))
                     pol_val     = [pol_val_lh,pol_val_rh]
+
+                    if model == "norm":
+                        a_val = set_threshold(name="A value (norm)", set_default=round(BV_.prf.df_prf.A.min(),2))
+                        b_val = set_threshold(name="B value (norm)", set_default=round(BV_.prf.df_prf.B.min(),2))
+                        c_val = set_threshold(name="C value (norm)", set_default=round(BV_.prf.df_prf.C.min(),2))
+                        d_val = set_threshold(name="D value (norm)", set_default=round(BV_.prf.df_prf.D.min(),2))
                 else:
                     size_val    = 0
                     ecc_val     = 0
@@ -207,14 +223,10 @@ def target_vertex(
                     thick_val   = 0
                     depth_val   = 0
 
-                # print out to confirm
-                print("Using these parameters to find vertex with minimal curvature:")
-                print(f" pRF size:      {round(size_val,2)}")
-                print(f" eccentricity:  {round(ecc_val,4)}")
-                print(f" variance (r2): {round(r2_val,4)}")
-                print(f" polar angle:   {pol_val}")
-                print(f" thickness:     {thick_val}")
-                print(f" depth:         {round(depth_val,4)}")
+                if hasattr(BV_, 'epi'):
+                    epi_val   = set_threshold(name="EPI value (%)", set_default=10)
+                else:
+                    epi_val = 0
 
                 # Create mask using selected criteria
                 BV_.apply_thresholds(
@@ -223,13 +235,19 @@ def target_vertex(
                     r2_thresh=r2_val,
                     polar_thresh=pol_val,
                     depth_thresh=depth_val,
-                    thick_thresh=thick_val)
+                    thick_thresh=thick_val,
+                    epi_thresh=epi_val,
+                    a_thresh=a_val,
+                    b_thresh=b_val,
+                    c_thresh=c_val,
+                    d_thresh=d_val)
 
                 # Pick out best vertex
                 BV_.best_vertex()
                 
             else:
-            
+                
+                # set manual vertices in BV_ object
                 for i,r in enumerate(['lh', 'rh']):
                     setattr(BV_, f"{r}_best_vertex", vert[i])
                     setattr(BV_, f"{r}_best_vertex_coord", getattr(BV_.surface, f'{r}_surf_data')[0][vert[i]])
@@ -241,16 +259,16 @@ def target_vertex(
                 # Calculate normal using the standard method. Other options are "cross" and "Newell"
                 BV_.fetch_normal()
 
-                for hemi in ['left', 'right']:
-                    if hemi == "left":
-                        tag = "lh"
-                    else:
-                        tag = "rh"
+                vert = []
+                for hemi,tag in zip(['left', 'right'],["lh","rh"]):
 
                     coord = getattr(BV_, f"{tag}_best_vertex_coord")
                     vertex = getattr(BV_, f"{tag}_best_vertex")
                     normal = getattr(BV_.surface, f"{tag}_surf_normals")[vertex]
                     
+                    # append vertices to list for log file
+                    vert.append(vertex)
+
                     print(f"Found following vertex in {hemi} hemisphere:")
                     print(f" vertex = {vertex}")
                     print(f" coord  = {coord}")
@@ -289,24 +307,23 @@ def target_vertex(
                     print(" Alrighty, continuing with these parameters")
 
                     if not isinstance(vert, np.ndarray):
-                        textList = [
-                            "# Created on {date}\n".format(date=datetime.now().strftime("%d/%m/%Y %H:%M:%S")),
-                            f"size: {size_val}\n",
-                            f"ecc: {ecc_val}\n",
-                            f"r2: {r2_val}\n",
-                            f"polar: {pol_val}\n",
-                            f"thickness: {thick_val}\n",
-                            f"depth: {depth_val}\n"]
+                        write_dict = BV_.criteria
                     else:
-                        textList = [
-                            "# Created on {date}\n".format(date=datetime.now().strftime("%d/%m/%Y %H:%M:%S")),
-                            "Manually selected following vertices:\n",
-                            f"lh: {vert[0]}\n",
-                            f"rh: {vert[1]}\n"]
+                        write_dict = {}
+                        write_dict["CreatedOn"] = str(datetime.now().strftime("%d/%m/%Y %H:%M:%S"))
+                        write_dict["Method"] = "Manual"
+                    
+                    # write vertices to dictionary
+                    write_dict["Vertices"] = {}
+                    for ii,hh in enumerate(["lh","rh"]):
+                        write_dict["Vertices"][hh] = int(vert[ii])
+                    
+                    # write json file
+                    json_file = opj(cx_dir, subject, f"cutoffs_pid-{os.getpid()}.json")
+                    json_object = json.dumps(write_dict, indent=4)
+                    with open(json_file, "w") as outfile:
+                        outfile.write(json_object)
 
-                    outF = open(opj(cx_dir, subject, "cutoffs.o{ext}".format(ext=os.getpid())), "w")
-                    outF.writelines(textList)
-                    outF.close()
                     check = True
 
                 else:
@@ -336,26 +353,23 @@ def target_vertex(
 
             prf_bestvertex = opj(cx_dir, subject, f'{fbase}_desc-best_vertices.csv')
 
-            prf_right = prf_data[BV_.surface.lh_surf_data[0].shape[0]:][BV_.rh_best_vertex]
-            prf_left = prf_data[0:BV_.surface.lh_surf_data[0].shape[0]][BV_.lh_best_vertex]
-            
             # print(prf_right)
             # print(prf_left)
-            best_vertex = pd.DataFrame(
-                {"hemi":    ["L", "R"],
-                "x":        [prf_left[0], prf_right[0]],
-                "y":        [prf_left[1], prf_right[1]],
-                "size":     [prf_left[2], prf_right[2]],
-                "beta":     [prf_left[3], prf_right[3]],
-                "baseline": [prf_left[4], prf_right[4]],
-                "r2":       [prf_left[5], prf_right[5]],
-                "ecc":      [BV_.prf.ecc[BV_.lh_best_vertex], BV_.prf.ecc[BV_.surface.lh_surf_data[0].shape[0]:][BV_.rh_best_vertex]],
-                "polar":    [BV_.prf.polar[BV_.lh_best_vertex], BV_.prf.polar[BV_.surface.lh_surf_data[0].shape[0]:][BV_.rh_best_vertex]],
-                "index":    [BV_.lh_best_vertex, BV_.rh_best_vertex],
-                "position": [BV_.lh_best_vertex_coord, BV_.rh_best_vertex_coord],
-                "normal":   [BV_.lh_normal, BV_.rh_normal]})
+            lh_df = BV_.prf.df_prf.iloc[BV_.lh_best_vertex,:]
+            rh_df = BV_.prf.df_prf.iloc[BV_.surface.lh_surf_data[0].shape[0]+BV_.rh_best_vertex,:]
 
-            best_vertex.to_csv(prf_bestvertex)
+            dd_dict = {}
+            # write existing pRF parameters to dictionary
+            for ii in list(lh_df.keys()):
+                dd_dict[ii] = [lh_df[ii],rh_df[ii]]
+
+            # add custom stuff
+            dd_dict["index"]    = [lh_df.name,rh_df.name]
+            dd_dict["position"] = [BV_.lh_best_vertex_coord, BV_.rh_best_vertex_coord]
+            dd_dict["normal"]   = [BV_.lh_normal, BV_.rh_normal]
+            dd_dict["hemi"]     = ["L","R"]
+
+            pd.DataFrame(dd_dict).to_csv(prf_bestvertex, index=False)
             print(" writing {file}".format(file=prf_bestvertex))
             print(f"Now run 'call_sizeresponse -s {subject} --verbose {v1_flag}' to obtain DN-parameters")
 
@@ -611,11 +625,19 @@ class pRFCalc():
     """
 
     # Get stuff from SurfaceCalc
-    def __init__(self, prf_file, subject=None, thr=0.1, save=False, fs_dir=None):
+    def __init__(
+            self, 
+            prf_file, 
+            subject=None, 
+            save=False, 
+            thr=0.1,
+            model="gauss",
+            fs_dir=None):
         
         # set defaults
         self.prf_file   = prf_file
         self.thr        = thr
+        self.model      = model
         self.save       = save
         self.subject    = subject
         self.fs_dir     = fs_dir
@@ -649,15 +671,17 @@ class pRFCalc():
             self.prf_dir = os.path.dirname(self.prf_file)
 
             # obtained pRF parameters
-            self.r2     = self.prf_params[:,-1]
-            self.size   = self.prf_params[:,2]
-            self.ecc    = np.sqrt(self.prf_params[:,0]**2+self.prf_params[:,1]**2)
-            self.polar  = np.angle(self.prf_params[:,0]+self.prf_params[:,1]*1j)
+            self.df_prf = prf.Parameters(self.prf_params, model=self.model).to_df()
 
-            if self.save:
-                for est in ['size', 'r2', 'ecc', 'polar']:
-                    fname = opj(self.prf_dir, f"{self.out_}{est}.npy")
-                    np.save(fname, getattr(self, est))
+            # self.r2     = self.prf_params[:,-1]
+            # self.size   = self.prf_params[:,2]
+            # self.ecc    = np.sqrt(self.prf_params[:,0]**2+self.prf_params[:,1]**2)
+            # self.polar  = np.angle(self.prf_params[:,0]+self.prf_params[:,1]*1j)
+
+            # if self.save:
+            #     for est in ['size', 'r2', 'ecc', 'polar']:
+            #         fname = opj(self.prf_dir, f"{self.out_}{est}.npy")
+            #         np.save(fname, getattr(self, est))
         else:
             raise FileNotFoundError(f"Could not find file '{self.prf_file}'")
         
@@ -677,9 +701,9 @@ class pRFCalc():
                     freesurfer_subject_dir=self.fs_dir,
                     whitematter_surf='smoothwm')
 
-            self.r2_v       = pycortex.make_r2(self.subject, r2=self.r2)
-            self.ecc_v      = pycortex.make_ecc(self.subject, ecc=self.ecc, r2=self.r2, r2_thresh=self.thr)
-            self.polar_v    = pycortex.make_polar(self.subject, polar=self.polar, r2=self.r2, r2_thresh=self.thr)
+            self.r2_v       = pycortex.make_r2(self.subject, r2=self.df_prf.r2)
+            self.ecc_v      = pycortex.make_ecc(self.subject, ecc=self.df_prf.ecc, r2=self.df_prf.r2, r2_thresh=self.thr)
+            self.polar_v    = pycortex.make_polar(self.subject, polar=self.df_prf.polar, r2=self.df_prf.r2, r2_thresh=self.thr)
 
 
 class CalcBestVertex():
@@ -696,9 +720,13 @@ class CalcBestVertex():
         Path to derivatives folder of the project. Generally should be the path specified with `DIR_DATA_DERIV` in the bash environment. This option overwrite the individual specification of `prf_dir`, `cx_dir`, and `fs_dir`, and will look up defaults.
     prf_file: str, optional
         Path to a desc-prf_params.pkl file containing a 6xn dataframe representing the 6 variables from the pRF-analysis times the amount of TRs (time points). You can either specify this file directly or specify the pRF-directory containing separate files for R2, eccentricity, and polar angle if you do not happen to have the prf parameter file        
+    epi_file: str, np.ndarray, optional
+        Path to or numpy array containing either time course or averaged BOLD data. Can be used to exclude areas with veins (will have low EPI intensities). Format of time course data should be (time,vertices) to ensure averaging over the correct axis.
     fs_label: str, optional
         ROI-name to extract the vertex from as per ROIs created with `FreeSurfer`. Default is V1_exvivo.thresh
-
+    use_epi: bool, optional
+        try to look in the fMRIprep directory for functional data which we can use to exclude vertices with a low intensity. These vertices often denote veins, so we'd like to exclude those when using functional data (e.g., pRF)
+        
     Example
     ----------
     >>> BV_ = CalcBestVertex(subject=subject, fs_dir='/path/to/derivatives/freesurfer'), prf_file=prf_params)
@@ -709,13 +737,19 @@ class CalcBestVertex():
         subject=None,
         deriv=None,
         prf_file=None,
+        use_epi=False,
+        epi_space="fsnative",
+        model="gauss",
         fs_label="V1_exvivo.thresh"):
 
         # read arguments
         self.subject    = subject
         self.deriv      = deriv
         self.prf_file   = prf_file
+        self.use_epi    = use_epi
+        self.epi_space  = epi_space
         self.fs_label   = fs_label
+        self.model      = model
 
         # set default derivatives
         if self.deriv == None:
@@ -730,9 +764,45 @@ class CalcBestVertex():
 
         if self.prf_file != None:
             self.prf_dir = os.path.dirname(self.prf_file)
-            self.prf = pRFCalc(subject=self.subject, prf_file=self.prf_file, fs_dir=self.fs_dir)
+            self.prf = pRFCalc(
+                subject=self.subject, 
+                prf_file=self.prf_file, 
+                fs_dir=self.fs_dir, 
+                model=self.model)
 
-    def apply_thresholds(self, r2_thresh=None, size_thresh=None, ecc_thresh=None, polar_thresh=None, thick_thresh=None, depth_thresh=None):
+        if use_epi:
+            
+            # try to find fmriprep output
+            fprep_dir = opj(self.deriv, "fmriprep", self.subject)
+            if not os.path.exists(fprep_dir):
+                raise FileNotFoundError(f"Could not find directory: '{fprep_dir}'")
+            
+            gii_files = utils.FindFiles(fprep_dir, extension="gii").files
+
+            if len(gii_files) == 0:
+                raise ValueError(f"No files with 'gii' in '{fprep_dir}'")
+            
+            gii_files_filt = utils.get_file_from_substring([self.epi_space], gii_files)[:2]
+            
+            tmp = np.hstack([dataset.ParseGiftiFile(ii).data for ii in gii_files_filt])
+            self.epi = tmp.mean(axis=0)
+
+            # save vertex object too
+            self.epi_v = cortex.Vertex(self.epi, subject=self.subject, cmap="magma")
+
+    def apply_thresholds(
+        self, 
+        r2_thresh=None, 
+        size_thresh=None, 
+        ecc_thresh=None, 
+        a_thresh=None, 
+        b_thresh=None, 
+        c_thresh=None, 
+        d_thresh=None,         
+        epi_thresh=None,
+        polar_thresh=None, 
+        thick_thresh=None, 
+        depth_thresh=None):
 
         """apply_thresholds
 
@@ -746,6 +816,12 @@ class CalcBestVertex():
             refers to size of the pRF in visual space. Usually between 0 and 5 (defaults to 0). Threshold is specified as 'greater than <value>'            
         ecc_thresh: int, float, optional
             refers to `size` of pRF (smaller = foveal, larger = peripheral). Usually between 0 and 15. Defaults to minimum of `r2 array`. Threshold is specified as 'lower than <value>'
+        a_thresh: int, float, optional
+        b_thresh: int, float, optional
+        c_thresh: int, float, optional
+        d_thresh: int, float, optional        
+        epi thresh: int, float, optional
+            refers to the EPI intensities. Defaults to all values, at the risk of selecting areas that might have veins. Threshold is specified as 'greater than <value>' and siginifies a percentile value.
         polar_thresh: list, float, optional 
             refers to `polar angle` (upper-to-lower vertical meridian). Usually between -pi and pi. Defaults to -pi. Threshold is specified as 'greater than <value>'. A list of values for left and right hemisphere should be given
         thick_thresh: int, float, optional
@@ -773,54 +849,130 @@ class CalcBestVertex():
             if not 0 <= ecc_thresh <= 15:
                 raise ValueError(f" Hm, this seems to be an odd value. Usually you'll want something between 0-15, your value is {ecc_thresh}")
 
-        if thick_thresh:
-            if thick_thresh > 0:
-                # got a positive value; convert to negative
-                thick_thresh = -(thick_thresh)
-
         # set cutoff criteria
+        utils.verbose("Using these parameters to find vertex with minimal curvature:", True)
 
+        # initialize dictionary for log file
+        self.criteria = {}
+        self.criteria["CreatedOn"] = str(datetime.now().strftime("%d/%m/%Y %H:%M:%S"))
+        self.criteria["Method"] = "Criteria"
         if hasattr(self, 'prf'):
             
-            self.size_thresh    = size_thresh or min(self.prf.size)
-            self.r2_thresh      = r2_thresh or min(self.prf.r2)
-            self.ecc_thresh     = ecc_thresh or max(self.prf.ecc)
-            self.polar_thresh   = polar_thresh or [min(self.prf.polar[:self.surface.lh_surf_data[0].shape[0]]),min(self.prf.polar[self.surface.lh_surf_data[0].shape[0]:])]
+            # set thresholds
+            self.r2_thresh      = r2_thresh or self.prf.df_prf.r2.min()
+            self.size_thresh    = size_thresh or self.prf.df_prf.prf_size.max()
+            self.ecc_thresh     = ecc_thresh or self.prf.df_prf.ecc.max()
+            
+            # parse out polar angle
+            self.polar_array    = self.prf.df_prf.polar.values
+            self.polar_thresh   = polar_thresh or [max(self.polar_array[:self.surface.lh_surf_data[0].shape[0]]),min(self.polar_array[self.surface.lh_surf_data[0].shape[0]:])]
 
-            # print(self.polar_thresh)
-            lh_polar = self.prf.polar[:self.surface.lh_surf_data[0].shape[0]] <= self.polar_thresh[0]
-            rh_polar = self.prf.polar[self.surface.lh_surf_data[0].shape[0]:] >= self.polar_thresh[1]
-
-            # print(lh_polar.shape,rh_polar.shape)
+            lh_polar = self.polar_array[:self.surface.lh_surf_data[0].shape[0]] <= self.polar_thresh[0]
+            rh_polar = self.polar_array[self.surface.lh_surf_data[0].shape[0]:] >= self.polar_thresh[1]
             polar = np.concatenate((lh_polar,rh_polar))
-            self.prf_mask = ((self.prf.r2 >= self.r2_thresh) * (self.prf.ecc <= self.ecc_thresh) * (polar) * (self.prf.r2 >= self.r2_thresh) * (self.prf.size >= self.size_thresh))
 
+            # compile mask
+            df = self.prf.df_prf.copy()
+            self.prf_mask = np.zeros(df.shape[0], dtype=bool)
+            prf_idc = list(
+                df.loc[
+                    (df.r2 >= self.r2_thresh)
+                    & (df.ecc <= self.ecc_thresh)
+                    & (df.prf_size <= self.size_thresh)
+                ].index)
+
+            # sort out polar angle
+            self.prf_mask[prf_idc] = True
+            self.prf_mask = (self.prf_mask * polar)
+        
+            utils.verbose(f" pRF size:      <= {round(self.size_thresh,2)}", True)
+            utils.verbose(f" eccentricity:  <= {round(self.ecc_thresh,4)}", True)
+            utils.verbose(f" variance (r2): >= {round(self.r2_thresh,4)}", True)
+            utils.verbose(f" polar angle:   {self.polar_thresh}", True)
+            
+            # append to dictionary
+            for par,val in zip(
+                ["r2","size","ecc","polar angle"],
+                [self.r2_thresh,self.size_thresh,self.ecc_thresh,self.polar_thresh]):
+                if isinstance(val, list):
+                    self.criteria[par] = [float(i) for i in val]
+                else:
+                    self.criteria[par] = float(val)
+
+            # set normalization criteria
+            if self.model == "norm":
+                self.a_thresh = a_thresh or self.prf.df_prf.A.min()
+                self.b_thresh = b_thresh or self.prf.df_prf.B.min()
+                self.c_thresh = c_thresh or self.prf.df_prf.C.min()
+                self.d_thresh = d_thresh or self.prf.df_prf.D.min()
+
+                for par,val in zip(
+                    ["A","B","C","D"],
+                    [self.a_thresh,self.b_thresh,self.c_thresh,self.d_thresh]):
+                    utils.verbose((f" {par}:             >= {round(val,4)}"), True)
+                    self.criteria[par] = float(val)
+
+                # find indices where conditions hold
+                norm_idc = list(df.loc[
+                    (df.A >= self.a_thresh)
+                    & (df.B >= self.b_thresh)
+                    & (df.C >= self.c_thresh)
+                    & (df.D >= self.d_thresh)
+                ].index)
+                
+                # make mask
+                norm_mask = np.zeros_like(self.prf_mask, dtype=bool)
+                norm_mask[norm_idc] = True
+
+                # apply mask to existing prf_mask
+                self.prf_mask = self.prf_mask * norm_mask
+
+        # include epi intensity mask
+        if hasattr(self, 'epi'):
+            
+            self.epi_thresh = epi_thresh or 0
+            utils.verbose(f" EPI intensity: >= {self.epi_thresh}th percentile", True)
+
+            self.epi_mask = np.zeros_like(self.epi, dtype=bool)
+            self.epi_mask[self.epi >= np.percentile(self.epi, self.epi_thresh)] = True
+            self.criteria["EPI_intensity"] = float(self.epi_thresh)
+
+        # include curvature mask
         if hasattr(self, 'surface'):
             self.thick_thresh   = thick_thresh or max(self.surface.thickness.data)
             self.depth_thresh   = depth_thresh or min(self.surface.depth.data)
 
+            # got a positive value; convert to negative
+            if self.thick_thresh:
+                if self.thick_thresh > 0:
+                    self.thick_thresh = -(self.thick_thresh)
+
+            utils.verbose(f" thickness:     <= {self.thick_thresh}", True)
+            utils.verbose(f" depth:         >= {round(self.depth_thresh,4)}", True)
+            self.criteria["thickness"] = float(self.thick_thresh)
+            self.criteria["depth"] = float(self.depth_thresh)
+
             self.struct_mask =  ((self.surface.thickness.data <= self.thick_thresh) * (self.surface.depth.data >= self.depth_thresh))
 
-        # apply to label mask
-        if hasattr(self, 'prf_mask') and hasattr(self, 'struct_mask'):
-            # we have both prf and surf masks'
-            self.joint_mask = (self.prf_mask * self.struct_mask * self.surface.whole_roi)
-        elif hasattr(self, 'prf_mask') and not hasattr(self, 'struct_mask'):
-            # only pRF-data
-            self.joint_mask = (self.prf_mask * self.surface.whole_roi)
-        elif hasattr(self, 'struct_mask') and not hasattr(self, 'prf_mask'):
-            # only structural
-            self.joint_mask = (self.struct_mask * self.surface.whole_roi)
-        else:
-            # just minimal curvature
-            self.joint_mask = self.surface.whole_roi
+        ### APPLY MASKS
 
-        # self.joint_mask = ((self.prf.r2 > self.r2_thresh) *
-        #                    (self.prf.ecc < self.ecc_thresh) *
-        #                    (self.prf.polar > self.polar_thresh) *
-        #                    (self.surface.thickness.data < self.thick_thresh) *
-        #                    (self.surface.depth.data > self.depth_thresh) *
-        #                    (self.surface.whole_roi))
+        # start with full mask
+        self.joint_mask = self.surface.whole_roi.copy()
+
+        # apply pRF mask
+        if hasattr(self, 'prf_mask'):
+            self.joint_mask = (self.prf_mask * self.joint_mask)
+
+        # and structural mask
+        if hasattr(self, 'struct_mask'):
+            self.joint_mask = (self.struct_mask * self.joint_mask)
+        
+        # and EPI mask
+        if hasattr(self, "epi_mask"):
+            self.joint_mask = (self.epi_mask * self.joint_mask)
+
+        self.n_vertices = np.count_nonzero(self.joint_mask.astype(int))
+        utils.verbose(f"Mask contains {self.n_vertices} vertices", True)
 
         # save prf information
         self.lh_prf = self.joint_mask[:self.surface.lh_surf_data[0].shape[0]]
@@ -830,8 +982,6 @@ class CalcBestVertex():
             self.joint_mask[self.joint_mask < 1] = np.nan
             
         self.joint_mask_v = cortex.Vertex(self.joint_mask, subject=self.subject, vmin=-0.5, vmax=1)
-        
-        # cortex.webshow({"lh": cortex.Vertex(self.lh_prf.astype(int), subject=self.subject, cmap='magma', vmin=-0.5, vmax=1), "rh": cortex.Vertex(self.rh_prf.astype(int), subject=self.subject, cmap='magma', vmin=-0.5, vmax=1)})
 
     def best_vertex(self):
 
@@ -1012,7 +1162,10 @@ class CalcBestVertex():
                 if i == "lh":
                     min_curv_map[self.lh_best_vertex] = 1
                 elif i == "rh":
-                    min_curv_map[self.surface.lh_surf_data[0].shape[0]+self.rh_best_vertex] = 1
+                    if self.rh_best_vertex < self.surface.lh_surf_data[0].shape[0]:
+                        min_curv_map[self.surface.lh_surf_data[0].shape[0]+self.rh_best_vertex] = 1
+                    else:
+                        min_curv_map[self.rh_best_vertex] = 1
 
                 min_curv_map_v = cortex.Vertex(min_curv_map, subject=self.subject, cmap='magma', vmin=-0.5, vmax=1)
 
