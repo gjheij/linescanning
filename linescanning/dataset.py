@@ -137,7 +137,9 @@ class ParseEyetrackerFile(SetAttributes):
         verbose=False, 
         use_bids=True,
         nr_vols=None,
-        h5_file=None):
+        h5_file=None,
+        report=False,
+        save_as=None):
 
         super().__init__()
 
@@ -155,6 +157,8 @@ class ParseEyetrackerFile(SetAttributes):
         self.use_bids           = use_bids
         self.nr_vols            = nr_vols
         self.h5_file            = h5_file
+        self.report             = report
+        self.save_as            = save_as
 
         # add all files to h5-file
         if isinstance(self.edf_file, str) or isinstance(self.edf_file, list):
@@ -164,6 +168,27 @@ class ParseEyetrackerFile(SetAttributes):
 
             self.preprocess_edf_files()
             self.ho.close_hdf_file()
+
+        # write boilerplate
+        if self.report:
+
+            # write report
+            self.config = str(Path(utils.__file__).parents[1]/'misc'/'default_eye.yml')
+            if not os.path.exists(self.config):
+                raise FileNotFoundError(f"Could not find 'default_eye.yml'-file in '{str(Path(utils.__file__).parents[1]/'misc')}'")
+            
+            if self.report:
+                self.report_obj = core.Report(
+                    os.path.dirname(self.eyeprep_dir),
+                    self.run_uuid,
+                    subject_id=str(self.sub),
+                    packagename="eyeprep",
+                    config=self.config)
+
+                # generate report
+                self.report_obj.generate_report()
+
+                utils.verbose(f"Saving report to {str(self.report_obj.out_dir/self.report_obj.out_filename)}", self.verbose)            
 
     def preprocess_edf_files(self):
 
@@ -226,10 +251,11 @@ class ParseEyetrackerFile(SetAttributes):
 
             if self.use_bids:
                 bids_comps = utils.split_bids_components(edf_file)
-                for el in ['sub', 'run']:
+                for el in ['sub', 'run', 'ses']:
                     setattr(self, el, bids_comps[el])
             else:
                 self.run = i+1
+                self.ses = None
             
             # check if we got multiple TRs for different edf-files
             if self.TR != None:
@@ -241,6 +267,37 @@ class ParseEyetrackerFile(SetAttributes):
             else:
                 use_TR = None
 
+            # write boilerplate
+            if self.report:
+                if self.save_as == None:
+                    try:
+                        self.eyeprep_dir = opj(os.environ.get("DIR_DATA_DERIV"), 'eyeprep')
+                    except:
+                        raise ValueError(f"Please specify an output directory with 'save_as='")
+                else:
+                    self.eyeprep_dir = self.save_as
+
+                if self.ses != None:
+                    self.base = f'sub-{self.sub}_ses-{self.ses}'
+                    self.eyeprep_full = opj(self.eyeprep_dir, f'sub-{self.sub}', f'ses-{self.ses}')
+                else:
+                    self.eyeprep_full = opj(self.eyeprep_dir, f'sub-{self.sub}')
+                    self.base = f'sub-{self.sub}'
+                    
+                # make figure directory
+                self.run_uuid = f"{strftime('%Y%m%d-%H%M%S')}_{uuid4()}"
+                self.eyeprep_figures = opj(self.eyeprep_dir, f'sub-{self.sub}', 'figures')
+                self.eyeprep_runid = opj(self.eyeprep_dir, f'sub-{self.sub}', 'log', self.run_uuid)
+                self.eyeprep_logs = opj(self.eyeprep_dir, 'logs')
+                for dir in self.eyeprep_full, self.eyeprep_figures, self.eyeprep_logs, self.eyeprep_runid:
+                    if not os.path.exists(dir):
+                        os.makedirs(dir, exist_ok=True)
+
+                self.citation_file = Path(opj(self.eyeprep_logs, "CITATION.md"))
+
+                self.desc_eye="""some text for the preprocessing of eye-tracking data"""
+                self.citation_file.write_text(self.desc_eye)                      
+
             # full output from 'fetch_relevant_info' > use sub as differentiator if multiple files were given
             self.data = self.fetch_relevant_info(TR=use_TR, nr_vols=self.nr_vols)
 
@@ -249,6 +306,7 @@ class ParseEyetrackerFile(SetAttributes):
             self.df_space_func.append(self.fetch_eye_func_time())
             self.df_space_eye.append(self.fetch_eye_tracker_time())
             self.df_saccades.append(self.fetch_saccades())
+
 
         self.df_blinks = pd.concat(self.df_blinks).set_index(['subject','run','event_type'])
         self.df_space_eye = pd.concat(self.df_space_eye).set_index(['subject','run','eye','t'])
@@ -483,7 +541,101 @@ class ParseEyetrackerFile(SetAttributes):
         if len(df_saccades) > 0:
             return_dict["saccades"] = df_saccades
 
+        if self.report:
+
+            # make some plots
+            fname = opj(self.eyeprep_figures, f"{self.base}_run-{self.run}_desc")
+            self.plot_trace_and_heatmap(df_space_eye, fname=fname)
+
         return return_dict
+
+    def plot_trace_and_heatmap(
+            self, 
+            df, 
+            fname=None, 
+            screen_size=(1920,1080),
+            scale="screen"):
+
+        if not isinstance(df, pd.DataFrame):
+            raise TypeError(f"Input must be a pd.Dataframe, not {type(df)}")
+        
+        use_eyes = list(np.unique(df.reset_index()['eye']))
+
+        fig = plt.figure(figsize=(24,len(use_eyes)*6), constrained_layout=True)
+        if len(use_eyes) > 1:
+            y = 1.075
+            hspace = 0.12
+        else:
+            y = 1.15
+            hspace = 0
+
+        sf = fig.subfigures(nrows=len(use_eyes), hspace=hspace)
+
+        fig.suptitle('positional stability', fontsize=32, y=y)
+
+        for ii, eye in enumerate(use_eyes):
+            if len(use_eyes) > 1:
+                sf_a = sf[ii]
+            else:
+                sf_a = sf
+            
+            axs = sf_a.subplots(ncols=2, gridspec_kw={
+                "width_ratios": [0.35,0.65],
+                "hspace": hspace})
+
+            eye_df = utils.select_from_df(df, expression=f"eye = {eye}")
+            input_l = [eye_df[f"gaze_{i}_int"].values for i in ["x","y"]]
+
+            x_cor_fixcross = screen_size[0]/2 # x-coordinate of the fixation cross
+            y_cor_fixcross = screen_size[1]/2 # y-coordinate of the fixation cross
+            x_coor_relfix = (input_l[0] - x_cor_fixcross) 
+            y_coor_relfix = (input_l[1] - y_cor_fixcross)
+
+            if isinstance(scale, str):
+                if scale == "auto":
+                    ext = [x_coor_relfix.min(), x_coor_relfix.max(), y_coor_relfix.min(), y_coor_relfix.max()]
+                elif scale == "screen":
+                    xlim = (-screen_size[0]//2,screen_size[0]//2)
+                    ylim = (-screen_size[1]//2,screen_size[1]//2)
+                    ext = [xlim[0], xlim[1], ylim[0], ylim[1]]
+                else:
+                    raise ValueError(f"Unknown scale '{scale}' specified. Must be 'auto' or 'screen', or specify a tuple")
+                
+            axs[0].hexbin(
+                x_coor_relfix,
+                y_coor_relfix, 
+                gridsize=100, 
+                cmap="magma",
+                extent=ext)
+            
+            axs[0].axhline(y=0, color='white', linestyle= '-', linewidth=0.5)
+            axs[0].axvline(x=0, color='white', linestyle= '-', linewidth=0.5)
+            plotting.conform_ax_to_obj(
+                ax=axs[0], 
+                y_label="y position",
+                x_label="x position")
+
+            avg = [float(input_l[i].mean()) for i in range(len(input_l))]
+            std = [float(input_l[i].std()) for i in range(len(input_l))]
+            plotting.LazyPlot(
+                input_l,
+                line_width=2,
+                axs=axs[1],
+                color=["#1B9E77","#D95F02"],
+                labels=[f"gaze {i} (M={round(avg[ix],2)}; SD={round(std[ix],2)}px)" for ix,i in enumerate(["x","y"])],
+                x_label="samples",
+                y_label="position (pixels)",
+                add_hline={"pos": avg},
+            )
+                
+            y_pos = 1.05
+            sf_a.suptitle(f"eye-{eye}", fontsize=24, y=y_pos, fontweight="bold")
+
+            # plt.tight_layout()
+
+        if isinstance(fname, str):
+            fig.savefig(f"{fname}-qa.svg", bbox_inches='tight', dpi=300)
+
 
     def vols(self, func_file):
         if func_file.endswith("gz") or func_file.endswith('nii'):
@@ -554,7 +706,29 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
     >>> for sub in run_subjects:
     >>>     path_tsv_files = os.path.join(f'some/path/sub-{sub}')
     >>>     f = os.listdir(path_tsv_files)
-    >>>     nr_runs = []; [nr_runs.append(os.path.join(path_tsv_files, r)) for r in f if "events.tsv" in r]
+    >>>     nr_runs = []; [nr_runs.append(os.path.join(path_tsv_files, r)) for r in f if "events.tsv" in r]                # make LSprep output directory
+                if self.report:
+                    if self.save_as == None:
+                        try:
+                            self.lsprep_dir = opj(os.environ.get("DIR_DATA_DERIV"), 'lsprep')
+                        except:
+                            raise ValueError(f"Please specify an output directory with 'save_as='")
+                    else:
+                        self.lsprep_dir = save_as
+
+                    if self.ses != None:
+                        self.lsprep_full = opj(self.lsprep_dir, f'sub-{self.sub}', f'ses-{self.ses}')
+                    else:
+                        self.lsprep_full = opj(self.lsprep_dir, f'sub-{self.sub}')
+                        
+                    # make figure directory
+                    self.run_uuid = f"{strftime('%Y%m%d-%H%M%S')}_{uuid4()}"
+                    self.lsprep_figures = opj(self.lsprep_dir, f'sub-{self.sub}', 'figures')
+                    self.lsprep_runid = opj(self.lsprep_dir, f'sub-{self.sub}', 'log', self.run_uuid)
+                    self.lsprep_logs = opj(self.lsprep_dir, 'logs')
+                    for dir in self.lsprep_full, self.lsprep_figures, self.lsprep_logs, self.lsprep_runid:
+                        if not os.path.exists(dir):
+                            os.makedirs(dir, exist_ok=True)
     >>> 
     >>>     for run in range(1,len(nr_runs)+1):
     >>>         sub_idx = run_subjects.index(sub)+1
