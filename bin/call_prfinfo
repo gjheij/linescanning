@@ -6,6 +6,7 @@ from linescanning import (
 import sys, getopt
 import os
 import numpy as np
+import nibabel as nb
 np.set_printoptions(precision=3, suppress=True)
 opj = os.path.join
 
@@ -118,7 +119,7 @@ Example
         raise ValueError(f"A list of files was specified.. {prf_info}")
     
     print(f"Reading from '{prf_info}'")
-    info = prf.read_par_file(prf_info)
+    info = prf.Parameters(prf_info, model=model).to_df()
 
     search_data = ["hemi-L_", "avg_bold", ".npy"]
     if v1_data:
@@ -129,30 +130,24 @@ Example
 
     if hemi == "rh":
         tag = "hemi-R"
-        tmp = utils.get_file_from_substring(search_data, prf_dir, exclude=exclude)
-        vert_corr = np.load(tmp).shape[-1]+vertex
-        txt = f"(target [{vertex}] + shape lh [{np.load(tmp).shape[-1]}])"
-        vertex = vert_corr
+        txt = ""
+
+        surf = opj(os.environ.get('SUBJECTS_DIR'), subject, 'surf', 'lh.white')
+        n_vert = nb.freesurfer.io.read_geometry(surf)[0].shape[0]
+
+        # we got rh.white vertex ID, correct for whole-brain vertex IDs
+        if vertex < n_vert:
+            txt = f"(target [{vertex}] + shape lh.white [{n_vert}])"
+            vertex += n_vert
+        
     else:
         tag = "hemi-L"
         txt = ""
 
-    vert_info = info[vertex,:]
-    polar = np.angle(vert_info[0]+vert_info[1]*1j)
-    ecc = np.sqrt(vert_info[0]**2+vert_info[1]**2)
-
-    vert_info = np.append(vert_info,(polar,ecc))
-    info = {
-        'x': vert_info[0],
-        'y': vert_info[1],
-        'size': vert_info[2],
-        'polar': vert_info[-2],
-        'ecc': vert_info[-1],
-        'r2': vert_info[-3]}
-    
+    vert_info = info.iloc[vertex,:]
     print(f"pRF parameters ID: {vertex} {txt}")
-    for ii in list(info.keys()):
-        print(f" {ii}:\t{round(info[ii],2)}")
+    for ii in list(vert_info.keys()):
+        print(f' {ii:20}{round(vert_info[ii],2)}')
 
     if plot:
 
@@ -179,8 +174,16 @@ Example
 
         obj.load_params(prf_info, model=model, stage=stage)
 
+        # compile output name for figures
+        base = f"{subject}"
+        comps = utils.split_bids_components(prf_info)
+
+        for it in ["ses","task","acq"]:
+            if it in list(comps.keys()):
+                base += f"_{it}-{comps[it]}"
+    
+        fname = opj(prf_dir, f"{base}_{tag}_vox-{vertex}_model-{model}_stage-{stage}.svg")
         # make plot
-        fname = opj(prf_dir, f"{subject}_{tag}_vox-{vertex}_model-{model}_stage-{stage}.svg")
         obj.plot_vox(
             vox_nr=vertex,
             model=model,
