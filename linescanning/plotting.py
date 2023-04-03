@@ -1328,6 +1328,10 @@ class LazyHist(Defaults):
         return_obj: bool=False,
         x_lim: list=None,
         y_lim: list=None,
+        fancy: bool=False,
+        fancy_rounding: float=0.15,
+        fancy_pad: float=-0.004,
+        fancy_aspect: float=None,
         **kwargs):
         
         self.data           = data
@@ -1354,6 +1358,10 @@ class LazyHist(Defaults):
         self.x_lim          = x_lim
         self.y_lim          = y_lim
         self.kwargs         = kwargs
+        self.fancy          = fancy
+        self.fancy_rounding = fancy_rounding
+        self.fancy_pad      = fancy_pad
+        self.fancy_aspect   = fancy_aspect        
 
         super().__init__()
         self.__dict__.update(kwargs)
@@ -1366,7 +1374,8 @@ class LazyHist(Defaults):
         else:
             self.plot()
 
-        self.kde = self.return_kde()
+        if self.kde:
+            self.kde = self.return_kde()
 
         if self.save_as:
             if isinstance(self.save_as, list):
@@ -1383,13 +1392,40 @@ class LazyHist(Defaults):
             _,self.axs = plt.subplots(figsize=self.figsize)
 
         if self.hist:
-            self.axs.hist(
+            self.vals, self.bins, self.patches = self.axs.hist(
                 self.data,
                 density=True,
                 bins=self.bins,
                 color=self.color,
                 **self.hist_kwargs
             )
+
+            # from: https://stackoverflow.com/a/61569240
+            if self.fancy:
+                new_patches = []
+
+                for patch in reversed(self.patches):
+
+                    # max of axis divided by 4 gives nice rounding
+                    if not isinstance(self.fancy_aspect, (int,float)):
+                        self.fancy_aspect = patch._axes.get_ylim()[-1]/4
+                    
+                    bb = patch.get_bbox()
+                    color = patch.get_facecolor()
+                    p_bbox = patches.FancyBboxPatch(
+                        (bb.xmin, bb.ymin),
+                        abs(bb.width), abs(bb.height),
+                        boxstyle=f"round,pad={self.fancy_pad},rounding_size={self.fancy_rounding}",
+                        ec="none", 
+                        fc=color,
+                        mutation_aspect=self.fancy_aspect
+                    )
+
+                    patch.remove()
+                    new_patches.append(p_bbox)
+
+                for patch in new_patches:
+                    self.axs.add_patch(patch)
 
         if self.kde:
             
@@ -1403,48 +1439,54 @@ class LazyHist(Defaults):
                 **self.kde_kwargs
             )
 
+        # there's no self.ff if kde=False
+        if hasattr(self, "ff"):
+            self.active_axs = self.ff
+        else:
+            self.active_axs = self.axs
+
         # axis labels and titles
         if self.title:
-            self.ff.set_title(
+            self.active_axs.set_title(
                 self.title, 
                 fontname=self.fontname, 
                 fontsize=self.font_size)                    
         
-        self.ff.tick_params(
+        self.active_axs.tick_params(
             width=self.tick_width, 
             length=self.tick_length,
             labelsize=self.label_size)
 
         for axis in ['top', 'bottom', 'left', 'right']:
-            self.ff.spines[axis].set_linewidth(self.axis_width)
+            self.active_axs.spines[axis].set_linewidth(self.axis_width)
 
         # give priority to specify x-lims rather than seaborn's xlim
         if isinstance(self.x_lim, list):
-            self.ff.set_xlim(self.x_lim)
+            self.active_axs.set_xlim(self.x_lim)
         
         if isinstance(self.y_lim, list):
-            self.ff.set_ylim(self.y_lim)   
+            self.active_axs.set_ylim(self.y_lim)   
 
         if isinstance(self.x_ticks, list):
-            self.ff.set_xticks(self.x_ticks)
+            self.active_axs.set_xticks(self.x_ticks)
 
         if isinstance(self.y_ticks, list):
-            self.ff.set_yticks(self.y_ticks)            
+            self.active_axs.set_yticks(self.y_ticks)            
 
         if not isinstance(self.x_label2, str):
-            self.ff.set(xlabel=None)
+            self.active_axs.set(xlabel=None)
 
         if  not isinstance(self.y_label2, str):
-            self.ff.set(ylabel=None)            
+            self.active_axs.set(ylabel=None)            
 
         if self.x_label2:
-            self.ff.set_xlabel(
+            self.active_axs.set_xlabel(
                 self.x_label2, 
                 fontname=self.fontname, 
                 fontsize=self.font_size)
 
         if self.y_label2:
-            self.ff.set_ylabel(
+            self.active_axs.set_ylabel(
                 self.y_label2, 
                 fontname=self.fontname,
                 fontsize=self.font_size)
@@ -1464,10 +1506,10 @@ class LazyHist(Defaults):
             trim=self.sns_trim,
             left=trim_left, 
             bottom=trim_bottom, 
-            ax=self.ff)
+            ax=self.active_axs)
 
         if self.title2:
-            self.ff.set_title(
+            self.active_axs.set_title(
                 self.title2, 
                 fontname=self.fontname, 
                 fontsize=self.font_size,
