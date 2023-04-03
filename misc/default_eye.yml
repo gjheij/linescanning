@@ -1,0 +1,8 @@
+package: eye
+sections:
+- name: Eyetracker
+  ordering: session,task,run
+  reportlets:
+  - bids: {datatype: figures, desc: qa}
+    caption: Stability of the eye position over time. 
+    subtitle: Basic quality assessment
