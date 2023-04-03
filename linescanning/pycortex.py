@@ -560,7 +560,9 @@ def Vertex2D_fix(
     vmax, 
     vmin2, 
     vmax2, 
-    roi_borders=None):
+    roi_borders=None,
+    curv_type="hcp",
+    fc=-1.25):
 
     #this provides a nice workaround for pycortex opacity issues, at the cost of interactivity    
     # Get curvature
@@ -570,12 +572,12 @@ def Vertex2D_fix(
     # with curv.data, maybe threshold it, and apply a color map. 
     
     #standard
-    # curv.data = curv.data * .75 +0.1
-    #alternative
-    curv.data = np.sign(curv.data) * .25
-    #HCP adjustment
-    # curv.data = curv.data * -2.5# 1.25 +0.1
-
+    if curv_type == "standard":
+        curv.data = curv.data*fc+0.1
+    elif curv_type == "hcp":
+        curv.data = curv.data*fc+0.1
+    else:
+        curv.data = np.sign(curv.data) * .25
     
     curv = cortex.Vertex(curv.data, subject, vmin=-1,vmax=1,cmap='gray')
     
@@ -607,4 +609,4 @@ def Vertex2D_fix(
         display_data[:,roi_borders.astype('bool')] = 0#255-display_data[:,roi_borders.astype('bool')]#0#255
     
     # Create vertex RGB object out of R, G, B channels
-    return cortex.VertexRGB(*display_data, subject)                
+    return cortex.VertexRGB(*display_data, subject), curv
