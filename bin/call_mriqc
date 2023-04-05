@@ -23,18 +23,18 @@ to keep it as simple as possible without making it similar to the fmriprep call 
 for customizable options.
 
 Arguments:
-  -s <sub number>   number of subject's directory from which you can omit "sub-" (e.g., for "sub-001",
-                    enter "001")
-	-n <ses number>		session ID (without 'ses-')
-  -r <root>         project root directory from which to run fmriprep. Default is DIR_DATA_HOME
-  -d <derivatives>  derivatives directory. Default is DIR_DATA_DERIV
-  -i <simg>         singularity image that can be specified if -c flag is set to SGE
-  -b <binding>      binding point that can be specified if -c flag is set to SGE
-  -w <work>         working directory to store intermediate files. Default is PATH_HOME/programs/
-                    packages/mriqc             
-	-a <include anat>	no argument required; if set, we'll include anatomical images. Note that the 
-                    T1w/T2w are in the project folder, and thus won't be the custom preprocessed
-                    files.. This is why it's turned off by default.
+--anat_only       Only include anatomical images in the process (default is everything it can find)
+--func_only       Only include functional images in the process (default is everything it can find)
+-s <sub number>   number of subject's directory from which you can omit "sub-" (e.g., for "sub-001",
+                  enter "001")
+-n <ses number>   session ID (without 'ses-'); if not specified, all sessions will be checked for
+                  usable data
+-r <root>         project root directory from which to run fmriprep. Default is DIR_DATA_HOME
+-d <derivatives>  derivatives directory. Default is DIR_DATA_DERIV
+-i <simg>         singularity image that can be specified if -c flag is set to SGE
+-b <binding>      binding point that can be specified if -c flag is set to SGE
+-w <work>         working directory to store intermediate files. Default is PATH_HOME/programs/
+                  packages/mriqc             
 Example:
   call_mriqc -s 001       (simplest form, runs the entire pipeline)
   call_mriqc -s 001 -n 1  (only include session 1 data)
@@ -48,24 +48,41 @@ USAGE
 
 #-----------------------------------------------------------------------------
 # Deal with arguments
-while getopts ts:n:r:d:i:b:w: arg
+mod_flag=""
+while getopts :-:ts:n:r:d:i:b:w: arg
 do
-    case ${arg} in
-      s)  subj_ID=${OPTARG}
-            ;;
-      n)  ses_ID=${OPTARG}
-            ;;						
-      r)  ROOT=${OPTARG}
-            ;;
-      d)  DERIV=${OPTARG}
-            ;;
-      i)  IMG=${OPTARG}
-            ;;
-      b)  BIND=${OPTARG}
-            ;;
-      w)  WORK=${OPTARG}
-            ;;          
-    esac
+  case ${arg} in
+    -)
+      case "${OPTARG}" in     
+        anat_only)
+          mod_flag="--modalities T1w T2w"
+          ;;   
+        func_only)
+          mod_flag="--modalities bold"
+          ;;                    
+        *)
+          if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
+            Usage >&2
+            echo "Unknown option --${OPTARG}"
+            exit 1
+          fi
+          ;;
+      esac;;    
+    s)  subj_ID=${OPTARG}
+          ;;
+    n)  ses_ID=${OPTARG}
+          ;;						
+    r)  ROOT=${OPTARG}
+          ;;
+    d)  DERIV=${OPTARG}
+          ;;
+    i)  IMG=${OPTARG}
+          ;;
+    b)  BIND=${OPTARG}
+          ;;
+    w)  WORK=${OPTARG}
+          ;;          
+  esac
 done
 
 if [[ $# -lt 1 ]] ; then
@@ -84,17 +101,11 @@ fi
 if [[ -z ${ses_ID} ]]; then
 	ses_nr=""
   base_dir="sub-${subj_ID}"
+  ses_flag=""
 else
 	ses_nr=${ses_ID}
   base_dir="sub-${subj_ID}/ses-${ses_nr}"
-fi
-
-#-----------------------------------------------------------------------------
-# Check for T2w-flag
-if [[ "${@}" == *"-a"* ]]; then
-  mod="T1w T2w bold"
-else
-  mod="bold"
+  ses_flag="--session-id ${ses_ID}"
 fi
 
 #-----------------------------------------------------------------------------
@@ -103,10 +114,6 @@ if [[ -z ${ROOT} ]]; then
   project=${DIR_DATA_HOME}
 else
   project=${ROOT}
-fi
-
-if [[ ! -d ${project} ]]; then
-  mkdir -p ${project}
 fi
 
 #-----------------------------------------------------------------------------
@@ -124,7 +131,7 @@ fi
 #-----------------------------------------------------------------------------
 # Set default working directory if none specified
 if [[ -z ${WORK} ]]; then
-  work=${PATH_HOME}/programs/packages/mriqc/${PROJECT}
+  work=${PATH_HOME}/mriqc/${PROJECT}
 else
   work=${WORK}
 fi
@@ -137,53 +144,75 @@ fi
 n_procs=10
 
 #-----------------------------------------------------------------------------
-# set default binding point
-if [[ -z ${BIND} ]]; then
-	binding=${PATH_HOME}
-else
-	binding=${BIND}
-fi
-
-#-----------------------------------------------------------------------------
 # Set default container if none specified
 if [[ -z ${IMG} ]]; then
 	mriqc_container=${MRIQC_SIMG}
-	# mriqc_container=/data1/projects/MicroFunc/Jurjen/programs/packages/mriqc/containers_bids-mriqc--21.0.0rc2.simg
 else
 	mriqc_container=${IMG}
 fi
 
-if [[ ! -f ${mriqc_container} ]]; then
-	echo "Could not find singularity image for MRIqc.."
-	exit 1
+# Define command line
+if [[ -f ${mriqc_container} ]]; then
+
+  #-----------------------------------------------------------------------------
+  # Set default binding point if none specified
+  if [[ -z ${BIND} ]]; then
+    binding=${FPREP_BINDING}
+  else
+    binding=${BIND}
+  fi
+
+  if [[ ! -f ${mriqc_container} ]]; then
+    echo "Could not find singularity image \"${mriqc_container}\" for fmriprep.."
+    exit 1
+  fi 
+
+  # check if project root is within binding point
+  if [[ ${project} != *"${binding}"* ]]; then
+    echo
+    echo "---------------------------------------------------------------------------------------------------"
+    echo "ERROR in `basename ${0}`; your project root \"${project}\" cannot be accessed due to your binding point (\"${binding}\"). Please make sure the file on somewhere along the binding-path"
+    exit 1
+  fi
+
+  # define SGE command
+  run_cmd="singularity run --cleanenv -B ${binding}:${binding} ${mriqc_container}"
+  
+else
+  run_cmd="mriqc"
 fi
 
-# echo "derivatives = ${derivatives}"
-# echo "binding     = ${binding}"
-unset PYTHONPATH;
-
 # --cleanenv required to prevent interference from FSL v6 present on the spinoza server
-singularity run --cleanenv -B ${binding}:${binding} ${mriqc_container} \
-	${project} ${derivatives} \
+  cmd="""${run_cmd} \
+  ${project} \
+  ${derivatives} \
 	participant \
-	--session-id ${ses_nr} \
+  ${ses_flag} \
+  ${mod_flag} \
 	--participant-label ${subj_ID} \
 	--n_procs ${n_procs} \
 	-w ${work} \
 	--verbose-reports \
 	--mem_gb 64 \
-	--modalities ${mod} \
 	--no-sub
+"""
+
+echo $cmd
+exit 1
+# execute
+${cmd}
 
 if [[ $? -ne 0 ]]; then
-  echo "ERROR in `basename ${0}`: mriqc with singularity exited with non-zero status"
+  echo
+  echo "---------------------------------------------------------------------------------------------------"
+  echo "ERROR in `basename ${0}`: mriqc exited with non-zero status"
   exit 1
 fi
 
 # move html files to appropriate directory.
 html_files=`find ${derivatives} -type f -name "sub-${subj_ID}*" -and -name "*.html" 2>dev/null`
 if [[ ! -z ${html_files} ]]; then
-  mv ${html_files} ${derivatives}/${base_dir} 2>/dev/null
+  mv ${html_files} ${derivatives}/sub-${subj_ID} 2>/dev/null
 else
   echo "ERROR in `basename ${0}`: could not find html-files. This is suspicious.."
   exit 1
