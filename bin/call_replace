@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_replace
+
+wrapper for replacing a string for another for all files in a directory or just a single file.
+
+Args:
+  <search for>      string to be replaced
+  <replace with>    replacement string
+  <dir/file>        directory or file to perform the operation on
+
+Usage:
+  call_replace <search for> <replace with> <directory/file>
+
+Example:
+  call_replace /home/heij@spinozacentre.knaw.nl /home/heij ~/.conda/envs/prfline/bin
+  
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+if [[ $# -lt 3 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+search_for=${1}
+replace_with=${2}
+search_dir=${3}
+
+function search_string {
+  case `grep -rn "${search_for}" ${1} >/dev/null; echo $?` in
+    0)
+    # code if found
+    echo "replacing \"${search_for}\" with \"${replace_with}\" in ${1}"
+    sed -i "s|${search_for}|${replace_with}|g" ${1}
+    ;;
+    1)
+    # code if not found
+    ;;
+    *)
+    # code if an error occurred
+    echo "FAILURE: \"${1}\""
+    ;;
+  esac
+}
+
+if [[ -d ${search_dir} ]]; then
+  for file in ${search_dir}/*; do
+    if [[ -f ${file} ]]; then
+      search_string ${file}
+    fi
+  done
+elif [[ -f ${search_dir} ]]; then
+  search_string ${search_dir}
+fi
