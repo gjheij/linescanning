@@ -806,7 +806,6 @@ class NideconvFitter():
         color=None,
         ci_color="#cccccc",
         ci_alpha=0.6,
-        order=2,
         save_as=None,
         invert=False,
         **kwargs):
@@ -828,19 +827,18 @@ class NideconvFitter():
         if invert:
             self.max_vals = self.max_vals[::-1]
 
-        cf = CurveFitter(self.max_vals, x=self.depths, order=order, verbose=False)
-        for ix, mark in enumerate(self.max_vals):
-            axs.plot(cf.x[ix], mark, 'o', color=color_list[ix], alpha=ci_alpha)
-
-        pl = plotting.LazyPlot(
-            cf.y_pred_upsampled,
-            xx=cf.x_pred_upsampled,
-            axs=axs,
-            error=cf.ci_upsampled,
-            color=ci_color,
+        pl = plotting.LazyCorr(
+            self.depths, 
+            self.max_vals, 
+            color='#cccccc', 
+            axs=axs, 
             x_ticks=[0,50,100],
             x_label="depth (%)",
-            **kwargs)
+            points=False,
+            scatter_kwargs={"cmap": cmap})
+
+        for ix, mark in enumerate(self.max_vals):
+            axs.plot(self.cf.x[ix], mark, 'o', color=color_list[ix], alpha=ci_alpha)
 
         for pos,tag in zip([(0.02,0.02),(0.85,0.02)],["pial","wm"]):
             axs.annotate(
