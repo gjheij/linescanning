@@ -497,7 +497,69 @@ class SurfaceCalc(object):
         setattr(self, 'rh_surf_sm', self.rh_surf.smooth(self.curvature.data[self.lh_surf_data[0].shape[0]:], factor=kernel, iterations=nr_iter))
 
     @staticmethod
-    def read_fs_label(subject, fs_dir=None, fs_label=None, hemi="both"):
+    def read_fs_annot(subject, fs_dir=None, fs_annot=None, hemi="both"):
+        """read_fs_annot
+
+        read a freesurfer annot file (name must match with file in freesurfer directory)
+        
+        Parameters
+        -----------
+        subject: str
+            subject ID as used in `SUBJECTS_DIR`
+        fs_dir: str, optional
+            `FreeSurfer` directory (default = SUBJECTS_DIR)
+        fs_annot: str, optional
+            ROI-name to extract the vertex from as per ROIs created with `FreeSurfer`. Default is V1_exvivo.thresh
+        hemi: str, optional
+            For which hemisphere to perform the process, `lh`=left hemisphere, `rh`=right hemisphere, `both`=both hemispheres (default = `both`)
+
+        Returns
+        ----------
+        dict
+            Dictionary collecting outputs under the following keys
+
+            * lh: output from `nibabel.freesurfer.io.read_annot`
+            * rh: output from `nibabel.freesurfer.io.read_annot`
+        """
+
+        if not fs_dir:
+            fs_dir = os.environ.get("SUBJECTS_DIR")
+
+        if hemi == "both":
+            return {
+                'lh': nb.freesurfer.io.read_annot(
+                    opj(
+                        fs_dir, 
+                        subject, 
+                        'label', 
+                        f'lh.{fs_annot}.annot')
+                    ),
+                'rh': nb.freesurfer.io.read_annot(
+                    opj(
+                        fs_dir, 
+                        subject, 
+                        'label', 
+                        f'rh.{fs_annot}.annot'))
+                }
+
+        else:
+            if hemi.lower() != "lh" and hemi.lower() != "rh":
+                raise ValueError(f"Hemisphere should be one of 'both', 'lh', or 'rh'; not {hemi}")
+            else:
+                annot_file = opj(
+                    fs_dir, 
+                    ubject, 
+                    'label', 
+                    f'{hemi}.{fs_label}.annot')
+
+                return {hemi: nb.freesurfer.io.read_annot(annot_file)}
+
+    @staticmethod
+    def read_fs_label(
+        subject, fs_dir=None, 
+        fs_label=None, 
+        hemi="both"):
+
         """read_fs_label
 
         read a freesurfer label file (name must match with file in freesurfer directory)
@@ -522,24 +584,37 @@ class SurfaceCalc(object):
             * rh: output from `nibabel.freesurfer.io.read_label`
         """
 
-        # # dots are annoying in attributes, to replace them with underscores; won't fail if there aren't any present
-        # setattr(self, 'roi_label', fs_label.replace('.', '_'))
-
         if not fs_dir:
             fs_dir = os.environ.get("SUBJECTS_DIR")
 
         if hemi == "both":
-            return {'lh': nb.freesurfer.io.read_label(opj(fs_dir, subject, 'label', f'lh.{fs_label}.label'), read_scalars=False),
-                    'rh': nb.freesurfer.io.read_label(opj(fs_dir, subject, 'label', f'rh.{fs_label}.label'), read_scalars=False)}
-            # [setattr(self, f'{i}_{self.roi_label}', nb.freesurfer.io.read_label(opj(self.fs_dir, self.subject, 'label', f'{i}.{fs_label}.label'), read_scalars=False)) for i in ['lh','rh']]
+            return {
+                'lh': nb.freesurfer.io.read_label(
+                    opj(
+                        fs_dir, 
+                        subject, 
+                        'label', 
+                        f'lh.{fs_label}.label')
+                    ),
+                'rh': nb.freesurfer.io.read_label(
+                    opj(
+                        fs_dir, 
+                        subject, 
+                        'label', 
+                        f'rh.{fs_label}.label'))
+                }
 
         else:
             if hemi.lower() != "lh" and hemi.lower() != "rh":
                 raise ValueError(f"Hemisphere should be one of 'both', 'lh', or 'rh'; not {hemi}")
             else:
-                label_file = opj(fs_dir, subject, 'label', f'{hemi}.{fs_label}.label')
-                # setattr(self, f'{hemi}_{self.roi_label}', nb.freesurfer.io.read_label(label_file, read_scalars=False))
-                return {hemi: nb.freesurfer.io.read_label(label_file, read_scalars=False)}
+                label_file = opj(
+                    fs_dir, 
+                    ubject, 
+                    'label', 
+                    f'{hemi}.{fs_label}.annot')
+
+                return {hemi: nb.freesurfer.io.read_annot(label_file)}
     
     def label_to_mask(self, subject=None, lh_arr=None, rh_arr=None, hemi="both"):
         """label_to_mask
