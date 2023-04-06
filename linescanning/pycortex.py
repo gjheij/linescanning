@@ -554,12 +554,12 @@ class SavePycortexViews():
 def Vertex2D_fix(
     data1, 
     data2, 
-    subject, 
-    cmap, 
-    vmin, 
-    vmax, 
-    vmin2, 
-    vmax2, 
+    subject=None, 
+    cmap="magma", 
+    vmin1=0, 
+    vmax1=1, 
+    vmin2=0, 
+    vmax2=1, 
     roi_borders=None,
     curv_type="hcp",
     fc=-1.25):
@@ -583,7 +583,7 @@ def Vertex2D_fix(
     
     norm2 = Normalize(vmin2, vmax2)   
     
-    vx = cortex.Vertex(data1, subject, cmap=cmap, vmin=vmin, vmax=vmax)
+    vx = cortex.Vertex(data1, subject, cmap=cmap, vmin=vmin1, vmax=vmax1)
     
     # Map to RGB
     vx_rgb = np.vstack([vx.raw.red.data, vx.raw.green.data, vx.raw.blue.data])
