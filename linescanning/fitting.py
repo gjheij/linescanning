@@ -806,6 +806,7 @@ class NideconvFitter():
         color=None,
         ci_color="#cccccc",
         ci_alpha=0.6,
+        x_label="depth (%)",
         save_as=None,
         invert=False,
         **kwargs):
@@ -833,7 +834,7 @@ class NideconvFitter():
             color='#cccccc', 
             axs=axs, 
             x_ticks=[0,50,100],
-            x_label="depth (%)",
+            x_label=x_label,
             points=False,
             scatter_kwargs={"cmap": cmap})
 
