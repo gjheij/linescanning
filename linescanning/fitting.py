@@ -840,7 +840,7 @@ class NideconvFitter():
             **kwargs)
 
         for ix, mark in enumerate(self.max_vals):
-            axs.plot(self.cf.x[ix], mark, 'o', color=color_list[ix], alpha=ci_alpha)
+            axs.plot(self.depths[ix], mark, 'o', color=color_list[ix], alpha=ci_alpha)
 
         for pos,tag in zip([(0.02,0.02),(0.85,0.02)],["pial","wm"]):
             axs.annotate(
