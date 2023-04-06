@@ -747,7 +747,7 @@ class NideconvFitter():
                 vox_error = [self.arr_error_in_event[ii, 0, :] for ii in range(self.arr_voxels_in_event.shape[0])]
                 
                 if axs != None:
-                    plotting.LazyPlot(
+                    self.pl = plotting.LazyPlot(
                         vox_data,
                         xx=self.time,
                         error=vox_error,
@@ -772,7 +772,7 @@ class NideconvFitter():
                     else:
                         ylim = None
 
-                    plotting.LazyPlot(
+                    self.pl = plotting.LazyPlot(
                         vox_data,
                         xx=self.time,
                         error=vox_error,
@@ -828,7 +828,7 @@ class NideconvFitter():
         if invert:
             self.max_vals = self.max_vals[::-1]
 
-        pl = plotting.LazyCorr(
+        self.pl = plotting.LazyCorr(
             self.depths, 
             self.max_vals, 
             color='#cccccc', 
@@ -836,7 +836,8 @@ class NideconvFitter():
             x_ticks=[0,50,100],
             x_label=x_label,
             points=False,
-            scatter_kwargs={"cmap": cmap})
+            scatter_kwargs={"cmap": cmap},
+            **kwargs)
 
         for ix, mark in enumerate(self.max_vals):
             axs.plot(self.cf.x[ix], mark, 'o', color=color_list[ix], alpha=ci_alpha)
@@ -845,7 +846,7 @@ class NideconvFitter():
             axs.annotate(
                 tag,
                 pos,
-                fontsize=pl.font_size,
+                fontsize=self.pl.font_size,
                 xycoords="axes fraction"
             )
 
