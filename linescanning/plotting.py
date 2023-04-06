@@ -102,7 +102,7 @@ class LazyPRF(Defaults):
         vf_extent, 
         save_as=None, 
         ax=None, 
-        cmap='magma', 
+        cmap='RdBu_r', 
         cross_color="white", 
         alpha=None,
         shrink_factor=1, 
@@ -191,12 +191,22 @@ class LazyPRF(Defaults):
         else:
             plot_obj = np.zeros_like(self.prf)
 
+        # check if pRF has negatives
+        if plot_obj.min() < 0:
+            vmin = plot_obj.min()
+            vmax = -plot_obj.min()
+        else:
+            vmin = -plot_obj.max()
+            vmax = plot_obj.max()
+                    
         im = self.ax.imshow(
             plot_obj, 
             extent=self.vf_extent+self.vf_extent, 
             cmap=self.cmap, 
             alpha=self.alpha,
-            zorder=self.z_prf)
+            zorder=self.z_prf,
+            vmin=vmin,
+            vmax=vmax)
         
         # In case of a white background, the circle for the visual field is cut off, so we need to make an adjustment:
         if self.cmap != 'magma' and self.cmap != 'viridis':
@@ -319,6 +329,8 @@ class LazyPlot(Defaults):
         Also remove the bottom (x) spine of the plot
     markers: str, list, optional
         Use markers during plotting. If `ts` is a list, a list of similar length should be specified. If one array in `ts` should not have markers, use `None`. E.g., if `len(ts) == 3`, and we want only the first timecourse to have markers use: `markers=['.',None,None]
+    markersize: str, list, optional
+        Specify marker sizes during plotting. If `ts` is a list, a list of similar length should be specified. If one array in `ts` should not have markers, use `None`. E.g., if `len(ts) == 3`, and we want only the first timecourse to have markers use: `markers=['.',None,None]
     x_ticks: list, optional
         Locations where to put the ticks on the x-axis
     y_ticks: list, optional
@@ -382,6 +394,7 @@ class LazyPlot(Defaults):
         y_lim=None,
         x_lim=None,
         markers=None,
+        markersize=None,
         x_ticks=None,
         y_ticks=None,
         plot_alpha=None,
@@ -407,6 +420,7 @@ class LazyPlot(Defaults):
         self.y_lim              = y_lim
         self.x_lim              = x_lim
         self.markers            = markers
+        self.markersize         = markersize
         self.x_ticks            = x_ticks
         self.y_ticks            = y_ticks
 
@@ -461,8 +475,18 @@ class LazyPlot(Defaults):
                     self.markers = [None for ii in range(len(self.array))]
                 else:
                     self.markers = [self.markers]
-                    if len(self.markers) != len(self.array):
-                        raise ValueError(f"Marker list ({len(self.markers)}) does not match length of data list ({len(self.array)})")                    
+
+                if len(self.markers) != len(self.array):
+                    raise ValueError(f"Marker list ({len(self.markers)}) does not match length of data list ({len(self.array)})")
+
+            if not isinstance(self.markersize, list):
+                if self.markersize == None:
+                    self.markersize = [None for ii in range(len(self.array))]
+                else:
+                    self.markersize = [self.markersize]
+
+                if len(self.markersize) != len(self.array):
+                    raise ValueError(f"Markersize list ({len(self.markersize)}) does not match length of data list ({len(self.array)})")                            
 
             # decide on color scheme
             if not isinstance(self.color, list):
@@ -520,6 +544,7 @@ class LazyPlot(Defaults):
                     lw=use_width, 
                     ls=use_style,
                     marker=self.markers[idx],
+                    markersize=self.markersize[idx],
                     alpha=self.plot_alpha[idx])
 
                 # plot shaded error bars
@@ -770,7 +795,10 @@ class LazyCorr(Defaults):
         y_lim=None,
         x_lim=None,                 
         save_as=None,
+        x_ticks: list=None,
+        y_ticks: list=None,        
         points=True,
+        scatter_kwargs={},
         **kwargs):
 
         self.x              = x
@@ -787,6 +815,9 @@ class LazyCorr(Defaults):
         self.x_lim          = x_lim        
         self.save_as        = save_as
         self.points         = points
+        self.scatter_kwargs = scatter_kwargs
+        self.x_ticks        = x_ticks
+        self.y_ticks        = y_ticks
 
         super().__init__()
         self.__dict__.update(kwargs)
@@ -819,7 +850,8 @@ class LazyCorr(Defaults):
             y=self.y, 
             color=self.color, 
             ax=axs,
-            scatter=self.points)
+            scatter=self.points,
+            scatter_kws=self.scatter_kwargs)
 
         if isinstance(self.x_label, str):
             axs.set_xlabel(self.x_label, fontsize=self.font_size)
@@ -843,6 +875,12 @@ class LazyCorr(Defaults):
 
         if self.y_lim:
             axs.set_ylim(self.y_lim)
+
+        if isinstance(self.x_ticks, list):
+            self.axs.set_xticks(self.x_ticks)
+
+        if isinstance(self.y_ticks, list):
+            self.axs.set_yticks(self.y_ticks)  
 
         sns.despine(offset=self.sns_offset, trim=self.sns_trim)
 
@@ -1374,8 +1412,8 @@ class LazyHist(Defaults):
         else:
             self.plot()
 
-        if self.kde:
-            self.kde = self.return_kde()
+        # if self.kde:
+        #     self.kde = self.return_kde()
 
         if self.save_as:
             if isinstance(self.save_as, list):
