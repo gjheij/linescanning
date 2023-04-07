@@ -97,7 +97,6 @@ if [[ -d ${search_dir} ]]; then
 
   for file in ${search_files[@]}; do
     if [[ -f ${file} ]]; then
-      echo "changing $(basename ${file})" 
       search_string ${file}
     fi
   done
