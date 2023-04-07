@@ -11,30 +11,63 @@ call_replace
 wrapper for replacing a string for another for all files in a directory or just a single file.
 
 Args:
+  -h|--help         show this help text
+  -r|--recursive    run in recursive mode; use at own risk
   <search for>      string to be replaced
   <replace with>    replacement string
   <dir/file>        directory or file to perform the operation on
 
 Usage:
-  call_replace <search for> <replace with> <directory/file>
+  call_replace [options] <search for> <replace with> <directory/file>
 
 Example:
   call_replace /home/heij@spinozacentre.knaw.nl /home/heij ~/.conda/envs/prfline/bin
-  
+  call_replace -r /home/heij@spinozacentre.knaw.nl /home/heij ~/.conda/envs/prfline/bin
+  call_replace --recursive /home/heij@spinozacentre.knaw.nl /home/heij ~/.conda/envs/prfline/bin
+
 ---------------------------------------------------------------------------------------------------
 
 USAGE
     exit 1
 }
 
+#-----------------------------------------------------------------------------
+# Deal with arguments
+recursive=0
+while getopts :-:hr arg; do
+  case ${arg} in
+    -)
+      case "${OPTARG}" in
+        recursive)
+          recursive=1
+          ;; 
+        help)
+          Usage >&2
+          exit 1
+          ;;           
+        *)
+          if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
+            echo "Unknown option --${OPTARG}"
+            exit 1
+          fi
+          ;;
+      esac;;    
+    r)  recursive=1
+        ;;
+    h)  Usage >&2
+        exit 1
+        ;;        
+  esac
+done
+
 if [[ $# -lt 3 ]] ; then
   Usage >&2
   exit 1
 fi
 
-search_for=${1}
-replace_with=${2}
-search_dir=${3}
+search_for=${@:$OPTIND:1}
+replace_with=${@:$OPTIND+1:1}
+search_dir=${@:$OPTIND+2:1}
 
 function search_string {
   case `grep -rn "${search_for}" ${1} >/dev/null; echo $?` in
@@ -54,8 +87,17 @@ function search_string {
 }
 
 if [[ -d ${search_dir} ]]; then
-  for file in ${search_dir}/*; do
+
+  if [[ ${recursive} -eq 1 ]]; then
+    echo "Locating files"
+    search_files=(`find ${search_dir} -type f`)
+  else
+    search_files=(`find ${search_dir} -maxdepth 1 -type f`)
+  fi
+
+  for file in ${search_files[@]}; do
     if [[ -f ${file} ]]; then
+      echo "changing $(basename ${file})" 
       search_string ${file}
     fi
   done
