@@ -99,7 +99,7 @@ USAGE
 VERBOSE=""
 VERB=0
 metric="MI"
-INT="NearestNeighbor"
+INT="Linear"
 TYPE="rigid"
 use_hist=0
 collapse_output=1
@@ -235,7 +235,7 @@ function check_stage_inputs {
     defaults=8x4x2x1
   elif [[ ${in_type} == "smooth" ]]; then
     arr=${smooth}
-    defaults=4x3x2x1
+    defaults=3x2x1x0
   else
     echo "ERROR in `basename ${0}`: unknown input type \"${in_type}\". Must be one of \"converge\", \"shrink\", or \"smooth\""
     exit 1
@@ -441,7 +441,7 @@ if [[ ${TYPE,,} == "rigid" ]]; then
 elif [[ ${TYPE,,} == "affine" ]]; then
   cmd="""antsRegistration ${VERBOSE} -d 3 --float 1 -z 1 ${INITIAL} --interpolation ${INT} ${MASK} --output [${OUT}] --use-histogram-matching ${use_hist} ${winsorize_flag} --transform Rigid[${gradient_step}] --metric ${metric}[${FIXED},${MOVING},1,${val},Regular,0.25] --convergence [${converg},1e-6,10] --shrink-factors ${shrink} --smoothing-sigmas ${smooth}vox --transform Affine[${gradient_step}] --metric ${metric}[${FIXED},${MOVING},1,${val},Regular,0.25] --convergence [${converg},1e-6,10] --shrink-factors ${shrink} --smoothing-sigmas ${smooth}vox --collapse-output-transforms ${collapse_output}"""
 elif [[ ${TYPE,,} == "syn" ]]; then
-  cmd="""antsRegistration ${VERBOSE} -d 3 --float 1 -z 1 ${INITIAL} --interpolation ${INT} ${MASK} --output [${OUT}]  --use-histogram-matching ${use_hist} ${winsorize_flag} --transform Rigid[${gradient_step}] --metric ${metric}[${FIXED},${MOVING},1,${val},Regular,0.25] --convergence [${converg},1e-6,10] --shrink-factors ${shrink} --smoothing-sigmas ${smooth}vox --transform Affine[${gradient_step}] --convergence [${converg},1e-6,10] --shrink-factors ${shrink} --smoothing-sigmas ${smooth}vox --transform SyN[${gradient_step},2,0] --metric CC[${FIXED},${MOVING},1,${val}] --convergence [${converg},1e-6,10] --shrink-factors ${shrink} --smoothing-sigmas ${smooth}vox --collapse-output-transforms ${collapse_output}"""
+  cmd="""antsRegistration ${VERBOSE} -d 3 --float 1 -z 1 ${INITIAL} --interpolation ${INT} ${MASK} --output [${OUT}] --use-histogram-matching ${use_hist} ${winsorize_flag} --transform Rigid[${gradient_step}] --metric ${metric}[${FIXED},${MOVING},1,${val},Regular,0.25] --convergence [${converg},1e-6,10] --shrink-factors ${shrink} --smoothing-sigmas ${smooth}vox --transform Affine[${gradient_step}] --metric ${metric}[${FIXED},${MOVING},1,${val},Regular,0.25] --convergence [${converg},1e-6,10] --shrink-factors ${shrink} --smoothing-sigmas ${smooth}vox --transform SyN[${gradient_step},3,0] --metric CC[${FIXED},${MOVING},1,4] --convergence [${converg},1e-6,10] --shrink-factors ${shrink} --smoothing-sigmas ${smooth}vox --collapse-output-transforms ${collapse_output}"""
 else
   echo "Unknown registration type \"${TYPE}\" specified"
   Usage >&2
@@ -449,6 +449,8 @@ else
 fi
 
 if [[ ${VERB} -eq 1 ]]; then
+  echo "antsRegistration call:"
+  echo "---------------------------------------------------------------------------------------------------"
   echo ${cmd}
 fi
 
