@@ -185,7 +185,7 @@ do
           ;;        
         histo)
           use_hist=1
-          ;;                                                                                          
+          ;;
         verbose)
           VERBOSE="--verbose 1"
           VERB=1
@@ -217,8 +217,8 @@ do
           ;;            
     g)  gradient_step=${OPTARG}
           ;;                                    
-    v)  VERBOSE=""
-        VERB=0
+    v)  VERBOSE="--verbose 1"
+        VERB=1
           ;;              
   esac
 done
@@ -439,7 +439,7 @@ fi
 if [[ ${TYPE,,} == "rigid" ]]; then
   cmd="""antsRegistration ${VERBOSE} -d 3 --float 1 -z 1 ${INITIAL} --interpolation ${INT} ${MASK} --output [${OUT}] --use-histogram-matching ${use_hist} ${winsorize_flag} --transform Rigid[${gradient_step}] --metric ${metric}[${FIXED},${MOVING},1,${val},Regular,0.25] --convergence [${converg},1e-6,10] --shrink-factors ${shrink} --smoothing-sigmas ${smooth}vox --collapse-output-transforms ${collapse_output}"""
 elif [[ ${TYPE,,} == "affine" ]]; then
-  cmd="""antsRegistration ${VERBOSE} -d 3 --float 1 -z 1 ${INITIAL} --interpolation ${INT} ${MASK} --output [${OUT}] --use-histogram-matching ${use_hist} ${winsorize_flag} --transform Rigid[${gradient_step}] --metric ${metric}[${FIXED},${MOVING},1,${val},Regular,0.25] --convergence [${converg},1e-6,10] --shrink-factors ${shrink} --smoothing-sigmas ${smooth}vox --transform Affine[${gradient_step}] --metric ${metric}[$1,${MOVING},1,${val},Regular,0.25] --convergence [${converg},1e-6,10] --shrink-factors ${shrink} --smoothing-sigmas ${smooth}vox --collapse-output-transforms ${collapse_output}"""
+  cmd="""antsRegistration ${VERBOSE} -d 3 --float 1 -z 1 ${INITIAL} --interpolation ${INT} ${MASK} --output [${OUT}] --use-histogram-matching ${use_hist} ${winsorize_flag} --transform Rigid[${gradient_step}] --metric ${metric}[${FIXED},${MOVING},1,${val},Regular,0.25] --convergence [${converg},1e-6,10] --shrink-factors ${shrink} --smoothing-sigmas ${smooth}vox --transform Affine[${gradient_step}] --metric ${metric}[${FIXED},${MOVING},1,${val},Regular,0.25] --convergence [${converg},1e-6,10] --shrink-factors ${shrink} --smoothing-sigmas ${smooth}vox --collapse-output-transforms ${collapse_output}"""
 elif [[ ${TYPE,,} == "syn" ]]; then
   cmd="""antsRegistration ${VERBOSE} -d 3 --float 1 -z 1 ${INITIAL} --interpolation ${INT} ${MASK} --output [${OUT}]  --use-histogram-matching ${use_hist} ${winsorize_flag} --transform Rigid[${gradient_step}] --metric ${metric}[${FIXED},${MOVING},1,${val},Regular,0.25] --convergence [${converg},1e-6,10] --shrink-factors ${shrink} --smoothing-sigmas ${smooth}vox --transform Affine[${gradient_step}] --convergence [${converg},1e-6,10] --shrink-factors ${shrink} --smoothing-sigmas ${smooth}vox --transform SyN[${gradient_step},2,0] --metric CC[${FIXED},${MOVING},1,${val}] --convergence [${converg},1e-6,10] --shrink-factors ${shrink} --smoothing-sigmas ${smooth}vox --collapse-output-transforms ${collapse_output}"""
 else
