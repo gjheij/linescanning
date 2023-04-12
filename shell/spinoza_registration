@@ -72,6 +72,7 @@ fi
 SGE=0
 OW=
 reg_type=""
+verb_flag=""
 # Check for subject flag
 while getopts :-:ocs:n: argument
 do
@@ -89,7 +90,10 @@ do
           ;;  
         sge)
           SGE=1
-          ;;            
+          ;;    
+        verbose)
+          verb_flag="--verbose"
+          ;;                  
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}"
@@ -215,6 +219,7 @@ for subID in ${search}; do
   outWarp=${output_dir}/${base}_${ext}_mode-image_warp.nii.gz
   outInvWarp=${output_dir}/${base}_${ext}_mode-image_invwarp.nii.gz
   outGenAff=${output_dir}/${base}_${ext}_mode-image_xfm.mat
+  cmd_file=${output_dir}/${base}_${ext}_mode-image_cmd.txt
 
   if [[ ! -d ${output_dir} ]]; then
     echo "Creating output directory"
@@ -245,8 +250,8 @@ for subID in ${search}; do
           job="call_antsregistration"
         fi
 
-        echo "Registering $(basename ${moving}) to $(basename ${fixed}) [${type_reg^^}]"
-        ${job} ${reg_type} ${fixed} ${moving} ${output_dir}/${base}_${ext}
+        echo "Registering $(basename ${moving}) to $(basename ${fixed}) [${reg_type}]"
+        ${job} ${verb_flag} ${reg_type} ${fixed} ${moving} ${output_dir}/${base}_${ext}
 
         if [[ ${SGE} -eq 1 ]]; then
           echo "Waiting to check qstat.."
@@ -257,13 +262,11 @@ for subID in ${search}; do
             echo "ERROR in `basename ${0}`: wait_for_qsub exited with non-zero status"
             exit 1
           fi
-        fi
-
-        if [[ $? != 0 ]]; then
-          echo
-          echo "---------------------------------------------------------------------------------------------------"
-          echo "ERROR in `basename ${0}`: call_antsregistration exited with non-zero status"
-          exit 1
+        else
+          if [[ $? -ne 0 ]]; then
+            echo "ERROR in `basename ${0}`: call_antsregistration exited with non-zero status"
+            exit 1
+          fi
         fi
 
         if [[ ${type_reg} == "syn" ]]; then
@@ -273,6 +276,7 @@ for subID in ${search}; do
 
         # we'll have this file regardless of registration type
         mv ${output_dir}/${base}_${ext}genaff.mat ${outGenAff} 2>/dev/null
+        mv ${output_dir}/${base}_${ext}command.txt ${cmd_file} 2>/dev/null
 
       else
         echo "Renaming \"${base}_${ext}genaff.mat\" to \"`basename ${outGenAff}`\""
