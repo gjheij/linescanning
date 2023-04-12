@@ -229,9 +229,9 @@ for subID in ${search}; do
   if [[ -f ${fixed} && -f ${moving} ]]; then
 
     # check if we should overwrite
-    # if [[ ${OW} -eq 1 ]]; then
-    #   rm ${outGenAff} 2>/dev/null
-    # fi
+    if [[ ${OW} -eq 1 ]]; then
+      rm ${outGenAff} 2>/dev/null
+    fi
 
     if [[ ! -f ${outGenAff} ]]; then
       if [[ ! -f ${output_dir}/${base}_${ext}genaff.mat ]]; then
@@ -253,6 +253,11 @@ for subID in ${search}; do
         echo "Registering $(basename ${moving}) to $(basename ${fixed}) [${reg_type}]"
         ${job} ${verb_flag} ${reg_type} ${fixed} ${moving} ${output_dir}/${base}_${ext}
 
+        if [[ $? -ne 0 ]]; then
+          echo "ERROR in `basename ${0}`: call_antsregistration exited with non-zero status"
+          exit 1
+        fi
+
         if [[ ${SGE} -eq 1 ]]; then
           echo "Waiting to check qstat.."
           sleep 10
@@ -260,11 +265,6 @@ for subID in ${search}; do
           wait_for_qsub "reg_${sub_id}"
           if [[ $? -ne 0 ]]; then
             echo "ERROR in `basename ${0}`: wait_for_qsub exited with non-zero status"
-            exit 1
-          fi
-        else
-          if [[ $? -ne 0 ]]; then
-            echo "ERROR in `basename ${0}`: call_antsregistration exited with non-zero status"
             exit 1
           fi
         fi
