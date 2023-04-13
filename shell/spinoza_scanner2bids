@@ -23,7 +23,7 @@ Input options:
   <project root>      directory to output BIDSified data to
   <sourcedata>        directory containing to be converted data
   -o|--ow             Overwrite existing output
-  -f|--full           Overwrite existing output + created nifti folder
+  --full              Overwrite existing output + created nifti folder
   --lines             flag to tell we're dealing with a line-scanning session. By default 'regular',
                       which means standard whole-brain acquisitions.
   --inv               add individual inversion files from anatomies in 'anat' folder
@@ -84,7 +84,7 @@ DCM_FIX=0
 reorient=1
 prot_flag=""
 pe_dir=""
-while getopts :-:osf:n: argument
+while getopts :-:os:n: argument
 do
   case ${argument} in
     -)
@@ -135,9 +135,7 @@ do
     n)  ses=${OPTARG}
           ;;     
     o)  OW=1
-          ;;   
-    f)  FULL_OW=1
-          ;;                                    
+          ;;                              
   esac
 done
 
