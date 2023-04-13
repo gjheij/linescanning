@@ -20,9 +20,10 @@ line scanning stuff.
 Input options:
   -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
   -n <session>        session ID (e.g., 1, 2, or none)
-  -o                  Overwrite existing output
   <project root>      directory to output BIDSified data to
   <sourcedata>        directory containing to be converted data
+  -o|--ow             Overwrite existing output
+  -f|--full           Overwrite existing output + created nifti folder
   --lines             flag to tell we're dealing with a line-scanning session. By default 'regular',
                       which means standard whole-brain acquisitions.
   --inv               add individual inversion files from anatomies in 'anat' folder
@@ -76,13 +77,14 @@ EOF
 
 # Check for subject & session flags
 OW=0
+FULL_OW=0
 SES_TYPE="regular"
 ADD_INV=0
 DCM_FIX=0
 reorient=1
 prot_flag=""
 pe_dir=""
-while getopts :-:os:n: argument
+while getopts :-:osf:n: argument
 do
   case ${argument} in
     -)
@@ -114,7 +116,13 @@ do
           ;;        
         no_lpi)
           reorient=0
-          ;;                                                               
+          ;;       
+        ow)
+          OW=1
+          ;;  
+        full)
+          FULL_OW=1
+          ;;                                                                                   
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}, did you mean \"--lines\"?"
@@ -127,7 +135,9 @@ do
     n)  ses=${OPTARG}
           ;;     
     o)  OW=1
-          ;;                            
+          ;;   
+    f)  FULL_OW=1
+          ;;                                    
   esac
 done
 
@@ -191,8 +201,14 @@ for subID in ${search}; do
   output_dir=${input_dir}/nifti
   bids_dir=${PROJECT_ROOT}/${base_path}
 
-  if [[ ${OW} -eq 1 ]]; then
+  # standard overwrite
+  if [[ ${OW} -eq 1 || ${FULL_OW} -eq 1 ]]; then
     rm -r ${bids_dir}/* 2>/dev/null
+  fi
+
+  # full overwrite
+  if [[ ${FULL_OW} -eq 1 ]]; then
+    rm -r ${output_dir} 2>/dev/null
   fi
 
   if [[ ${SES_TYPE} == "regular" ]]; then
@@ -264,7 +280,7 @@ for subID in ${search}; do
         #-------------------------------------------------------------------------------------------------------------------------------
         # PARREC TO NIFTI
         if [[ -d ${output_dir} ]]; then
-          echo "Directory exists, skipping conversion."
+          echo "Directory exists, skipping conversion (use \"--full\" to overwrite this folder too)."
         else
           echo "Converting files to nifti-format"
           call_dcm2niix ${prot_flag} -i ${input_dir} -o ${output_dir}
@@ -299,6 +315,7 @@ for subID in ${search}; do
         fi
 
         if [[ ${ADD_INV} -eq 1 ]] || [[ ${DCM_FIX} -eq 1 ]]; then
+          echo " Dealing with anatomical images.."
           inv_img=`find "${output_dir}" -type f \( -name "*T1w_*" -and -name "*_t10*" -or -name "*_t29*" -or -name "*_t30*" \) 2>/dev/null`
           IFS=$'\n' invs=($(sort <<<"${inv_img[*]}"))
           unset IFS
@@ -324,6 +341,12 @@ for subID in ${search}; do
             out_fn=${bids_dir}/anat/${base}_acq-${DATA}_${inv_tag}_${rec_tag}.${ext}
             if [[ ! -f ${out_fn} ]]; then
               cp ${ff} ${out_fn}
+
+              if [[ ${ext} == *"nii.gz"* ]]; then
+                if [[ ${reorient} -eq 1 ]]; then
+                  call_reorient -i ${out_fn}
+                fi
+              fi
             fi
 
           done
@@ -340,6 +363,10 @@ for subID in ${search}; do
               fi
               out_fn=${bids_dir}/anat/${base}${acq_tag}_${qq}.nii.gz
               cp ${img} ${out_fn} 2>/dev/null
+
+              if [[ ${reorient} -eq 1 ]]; then
+                call_reorient -i ${out_fn}
+              fi
 
               json_fn=$(dirname ${img})/$(basename ${img} .nii.gz).json
               if [ -f ${json_fn} ]; then
@@ -688,6 +715,35 @@ for subID in ${search}; do
 
           done
 
+          # check nr fmaps & funcs to fix IntendedFor
+          func_files=`find ${bids_dir}/func -type f -name "*_bold.nii.gz"`; funcs=($(sort <<<"${func_files[*]}"))
+          fmap_files=`find ${bids_dir}/fmap -type f -name "*_epi.json"`; fmaps=($(sort <<<"${fmap_files[*]}"))
+
+          if [[ ${#funcs} -ne ${#fmaps} ]]; then
+            # add all funcs to IntendedFor
+            if [[ ${#fmaps[@]} -eq 1 && ${#funcs[@]} -gt 1 ]]; then
+              # we have 1 FMAP for all bolds
+              echo "Received an FMAP file for all BOLD files; fixing IntendedFor"
+              func_list=""; ct=0; for f in ${funcs[@]}; do ((ct++)); if [[ ${ct} -eq ${#funcs[@]} ]]; then add_="${f}"; else add_="${f},"; fi; func_list+=${add_}; done
+              call_json ${fmaps[0]} IntendedFor "${func_list}"
+            elif [[ `expr ${#funcs[@]} / ${#fmaps[@]}` -eq 2 ]]; then
+              # we have twice the nr of BOLDs vs FMAPs
+              echo "Received an FMAP file for every 2 BOLD files; fixing IntendedFor"
+              
+              fm_ct=0
+              for ii in ${fmaps[@]}; do
+                tmp=(${funcs[@]:fm_ct:fm_ct+${#fmaps[@]}})
+                tmp_list=""; ct=0; for f in ${tmp[@]}; do ((ct++)); if [[ ${ct} -eq ${#tmp[@]} ]]; then add_="${f}"; else add_="${f},"; fi; tmp_list+=${add_}; done
+                call_json ${ii} IntendedFor "${tmp_list}"
+
+                fm_ct=`expr ${fm_ct} + ${#fmaps[@]}`
+              done
+              
+            else
+              echo "WARNING: got ${#funcs[@]} BOLD files and ${#fmaps[@]} FMAP files. I can only deal with 1 FMAP for all, an FMAP for all BOLD files, or `expr ${#funcs[@]} / ${#fmaps[@]}` FMAP files (an FMAP for every 2 BOLD files)"
+            fi
+          fi
+            
           # check for physio files
           phys=`find "${input_dir}" -type f \( -name "SCANPHYS*" -and -name "*bold_*.log" \) 2>/dev/null`
 
@@ -732,7 +788,7 @@ for subID in ${search}; do
         fi
         echo "Done"
       else
-        echo "${msg}; use \"master -m 02 -o\" to overwrite"
+        echo "${msg}; use \"master -m 02 -o\" or \"master -m 02 --full\" to overwrite"
       fi
     fi
   else
