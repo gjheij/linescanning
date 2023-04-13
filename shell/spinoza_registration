@@ -269,7 +269,7 @@ for subID in ${search}; do
           fi
         fi
 
-        if [[ ${type_reg} == "syn" ]]; then
+        if [[ ${reg_type} == *"syn"* ]]; then
           mv ${output_dir}/${base}_${ext}1Warp.nii.gz ${outWarp} 2>/dev/null
           mv ${output_dir}/${base}_${ext}1InverseWarp.nii.gz ${outInvWarp} 2>/dev/null
         fi
@@ -281,6 +281,12 @@ for subID in ${search}; do
       else
         echo "Renaming \"${base}_${ext}genaff.mat\" to \"`basename ${outGenAff}`\""
         mv ${output_dir}/${base}_${ext}genaff.mat ${outGenAff} 2>/dev/null
+        mv ${output_dir}/${base}_${ext}command.txt ${cmd_file} 2>/dev/null
+
+        if [[ ${reg_type} == *"syn"* ]]; then
+          mv ${output_dir}/${base}_${ext}1Warp.nii.gz ${outWarp} 2>/dev/null
+          mv ${output_dir}/${base}_${ext}1InverseWarp.nii.gz ${outInvWarp} 2>/dev/null
+        fi      
       fi
 
     else
