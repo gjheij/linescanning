@@ -197,9 +197,8 @@ fi
 	--no-sub
 """
 
-echo $cmd
-exit 1
 # execute
+echo $cmd
 ${cmd}
 
 if [[ $? -ne 0 ]]; then
