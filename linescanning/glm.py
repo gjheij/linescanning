@@ -998,6 +998,7 @@ class Posthoc(Defaults):
             p_meth = "p-unc"
 
         for contr in range(self.posthoc_sorted.shape[0]):
+            txt = None
             p_val = self.posthoc_sorted[p_meth].iloc[contr] 
             if p_val<self.alpha:
                 
@@ -1017,7 +1018,7 @@ class Posthoc(Defaults):
                     txt = "ns"
                     style = "italic"
                     f_size = self.label_size
-                    dist = self.ast_frac*self.ns_frac
+                    dist = self.ast_frac*self.ns_frac                    
 
             # read indices from output dataframe and conditions
             if isinstance(txt, str):
@@ -1028,16 +1029,18 @@ class Posthoc(Defaults):
                 x2 = np.where(self.conditions == B)[0][0]
 
                 diff = self.minmax[1]-self.minmax[0]
-                y, h, col =  (diff*self.y_pos)+self.minmax[0], diff*0.02, 'k'
+                y,h,col =  (diff*self.y_pos)+self.minmax[0], diff*0.02, 'k'
                 self.axs.plot(
                     [x1,x1,x2,x2], 
                     [y,y+h,y+h,y], 
                     lw=self.tick_width, 
                     c=col)
 
+                x_txt = (x1+x2)*.5
+                y_txt = y+h*dist
                 self.axs.text(
-                    (x1+x2)*.5, 
-                    y+h*dist, 
+                    x_txt, 
+                    y_txt, 
                     txt, 
                     ha='center', 
                     va='bottom', 
@@ -1050,3 +1053,112 @@ class Posthoc(Defaults):
 
                 # reset txt
                 txt = None
+
+class ANCOVA(Defaults):
+
+    def __init__(
+        self,
+        df=None,
+        dv=None,
+        between=None,
+        covar=None,
+        axs=None,
+        alpha=0.05,
+        y_pos=0.95,
+        ast_frac=0.2,
+        ns_annot=False,
+        ns_frac=5):
+
+        super().__init__()
+        
+        self.df = df
+        self.dv = dv
+        self.between = between
+        self.covar = covar
+        self.axs = axs
+        self.alpha = alpha
+        self.y_pos = y_pos
+        self.ast_frac = ast_frac
+        self.ns_frac = ns_frac
+        self.annotate_ns = ns_annot
+
+    def run_ancova(self, **kwargs):
+
+        try:
+            import pingouin
+        except:
+            raise ImportError(f"Could not import 'pingouin'")
+        
+        # do stats
+        self.anc = pingouin.ancova(
+            data=self.df, 
+            dv=self.dv,
+            covar=self.covar,
+            between=self.between,
+            **kwargs)
+                
+    def plot_bars(
+        self, 
+        plot_var=None):
+    
+        if not hasattr(self, "anc"):
+            self.run_ancova()
+
+        # find which variable to plot
+        if not isinstance(plot_var, str):
+            plot_var = self.between
+        
+        # get index of variable
+        plot_ix = list(self.anc.Source.values).index(plot_var)
+
+        if "p-corr" in list(self.anc.columns):
+            p_meth = "p-corr"
+        else:
+            p_meth = "p-unc"
+
+        txt = None
+
+        # get pval
+        p_val = self.anc[p_meth].iloc[plot_ix] 
+        if p_val<self.alpha:
+            
+            if 0.01 < p_val < 0.05:
+                txt = "*"
+            elif 0.001 < p_val < 0.01:
+                txt = "**"
+            elif p_val < 0.001:
+                txt = "***"
+                
+            style = None
+            f_size = self.font_size
+            dist = self.ast_frac
+
+        else:
+            if self.annotate_ns:
+                txt = "ns"
+                style = "italic"
+                f_size = self.label_size
+                dist = self.ast_frac*self.ns_frac   
+
+        if isinstance(txt, str):
+            self.minmax = list(self.axs.get_ylim())
+            diff = self.minmax[1]-self.minmax[0]
+            y,h,col =  (diff*self.y_pos)+self.minmax[0], diff*0.02, 'k'
+            x1,x2 = 0,1
+            self.axs.plot(
+                [x1,x1,x2,x2], 
+                [y,y+h,y+h,y], 
+                lw=self.tick_width, 
+                c=col)
+            
+            x_txt = (x1+x2)*.5
+            y_txt = y+h*dist
+            self.axs.text(
+                x_txt, 
+                y_txt, 
+                txt, 
+                ha='center', 
+                va='bottom', 
+                color=col,
+                fontsize=f_size,
+                style=style)
