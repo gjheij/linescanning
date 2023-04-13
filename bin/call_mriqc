@@ -194,8 +194,7 @@ fi
 	-w ${work} \
 	--verbose-reports \
 	--mem_gb 64 \
-	--no-sub
-"""
+	--no-sub"""
 
 # execute
 echo $cmd
@@ -209,7 +208,7 @@ if [[ $? -ne 0 ]]; then
 fi
 
 # move html files to appropriate directory.
-html_files=`find ${derivatives} -type f -name "sub-${subj_ID}*" -and -name "*.html" 2>dev/null`
+html_files=`find ${derivatives} -type f -name "sub-${subj_ID}*" -and -name "*.html" 2>/dev/null`
 if [[ ! -z ${html_files} ]]; then
   mv ${html_files} ${derivatives}/sub-${subj_ID} 2>/dev/null
 else
