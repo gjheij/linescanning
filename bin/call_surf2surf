@@ -41,7 +41,12 @@ Example:
     out_file = argv[3]
     hemi     = argv[4]
 
-    mri_surf2surf(src_subj=src_subj, trg_subj=trg_subj, src_file=src_file, out_file=out_file, hemi=hemi)
+    mri_surf2surf(
+        src_subj=src_subj, 
+        trg_subj=trg_subj, 
+        src_file=src_file, 
+        out_file=out_file, 
+        hemi=hemi)
 
 if __name__ == "__main__":
     main(sys.argv[1:])
