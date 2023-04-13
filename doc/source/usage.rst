@@ -469,7 +469,8 @@ Below is the ``help``-information from the ``master`` script:
   Available modules:                                     Script                           hh:mm:ss
     -00:  Register anat ses-1 to ms ses-1 for planning   (spinoza_lineplanning)           00:06:00
     -01:  Make new session for subject                   (spinoza_bidssession)            00:00:01
-    -02:  Convert raw files to nifti                     (spinoza_scanner2bids)           00:02:00
+    -02a: Convert raw files to nifti                     (spinoza_scanner2bids)           00:02:00
+    -02b: Quality control with MRIQC                     (spinoza_mriqc)                  00:30:00
     -03:  Reconstruction of line data                    (spinoza_linerecon)              00:10:00
     -04:  Estimate T1's from mp2rage and memp2rage       (spinoza_qmrimaps)               00:01:30
     -05a: Register T1 from memp2rage to T1 from mp2rage  (spinoza_registration)           00:03:00
@@ -531,7 +532,7 @@ First, we need to convert our DICOMs/PARRECs to nifti-files. We can do this by p
         │   └── sub-001_ses-1_task-2R_run-3_Logs
         └── Raw files (DICOMs/PARRECs)
 
-Once you've put the files there, you can run ``module 02``. This will convert your data to nifti's and store them according to BIDS. You can use the ``-n`` flag to specify with which session we're dealing. This creates the folder structure outlined above. If you also have phase data from your BOLD, then it creates an additional `phase`-folder, which can be used for ``NORDIC`` later on. If you have a non-linescanning acquisition (i.e., standard whole-brain-ish data), we'll set the coordinate system to `LPI` for all image. This ensures we can use later outputs from fMRIprep_ on our native data, which will help if you want to combine segmentations from different software packages (affine matrices are always a pain; check [here](https://nipy.org/nibabel/coordinate_systems.html) for a good explanation). If you have extremely large par/rec files, `dcm2niix` [might fail](https://github.com/rordenlab/dcm2niix/issues/659). To work around this, we monitor these error and attempt to re-run the conversion with [call_parrec2nii](https://github.com/gjheij/linescanning/blob/main/bin/call_parrec2nii), which wraps `parrec2nii` that comes with nibabel. To do this, use the `--dcm_fix` flag. Additionally, we also try to read the phase-encoding direction from the PAR-file, but this is practically impossible. So there's two ways to automatically populate the `PhaseEncodingDirection` field in your json files: 
+Once you've put the files there, you can run ``module 02a`` (if this doesn't do anything, you're probably on an older version. This means you do not have access to `02b`; quality control with `MRIqc`). This will convert your data to nifti's and store them according to BIDS. You can use the ``-n`` flag to specify with which session we're dealing. This creates the folder structure outlined above. If you also have phase data from your BOLD, then it creates an additional `phase`-folder, which can be used for ``NORDIC`` later on. If you have a non-linescanning acquisition (i.e., standard whole-brain-ish data), we'll set the coordinate system to `LPI` for all image. This ensures we can use later outputs from fMRIprep_ on our native data, which will help if you want to combine segmentations from different software packages (affine matrices are always a pain; check [here](https://nipy.org/nibabel/coordinate_systems.html) for a good explanation). If you have extremely large par/rec files, `dcm2niix` [might fail](https://github.com/rordenlab/dcm2niix/issues/659). To work around this, we monitor these error and attempt to re-run the conversion with [call_parrec2nii](https://github.com/gjheij/linescanning/blob/main/bin/call_parrec2nii), which wraps `parrec2nii` that comes with nibabel. To do this, use the `--dcm_fix` flag. Additionally, we also try to read the phase-encoding direction from the PAR-file, but this is practically impossible. So there's two ways to automatically populate the `PhaseEncodingDirection` field in your json files: 
 
 1) Accept defaults: `AP` for BOLD and `PA` for FMAP 
 2) Set the `export PE_DIR_BOLD=<value>` in the setup file, with one of `AP`, `PA`, `LR`, or `RL`. This sets the phase-encoding direction for the BOLD-data. This value is automatically switched for accompanying fieldmaps
@@ -540,10 +541,26 @@ Once you've put the files there, you can run ``module 02``. This will convert yo
 
 .. code:: bash
 
-    $ master -m 02 -n 1                         # spinoza_scanner2bids
-    $ master -m 02 -n 1 --dcm_fix               # monitor and fix catastrophic errors
-    $ master -m 02 -n 1 --dcm_fix --pa          # set the PhaseEncodingDirection for the BOLD to PA (default = AP)
-    $ master -m 02 -n 1 --dcm_fix --no_lpi      # do not reorient your data to LPI coordinates (the default one for fMRIPrep); ill-advised when you want to do NORDIC
+    $ master -m 02a -n 1                         # spinoza_scanner2bids
+    $ master -m 02a -n 1 --dcm_fix               # monitor and fix catastrophic errors
+    $ master -m 02a -n 1 --dcm_fix --pa          # set the PhaseEncodingDirection for the BOLD to PA (default = AP)
+    $ master -m 02a -n 1 --dcm_fix --no_lpi      # do not reorient your data to LPI coordinates (the default one for fMRIPrep); ill-advised when you want to do NORDIC
+
+The pipeline can automatically populate the `IntendedFor`-field in the json files. It can do so if one of the following situations holds:
+
+1) You have a fieldmap for every BOLD acquisition (recommended as it's easiest to deal with)
+2) You have a fieldmap for every two BOLD acquisitions (gets a bit more tricky, but it can mangage)
+3) You have one fieldmap for all BOLD acquisitions
+
+If this is not the case for you, you'll have to manually fill in the `IntendedFor` field..
+
+Next, we can do some basic quality control using MRIqc. This internally generates a report for all your BOLD files (and anatomical files should you so desire). Because the pipeline does custom processing on the anatomicals, I generally run this with the `--func_only` flag, to only include the functional data. 
+
+.. code:: bash
+
+    $ master -m 02b --func_only               # run func pipeline only
+    $ master -m 02b --anat_only               # run anat pipeline only
+    $ master -m 02b -n 1                      # limit processing to a certain session
 
 After converting our data to nifti, we need to create our T1w/T1map images from the first and second inversion images. We can do this quite easily with Pymp2rage_. If you do not combine **INV1** and **INV2** yourself, - you already have a ``T1w``-/ ``T1map``-file in ``DIR_DATA_HOME`` - you can skip the part below:
 
