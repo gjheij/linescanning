@@ -462,10 +462,11 @@ class SavePycortexViews():
         altitude=105,
         radius=163,
         pivot=0,
-        size=(4000,4000),
+        size=(2400,1200),
         data_name="occipital_inflated",
         base_name=None,
-        zoom=False,
+        rois=0,
+        labels=0,
         **kwargs):
 
         self.data_dict = data_dict
@@ -479,9 +480,10 @@ class SavePycortexViews():
         self.unfold = unfold
         self.specularity = specularity
         self.data_name = data_name
-        self.zoom = zoom
         self.base_name = base_name
-        
+        self.rois = rois
+        self.labels = labels
+
         if not isinstance(self.data_dict, dict):
             if isinstance(self.data_dict, np.ndarray):
                 self.data_dict = {"data": cortex.Vertex(self.data_dict, subject=self.subject, **kwargs)}
@@ -489,17 +491,21 @@ class SavePycortexViews():
                 self.data_dict = {"data": self.data_dict}
             
         self.view = {
-            self.data_name:{
-                f'surface.{self.subject}.unfold':self.unfold, 
-                f'surface.{self.subject}.specularity':self.specularity,
+            self.data_name: {
+                f'surface.{self.subject}.unfold': self.unfold, 
+                f'surface.{self.subject}.pivot': self.pivot, 
+                f'surface.{self.subject}.specularity': self.specularity,
                 # 'camera.target':self.target,
-                'camera.azimuth':self.azimuth,
-                'camera.altitude':self.altitude, 
-                'camera.radius':self.radius}}
+                'camera.azimuth': self.azimuth,
+                'camera.altitude': self.altitude, 
+                'camera.radius': self.radius}}
+                
+        if self.subject == "fsaverage":
+            for tag,lbl in zip(["visible","labels"],[self.rois,self.labels]):
+                self.view[self.data_name][f'surface.{self.subject}.overlays.rois.{tag}'] = lbl
 
-        if self.zoom:
-            self.view[self.data_name]['camera.Save image.Width'] = self.size[0]
-            self.view[self.data_name]['camera.Save image.Width'] = self.size[0]
+        self.view[self.data_name]['camera.Save image.Width'] = self.size[0]
+        self.view[self.data_name]['camera.Save image.Height'] = self.size[1]
 
         self.js_handle = cortex.webgl.show(self.data_dict)
         self.params_to_save = list(self.data_dict.keys())
