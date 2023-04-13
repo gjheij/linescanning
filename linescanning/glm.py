@@ -977,7 +977,7 @@ class Posthoc(Defaults):
             data=self.df, 
             dv=self.dv, 
             between=self.between, 
-            parametric=self.between, 
+            parametric=self.parametric, 
             padjust=self.padjust, 
             effsize=self.effsize)
 
