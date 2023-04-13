@@ -1042,6 +1042,11 @@ class LazyBar():
             if self.error == "sem":
                 self.ci = None
                 if isinstance(self.data, pd.DataFrame):
+
+                    # filter out relevant colums
+                    self.data = self.data[[self.x,self.y]]
+
+                    # get relevant error
                     if hasattr(self, "hue"):
                         self.sem = self.data.groupby([self.hue,self.x]).sem()[self.y].values
                         n_x = len(np.unique(self.data[self.x].values))
