@@ -53,6 +53,9 @@ Example
     add_key     = argv[start_ix+1]
     add_msg     = argv[start_ix+2]
 
+    if not json_file.endswith("json"):
+        raise TypeError(f"Must be json file, not '{json_file}'")
+
     if "," in add_key:
         add_key = utils.string2list(add_key)
     else:
@@ -65,7 +68,7 @@ Example
 
     msg_is_list = False
     if len(add_key) == 1 and len(add_msg) > 1:
-        print(f"add_msg = list of len={len(add_msg)}")
+        print(f"add_msg is list of len={len(add_msg)}")
         msg_is_list = True
 
     # check if file exists
