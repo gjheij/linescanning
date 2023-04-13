@@ -1,0 +1,195 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# check if there's is a setup file containing the major paths and source it if it exists
+call_loadsetup
+source ${SETUP_FILE}
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+spinoza_mriqc
+
+Quality control using MRIqc. It uses the singularity container defined in the setup file (variable
+MRIQC_SIMG).
+
+Usage:
+  spinoza_fmriprep [options] <project dir> <derivatives>
+
+Arguments:
+  --local         don't submit to SGE, run locally
+  --anat_only     only include anatomical images in the process (default is everything it can find)
+  --func_only     only include functional images in the process (default is everything it can find)  
+  -s <subject>    subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
+  -n <session>    session ID (e.g., 1, 2, or none); If set, only data from this session will be 
+                  used
+  <project dir>   directory containing the anatomical data. Can also be the regular project root
+                  folder if you want fMRIprep do the surface reconstruction
+  <derivatives>   output folder for fMRIprep; generally this will be <project>/derivatives
+
+Example:
+  spinoza_fmriprep <project>/derivatives/masked_mp2rage <project>/derivatives anat
+  spinoza_fmriprep -s 001 -n 1 -f <project> <project>/derivatives/masked_mp2rage <project>/deri-
+                   vatives anat
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+if [[ $# -lt 2 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+# Check for subject & session flags
+run_local=0
+local_flag=""
+remove_wf=0
+mod_flag=""
+while getopts :-:ls:r:n:f:m:c:k: argument
+do
+  case ${argument} in
+    -)
+      case "${OPTARG}" in
+        local)
+          run_local=1
+          local_flag="--local"
+          ;;   
+        anat_only)
+          mod_flag="--anat_only"
+          ;;   
+        func_only)
+          mod_flag="--func_only"
+          ;;                                      
+        *)
+          if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
+            echo "Unknown option --${OPTARG}" >&2
+          fi
+          ;;
+      esac;;  
+    s)  sub=${OPTARG}
+          ;;
+    n)  ses=${OPTARG}
+          ;;
+    r)  remove_wf=${OPTARG}
+          ;;
+  esac
+done
+
+if [[ $# -lt 3 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+INPUT=${@:$OPTIND:1}
+OUTPUT=${@:$OPTIND+1:1}
+
+if [[ -z ${sub} ]]; then
+  # loop through subjects
+  search="${INPUT}/${SUBJECT_PREFIX}*"
+else
+  # read specified subjects into array
+  IFS=', ' read -r -a search <<< "${sub}"
+  search=${search[@]}
+  unset IFS
+fi
+
+#-----------------------------------------------------------------------------
+# Start clock
+#-----------------------------------------------------------------------------
+
+echo
+echo "==================================================================================================="
+printf "QUALITY CONTROL WITH MRIQC\n"
+start=`date +%s`
+start_date=`date`
+
+printf "Started at ${start_date}\n"
+echo "==================================================================================================="
+
+#-----------------------------------------------------------------------------
+# Run it
+for subID in ${search}; do
+
+  # collect subject name
+  if [[ ! -z ${sub} ]]; then
+    sub_name=${SUBJECT_PREFIX}${subID}
+    sub_id=${subID}
+  else
+    sub_name=$(basename ${subID})
+    sub_id=`get_id ${sub_name} ${SUBJECT_PREFIX}`
+  fi
+
+  if [[ ! -z ${ses} ]]; then
+    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
+    base_path=${sub_name}/ses-${nr}
+    base=${sub_name}_ses-${nr}
+  else
+    base_path=${sub_name}
+    base=${sub_name}
+  fi
+
+  echo
+  echo "**************************************** Processing ${sub_name} ***************************************"
+  workdir=${PATH_HOME}/mriqc/${PROJECT}
+
+  # check existence working directory and other general settings
+  if [[ ! -d ${workdir} ]]; then
+    mkdir -p ${workdir}
+  fi
+
+  # check if we need to delete stuff
+  if [[ ! -z ${remove_wf} ]]; then
+    rm_dir=`find "${workdir}/mriqc_wf" -type f \( -name "*${sub_name}*" \) 2>/dev/null`
+    if [[ ! -z ${rm_dir} ]]; then
+      rm -r ${rm_dir}
+    fi
+  fi
+
+  # decide the job type (depending on SGE, can be either qsub or call_fmriprep; for anything else it's call_fmriprep)
+  if [[ ${PLACE} == "SGE" ]]; then
+    if [[ ${run_local} -eq 1 ]]; then
+      job="call_mriqc"
+    else
+      job="qsub -q ${SGE_QUEUE_LONG} -pe smp 1 -N ${sub_name}_desc-mriqc -o ${workdir} ${DIR_SCRIPTS}/bin/call_mriqc"
+    fi 
+  else
+    job="call_mriqc"
+  fi
+
+  # execute the command
+  ${job} \
+    -s ${sub_id} \
+    -b ${FPREP_BINDING} \
+    -i ${MRIQC_SIMG} \
+    -r ${INPUT} \
+    -d ${OUTPUT} \
+    -w ${workdir}  \
+    ${mod_flag}
+
+  if [[ $? != 0 ]]; then
+    echo "ERROR in `basename ${0}`: call_mriqc did not execute cleanly"
+    exit 1
+  fi
+
+done
+
+#-----------------------------------------------------------------------------
+# Calculate time spent using 'let'
+echo
+echo "---------------------------------------------------------------------------------------------------"
+end=`date +%s`
+end_date=`date`
+printf "Done at ${end_date}\n"
+
+let deltatime=end-start
+let hours=deltatime/3600
+let minutes=(deltatime/60)%60
+let seconds=deltatime%60
+printf "Time spent: %d:%02d:%02d\n" ${hours} ${minutes} ${seconds}
+echo "---------------------------------------------------------------------------------------------------"

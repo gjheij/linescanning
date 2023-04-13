@@ -64,6 +64,7 @@ ADD_INV=""                # spinoza_scanner2bids
 DCM_FIX=""                # spinoza_scanner2bids
 pe_dir_flag=""            # spinoza_scanner2bids
 reorient_flag=""          # spinoza_scanner2bids
+FULL_OW=""                # spinoza_scanner2bids
 UPs=""                    # spinoza_qmrimaps
 NO_BIAS=""                # spinoza_qmrimaps
 PROT_FLAG=""              # spinoza_scanner2bids
@@ -82,11 +83,15 @@ declare -a array=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--
 IFS=$'\n' opts=($(sort <<<"${array[*]}"))
 unset IFS
 
-while getopts :-:wjqom:s:h:n:t:l:v:p:x:u:r:e:i:c:k: arg
+while getopts :-:wjqofm:s:h:n:t:l:v:p:x:u:r:e:i:c:k: arg
 do
   case ${arg} in
     -)
       case "${OPTARG}" in
+        full)
+          FULL_OW="--full"
+          PROC="--full"
+          ;;       
         debug)
           DEBUG="--debug"
           ;;       
@@ -185,10 +190,7 @@ do
           ;;         
         zscore)
           zscore_flag="--zscore"
-          ;;     
-        full)
-          PROC="--full"
-          ;;         
+          ;;            
         no_clip)
           CLIP="--no_clip"
           ;;
@@ -315,6 +317,8 @@ do
           ;;
     i)  images=${OPTARG}
           ;;
+    f)  FULL_OW="--full"
+          ;;          
     k)  kwargs_file="-k `readlink -f ${OPTARG}`"
           ;;          
   esac
@@ -432,10 +436,14 @@ Args:
                     'parrec2nii', which comes with the python pacakge 'nibabel'
   --f(mri)prep      use output from fMRIPrep as input for pRF-fitting. Default is the output fro py-
                     best
-  --full            Do full processing with CAT12, assuming module 8 was skipped. This does itera-
-                    tive SANLM-filtering, bias correction, and intensity normalization. Can some-
-                    times be overkill, so generally we use CAT12 for the additional segmentations
-                    and brain extraction
+  --full            Usages include:
+                      - spinoza_brainextraction; Do full processing with CAT12, assuming module 8 was 
+                        skipped. This does iterative SANLM-filtering, bias correction, and intensity 
+                        normalization. Can some times be overkill, so generally we use CAT12 for the 
+                        additional segmentations and brain extraction
+                      - spinoza_scanner2bids/-_qmrimaps; full overwrite mode. Deletes the entire out-
+                        put folder (spinoza_qmrimaps) or nifti-folder (spinoza_scanner2bids). This is
+                        more aggressive than '--ow', which only removes specific files.
   --force_exec      force the execution of FreeSurfer even though directory exists already
   --fv              use FreeView to draw sinus mask (spinoza_sagittalsinus) 
   --fsl             use FSLeyes to draw sinus mask (spinoza_sagittalsinus) 
@@ -535,7 +543,8 @@ Additional options:
 Available modules:                                     Script                           hh:mm:ss
   -00:  Register anat ses-1 to ms ses-1 for planning   (spinoza_lineplanning)           00:06:00
   -01:  Make new session for subject                   (spinoza_bidssession)            00:00:01
-  -02:  Convert raw files to nifti                     (spinoza_scanner2bids)           00:02:00
+  -02a: Convert raw files to nifti                     (spinoza_scanner2bids)           00:02:00
+  -02b: Quality control with MRIQC                     (spinoza_mriqc)                  00:30:00
   -03:  Reconstruction of line data                    (spinoza_linerecon)              00:10:00
   -04:  Estimate T1's from mp2rage and memp2rage       (spinoza_qmrimaps)               00:01:30
   -05a: Register T1 from memp2rage to T1 from mp2rage  (spinoza_registration)           00:03:00
@@ -731,6 +740,7 @@ if [[ $? -eq 0 ]]; then
     ${SUBJECT} \
     ${SESSION} \
     ${OW} \
+    ${FULL_OW} \
     ${ADD_INV} \
     ${DCM_FIX} \
     ${PROT_FLAG} \
@@ -830,7 +840,13 @@ if [[ $? -eq 0 ]]; then
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Multiparametric mapping"
 
-  ${job} spinoza_qmrimaps ${SUBJECT} ${SESSION} ${OW} ${UPs} ${DIR_DATA_HOME} ${DIR_DATA_DERIV}/pymp2rage
+  ${job} spinoza_qmrimaps \
+    ${SUBJECT} \
+    ${SESSION} \
+    ${OW} \
+    ${UPs} \
+    ${FULL_OW} \
+    ${DIR_DATA_HOME} ${DIR_DATA_DERIV}/pymp2rage
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_qmrimaps exited with non-zero status"
