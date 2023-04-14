@@ -20,6 +20,8 @@ At the Spinoza Centre for Neuroimaging, there is an environment called `preproc`
   /packages/development/anaconda/3-8/condabin/conda init
   ```
 
+  You may be prompted to close the terminal and start a new one for the changes to take effect.
+
 - Activate environment:
   ```bash
   conda activate preproc
@@ -31,7 +33,7 @@ At the Spinoza Centre for Neuroimaging, there is an environment called `preproc`
   cp /packages/development/anaconda/3-8/git/linescanning/shell/spinoza_setup $your_folder
   ```
 
-- Change at least the following fields:
+- Change at least the following fields (run e.g., `gedit $your_folder/spinoza_setup`):
   ```bash
   # path to your setup file
   export SETUP_FILE="${SETUP_DIR}/spinoza_setup"
@@ -48,7 +50,7 @@ At the Spinoza Centre for Neuroimaging, there is an environment called `preproc`
   ln -s /packages/freesurfer/7.2.0/license.txt $your_folder/license.txt
   ```
 
-- Add the following to your `~/.bash_profile`:
+- Add the following to your `~/.bash_profile` (run e.g., `gedit ~/.bash_profile`):
   ```bash
   # path to your setup file
   source full_path_to_your_setup_file
@@ -57,6 +59,7 @@ At the Spinoza Centre for Neuroimaging, there is an environment called `preproc`
 
   module load itksnap/3.8.0 # 3.6.0-qt4 if you only see black panels
   module load fsl/6.5.0.2
+  module load ANTs/20200131
   ```
 
 ### Stand-alone
