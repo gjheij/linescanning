@@ -74,8 +74,8 @@ Flagged arguments:
   --no_winsor   don't winsorize the image prior to registration
 
 Positional arguments (after options):
-  <reference>   Reference image
-  <moving>      Moving image
+  <reference>   Reference image (nii/nii.gz/mgz)
+  <moving>      Moving image (nii/nii.gz/mgz)
   <output>      Basename (incl path) for output files ('genaff'/'rigid' will be appended)
 
 Usage:
@@ -273,6 +273,32 @@ function check_stage_inputs {
   echo ${par}
 }
 
+function validate_extension {
+
+  in_file=${1}
+  ext_file=`fetch_extension "${in_file}"`
+  if [[ ${ext_file} == "gz" ]] || [[ ${ext_file} == "nii" ]]; then
+    :
+  else
+    # convert mgz to nii.gz
+    if [[ ${ext_file} == "mgz" ]]; then
+      ll=`call_mriconvert ${in_file} 2>/dev/null`
+
+      if [[ $? -ne 0 ]]; then
+        echo "ERROR in `basename ${0}`: call_mriconvert exited with non-zero status"
+        exit 1
+      fi
+
+      in_file=$(dirname ${in_file})/$(basename ${in_file} .${ext_file}).nii.gz
+    else
+      echo "ERROR in `basename ${0}`; Input must be a nii(.gz) or .mgz file, not \"${ext_file}\""
+      exit 1
+    fi
+  fi
+
+  echo ${in_file}
+}
+
 # check if we got custom inputs, whether we should use defaults, and whether specified values match the number of levels specified
 # if check_stage_inputs fails, the returned value will be the error message, so we can conveniently make a traceback
 shrink=`check_stage_inputs shrink`
@@ -322,26 +348,24 @@ OUT=`fetch_filepath ${OUT}`
 # extensions and dimensionality
 if [[ -f ${REF} && -f ${MOV} ]]; then
 
-  ext_fixed=`fetch_extension "${REF}"`
-  ext_moving=`fetch_extension "${MOV}"`
-
-  if [[ $ext_fixed == "gz" ]] || [[ $ext_fixed == "nii" ]]; then
-    :
-  else
-    echo "ERROR in `basename ${0}`; No nifti file detected. Not really sure how to deal with this. Exiting."
+  # check extension
+  REF=`validate_extension ${REF}`
+  if [[ $? -ne 0 ]]; then
+    echo "ERROR in `basename ${0}`: validate_extension exited with non-zero status:"
+    echo ${REF}
     exit 1
   fi
 
-  if [[ $ext_moving == "gz" ]] || [[ $ext_moving == "nii" ]]; then
-    :
-  else
-    echo "No nifti file detected. Not really sure how to deal with this. Exiting."
+  MOV=`validate_extension ${MOV}`
+  if [[ $? -ne 0 ]]; then
+    echo "ERROR in `basename ${0}`: validate_extension exited with non-zero status:"
+    echo ${MOV}
     exit 1
   fi
 
+  # check dimensions
   DIMfixed=`fslval ${REF} dim0`
   DIMmoving=`fslval ${MOV} dim0`
-
   if [[ $DIMfixed != $DIMmoving ]]; then
 
     # check if we can extract first volume of time-series
@@ -396,10 +420,7 @@ if [[ ! -z ${initial} ]]; then
     echo "Using `basename ${initial}` as initial moving transform file"
   fi
   
-  fname=$(basename -- "${initial}")
-  ext="${fname##*.}"
-  filename="${fname%.*}"
-
+  ext=`fetch_extension ${initial}`
   if [[ $ext != "txt" ]]; then
     echo "ERROR in `basename ${0}`: \"${initial}\" is not a text file. It should be if it's an initial moving transform file"
     exit 1
@@ -419,6 +440,7 @@ if [[ ! -z ${mask} ]]; then
   MASK=$(echo "-x [NULL,${mask}]")
 fi
 
+#-----------------------------------------------------------------------------
 # check for windsorizing
 if [[ ${winsorize} -eq 1 ]]; then
   winsorize_flag="--winsorize-image-intensities [0.005,0.995]"
@@ -436,12 +458,40 @@ else
   val=""
 fi
 
+# starting stuff
+cmd="""antsRegistration ${VERBOSE} \
+-d 3 \
+--float 1 \
+-z 1 ${INITIAL} \
+--interpolation ${INT} \
+${MASK} \
+--output [${OUT}] \
+--use-histogram-matching ${use_hist} \
+${winsorize_flag} \
+--collapse-output-transforms ${collapse_output}"""
+
+# add individual stages
 if [[ ${TYPE,,} == "rigid" ]]; then
-  cmd="""antsRegistration ${VERBOSE} -d 3 --float 1 -z 1 ${INITIAL} --interpolation ${INT} ${MASK} --output [${OUT}] --use-histogram-matching ${use_hist} ${winsorize_flag} --transform Rigid[${gradient_step}] --metric ${metric}[${FIXED},${MOVING},1,${val},Regular,0.25] --convergence [${converg},1e-6,10] --shrink-factors ${shrink} --smoothing-sigmas ${smooth}vox --collapse-output-transforms ${collapse_output}"""
+  cmd+=""" --transform Rigid[${gradient_step}] \
+--metric ${metric}[${FIXED},${MOVING},1,${val},Regular,0.25] \
+--convergence [${converg},1e-6,10] \
+--shrink-factors ${shrink} \
+--smoothing-sigmas ${smooth}vox"""
+
 elif [[ ${TYPE,,} == "affine" ]]; then
-  cmd="""antsRegistration ${VERBOSE} -d 3 --float 1 -z 1 ${INITIAL} --interpolation ${INT} ${MASK} --output [${OUT}] --use-histogram-matching ${use_hist} ${winsorize_flag} --transform Rigid[${gradient_step}] --metric ${metric}[${FIXED},${MOVING},1,${val},Regular,0.25] --convergence [${converg},1e-6,10] --shrink-factors ${shrink} --smoothing-sigmas ${smooth}vox --transform Affine[${gradient_step}] --metric ${metric}[${FIXED},${MOVING},1,${val},Regular,0.25] --convergence [${converg},1e-6,10] --shrink-factors ${shrink} --smoothing-sigmas ${smooth}vox --collapse-output-transforms ${collapse_output}"""
+  cmd+=""" --transform Affine[${gradient_step}] \
+--metric ${metric}[${FIXED},${MOVING},1,${val},Regular,0.25] \
+--convergence [${converg},1e-6,10] \
+--shrink-factors ${shrink} \
+--smoothing-sigmas ${smooth}vox"""
+
 elif [[ ${TYPE,,} == "syn" ]]; then
-  cmd="""antsRegistration ${VERBOSE} -d 3 --float 1 -z 1 ${INITIAL} --interpolation ${INT} ${MASK} --output [${OUT}] --use-histogram-matching ${use_hist} ${winsorize_flag} --transform Rigid[${gradient_step}] --metric ${metric}[${FIXED},${MOVING},1,${val},Regular,0.25] --convergence [${converg},1e-6,10] --shrink-factors ${shrink} --smoothing-sigmas ${smooth}vox --transform Affine[${gradient_step}] --metric ${metric}[${FIXED},${MOVING},1,${val},Regular,0.25] --convergence [${converg},1e-6,10] --shrink-factors ${shrink} --smoothing-sigmas ${smooth}vox --transform SyN[${gradient_step},3,0] --metric CC[${FIXED},${MOVING},1,4] --convergence [${converg},1e-6,10] --shrink-factors ${shrink} --smoothing-sigmas ${smooth}vox --collapse-output-transforms ${collapse_output}"""
+  cmd+=""" --transform SyN[${gradient_step},3,0] \
+--metric CC[${FIXED},${MOVING},1,4] \
+--convergence [${converg},1e-6,10] \
+--shrink-factors ${shrink} \
+--smoothing-sigmas ${smooth}vox"""
+
 else
   echo "Unknown registration type \"${TYPE}\" specified"
   Usage >&2
@@ -452,6 +502,7 @@ if [[ ${VERB} -eq 1 ]]; then
   echo "antsRegistration call:"
   echo "---------------------------------------------------------------------------------------------------"
   echo ${cmd}
+  echo
 fi
 
 # echo command to text file
@@ -459,7 +510,6 @@ cmd_f=${OUT}command.txt
 if [ -f ${cmd_f} ]; then
   rm ${cmd_f} 2>/dev/null
 fi
-
 echo ${cmd} >> ${OUT}command.txt
 
 # Execute command
