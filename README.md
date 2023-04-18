@@ -44,10 +44,10 @@ At the Spinoza Centre for Neuroimaging, there is an environment called `preproc`
   export TASK_SES1=("YOUR_TASK_NAMES")
   ```
 
-- Symlink `freesurfer`-license file or [download your own license](https://surfer.nmr.mgh.harvard.edu/registration.html):
+- Copy `freesurfer`-license file or [download your own license](https://surfer.nmr.mgh.harvard.edu/registration.html):
   ```bash
   your_license=$your_folder/license.txt
-  ln -s /packages/freesurfer/7.2.0/license.txt $your_folder/license.txt
+  cp /packages/development/anaconda/3-8/git/linescanning/misc/license.txt $your_folder/license.txt
   ```
 
 - Add the following to your `~/.bash_profile` (run e.g., `gedit ~/.bash_profile`):
