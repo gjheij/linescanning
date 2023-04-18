@@ -920,6 +920,7 @@ class LazyBar():
         fancy_rounding: float=0.15,
         fancy_pad: float=-0.004,
         fancy_aspect: float=None,
+        fancy_denom: int=4,
         bar_legend: bool=False,
         **kwargs):
 
@@ -952,7 +953,7 @@ class LazyBar():
         self.fancy_rounding     = fancy_rounding
         self.fancy_pad          = fancy_pad
         self.fancy_aspect       = fancy_aspect
-
+        self.fancy_denom        = fancy_denom
         self.kw_defaults = Defaults()
 
         # avoid that these kwargs are passed down to matplotlib.bar.. Throws errors
@@ -972,6 +973,7 @@ class LazyBar():
             "fancy_rounding",
             "fancy_pad",
             "fancy_aspect",
+            "fancy_denom",
             "font_name",
             "x_ticks",
             "y_ticks",
@@ -1071,33 +1073,6 @@ class LazyBar():
                 palette=self.palette,
                 yerr=self.sem
             ))
-
-        # from: https://stackoverflow.com/a/61569240
-        if self.fancy:
-            new_patches = []
-
-            for patch in reversed(self.ff.patches):
-
-                # max of axis divided by 4 gives nice rounding
-                if not isinstance(self.fancy_aspect, (int,float)):
-                    self.fancy_aspect = patch._axes.get_ylim()[-1]/4
-                
-                bb = patch.get_bbox()
-                color = patch.get_facecolor()
-                p_bbox = patches.FancyBboxPatch(
-                    (bb.xmin, bb.ymin),
-                    abs(bb.width), abs(bb.height),
-                    boxstyle=f"round,pad={self.fancy_pad},rounding_size={self.fancy_rounding}",
-                    ec="none", 
-                    fc=color,
-                    mutation_aspect=self.fancy_aspect
-                )
-
-                patch.remove()
-                new_patches.append(p_bbox)
-
-            for patch in new_patches:
-                self.ff.add_patch(patch)
 
         if self.add_points:
 
@@ -1261,6 +1236,46 @@ class LazyBar():
                 self.ff.set_yticks(self.ticks)
             else:
                 raise ValueError(f"sns_ori must be 'v' or 'h', not '{self.sns_ori}'")
+
+        # from: https://stackoverflow.com/a/61569240
+        if self.fancy:
+            new_patches = []
+
+            for patch in reversed(self.ff.patches):
+
+                bb = patch.get_bbox()
+                color = patch.get_facecolor()
+
+                # max of axis divided by 4 gives nice rounding
+                if not isinstance(self.fancy_aspect, (int,float)):
+                    y_limiter = patch._axes.get_ylim()[-1]
+                    if isinstance(self.lim, list):
+                        y_limiter-=self.lim[0]
+
+                    self.fancy_aspect = y_limiter/self.fancy_denom
+                
+                # make rounding at limit
+                if isinstance(self.lim, list):
+                    ymin = self.lim[0]
+                    height = bb.height - ymin
+                else:
+                    ymin = bb.ymin
+                    height = bb.height
+
+                p_bbox = patches.FancyBboxPatch(
+                    (bb.xmin, ymin),
+                    abs(bb.width), abs(height),
+                    boxstyle=f"round,pad={self.fancy_pad},rounding_size={self.fancy_rounding}",
+                    ec="none", 
+                    fc=color,
+                    mutation_aspect=self.fancy_aspect
+                )
+
+                patch.remove()
+                new_patches.append(p_bbox)
+
+            for patch in new_patches:
+                self.ff.add_patch(patch)
 
         if isinstance(self.x, str) and not isinstance(self.x_label2, str):
             self.ff.set(xlabel=None)
@@ -1662,6 +1677,7 @@ class LazyColorbar(Defaults):
         ticks=None,
         flip_ticks=False,
         flip_label=False,
+        figsize=(6,0.5),
         **kwargs):
 
         self.axs = axs
@@ -1673,11 +1689,15 @@ class LazyColorbar(Defaults):
         self.ticks = ticks
         self.flip_ticks = flip_ticks
         self.flip_label = flip_label
+        self.figsize = figsize
 
         super().__init__()
         self.__dict__.update(kwargs)
         self.update_rc(self.fontname)
 
+        if self.axs == None:
+            _, self.axs = plt.subplots(figsize=self.figsize)
+            
         # set ticks to integer intervals if nothing's specified
         if not isinstance(self.ticks, list):
             self.ticks = [int(ii) for ii in range(vmin,vmax+1)]
