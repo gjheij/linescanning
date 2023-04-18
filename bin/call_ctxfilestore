@@ -9,7 +9,7 @@ def main(argv):
 
     """
 ---------------------------------------------------------------------------------------------------
-call_ctxsetfilestore
+call_ctxfilestore
 
 This super short script sets the filestore path in the pycortex config file. You can either specify
 an option first without a path to see the current status of the config file, you can also only spe-
@@ -25,14 +25,13 @@ Args:
                                  - "update"  = new filestore path (needs a string then)
                                  - "show_fs" = show current filestore path
                                  - "show_pn" = show path to config file
-
     <path to new filestore>     if you want to update the filestore path, enter a string here
                                 won't do anything if the path is already specifie as filestore
 
 Example:
-    call_ctxsetfilestore ${CTX}     (update with environmental variable CTX)
-    call_ctxsetfilestore show_fs    (show the current filestore path)
-    call_ctxsetfilestore show_pn    (show the path to the config file)
+    call_ctxfilestore ${CTX}     (update with environmental variable CTX)
+    call_ctxfilestore show_fs    (show the current filestore path)
+    call_ctxfilestore show_pn    (show the path to the config file)
 
 ---------------------------------------------------------------------------------------------------
     """
