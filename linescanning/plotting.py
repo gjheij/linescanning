@@ -1678,6 +1678,7 @@ class LazyColorbar(Defaults):
         flip_ticks=False,
         flip_label=False,
         figsize=(6,0.5),
+        save_as=None,
         **kwargs):
 
         self.axs = axs
@@ -1690,13 +1691,17 @@ class LazyColorbar(Defaults):
         self.flip_ticks = flip_ticks
         self.flip_label = flip_label
         self.figsize = figsize
+        self.save_as = save_as
 
         super().__init__()
         self.__dict__.update(kwargs)
         self.update_rc(self.fontname)
 
         if self.axs == None:
-            _, self.axs = plt.subplots(figsize=self.figsize)
+            if isinstance(self.save_as, str):
+                self.fig, self.axs = plt.subplots(figsize=self.figsize)
+            else:
+                _, self.axs = plt.subplots(figsize=self.figsize)
             
         # set ticks to integer intervals if nothing's specified
         if not isinstance(self.ticks, list):
@@ -1744,6 +1749,12 @@ class LazyColorbar(Defaults):
 
         # turn off frame
         self.axs.set_frame_on(False)
+
+        if hasattr(self, "fig"):
+            self.fig.savefig(
+                f"{self.save_as}.pdf",
+                facecolor="white",
+                bbox_inches="tight")
 
 def fig_annot(fig, y=1.01, x0_corr=0, x_corr=-0.09, fontsize=28):
 
