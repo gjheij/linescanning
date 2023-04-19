@@ -100,10 +100,10 @@ else
 fi
 
 # make sure filestore is set to outputdir
-fstore=`call_ctxsetfilestore show_fs`
+fstore=`call_ctxfilestore show_fs`
 if [[ "${outputdir}" != "${fstore}" ]]; then
   echo "Updating Pycortex's filestore with outputdir"
-  call_ctxsetfilestore update ${outputdir}
+  call_ctxfilestore update ${outputdir}
 fi
 
 if [[ ! -d ${outputdir}/${SUB} ]]; then
