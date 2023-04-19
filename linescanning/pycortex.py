@@ -1,7 +1,8 @@
 import cortex
 from linescanning import (
     image, 
-    utils)
+    utils,
+    plotting)
 import nibabel as nb
 import numpy as np
 import os
@@ -675,9 +676,21 @@ class Vertex2D_fix():
         
         # Create vertex RGB object out of R, G, B channels
         self.final_result = cortex.VertexRGB(*self.display_data, self.subject)
-
+        
     def get_result(self):
         return self.final_result
     
     def get_curv(self):
         return self.curv
+    
+    def make_colormap(self, label=None, **kwargs):
+        self.cm = plotting.LazyColorbar(
+            cmap=self.cmap,
+            txt=label,
+            vmin=self.vmin1,
+            vmax=self.vmax1,
+            **kwargs)
+        
+    def get_colormap(self, *args, **kwargs):
+        self.make_colormap(*args, **kwargs)
+        return self.cm
