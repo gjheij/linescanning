@@ -482,9 +482,10 @@ class SavePycortexViews():
         rois_labels=0,
         sulci_visible=1,
         sulci_labels=0,
+        save_cm=False,
         **kwargs):
 
-        self.data_dict = data_dict
+        self.tmp_dict = data_dict
         self.subject = subject
         self.fig_dir = fig_dir
         self.altitude = altitude
@@ -500,13 +501,43 @@ class SavePycortexViews():
         self.rois_labels = rois_labels
         self.sulci_labels = sulci_labels
         self.sulci_visible = sulci_visible
+        self.save_cm = save_cm
 
-        if not isinstance(self.data_dict, dict):
-            if isinstance(self.data_dict, np.ndarray):
-                self.data_dict = {"data": cortex.Vertex(self.data_dict, subject=self.subject, **kwargs)}
+        if not isinstance(self.base_name, str):
+            self.base_name = self.subject
+
+        if not isinstance(self.fig_dir, str):
+            self.fig_dir = os.getcwd()            
+
+        if not isinstance(self.tmp_dict, dict):
+            if isinstance(self.tmp_dict, np.ndarray):
+                self.tmp_dict = {"data": cortex.Vertex(self.tmp_dict, subject=self.subject, **kwargs)}
             else:
-                self.data_dict = {"data": self.data_dict}
-            
+                self.tmp_dict = {"data": self.tmp_dict}
+
+        # check what kind of object they are; if Vertex2D_fix, make colormaps
+        self.data_dict = {}
+        for key,val in self.tmp_dict.items():
+            if isinstance(val, Vertex2D_fix):
+                self.data_dict[key] = val.get_result()
+                
+                if self.save_cm:
+                    if key == "polar":
+                        ticks = [-np.pi,0,np.pi]
+                    else:
+                        ticks = list(np.arange(val.vmin1,val.vmax1+(val.vmax1*0.2), (val.vmax1-val.vmin1)*0.2))
+                    
+                    ticks = [round(ii,2) for ii in ticks]
+                    val.get_colormap(
+                        ori="horizontal", 
+                        label=key, 
+                        flip_label=True, 
+                        ticks=ticks,
+                        save_as=opj(self.fig_dir, f"{base_name}_desc-{key}_cm.pdf"))
+            else:
+                self.data_dict[key] = val
+        
+        # set the views
         self.view = {
             self.data_name: {
                 f'surface.{self.subject}.unfold': self.unfold, 
@@ -531,9 +562,6 @@ class SavePycortexViews():
         self.set_view()
 
     def save_all(self):
-        
-        if not isinstance(self.base_name, str):
-            self.base_name = self.subject
 
         for param_to_save in self.js_handle.dataviews.attrs.keys():
             print(f"saving {param_to_save}")
