@@ -5,6 +5,7 @@ from linescanning import (
 import nibabel as nb
 import numpy as np
 import os
+import pandas as pd
 import configparser
 import sys
 import time
@@ -29,11 +30,22 @@ def set_ctx_path(p=None, opt="update"):
     """
 
     if p == None:
-        p = os.environ['CTX']
+        p = os.environ.get('CTX')
+
+    if not os.path.exists(p):
+        os.makedirs(p, exist_ok=True)
 
     usercfg = cortex.options.usercfg
     config = configparser.ConfigParser()
     config.read(usercfg)
+
+    # check if filestore exists
+    try:
+        config.get("basic", "filestore")
+    except:
+        config.set("basic", "filestore", p)
+        with open(usercfg, 'w') as fp:
+            config.write(fp)
 
     if opt == "show_fs":
         return config.get("basic", "filestore")
@@ -465,8 +477,10 @@ class SavePycortexViews():
         size=(2400,1200),
         data_name="occipital_inflated",
         base_name=None,
-        rois=0,
-        labels=0,
+        rois_visible=0,
+        rois_labels=0,
+        sulci_visible=1,
+        sulci_labels=0,
         **kwargs):
 
         self.data_dict = data_dict
@@ -481,8 +495,10 @@ class SavePycortexViews():
         self.specularity = specularity
         self.data_name = data_name
         self.base_name = base_name
-        self.rois = rois
-        self.labels = labels
+        self.rois_visible = rois_visible
+        self.rois_labels = rois_labels
+        self.sulci_labels = sulci_labels
+        self.sulci_visible = sulci_visible
 
         if not isinstance(self.data_dict, dict):
             if isinstance(self.data_dict, np.ndarray):
@@ -501,8 +517,10 @@ class SavePycortexViews():
                 'camera.radius': self.radius}}
                 
         if self.subject == "fsaverage":
-            for tag,lbl in zip(["visible","labels"],[self.rois,self.labels]):
-                self.view[self.data_name][f'surface.{self.subject}.overlays.rois.{tag}'] = lbl
+            for tt in ["rois","sulci"]:
+                for tag in ["visible","labels"]:
+                    lbl = getattr(self, f"{tt}_{tag}")
+                    self.view[self.data_name][f'surface.{self.subject}.overlays.{tt}.{tag}'] = lbl
 
         self.view[self.data_name]['camera.Save image.Width'] = self.size[0]
         self.view[self.data_name]['camera.Save image.Height'] = self.size[1]
@@ -557,62 +575,109 @@ class SavePycortexViews():
             pass    
 
 
-def Vertex2D_fix(
-    data1, 
-    data2, 
-    subject=None, 
-    cmap="magma", 
-    vmin1=0, 
-    vmax1=1, 
-    vmin2=0, 
-    vmax2=1, 
-    roi_borders=None,
-    curv_type="hcp",
-    fc=-1.25):
+class Vertex2D_fix():
 
-    #this provides a nice workaround for pycortex opacity issues, at the cost of interactivity    
-    # Get curvature
-    curv = cortex.db.get_surfinfo(subject)
+    def __init__(
+        self,
+        data1, 
+        data2=None, 
+        subject=None, 
+        cmap="magma", 
+        vmin1=0, 
+        vmax1=1, 
+        vmin2=0, 
+        vmax2=1, 
+        roi_borders=None,
+        sulci_labels=False,
+        sulci_visible=False,
+        curv_type="hcp",
+        fc=-1.25):
 
-    # Adjust curvature contrast / color. Alternately, you could work
-    # with curv.data, maybe threshold it, and apply a color map. 
-    
-    #standard
-    if curv_type == "standard":
-        curv.data = curv.data*fc+0.1
-    elif curv_type == "hcp":
-        curv.data = curv.data*fc+0.1
-    else:
-        curv.data = np.sign(curv.data) * .25
-    
-    curv = cortex.Vertex(curv.data, subject, vmin=-1,vmax=1,cmap='gray')
-    
-    norm2 = Normalize(vmin2, vmax2)   
-    
-    vx = cortex.Vertex(data1, subject, cmap=cmap, vmin=vmin1, vmax=vmax1)
-    
-    # Map to RGB
-    vx_rgb = np.vstack([vx.raw.red.data, vx.raw.green.data, vx.raw.blue.data])
+        self.data1 = data1
+        self.data2 = data2
+        self.subject = subject
+        self.cmap = cmap
+        self.vmin1 = vmin1
+        self.vmax1 = vmax1
+        self.vmin2 = vmin2
+        self.vmax2 = vmax2
+        self.roi_borders = roi_borders
+        self.curv_type = curv_type
+        self.fc = fc
+        self.sulci_labels = sulci_labels
+        self.sulci_visible = sulci_visible
+
+        #this provides a nice workaround for pycortex opacity issues, at the cost of interactivity    
+        # Get curvature
+        self.curv = cortex.db.get_surfinfo(self.subject)
+
+        # Adjust curvature contrast / color. Alternately, you could work
+        # with curv.data, maybe threshold it, and apply a color map. 
         
+        # check if input is series or dataframe
+        if isinstance(self.data1, (pd.DataFrame,pd.Series)):
+            self.data1 = self.data1.values
+            
+        # set alpha if None is specified
+        if not isinstance(self.data2, (np.ndarray,pd.Series)):
+            alpha = np.zeros_like(self.data1)
+            alpha[self.data1>0] = 1
+            self.data2 = alpha.copy()
+        else:
+            if isinstance(self.data2, pd.Series):
+                self.data2 = self.data2.values
 
-    # Pick an arbitrary region to mask out
-    # (in your case you could use np.isnan on your data in similar fashion)
-    alpha = np.clip(norm2(data2), 0, 1).astype(float)
+        #standard
+        if self.curv_type == "standard":
+            self.curv.data *= (fc+0.1)
+        elif self.curv_type == "hcp":
+            self.curv.data *= (fc+0.1)
+        else:
+            # self.curv.data = np.sign(self.curv.data) * .25
+            self.curv.data = np.ones_like(self.curv.data)
+        
+        self.curv = cortex.Vertex(
+            self.curv.data, 
+            self.subject, 
+            vmin=-1,
+            vmax=1,
+            cmap='gray')
+        
+        self.norm2 = Normalize(self.vmin2, self.vmax2)   
+        self.vx = cortex.Vertex(
+            self.data1, 
+            self.subject, 
+            cmap=self.cmap, 
+            vmin=self.vmin1, 
+            vmax=self.vmax1)
+        
+        # Map to RGB
+        self.vx_rgb = np.vstack([self.vx.raw.red.data, self.vx.raw.green.data, self.vx.raw.blue.data])
+            
+        # Pick an arbitrary region to mask out
+        # (in your case you could use np.isnan on your data in similar fashion)
+        self.alpha = np.clip(self.norm2(self.data2), 0, 1).astype(float)
 
-    # Map to RGB
-    vx_rgb[:,alpha>0] = vx_rgb[:,alpha>0] * alpha[alpha>0]
+        # Map to RGB
+        self.vx_rgb[:,self.alpha>0] = self.vx_rgb[:,self.alpha>0] * self.alpha[self.alpha>0]
+        
+        self.curv_rgb = np.vstack([self.curv.raw.red.data, self.curv.raw.green.data, self.curv.raw.blue.data])
+        
+        # do this to avoid artifacts where curvature gets color of 0 valur of colormap
+        self.curv_rgb[:,np.where((self.vx_rgb > 0))[-1]] = self.curv_rgb[:,np.where((self.vx_rgb > 0))[-1]] * (1-self.alpha)[np.where((self.vx_rgb > 0))[-1]]
+
+        # Alpha mask
+        self.display_data = self.curv_rgb + self.vx_rgb 
+
+        # display_data = curv_rgb * (1-alpha) + vx_rgb * alpha
+        if self.roi_borders is not None:
+            self.display_data[:,self.roi_borders.astype(bool)] = 0#255-display_data[:,roi_borders.astype('bool')]#0#255
+        
+        # Create vertex RGB object out of R, G, B channels
+        self.final_result = cortex.VertexRGB(*self.display_data, self.subject)
+
+    def get_result(self):
+        return self.final_result
     
-    curv_rgb = np.vstack([curv.raw.red.data, curv.raw.green.data, curv.raw.blue.data])
-    
-    # do this to avoid artifacts where curvature gets color of 0 valur of colormap
-    curv_rgb[:,np.where((vx_rgb > 0))[-1]] = curv_rgb[:,np.where((vx_rgb > 0))[-1]] * (1-alpha)[np.where((vx_rgb > 0))[-1]]
-
-    # Alpha mask
-    display_data = curv_rgb + vx_rgb 
-
-    # display_data = curv_rgb * (1-alpha) + vx_rgb * alpha
-    if roi_borders is not None:
-        display_data[:,roi_borders.astype('bool')] = 0#255-display_data[:,roi_borders.astype('bool')]#0#255
-    
-    # Create vertex RGB object out of R, G, B channels
-    return cortex.VertexRGB(*display_data, subject), curv
+    def get_curv(self):
+        return self.curv
