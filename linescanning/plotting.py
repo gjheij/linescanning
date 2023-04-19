@@ -1752,7 +1752,7 @@ class LazyColorbar(Defaults):
 
         if hasattr(self, "fig"):
             self.fig.savefig(
-                f"{self.save_as}.pdf",
+                self.save_as,
                 facecolor="white",
                 bbox_inches="tight")
 
