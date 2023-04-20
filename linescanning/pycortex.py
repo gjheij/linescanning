@@ -262,15 +262,13 @@ class SavePycortexViews():
     altitude: int, optional
         Rotation around the left-right axis, by default 90
     radius: int, optional
-        _description_, by default 163
+        distance of object, by default 163
     pivot: int, optional
-        _description_, by default 0
+        rotate the hemispheres away from one another (positive values = lateral view, negative values = medial view), by default 0
     size: tuple, optional
-        _description_, by default (4000,4000)
+        size of image that's being saved, by default (4000,4000)
     data_name: str, optional
-        _description_, by default "occipital_inflated"
-    zoom: bool, optional
-        _description_, by default False
+        name of dataset, by default "occipital_inflated"
     base_name: str, optional
         Basename for the images to save from the pycortex viewer. If None, we'll default to `<subject>`; `_desc-<>.png` is appended.
     rois_visible: int, optional
@@ -378,6 +376,7 @@ class SavePycortexViews():
 
         # check what kind of object they are; if Vertex2D_fix, make colormaps
         self.data_dict = {}
+        self.cms = {}
         for key,val in self.tmp_dict.items():
             if isinstance(val, Vertex2D_fix):
                 self.data_dict[key] = val.get_result()
@@ -389,12 +388,14 @@ class SavePycortexViews():
                         ticks = list(np.arange(val.vmin1,val.vmax1+(val.vmax1*0.2), (val.vmax1-val.vmin1)*0.2))
                     
                     ticks = [round(ii,2) for ii in ticks]
-                    val.get_colormap(
+                    cm = val.get_colormap(
                         ori="horizontal", 
                         label=key, 
                         flip_label=True, 
                         ticks=ticks,
                         save_as=opj(self.fig_dir, f"{base_name}_desc-{key}_cm.{self.cm_ext}"))
+                    
+                    self.cms[key] = cm
             else:
                 self.data_dict[key] = val
         
@@ -541,8 +542,6 @@ class Vertex2D_fix():
         vmin2: int=0, 
         vmax2: int=1, 
         roi_borders: np.ndarray=None,
-        sulci_labels: bool=False,
-        sulci_visible: bool=False,
         curv_type: str="hcp",
         fc: float=-1.25):
 
