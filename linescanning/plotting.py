@@ -1007,7 +1007,6 @@ class LazyBar():
         >>>     lim=[800,1600],
         >>>     fancy=True,
         >>>     fancy_denom=6)
-)
         """
         self.data               = data
         self.x                  = x
