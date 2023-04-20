@@ -924,18 +924,100 @@ class LazyBar():
         bar_legend: bool=False,
         **kwargs):
 
+        """LazyBar
+
+        Wrapper around :func:`seaborn.barplot` to follow the same aesthetics of the other Lazy* functions. It is strongly recommended to use a dataframe for this function to make the formatting somewhat easier, but you can input arrays for `x` and `y`. You can round the edges of the bar using `fancy=True`.
+
+        Parameters
+        ----------
+        data: pd.DataFrame, optional
+            Input dataframe, by default None
+        x: str, np.ndarray, optional
+            Variable for the x-axis, by default None
+        y: str, np.ndarray, optional
+            Variable for the y-axis, by default None
+        axs: <AxesSubplot:>, optional
+            Subplot axis to put the plot on, by default None
+        sns_ori: str, optional
+            Orientation of the bars, can either be horizontal ('h') or vertical ('v'), by default 'h'
+        sns_rot: int, float, optional
+            Angle of rotation for `labels`, by default None
+        palette: list, sns.palettes._ColorPalette, optional
+            Color scheme to use for the bars if you have categorical data, by default None
+        cmap: str, optional
+            Colormap to use if you didn't specify `palette`, by default "inferno"
+        save_as: str, optional
+            Filename to save the image, by default None
+        add_labels: bool, optional
+            Boolean flag to actually set the labels if specified with `labels`, by default False
+        lim: list, optional
+            `[x,y]` limits, by default None
+        ticks: list, optional
+            List of ticks that can be related to `lim` or not, by default None
+        x_label2: str, optional
+            Label for the x-axis, by default None. Different that `labels`, which are the labels representing the categories in `data`
+        y_label2: str, optional
+            Label for the y-axis, by default None
+        title2: str, optional
+            Title for the plot, by default None
+        add_points: bool, optional
+            Add the actual datapoints rather than just the bars, by default False. Though default is `False`
+        points_color: str, tuple, optional
+            Color of the points if you do not have nested categories, by default None
+        points_palette: list, sns.palettes._ColorPalette, optional
+            Color palette for the points if you have nested categories (e.g., multiple variables per subject so you can color the individual subjects' data points), by default None
+        points_cmap: str, optional
+            Color map for the points if you did not specify `points_palette`, by default "viridis"
+        points_legend: bool, optional
+            Add legend of the data points (if you have nested categories), by default False. The functionality of these interchangeable legends (`bar_legend` and `points_legend`) is quite tricky, so user discretion is advised.
+        points_alpha: float, optional
+            Alpha of the points, by default 1. Sometimes useful to adjust if you have LOADS of data points
+        error: str, optional
+            Type of error bar to use for the bar, by default "sem"
+        fancy: bool, optional
+            Flag to round the edges of the bars, by default False. By default, the rounding is scaled by the min/max of the plot, regardless whether `lim` was specified. This ensures equal rounding across inputs. The other `fancy`-arguments below are a bit vague, so leaving them default will ensure nice rounding of the bars
+        fancy_rounding: float, optional
+            Amount of rounding, by default 0.15
+        fancy_pad: float, optional
+            Vague variable, by default -0.004
+        fancy_aspect: float, optional
+            Vague variable, by default None. If None, the rounding is scaled by the min/max of the plot, regardless whether `lim` was specified.
+        fancy_denom: int, optional
+            Scaling factor for `fancy_aspect`, by default 4 (which works well for data where the max value is ~50). Use higher values (e.g., 6) if your data range is large
+        bar_legend: bool, optional
+            Legend for the bars, rather than points, by default False. The functionality of these interchangeable legends (`bar_legend` and `points_legend`) is quite tricky, so user discretion is advised.
+
+        Example
+        ----------
+        >>> # this figure size works well for plots with 2 bars
+        >>> fig,axs = plt.subplots(figsize=(2,8))
+        >>> plotting.LazyBar(
+        >>>     data=df_wm,
+        >>>     x="group",
+        >>>     y="t1",
+        >>>     sns_ori="v",
+        >>>     axs=axs,
+        >>>     add_labels=True,
+        >>>     palette=[con_color,mdd_color],
+        >>>     add_points=True,
+        >>>     points_color="k",
+        >>>     trim_bottom=True,   
+        >>>     sns_offset=4,
+        >>>     y_label2="white matter T1 (ms)",
+        >>>     lim=[800,1600],
+        >>>     fancy=True,
+        >>>     fancy_denom=6)
+)
+        """
         self.data               = data
         self.x                  = x
         self.y                  = y
         self.sns_ori            = sns_ori
-        self.labels             = labels
         self.axs                = axs
         self.sns_rot            = sns_rot
         self.palette            = palette
         self.cmap               = cmap
-        self.title              = title
         self.add_labels         = add_labels
-        self.add_axis           = add_axis
         self.lim                = lim
         self.ticks              = ticks
         self.bar_legend         = bar_legend
@@ -989,17 +1071,24 @@ class LazyBar():
         self.__dict__.update(**kwargs)
         self.kw_defaults.update_rc(self.fontname)
 
+        if not hasattr(self, "bbox_to_anchor"):
+            self.bbox_to_anchor = None
+
         if self.xkcd:
             with plt.xkcd():
                 self.plot(**kw_sns)
         else:
             self.plot(**kw_sns)
         
-        if save_as:
-            plt.savefig(self.save_as, transparent=True, dpi=300, bbox_inches='tight')
+        if isinstance(save_as, str):
+            plt.savefig(
+                save_as, 
+                facecolor="white", 
+                dpi=300, 
+                bbox_inches='tight')
+        else:
+            raise ValueError(f"Unknown input '{save_as}' for 'save_as'")
 
-        if not hasattr(self, "bbox_to_anchor"):
-            self.bbox_to_anchor = None
 
     def plot(self, **kw_sns):
 
@@ -1187,13 +1276,6 @@ class LazyBar():
 
             else:
                 self.ff.legend([],[], frameon=False)
-                
-        # axis labels and titles
-        if self.title:
-            self.ff.set_title(
-                self.title, 
-                fontname=self.fontname, 
-                fontsize=self.font_size)                    
         
         self.ff.tick_params(
             width=self.tick_width, 
@@ -1317,10 +1399,8 @@ class LazyBar():
                 self.title2, 
                 fontname=self.fontname, 
                 fontsize=self.font_size,
-                pad=self.pad_title)                    
+                pad=self.pad_title)
 
-        if self.return_obj:
-            return self
 
 class LazyHist(Defaults):
     """LazyHist

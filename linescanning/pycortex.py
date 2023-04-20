@@ -11,6 +11,7 @@ import configparser
 import sys
 import time
 from matplotlib.colors import Normalize
+from typing import Union
 opj = os.path.join
 
 def set_ctx_path(p=None, opt="update"):
@@ -208,76 +209,6 @@ def get_thickness(thick_map, hemi, vertex_nr):
     # invert value as it is a negative value
     return abs(val)
 
-
-def view_maps(subject, cxdir=None, prfdir=None):
-    """view_maps
-
-    Create webviewer containing the polar angle maps, best vertices, curvature, etc to gain a better idea of the information in the best vertex and for figure plotting.
-
-    Parameters
-    ----------
-    subject: str
-        subject name (e.g., sub-xxx)
-    cxdir: str
-        path to pycortex dir (e.g., derivatives/pycortex)
-    prfdir: str
-        path to pRF dir (e.g., derivatives/prf)
-    """
-
-    if cxdir == None:
-        cxdir = os.environ['CTX']
-
-    if prfdir == None:
-        prfdir = os.environ['PRF']
-
-    if not os.path.isdir(opj(cxdir, subject)):
-        print("  ERROR! pycortex directory does not exist")
-        sys.exit(1)
-
-    if not os.path.isdir(opj(prfdir, subject)):
-        print("  ERROR! prf directory does not exist")
-        sys.exit(1)
-
-    # check if we already have pRF-files we can convert to vertices immediately
-    try:
-        r2 = utils.get_file_from_substring("R2", opj(prfdir, subject))
-        ecc = utils.get_file_from_substring("eccentricity", opj(prfdir, subject))
-        polar = utils.get_file_from_substring("polar", opj(prfdir, subject))
-        prf_lr = opj(prfdir, subject, f'{subject}_desc-bestvertex_hemi-LR.npy')
-    except:
-        raise FileNotFoundError(
-            'could not find R2, eccentricity, and polar angle maps..')
-
-    prf_lr  = np.load(prf_lr)
-    r2      = np.load(r2)
-    ecc     = np.load(ecc)
-    polar   = np.load(polar)
-
-    # r2_v        = cortex.Vertex(r2,subject=subject,vmin=0.02, vmax=0.8, cmap="hsv_alpha")
-    ecc_v = cortex.Vertex2D(ecc, r2,
-                            vmin=0,
-                            vmax=12,
-                            vmin2=0.05,
-                            vmax2=0.4,
-                            subject=subject, cmap='spectral_alpha')
-    # polar_v     = cortex.Vertex2D(polar,r2,
-    #                               vmin=-np.pi,
-    #                               vmax=np.pi,
-    #                               vmin2=0.05,
-    #                               vmax2=0.4,
-    #                               subject=subject,cmap='Retinotopy_RYBCR_2D')
-    curv_data = cortex.db.get_surfinfo(
-        subject, type="curvature")  # Choose RDYIbu
-    thick_data = cortex.db.get_surfinfo(
-        subject, type="thickness")  # Choose RDYIbu
-    prf_lr_v = cortex.Vertex(prf_lr, subject=subject,
-                             cmap='magma', vmin=-0.5, vmax=1)
-
-    cortex.webshow({
-        'curvature': curv_data,
-        'thickness': thick_data,
-        'best vertices': prf_lr_v})
-
 def get_ctxsurfmove(subject):
 
     """get_ctxsurfmove
@@ -309,131 +240,15 @@ def get_ctxsurfmove(subject):
     return surfmove
 
 
-def get_linerange(thick_map=None, hemi=None, vertex_nr=None, direction=None, line_vox=720, vox_size=0.25, method="ctx", tissue=None):
-
-    """get_linerange
-
-    Fetches the range of the line that covers the cortical band given a thickness map as per output of pycortex. It assumes that the vertex is located at the fiducial surface (middle of WM>Pial) and that the middle of the line is positioned at the vertex. The line is 720 voxels long, that would mean that 360 is approximately at the position of te vertex. The voxel size of the line is 0.25 mm so the range = (360-0.5*thickness, 360+0.5*thickness).
-
-    Parameters
-    ----------
-    thick_map: str
-        thickness.npz created by pycortex (to be implemented: map created by user)
-    hemi: str
-        which hemisphere do we need to fetch data from
-    vertex: int
-        which vertex in the specified hemisphere
-    direction: str
-        which border does the line hit first, 'pial' or 'wm'?
-    line_vox: int
-        size of the line
-    vox_size: int
-        voxel size we need to utilize
-    method: str
-        use the cortical thickness method with the parameters described above ("ctx") or use the Nighres cortex-segmentation ("nighres"). The assumptions described below hold true for the 'ctx' method, so the nighres-method is preferred. If you use this method, you'll need to give the cruise_cortex file to derive the line-range
-    tissue: np.ndarray
-        cortical segmentation array derived by calculating the average of the max contribtion of each tissue probability (see segmentation_to_line notebook). Only required if you have specified method="nighres"
-    
-    Returns
-    ----------
-    list 
-        minimum and maximum range of the line covering the cortical band
-
-    Example
-    ----------
-    >>> get_linerange("/path/to/thickness.npz", "left", 875, "wm")
-    [560,572]
-
-    Notes
-    ----------
-    Based on two VERY broad assumptions:
-
-    * Vertex is located at fiducial surface, also in second session anatomy
-    * Middle of line (360) is located at the vertex
-    """
-
-    if method == "ctx":
-
-        val = get_thickness(thick_map, hemi, vertex_nr)
-        vert_loc = val/2
-        nr_vox = vert_loc/vox_size
-        r_line = [round((line_vox/2)-nr_vox), round((line_vox/2)+nr_vox)]
-
-        if direction == "pial":
-            print(
-                f"  line first hits the {direction}-boundary: upper bound = wm; lower bound = pial")
-        elif direction == "wm":
-            print(
-                f"  line first hits the {direction}-boundary: upper bound = pial; lower bound = wm")
-        else:
-            raise ValueError(f"Unkown option {direction}. Need 'pial' or 'wm'")
-
-    elif method == "nighres":
-
-        # load in files
-        if not isinstance(tissue, np.ndarray):
-            raise ValueError("Tissue should be a numpy array")
-
-        roi = tissue[345:360]
-        start = np.where(roi == 1)[0][0] + 345
-        stop = np.where(roi == 1)[0][-1] + 345
-        # diff = stop-start
-
-        r_line = [start, stop]
-
-    else:
-        raise NotImplementedError(f"Unknown option {method} specified for 'method'. Please use either 'ctx' or 'nighres'")
-
-    return r_line
-
-def make_ecc(subject, ecc=None, r2=None, vmin1=0, vmax1=12, cmap="nipy_spectral", r2_thresh=None):
-
-    """Create eccentricity vertex map as a function of R2 from data array as per output for call_prf"""
-    if isinstance(r2,np.ndarray):
-        if r2_thresh != None:
-            thresholded_ecc = np.zeros_like(ecc)
-            thresholded_ecc[r2>r2_thresh] = ecc[r2>r2_thresh]
-            return cortex.Vertex(thresholded_ecc, vmin=vmin1, vmax=vmax1, subject=subject, cmap=cmap)
-        else:
-            return cortex.Vertex(ecc, vmin=vmin1, vmax=vmax1, subject=subject, cmap=cmap)
-    else:
-        return cortex.Vertex(ecc, vmin=vmin1, vmax=vmax1, subject=subject, cmap=cmap)
-
-
-def make_polar(subject, polar=None, r2=None, vmin1=-np.pi, vmax1=np.pi, cmap="hsv_r", r2_thresh=None):
-
-    """Create polar angle vertex map as a function of R2 from data array as per output for call_prf"""
-
-    if isinstance(r2,np.ndarray):
-        if r2_thresh != None:
-            thresholded_polar = np.zeros_like(polar)
-            thresholded_polar[r2>r2_thresh] = polar[r2>r2_thresh]
-            return cortex.Vertex(thresholded_polar, vmin=vmin1, vmax=vmax1, subject=subject, cmap=cmap)
-        else:
-            return cortex.Vertex(polar, vmin=vmin1, vmax=vmax1, subject=subject, cmap=cmap)
-    else:
-        return cortex.Vertex(polar, vmin=vmin1, vmax=vmax1, subject=subject, cmap=cmap)
-
-
-def make_r2(subject, r2=None, vmin1=0, vmax1=0.3, cmap="inferno"):
-
-    """Create R2 vertex map as per output for call_prf"""    
-    return cortex.Vertex(r2, subject=subject, vmin=vmin1, vmax=vmax1, cmap=cmap)
-
-
-def make_vertex(subject, array=None, vmin=None, vmax=None, cmap="magma"):
-
-    return cortex.Vertex(array, subject=subject, vmin=vmin, vmax=vmax, cmap=cmap)
-
 class SavePycortexViews():
     """SavePycortexViews
 
-    Save the elements of a `dict` containing vertex/volume objects to images given a set of viewing settings. 
+    Save the elements of a `dict` containing vertex/volume objects to images given a set of viewing settings. If all goes well, a browser will open. Just wait for your settings to be applied in the viewer. You can then proceed from there. If your selected orientation is not exactly right, you can still manually adapt it before running :func:`linescanning.pycortex.SavePycortexViews.save_all()`, which will save all elements in the dataset to png-files given `fig_dir` and `base_name`. 
 
     Parameters
     ----------
-    data_dict: dict, cortex.dataset.views.Vertex, cortex.dataset.views.Volume
-        Dictionary collecting objects to be projected on the surface or any object that is compatible with Pycortex plotting. If the latter, a dicitonary is automatically created.
+    data_dict: dict, cortex.dataset.views.Vertex, cortex.dataset.views.Volume, linescanning.pycortex.Vertex2D_fix
+        Dictionary collecting objects to be projected on the surface or any object that is compatible with Pycortex plotting. Loose inputs will be automatically converted to dictionary.
     subject: str, optional
         Subject name as per Pycortex' filestore naming, by default None
     fig_dir: str, optional
@@ -458,31 +273,75 @@ class SavePycortexViews():
         _description_, by default False
     base_name: str, optional
         Basename for the images to save from the pycortex viewer. If None, we'll default to `<subject>`; `_desc-<>.png` is appended.
+    rois_visible: int, optional
+        Show the ROIs as per the 'overlays.svg' file on the FSAverage brain. Default = 0
+    rois_labels: int, optional
+        Show the ROIs labels as per the 'overlays.svg' file on the FSAverage brain. Default = 0
+    sulci_visible: int, optional
+        Show the sulci outlines on the FSAverage brain. Default = 1
+    sulci_labels: int, optional
+        Show the sulci labels on the FSAverage brain. Default = 0
+    cm_ext: str, optional
+        File extension to save the colormap images with. Default = "pdf"
+    save_cm: bool, optional
+        If the input is an instance of :class:`linescanning.pycortex.Vertex2D_fix`, we can automatically create colormaps from these inputs. These colormaps will be printed to the terminal, but we can also write them to a file. In that case, `fig_dir` and `base_name` is preferred; `_desc-{input_name}_cm.{cm_ext}` will be appended.
+    viewer: bool, optional
+        Open the viewer (`viewer=True`, default) or suppress it (`viewer=False`)
 
     Example
     ----------
-    >>> 
+    >>> from linescanning import pycortex
+    >>> import numpy as np
+    >>> # let's say your have statistical maps with the correct dimensions called 'data' for subject 'sub-xx'
+    >>> subject = "sub-xx"
+    >>> output_dir = "some_directory"
+    >>> base_name = "sub-xx_ses-1"
+    >>> data_v = pycortex.Vertex2D_fix(
+    >>>     data,
+    >>>     subject=subject,
+    >>>     vmin1=3.1,
+    >>>     vmax1=10,
+    >>>     cmap="autumn")
+    >>> #
+    >>> # plop this object in SavePycortexViewer
+    >>> pyc = pycortex.SavePycortexViews(
+    >>>     {"zstats": data_v},
+    >>>     subjects=subject,
+    >>>     azimuth=180,            # these settings are focused around V1
+    >>>     altitude=120,           # these settings are focused around V1
+    >>>     radius=260,             # these settings are focused around V1
+    >>>     save_cm=True,
+    >>>     fig_dir=output_dir,
+    >>>     base_name=base_name)
+
+    >>> # to save "zstats"-object, we can run
+    >>> pyc.save_all()
+
+    >>> # to save the object as a static viewer (cortex.make_static()):
+    >>> pyc.to_static() 
     """
 
     def __init__(
         self,
-        data_dict,
-        subject=None,
-        fig_dir=None,
-        specularity=0,
-        unfold=1,
-        azimuth=180,
-        altitude=105,
-        radius=163,
-        pivot=0,
-        size=(2400,1200),
-        data_name="occipital_inflated",
-        base_name=None,
-        rois_visible=0,
-        rois_labels=0,
-        sulci_visible=1,
-        sulci_labels=0,
-        save_cm=False,
+        data_dict: Union[dict, cortex.Vertex,cortex.VertexRGB,cortex.Vertex2D],
+        subject: str=None,
+        fig_dir: str=None,
+        specularity: int=0,
+        unfold: int=1,
+        azimuth: int=180,
+        altitude: int=105,
+        radius: int=163,
+        pivot: float=0,
+        size: tuple=(2400,1200),
+        data_name: str="occipital_inflated",
+        base_name: str=None,
+        rois_visible: int=0,
+        rois_labels: int=0,
+        sulci_visible: int=1,
+        sulci_labels: int=0,
+        save_cm: bool=False,
+        cm_ext: str="pdf",
+        viewer: bool=True,
         **kwargs):
 
         self.tmp_dict = data_dict
@@ -502,6 +361,8 @@ class SavePycortexViews():
         self.sulci_labels = sulci_labels
         self.sulci_visible = sulci_visible
         self.save_cm = save_cm
+        self.cm_ext = cm_ext
+        self.viewer = viewer
 
         if not isinstance(self.base_name, str):
             self.base_name = self.subject
@@ -533,7 +394,7 @@ class SavePycortexViews():
                         label=key, 
                         flip_label=True, 
                         ticks=ticks,
-                        save_as=opj(self.fig_dir, f"{base_name}_desc-{key}_cm.pdf"))
+                        save_as=opj(self.fig_dir, f"{base_name}_desc-{key}_cm.{self.cm_ext}"))
             else:
                 self.data_dict[key] = val
         
@@ -557,10 +418,19 @@ class SavePycortexViews():
         self.view[self.data_name]['camera.Save image.Width'] = self.size[0]
         self.view[self.data_name]['camera.Save image.Height'] = self.size[1]
 
-        self.js_handle = cortex.webgl.show(self.data_dict)
-        self.params_to_save = list(self.data_dict.keys())
-        self.set_view()
+        if self.viewer:
+            self.js_handle = cortex.webgl.show(self.data_dict)
+            self.params_to_save = list(self.data_dict.keys())
+            self.set_view()
 
+    def to_static(self, *args, **kwargs):
+        filename = f"{self.base_name}_desc-static"
+        cortex.webgl.make_static(
+            opj(self.fig_dir, filename),
+            self.data_dict,
+            *args,
+            **kwargs)
+        
     def save_all(self):
 
         for param_to_save in self.js_handle.dataviews.attrs.keys():
@@ -606,21 +476,75 @@ class SavePycortexViews():
 
 class Vertex2D_fix():
 
+    """Vertex2D_fix
+
+    Wrapper for :func:`cortex.VertexRGB`, where we create a vertex object based on `data1` with `data2` acting as mask or opacity so that the curvature below is shown. If `data2` is not specified, a mask is created based on `data1` with a threshold of >0. This object is compatible with :class:`linescanning.pycortex.SavePycortexViews()`. Because you lose touch with colormaps with this method, we can create one using :class:`linescanning.plotting.LazyColorbar()`, which will take the `vmin1` and `vmax1` from your inputs.
+
+    Parameters
+    ----------
+    data1: np.ndarray, pd.DataFrame, pd.Series
+        Input data to be plotted
+    data2: np.ndarray, pd.DataFrame, pd.Series, optional
+        Acts as mask or opacity onto `data1`, by default None
+    subject: str, optional
+        Subject name as defined in the filestore, by default None
+    cmap: str, optional
+        Colormap for the object, by default "magma"
+    vmin1: int, optional
+        Min value for `data1`, by default 0
+    vmax1: int, optional
+        Max value for `data1`, by default 1
+    vmin2: int, optional
+        Min value for `data2`, by default 0
+    vmax2: int, optional
+        Max value for `data2`, by default 1
+    roi_borders: np.ndarray, optional
+        Array describing borders of ROIs, by default None
+    curv_type: str, optional
+        Type of curvature to be displayed, by default "hcp". Options are:
+        - "hcp"; aesthetically the most pleasing; can be made darker or brighter with `fc`
+        - "standard"; the more discrete light gray/dark gray contrast version of curvature
+        - None; don't display curvature below, sometimes useful to just display masks as they are
+    fc: float, optional
+        Factor to scale the curvature level, by default -1.25
+
+    Example
+    ----------
+    >>> from linescanning import pycortex
+    >>> import numpy as np
+    >>> # let's say your have statistical maps with the correct dimensions called 'data' for subject 'sub-xx'
+    >>> subject = "sub-xx"
+    >>> output_dir = "some_directory"
+    >>> base_name = "sub-xx_ses-1"
+    >>> data_v = pycortex.Vertex2D_fix(
+    >>>     data,
+    >>>     subject=subject,
+    >>>     vmin1=3.1,
+    >>>     vmax1=10,
+    >>>     cmap="autumn")
+
+    >>> # to get the actual vertex object
+    >>> data_v.get_result()
+
+    >>> to create a colormap of the object
+    >>> data_v.get_colormap(label="zstats")
+    """
+
     def __init__(
         self,
-        data1, 
-        data2=None, 
-        subject=None, 
-        cmap="magma", 
-        vmin1=0, 
-        vmax1=1, 
-        vmin2=0, 
-        vmax2=1, 
-        roi_borders=None,
-        sulci_labels=False,
-        sulci_visible=False,
-        curv_type="hcp",
-        fc=-1.25):
+        data1: Union[np.ndarray, pd.DataFrame, pd.Series], 
+        data2: Union[np.ndarray, pd.DataFrame, pd.Series]=None, 
+        subject: str=None, 
+        cmap: str="magma", 
+        vmin1: int=0, 
+        vmax1: int=1, 
+        vmin2: int=0, 
+        vmax2: int=1, 
+        roi_borders: np.ndarray=None,
+        sulci_labels: bool=False,
+        sulci_visible: bool=False,
+        curv_type: str="hcp",
+        fc: float=-1.25):
 
         self.data1 = data1
         self.data2 = data2
@@ -633,8 +557,6 @@ class Vertex2D_fix():
         self.roi_borders = roi_borders
         self.curv_type = curv_type
         self.fc = fc
-        self.sulci_labels = sulci_labels
-        self.sulci_visible = sulci_visible
 
         #this provides a nice workaround for pycortex opacity issues, at the cost of interactivity    
         # Get curvature
@@ -711,7 +633,11 @@ class Vertex2D_fix():
     def get_curv(self):
         return self.curv
     
-    def make_colormap(self, label=None, **kwargs):
+    def make_colormap(
+        self, 
+        label=None, 
+        **kwargs):
+
         self.cm = plotting.LazyColorbar(
             cmap=self.cmap,
             txt=label,
