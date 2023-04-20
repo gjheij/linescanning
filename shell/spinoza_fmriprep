@@ -28,8 +28,9 @@ Usage:
 Arguments:
   --local         don't submit to SGE, run locally
   --no_bbr        maps to '--force-no-bbr' in call_fmriprep
-  --warp_only     skips fMRIPrep, but creates new boldref images and copies the bold-to-T1w warps
-                  to the subject's output folder
+  --no_boldref    don't create new boldref images (mean over time) after fMRIprep has finished.
+  --warp_only     skips fMRIPrep, but creates new boldref images (if '--no_boldref' is not specified) 
+                  and copies the bold-to-T1w warps to the subject's output folder
   -s <subject>    subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
   -n <session>    session ID (e.g., 1, 2, or none); used to check for T1w-image. fMRIprep will do all
                   sessions it finds in the project root regardless of this argument. Use the bids fil-
@@ -77,6 +78,7 @@ bbr_flag=""
 warp_only=""
 run_local=0
 kwargs_file=""
+boldref_flag=""
 while getopts :-:ls:r:n:f:m:c:k: argument
 do
 case ${argument} in
@@ -90,7 +92,10 @@ case ${argument} in
           ;;   
         local)
           run_local=1
-          ;;                        
+          ;;   
+        no_boldref)
+          boldref_flag="--no_boldref"
+          ;;                                
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}" >&2
@@ -289,7 +294,8 @@ for subID in ${search}; do
     ${task_id} \
     ${bbr_flag} \
     ${warp_only} \
-    ${kwargs_file}
+    ${kwargs_file} \
+    ${boldref_flag}
 
   if [[ $? != 0 ]]; then
     echo "ERROR in `basename ${0}`: call_fmriprep did not execute cleanly"

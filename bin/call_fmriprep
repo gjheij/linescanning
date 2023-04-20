@@ -43,6 +43,7 @@ Arguments:
   -k <kwargs>       use a file containing additional arguments for fMRIprep. Make sure file has
                     has trailing new line. For VSCode: https://stackoverflow.com/a/44704969
   --warp_only       skip fMRIPrep, but re-do the 'boldref'-images and copy the bold-to-T1w warps
+  --no_boldref      don't create new boldref images (mean over time) after fMRIprep has finished.
   --sge             run fMRIPrep with singularity-configuration. Default singularity image should 
                     be specified in the setup file (if can with 'spinoza_fmriprep'). Otherwise,
                     use the '-i' flag to point to a singularity image.
@@ -75,6 +76,7 @@ project=${DIR_DATA_HOME}
 work=${PATH_HOME}/fmriprep/${PROJECT}
 pref="sub-"
 KWARGS_FILE=""
+BOLDREF=1
 while getopts :-:us:m:r:d:c:i:b:w:l:x:t:k: arg
 do
   case ${arg} in
@@ -87,7 +89,10 @@ do
           ;;
         warp_only)
           WARP_ONLY=1
-          ;;                 
+          ;;  
+        no_boldref)
+          BOLDREF=0
+          ;;                          
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}" >&2
@@ -295,6 +300,7 @@ nthreads=15
 nthread_flag="--nthreads ${nthreads}"
 
 # output directory structure has changed after v21: https://github.com/nipreps/fmriprep/releases/tag/21.0.0
+echo "Checking fMRIPrep's version.."
 VERSION=`${run_cmd} --version | cut -d" " -f2 | cut -d"." -f1`
 if [[ `echo "${VERSION//[!0-9]/}"` -lt "21" ]]; then
   output_dir=${derivatives}
@@ -348,16 +354,18 @@ fi
 
 #-----------------------------------------------------------------------------
 # fMRIPrep's boldref seems to be messy lately (snow-like noise pattern instead of an image)
-bold_files=`find ${derivatives}/fmriprep/*${subj_ID}/ -type f -name "*preproc_bold.nii.gz" 2>/dev/null`
-IFS=$'\n' bold_files=($(sort <<<"${bold_files[*]}"))
-unset IFS
+if [[ ${BOLDREF} -eq 1 ]]; then
+  bold_files=`find ${derivatives}/fmriprep/*${subj_ID}/ -type f -name "*preproc_bold.nii.gz" 2>/dev/null`
+  IFS=$'\n' bold_files=($(sort <<<"${bold_files[*]}"))
+  unset IFS
 
-if [ ! -z ${bold_files} ]; then
-  echo "Overwriting fMRIPrep's \"boldref\"-files"
-  for bold in ${bold_files[@]}; do
-    boldref=$(dirname ${bold})/$(basename ${bold} _desc-preproc_bold.nii.gz)_boldref.nii.gz
-    fslmaths ${bold} -Tmean ${boldref}
-  done
+  if [ ! -z ${bold_files} ]; then
+    echo "Overwriting fMRIPrep's \"boldref\"-files"
+    for bold in ${bold_files[@]}; do
+      boldref=$(dirname ${bold})/$(basename ${bold} _desc-preproc_bold.nii.gz)_boldref.nii.gz
+      fslmaths ${bold} -Tmean ${boldref}
+    done
+  fi
 fi
 
 #-----------------------------------------------------------------------------
@@ -368,7 +376,7 @@ fi
 
 # see https://github.com/nipreps/fmriprep/issues/2189#issuecomment-646620788
 for tt in "fwd" "inv"; do
-  xfms=`find ${work}/fmriprep*wf/single_subject_${subj_ID}_wf/func_preproc*/bold_reg_wf/bbreg_wf/concat_xfm -type f -name "out_${tt}.tfm" 2>/dev/null`
+  xfms=(`find ${work}/fmriprep*wf/single_subject_${subj_ID}_wf/func_preproc*/bold_reg_wf/bbreg_wf/concat_xfm -type f -name "out_${tt}.tfm" 2>/dev/null`)
   if [[ ! -z ${xfms} ]]; then
 
     if [[ ${tt} == "fwd" ]]; then
