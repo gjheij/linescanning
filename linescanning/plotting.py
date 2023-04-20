@@ -1085,9 +1085,6 @@ class LazyBar():
                 facecolor="white", 
                 dpi=300, 
                 bbox_inches='tight')
-        else:
-            raise ValueError(f"Unknown input '{save_as}' for 'save_as'")
-
 
     def plot(self, **kw_sns):
 
