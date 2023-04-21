@@ -24,7 +24,7 @@ class Defaults():
         self.return_obj = False
         self.ylim_bottom = None
         self.ylim_top = None
-        self.xlim_left = 0
+        self.xlim_left = None
         self.xlim_right = None
         self.set_xlim_zero = False
         self.legend_handletext = 0.05
@@ -437,9 +437,17 @@ class LazyPlot(Defaults):
         if self.save_as:
             if isinstance(self.save_as, list):
                 for ii in self.save_as:
-                    plt.savefig(ii, transparent=True, dpi=300, bbox_inches='tight')
+                    plt.savefig(
+                        ii, 
+                        transparent=True, 
+                        dpi=300, 
+                        bbox_inches='tight')
             elif isinstance(self.save_as, str):
-                plt.savefig(self.save_as, transparent=True, dpi=300, bbox_inches='tight')
+                plt.savefig(
+                    self.save_as, 
+                    transparent=True, 
+                    dpi=300, 
+                    bbox_inches='tight')
             else:
                 raise ValueError(f"Unknown input '{self.save_as}' for 'save_as'")
 
@@ -521,12 +529,14 @@ class LazyPlot(Defaults):
                     use_style = "solid"                    
 
                 # decide on x-axis
-                if not isinstance(self.xx, (np.ndarray,list,range)):
+                if not isinstance(self.xx, (np.ndarray,list,range, pd.DataFrame, pd.Series)):
                     x = np.arange(0, len(el))
                 else:
                     # range has no copy attribute
                     if isinstance(self.xx, range):
                         x = self.xx
+                    elif isinstance(self.xx, (pd.DataFrame,pd.Series)):
+                        x = self.xx.values
                     else:
                         x = self.xx.copy()
 
@@ -610,17 +620,21 @@ class LazyPlot(Defaults):
         
         # give priority to specify x-lims rather than seaborn's xlim
         if not self.x_lim:
-
-            if isinstance(self.xlim_left, float) or isinstance(self.xlim_left, int):
+            if isinstance(self.xlim_left, (float,int)):
                 axs.set_xlim(left=self.xlim_left)
-            
+            else:
+                axs.set_xlim(left=x[0])
+
             if self.xlim_right:
                 axs.set_xlim(right=self.xlim_right)
+            else:
+                axs.set_xlim(right=x[-1]) 
+
         else:
             axs.set_xlim(self.x_lim)
 
         if not self.y_lim:
-            if isinstance(self.ylim_bottom, float) or isinstance(self.ylim_bottom, int):
+            if isinstance(self.ylim_bottom, (float,int)):
                 axs.set_ylim(bottom=self.ylim_bottom)
             
             if self.ylim_top:
@@ -740,9 +754,6 @@ class LazyPlot(Defaults):
                     ls=self.add_hline['ls'],
                     xmax=set_xlim)
 
-        if self.return_obj:
-            return self
-
 class LazyCorr(Defaults):
     """LazyCorr
 
@@ -772,7 +783,6 @@ class LazyCorr(Defaults):
         Font size of titles and axis labels, by default 12
     axs: <AxesSubplot:>, optional
         Matplotlib axis to store the figure on
-
 
     Returns
     ----------
@@ -902,6 +912,7 @@ class LazyBar():
         cmap: str="inferno",
         save_as: str=None,
         title: str=None,
+        figsize=(4,8),
         add_labels: bool=False,
         add_axis: bool=True,
         lim: list=None,
@@ -932,10 +943,12 @@ class LazyBar():
         ----------
         data: pd.DataFrame, optional
             Input dataframe, by default None
-        x: str, np.ndarray, optional
-            Variable for the x-axis, by default None
-        y: str, np.ndarray, optional
-            Variable for the y-axis, by default None
+        x: str, list, np.ndarray, optional
+            Variable for the x-axis, by default None. Can be a column name from `data`, or a list/np.ndarray with labels for input `y`. 
+        y: str, list, np.ndarray, optional
+            Variable for the y-axis, by default None. Can be a column name from `data`, or a list/np.ndarray. If `x` is not specified, indices from 0 to `y.shape` will be used to construct the input dataframe.
+        labels: list, np.ndarray, optional 
+            custom labels that can be used when `x` denotes a column name in dataframe `data`. The replacing labels should have the same length as the labels that are being overwritten.
         axs: <AxesSubplot:>, optional
             Subplot axis to put the plot on, by default None
         sns_ori: str, optional
@@ -1008,9 +1021,11 @@ class LazyBar():
         >>>     fancy=True,
         >>>     fancy_denom=6)
         """
+
         self.data               = data
         self.x                  = x
         self.y                  = y
+        self.labels             = labels
         self.sns_ori            = sns_ori
         self.axs                = axs
         self.sns_rot            = sns_rot
@@ -1035,6 +1050,7 @@ class LazyBar():
         self.fancy_pad          = fancy_pad
         self.fancy_aspect       = fancy_aspect
         self.fancy_denom        = fancy_denom
+        self.figsize            = figsize
         self.kw_defaults = Defaults()
 
         # avoid that these kwargs are passed down to matplotlib.bar.. Throws errors
@@ -1058,7 +1074,9 @@ class LazyBar():
             "font_name",
             "x_ticks",
             "y_ticks",
-            "bar_legend"
+            "bar_legend",
+            "figsize",
+            "labels"
         ]
 
         kw_sns = {}
@@ -1093,16 +1111,35 @@ class LazyBar():
         else:
             axs = self.axs
 
+        # construct dataframe from loose inputs
+        if isinstance(self.y, np.ndarray):
+            if not isinstance(self.x, (np.ndarray, list)):
+                self.x = np.arange(0,self.y.shape[0])
+
+            self.data = pd.DataFrame({"x": self.x, "y": self.y})
+            self.x = "x"
+            self.y = "y"
+        
+        # check if we should reset the index of dataframe
+        try:
+            self.data = self.data.reset_index()
+        except:
+            pass
+
+        # check if we got custom labels
+        if isinstance(self.labels, (np.ndarray,list)):
+            self.data[self.x] = self.labels
+
         if self.sns_ori == "h":
             xx = self.y
             yy = self.x
-            trim_bottom = False
-            trim_left   = True
+            self.trim_bottom = False
+            self.trim_left   = True
         elif self.sns_ori == "v":
             xx = self.x 
             yy = self.y
-            trim_bottom = True
-            trim_left   = False            
+            self.trim_bottom = True
+            self.trim_left   = False            
         else:
             raise ValueError(f"sns_ori must be 'v' or 'h', not '{self.sns_ori}'")
         
@@ -1120,8 +1157,8 @@ class LazyBar():
                 self.palette = sns.color_palette(palette=self.palette)
 
             if not isinstance(self.palette, sns.palettes._ColorPalette):
-                self.palette = sns.color_palette(self.cmap, len(self.x))
-
+                self.palette = sns.color_palette(self.cmap, self.data.shape[0])
+                
         # check if we can do sem
         self.sem = None
         self.ci = None
@@ -1320,29 +1357,46 @@ class LazyBar():
             new_patches = []
 
             for patch in reversed(self.ff.patches):
-
                 bb = patch.get_bbox()
                 color = patch.get_facecolor()
 
                 # max of axis divided by 4 gives nice rounding
                 if not isinstance(self.fancy_aspect, (int,float)):
-                    y_limiter = patch._axes.get_ylim()[-1]
-                    if isinstance(self.lim, list):
-                        y_limiter-=self.lim[0]
+                    if self.sns_ori == "v":
+                        y_limiter = patch._axes.get_ylim()[-1]
+                        if isinstance(self.lim, list):
+                            y_limiter-=self.lim[0]
+                        
+                        self.fancy_aspect = y_limiter/self.fancy_denom
+                    else:
+                        x_limiter = patch._axes.get_xlim()[-1]
+                        if isinstance(self.lim, list):
+                            x_limiter-=self.lim[0]
 
-                    self.fancy_aspect = y_limiter/self.fancy_denom
+                        self.fancy_aspect = x_limiter/self.fancy_denom
+
                 
                 # make rounding at limit
                 if isinstance(self.lim, list):
-                    ymin = self.lim[0]
-                    height = bb.height - ymin
+                    if self.sns_ori == "v":
+                        ymin = self.lim[0]
+                        xmin = bb.xmin
+                        height = bb.height - ymin
+                        width = bb.width
+                    else:
+                        xmin = self.lim[0]
+                        ymin = bb.ymin
+                        width = bb.width - xmin
+                        height = bb.height
                 else:
+                    xmin = bb.xmin
                     ymin = bb.ymin
                     height = bb.height
+                    width = bb.width
 
                 p_bbox = patches.FancyBboxPatch(
-                    (bb.xmin, ymin),
-                    abs(bb.width), abs(height),
+                    (xmin, ymin),
+                    abs(width), abs(height),
                     boxstyle=f"round,pad={self.fancy_pad},rounding_size={self.fancy_rounding}",
                     ec="none", 
                     fc=color,
