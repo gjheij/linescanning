@@ -1,12 +1,14 @@
-from . import glm, plotting
-from linescanning.utils import select_from_df
+from . import (
+    glm, 
+    plotting,
+    utils)
 import lmfit
 import matplotlib.pyplot as plt
 import nideconv as nd
 import numpy as np
 import pandas as pd
 import seaborn as sns
-
+from typing import Union
 
 class CurveFitter():
     """CurveFitter
@@ -228,6 +230,7 @@ class NideconvFitter():
         lump_events=False, 
         interval=[0,12], 
         osf=20,
+        fit=True,
         **kwargs):
 
         self.func               = func
@@ -244,6 +247,7 @@ class NideconvFitter():
         self.interval           = interval
         self.concatenate_runs   = concatenate_runs
         self.osf                = osf
+        self.do_fit             = fit
 
         if self.lump_events:
             self.lumped_onsets = self.onsets.copy().reset_index()
@@ -263,7 +267,8 @@ class NideconvFitter():
         self.define_events()
 
         # # fit
-        self.fit()
+        if self.do_fit:
+            self.fit()
 
         # some plotting defaults
         self.plotting_defaults = plotting.Defaults()
@@ -403,7 +408,7 @@ class NideconvFitter():
             for ix, signal in enumerate(self.func.columns):
                 
                 # select single voxel timecourse from main DataFrame
-                vox_signal = select_from_df(self.func, expression='ribbon', indices=[ix,ix+1])
+                vox_signal = utils.select_from_df(self.func, expression='ribbon', indices=[ix,ix+1])
                 
                 # specify voxel-specific model
                 vox_model = nd.ResponseFitter(input_signal=vox_signal, sample_rate=self.fs)
@@ -431,23 +436,111 @@ class NideconvFitter():
 
     def plot_average_per_event(
         self, 
-        add_offset=True, 
+        add_offset: bool=True, 
         axs=None, 
-        title="Average HRF across events", 
-        save_as=None, 
-        error_type="sem", 
-        ttp=False, 
-        ttp_lines=False, 
-        ttp_labels=None, 
-        events=None, 
-        fwhm=False, 
-        fwhm_lines=False, 
-        fwhm_labels=None, 
-        inset_ttp=[0.75, 0.65, 0.3, 0.3],
-        inset_fwhm=[0.75, 0.65, 0.3, 0.3],
-        reduction_factor=1.3,
+        title: str="Average HRF across events", 
+        save_as: str=None, 
+        error_type: str="sem", 
+        ttp: bool=False, 
+        ttp_lines: bool=False, 
+        ttp_labels: list=None, 
+        events: list=None, 
+        fwhm: bool=False, 
+        fwhm_lines: bool=False, 
+        fwhm_labels: list=None, 
+        inset_ttp: list=[0.75, 0.65, 0.3, 0.3],
+        inset_fwhm: list=[0.75, 0.65, 0.3, 0.3],
+        reduction_factor: float=1.3,
         **kwargs):
 
+        """plot_average_per_event
+
+        Plot the average across runs and voxels for each event in your data. Allows the option to have time-to-peak or full-width half max (FWHM) plots as insets. This makes the most sense if you have multiple events, otherwise you have 1 bar..
+
+        Parameters
+        ----------
+        add_offset: bool, optional
+            Shift the HRFs to have the baseline at zero, by default True. Theoretically, this should already happen if your baseline is estimated properly, but for visualization and quantification purposes this is alright
+        axs: <AxesSubplot:>, optional
+            Matplotlib axis to store the figure on, by default None
+        title: str, optional
+            Plot title, by default None, by default "Average HRF across events"
+        save_as: str, optional
+            Save the plot as a file, by default None
+        error_type: str, optional
+            Which error type to use across runs/voxels, by default "sem"
+        ttp: bool, optional
+            Plot the time-to-peak on the inset axis, by default False
+        ttp_lines: bool, optional
+            Plot lines on the original axis with HRFs to indicate the maximum amplitude, by default False
+        ttp_labels: list, optional
+            Which labels to use for the inset axis; this can be different than your event names (e.g., if you want to round numbers), by default None
+        events: list, optional
+            List that decides the order of the events to plot, by default None. By default, it takes the event names, but sometimes you want to flip around the order.
+        fwhm: bool, optional
+            Plot the full-width half-max (FWHM) on the inset axis, by default False
+        fwhm_lines: bool, optional
+            Plot lines on the original axis with HRFs to indicate the maximum amplitude, by default False        
+        fwhm_labels: list, optional
+            Which labels to use for the inset axis; this can be different than your event names (e.g., if you want to round numbers), by default None
+        inset_ttp: list, optional
+            Where to put your TTP-axis, by default [0.75, 0.65, 0.3, 0.3]
+        inset_fwhm: list, optional
+            Where to put your FWHM-axis, by default [0.75, 0.65, 0.3, 0.3]
+        reduction_factor: float, optional
+            Reduction factor of the font size in the inset axis, by default 1.3
+
+        Example
+        ----------
+        >>> # do the fitting
+        >>> nd_fit = fitting.NideconvFitter(
+        >>>     df_ribbon, # dataframe with functional data
+        >>>     df_onsets,  # dataframe with onsets
+        >>>     basis_sets='canonical_hrf_with_time_derivative',
+        >>>     TR=0.105,
+        >>>     interval=[-3,17],
+        >>>     add_intercept=True,
+        >>>     verbose=True)
+
+        >>> # plot TTP with regular events + box that highlights stimulus onset
+        >>> fig,axs = plt.subplots(figsize=(8,8))
+        >>> nd_fit.plot_average_per_event(
+        >>>     xkcd=plot_xkcd, 
+        >>>     x_label="time (s)",
+        >>>     y_label="magnitude (%)",
+        >>>     add_hline='default',
+        >>>     ttp=True,
+        >>>     lim=[0,6],
+        >>>     ticks=[0,3,6],
+        >>>     ttp_lines=True,
+        >>>     y_label2="size (°)",
+        >>>     x_label2="time-to-peak (s)", 
+        >>>     title="regular events",
+        >>>     ttp_labels=[f"{round(float(ii),2)}°" for ii in nd_fit.cond],
+        >>>     add_labels=True,   
+        >>>     fancy=True,                     
+        >>>     cmap='inferno')
+        >>> # plot simulus onset
+        >>> axs.axvspan(0,1, ymax=0.1, color="#cccccc")
+
+        >>> # plot FWHM and flip the events
+        >>> nd_fit.plot_average_per_event(
+        >>>     x_label="time (s)",
+        >>>     y_label="magnitude (%)",
+        >>>     add_hline='default',
+        >>>     fwhm=True,
+        >>>     fwhm_lines=True,
+        >>>     lim=[0,5],
+        >>>     ticks=[i for i in range(6)],
+        >>>     fwhm_labels=[f"{round(float(ii),2)}°" for ii in nd_fit.cond[::-1]],
+        >>>     events=nd_fit.cond[::-1],
+        >>>     add_labels=True,
+        >>>     x_label2="size (°)",
+        >>>     y_label2="FWHM (s)",  
+        >>>     fancy=True,
+        >>>     cmap='inferno')
+        """
+        
         self.__dict__.update(kwargs)
 
         if axs == None:
@@ -458,38 +551,54 @@ class NideconvFitter():
         if not hasattr(self, "tc_condition"):
             self.timecourses_condition()
 
-        if not isinstance(events, list) and not isinstance(events, np.ndarray):
+        # average across runs
+        self.avg_across_runs = self.tc_condition.groupby(["event_type", "time"]).mean()
+
+        if not isinstance(events, (list,np.ndarray)):
             events = self.cond
+            self.event_indices = None
         else:
-            if self.verbose:
-                print(f"Flipping events to {events}")
+            utils.verbose(f"Flipping events to {events}", self.verbose)
+            self.avg_across_runs = pd.concat(
+                [utils.select_from_df(
+                self.avg_across_runs, 
+                expression=f"event_type = {ii}") 
+            for ii in events])
 
-        self.event_avg = []
-        self.event_sem = []
-        self.event_std = []
-        for ev in events:
-            # average over voxels (we have this iloc thing because that allows 'axis=1'). Groupby doesn't allow this
-            avg = self.tc_condition.loc[ev].iloc[:].mean(axis=1).values
-            sem = self.tc_condition.loc[ev].iloc[:].sem(axis=1).values
-            std = self.tc_condition.loc[ev].iloc[:].std(axis=1).values
+            # get list of switched indices
+            self.event_indices = [list(events).index(ii) for ii in self.cond]
+        
+        # average across voxels
+        self.avg_across_runs_voxels = self.avg_across_runs.mean(axis=1)
 
-            if add_offset:
-                if avg[0] > 0:
-                    avg -= avg[0]
+        # parse into list so it's compatible with LazyPlot (requires an array of lists)
+        self.event_avg = self.avg_across_runs_voxels.groupby("event_type").apply(np.hstack).to_list()
+        self.event_sem = self.avg_across_runs.sem(axis=1).groupby("event_type").apply(np.hstack).to_list()
+        self.event_std = self.avg_across_runs.std(axis=1).groupby("event_type").apply(np.hstack).to_list()
+
+        # reorder base on indices again
+        if isinstance(self.event_indices, list):
+            for tt,gg in zip(["avg","sem","std"],[self.event_avg,self.event_sem,self.event_std]):
+                reordered = [gg[i] for i in self.event_indices]
+                setattr(self, f"event_{tt}", reordered)
+
+        # shift all HRFs to zero
+        if add_offset:
+            for ev in range(len(self.event_avg)):
+                if self.event_avg[ev][0] > 0:
+                    self.event_avg[ev] -= self.event_avg[ev][0]
                 else:
-                    avg += abs(avg[0])
+                    self.event_avg[ev] += abs(self.event_avg[ev][0])
 
-            self.event_avg.append(avg)
-            self.event_sem.append(sem)
-            self.event_std.append(std)
-
+        # decide error type
         if error_type == "sem":
             self.use_error = self.event_sem.copy()
         elif error_type == "std":
             self.use_error = self.event_std.copy()
         else:
             raise ValueError(f"Error type must be 'sem' or 'std', not {error_type}")
-
+        
+        # plot
         plotter = plotting.LazyPlot(
             self.event_avg,
             xx=self.time,
@@ -497,7 +606,6 @@ class NideconvFitter():
             error=self.use_error,
             title=title,
             save_as=save_as,
-            return_obj=True,
             **kwargs)
 
         if hasattr(self, "font_size"):
@@ -522,7 +630,6 @@ class NideconvFitter():
                 ttp_labels = events  
 
             self.plot_ttp(
-                self.event_avg, 
                 axs=ax2, 
                 hrf_axs=axs, 
                 ttp_labels=ttp_labels, 
@@ -568,7 +675,6 @@ class NideconvFitter():
 
     def plot_ttp(
         self, 
-        tcs, 
         axs=None, 
         hrf_axs=None, 
         ttp_lines=False, 
@@ -589,40 +695,36 @@ class NideconvFitter():
         if axs == None:
             _,axs = plt.subplots(figsize=figsize)
 
-        # check if input is numpy array
-        if isinstance(tcs, list):
-            tcs = np.array(tcs)
-
-        if not isinstance(tcs, np.ndarray):
-            raise ValueError(f"Input must be a numpy array, not '{type(tcs)}'")
-
-        # get time-to-peak
-        peak_positions = (np.argmax(tcs, axis=1)/self.time.shape[-1])*self.time[-1]
-        peaks = tcs.max(1)
+        # get time-to-peak and index | parse out idxmax as it returns a tuple by default
+        self.df_peaks = self.avg_across_runs_voxels.groupby(level=0, sort=False).agg(['idxmax','max'],axis=1).reset_index()
+        self.df_peaks["idxmax"] = [self.df_peaks["idxmax"][ii][1] for ii in range(self.df_peaks.shape[0])]
 
         if ttp_lines:
             # heights need to be adjusted for by axis length 
             ylim = hrf_axs.get_ylim()
             tot = sum(list(np.abs(ylim)))
             start = (0-ylim[0])/tot
-            for ix,ii in enumerate(peak_positions):
+            for ix,ii in enumerate(self.df_peaks["idxmax"].values):
                 hrf_axs.axvline(
                     ii, 
                     ymin=start, 
-                    ymax=peaks[ix]/tot+start, 
+                    ymax=self.df_peaks["max"][ix]/tot+start, 
                     color=colors[ix], 
                     linewidth=0.5)
-    
-        x = [i for i in range(len(peaks))]
+        
         plotting.LazyBar(
-            x=ttp_labels,
-            y=peak_positions,
+            data=self.df_peaks,
+            x="event_type",
+            y="idxmax",
+            labels=ttp_labels,
             sns_ori=ttp_ori,
             axs=axs,
+            error=None,
             **dict(
                 kwargs,
                 font_size=self.font_size,
                 label_size=self.label_size))          
+
 
     def plot_fwhm(
         self, 
@@ -679,17 +781,53 @@ class NideconvFitter():
 
     def plot_average_per_voxel(
         self, 
-        add_offset=True, 
+        add_offset: bool=True, 
         axs=None, 
-        n_cols=4, 
-        wspace=0, 
-        figsize=(30,15), 
-        make_figure=True, 
-        labels=None, 
-        save_as=None, 
-        sharey=False, 
+        n_cols: int=4, 
+        wspace: float=0, 
+        figsize: tuple=None, 
+        make_figure: bool=True, 
+        labels: list=None, 
+        save_as: str=None, 
+        sharey: bool=False, 
         **kwargs):
-        
+
+        """plot_average_per_voxel
+
+        Plot the average across runs for each voxel in your dataset. Generally, this plot is used to plot HRFs across depth. If you have multiple events, we'll create a grid of `n_cols` wide (from which the rows are derived), with the HRFs for each event in the subplot. The legend will be put in the first subplot. If you only have 1 event, you can say `n_cols=None` to put the average across events for all voxels in 1 plot
+
+        Parameters
+        ----------
+        add_offset: bool, optional
+            Shift the HRFs to have the baseline at zero, by default True. Theoretically, this should already happen if your baseline is estimated properly, but for visualization and quantification purposes this is alright
+        axs: <AxesSubplot:>, optional
+            Matplotlib axis to store the figure on, by default None
+        n_cols: int, optional
+            Decides the number of subplots on the x-axis, by default 4. If you have 1 event, specify `n_cols=None`
+        wspace: float, optional
+            Decide the width between subplots, by default 0
+        figsize: tuple, optional
+            Figure size, by default (24,5*nr_of_rows) or (8,8) if `n_cols=None`
+        make_figure: bool, optional
+            Actually create the plot or just fetch the data across depth, by default True
+        labels: list, optional
+            Which labels to use for the inset axis; this can be different than your event names (e.g., if you want to round numbers), by default None
+        save_as: str, optional
+            Save to file, by default None
+        sharey: bool, optional
+            Save all y-axes the same, by default False. Can be nice if you want to see the progression across depth
+
+        Example
+        ----------
+        >>> nd_fit.plot_average_per_voxel(
+        >>>     labels=[f"{round(float(ii),2)} dva" for ii in nd_fit.cond],
+        >>>     wspace=0.2,
+        >>>     cmap="inferno",
+        >>>     line_width=2,
+        >>>     font_size=font_size,
+        >>>     label_size=16,
+        >>>     sharey=True)
+        """
         self.__dict__.update(kwargs)
 
         if not hasattr(self, "tc_condition"):
@@ -702,9 +840,16 @@ class NideconvFitter():
             # initiate figure
             if len(cols) > 10:
                 raise Exception(f"{len(cols)} were requested. Maximum number of plots is set to 30")
-            fig = plt.figure(figsize=figsize)
+
             n_rows = int(np.ceil(len(cols) / n_cols))
+            if not isinstance(figsize, tuple):
+                figsize = (24,5*n_rows)
+
+            fig = plt.figure(figsize=figsize)
             gs = fig.add_gridspec(n_rows, n_cols, wspace=wspace)
+        else:
+            if not isinstance(figsize, tuple):
+                figsize = (8,8)
 
         self.all_voxels_in_event = []
         self.all_error_in_voxels = []
@@ -755,7 +900,15 @@ class NideconvFitter():
                         labels=labels,
                         add_hline='default',
                         **kwargs)
-
+                else:
+                    self.pl = plotting.LazyPlot(
+                        vox_data,
+                        xx=self.time,
+                        error=vox_error,
+                        figsize=figsize,
+                        labels=labels,
+                        add_hline='default',
+                        **kwargs)                    
             else:
                 for ix, col in enumerate(cols):
                     axs = fig.add_subplot(gs[ix])
@@ -801,16 +954,75 @@ class NideconvFitter():
     def plot_hrf_across_depth(
         self,
         axs=None,
-        figsize=(8,8),
-        cmap='viridis',
-        color=None,
-        ci_color="#cccccc",
-        ci_alpha=0.6,
-        x_label="depth (%)",
-        save_as=None,
-        invert=False,
+        figsize: tuple=(8,8),
+        cmap: str='viridis',
+        color: Union[str,tuple]=None,
+        ci_color: Union[str,tuple]="#cccccc",
+        ci_alpha: float=0.6,
+        save_as: str=None,
+        invert: bool=False,
         **kwargs):
 
+        """plot_hrf_across_depth
+
+        Plot the magnitude of the HRF across depth as points with a seaborn regplot through it. The points can be colored with `color` according to the HRF from :func:`linescanning.fitting.NideconvFitter.plot_average_across_voxels`, or they can be given 1 uniform color. The linear fit can be colored using `ci_color`, for which the default is light gray.
+
+        Parameters
+        ----------
+        axs: <AxesSubplot:>, optional
+            Matplotlib axis to store the figure on, by default None
+        figsize: tuple, optional
+            Figure size, by default (8,8)
+        cmap: str, optional
+            Color map for the data points, by default 'viridis'
+        color: str, tuple, optional
+            Don't use a color map for the data points, but a uniform color instead, by default None. `cmap` takes precedence!
+        ci_color: str, tuple, optional
+            Color of the linear fit with seaborn's regplot, by default "#cccccc"
+        ci_alpha: float, optional
+            Alpha of linear fit, by default 0.6
+        save_as: str, optional
+            Save as file, by default None
+        invert: bool, optional
+            By default, we'll assume your input data represents voxels from CSF to WM. This flag can flip that around, by default False
+
+        Example
+        ----------
+        >>> # lump events together
+        >>> lumped = fitting.NideconvFitter(
+        >>>     df_ribbon,
+        >>>     df_onsets,
+        >>>     basis_sets='fourier',
+        >>>     n_regressors=4,
+        >>>     lump_events=True,
+        >>>     TR=0.105,
+        >>>     interval=[-3,17])
+
+        >>> # plot
+        >>> lumped.plot_hrf_across_depth(x_label="depth [%]")
+
+        >>> # make a combined plot of HRFs and magnitude
+        >>> fig = plt.figure(figsize=(16, 8))
+        >>> gs = fig.add_gridspec(1, 2)
+        >>> 
+        >>> ax = fig.add_subplot(gs[0])
+        >>> lumped.plot_average_per_voxel(
+        >>>     n_cols=None, 
+        >>>     axs=ax, 
+        >>>     labels=True,
+        >>>     x_label="time (s)",
+        >>>     y_label="magnitude",
+        >>>     set_xlim_zero=False)
+        >>> ax.set_title("HRF across depth (collapsed stimulus events)", fontsize=lumped.pl.font_size)
+        >>> 
+        >>> ax = fig.add_subplot(gs[1])
+        >>> lumped.plot_hrf_across_depth(
+        >>>     axs=ax, 
+        >>>     order=1,
+        >>>     x_label="depth [%]")
+        >>> ax.set_title("Maximum value HRF across depth", fontsize=lumped.pl.font_size)        
+        """
+        
         if not hasattr(self, "all_voxels_in_event"):
             self.plot_timecourses(make_figure=False)
 
@@ -831,10 +1043,9 @@ class NideconvFitter():
         self.pl = plotting.LazyCorr(
             self.depths, 
             self.max_vals, 
-            color='#cccccc', 
+            color=ci_color, 
             axs=axs, 
             x_ticks=[0,50,100],
-            x_label=x_label,
             points=False,
             scatter_kwargs={"cmap": cmap},
             **kwargs)
@@ -901,16 +1112,16 @@ class NideconvFitter():
                     elif key == "y_label":
                         kwargs[key] = None
 
-            event_df = select_from_df(self.tc_condition, expression=f"event_type = {event}")
-            error_df = select_from_df(err, expression=f"event_type = {event}")            
+            event_df = utils.select_from_df(self.tc_condition, expression=f"event_type = {event}")
+            error_df = utils.select_from_df(err, expression=f"event_type = {event}")            
 
             self.data_for_plot = []
             self.error_for_plot = []
             for ii, dd in enumerate(list(self.tc_condition.columns)):
 
                 # get the timecourse
-                col_data = np.squeeze(select_from_df(event_df, expression='ribbon', indices=[ii]).values)
-                col_error = np.squeeze(select_from_df(error_df, expression='ribbon', indices=[ii]).values)
+                col_data = np.squeeze(utils.select_from_df(event_df, expression='ribbon', indices=[ii]).values)
+                col_error = np.squeeze(utils.select_from_df(error_df, expression='ribbon', indices=[ii]).values)
 
                 # shift to zero
                 if add_offset:
