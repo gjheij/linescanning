@@ -2,6 +2,8 @@
 #$ -j Y
 #$ -cwd
 #$ -V
+import mkl
+mkl.set_num_threads=1
 
 import ast
 import getopt
@@ -27,29 +29,31 @@ def main(argv):
 ---------------------------------------------------------------------------------------------------
 call_prf
 
-Wrapper for population receptive field fitting with pRFpy. If not present yet, it will create a
-design matrix based on a specified path to screenshots as outputted by the pRF-experiment script.
-If you're not running that particular experiment, you'll need to create a design matrix yourself.
-Assumes the input is BIDS compliant, as it will extract certain features from the filenames.
-Currently compatible with output from pybest (ending with "*desc-denoised_bold.npy") and from fMRI-
-Prep (ending with "*bold.func.gii"). It will throw an error if neither of these conditions are met.
-If you have a different case (e.g., nifti's), please open an issue so we can deal with that. We'll 
-select files from the input directory based on 'space-' (check spinoza_setup)/'run-'/'task-IDs. They
-are then paired into left+right hemisphere. Finally, the median over all runs is calculated and in-
-serted in the model-fitting object.
+Wrapper for population receptive field fitting with pRFpy. If not present yet, it will create a de-
+sign matrix based on a specified path to screenshots as outputted by the pRF-experiment script. If 
+you're not running that particular experiment, you'll need to create a design matrix yourself. As-
+sumes the input is BIDS compliant, as it will extract certain features from the filenames. Current-
+ly compatible with output from pybest (ending with "*desc-denoised_bold.npy") and from fMRIPrep (en-
+ding with "*bold.func.gii"). It will throw an error if neither of these conditions are met. If you 
+have a different case (e.g., nifti's), please open an issue so we can deal with that. We'll select 
+files from the input directory based on 'space-' (check spinoza_setup)/'run-'/'task-IDs. They are 
+then paired into left+right hemisphere. Finally, the median over all runs is calculated and inser-
+ted in the model-fitting object.
 
 Usage:
   call_prf [arguments] [options]
 
 Arguments:
-    -s|--sub    <sub number>        number of subject's FreeSurfer directory from which you can 
-                                    omit "sub-" (e.g.,for "sub-001", enter "001").
+    -s|--sub    <sub number>        number of subject's FreeSurfer directory from which you can omit 
+                                    "sub-" (e.g.,for "sub-001", enter "001").
     -n|--ses    <session number>    session number (e.g., "1")
     -t|--task   <task name>         name of the experiment performed (e.g., "2R")
     -o|--out    <prf dir>           output directory containing pRF-stuff (/derivatives/prf)
     -i|--in     <input dir>         input directory (e.g., output of pybest/fMRIPrep)
     -p|--png    <path to pngs>      path to png's if you ran M. Aqil's experiment
-    -m|--model  <model type>        one of ['gauss','dog','css','norm'], default = 'gauss'
+    -m|--model  <model type>        one of ['gauss','dog','css','norm'], default = 'gauss'. You can 
+                                    also call models with '--gauss', '--dog', '--css', or '--norm'
+                                    (see below).
     -x|--params <gaussian params>   path to numpy array containing old parameters of Gaussian model
                                     to use for the Normalization model
     -u|--space  <fit space>         default is set as PYBEST_SPACE in spinoza_setup
@@ -66,12 +70,11 @@ Arguments:
 Options:                                  
     --bgfs          use L-BGFS minimization for both the Gaussian as well as the extended model. Use 
                     the -x flag if you want different minimizers for both stages                      
-    --clip          clip the edges of design matrix in the space of 'n_pix' (by default = 100). 
-                    You will need to calculate how many pixels are to be set to zero given the vi-
-                    sual field of the subject in the scanner (with a screensize of [1920,1080]px
-                    and height of 39.3cm). Format needs to be '--clip "a,b,c,d"' or --clip [a,b,c,d]
-                    to ensure it's read in like a list. Negative values will be set to zero within
-                    `linescanning.prf.get_prfdesign`
+    --clip          clip the edges of design matrix in the space of 'n_pix' (by default = 100). You 
+                    will need to calculate how many pixels are to be set to zero given the visual 
+                    field of the subject in the scanner (with a screensize of [1920,1080]px and 
+                    height of 39.3cm). Format needs to be '--clip "a,b,c,d"' or --clip [a,b,c,d] to 
+                    ensure it's read in like a list. Negative values will be set to zero.
     --file_ending   Overwrite default search-targets from pybest/fMRIPrep output. E.g., for fMRI-
                     Prep, we look for 'bold.func.gii' and 'desc-denoised_bold.npy' for Pybest. With
                     <file_ending> you can specify to use the volumetric data from fMRIPrep (e.g., 
@@ -110,6 +113,12 @@ Options:
                     PSC will be calculated following M. Aqil's strategy:
                         psc = signals*100/(mean(signals)) - median(signals_without_stimulus)
 
+Models:
+    --gauss         run standard Gaussian model (default) [Dumoulin & Wandell, 2008]
+    --dog           run difference-of-gaussian model (suppression) [Zuiderbaan, et al. 2013]
+    --css           run compressive spatial summation model (compression) [Kay, et al. 2013]
+    --norm          run divisive normalization model (suppresion+compression) [Aqil, et al. 2021]
+
 Example:
   call_prf -s 001 -n 1 -t 2R -o /path/derivatives/prf -i /path/to/pybest/sub-001 -p /path/png
   call_prf --sub 001 --ses 1 --task 2R --out /path/derivatives/prf --in /path/to/pybest/sub-001
@@ -139,12 +148,13 @@ Example:
     do_fit      = True
     cut_vols    = 0
     lbl         = None
-    save_grid   = True
+    save_grid   = False
     grid_bounds = True   
+    n_jobs      = 10
     merge_sessions = False
 
     try:
-        opts = getopt.getopt(argv,"ghs:n:t:o:i:p:m:x:u:c:v:",["help", "sub=", "model=", "ses=", "task=", "out=", "in=", "png=", "params=", "grid", "space=", "hrf", "n_pix=", "clip=", "verbose", "file_ending=", "zscore", "overwrite", "constr=", "tc", "bgfs", "no_fit", "raw", "cut_vols=", "v1", "v2", "no_grid", "merge_ses"])[0]
+        opts = getopt.getopt(argv,"ghs:n:t:o:i:p:m:x:u:c:v:j:",["help", "sub=", "model=", "ses=", "task=", "out=", "in=", "png=", "params=", "grid", "space=", "hrf", "n_pix=", "clip=", "verbose", "file_ending=", "zscore", "overwrite", "constr=", "tc", "bgfs", "no_fit", "raw", "cut_vols=", "v1", "v2", "save_grid", "merge_ses", "n_jobs=", "gauss", "dog", "css", "norm"])[0]
     except getopt.GetoptError:
         print("ERROR while reading arguments; did you specify an illegal argument?")
         print(main.__doc__)
@@ -157,7 +167,7 @@ Example:
         elif opt in ("-s", "--sub"):
             sub = arg
         elif opt in ("-n", "--ses"):
-            ses = int(arg)
+            ses = arg
         elif opt in ("-t", "--task"):
             task = arg
         elif opt in ("-o", "--out"):
@@ -178,6 +188,8 @@ Example:
             n_pix = int(arg)
         elif opt in ("-v", "--verbose"):
             verbose = True
+        elif opt in ("-j", "--n_jobs"):
+            n_jobs = int(arg)
         elif opt in ("--clip"):
             clip_dm = list(ast.literal_eval(arg))
         elif opt in ("--file_ending"):
@@ -185,7 +197,15 @@ Example:
         elif opt in ("--zscore"):
             psc = False
         elif opt in ("--raw"):
-            psc = False            
+            psc = False 
+        elif opt in ("--gauss"):
+            model = "gauss" 
+        elif opt in ("--dog"):
+            model = "dog"
+        elif opt in ("--css"):
+            model = "css"
+        elif opt in ("--norm"):
+            model = "norm"                                                              
         elif opt in ("--overwrite"):
             overwrite = True
         elif opt in ("--tc"):
@@ -213,10 +233,14 @@ Example:
             if grid_only:
                 print("WARNING: '--no_grid' was specified (meaning 'do not save out gridsearch parameters', though '-g' or '--grid' was specified (meaning do gridsearch only). Overruling '--no_grid'")
                 save_grid = True         
-            
+
     if len(argv) < 2:
         print(main.__doc__)
         sys.exit()
+    
+    # automatically save grid if grid only is requested
+    if grid_only:
+        save_grid = True
 
     # check clip input:
     if isinstance(clip_dm, str):
@@ -434,6 +458,12 @@ Example:
             m_prf_tc_data = empty.copy()
 
             out += f"_roi-{roi_tag}"
+            exclude = None
+        else:
+            exclude = "roi-"
+
+    else:
+        exclude = None
 
     # cut volumes at the beginning of the timeseries. Also subtract number of volumes from baseline
     utils.verbose(f"Cutting {cut_vols} from beginning of timeseries", verbose)
@@ -464,10 +494,20 @@ Example:
 
         if not overwrite:
             # check if we have existing Gaussian pRFs that we should insert in DN-model
-            old_params = utils.get_file_from_substring([out, 'model-gauss', f'stage-{stage}', 'params.pkl'], outputdir, return_msg=None)
-            if verbose:
-                if old_params != None:
-                    utils.verbose(f"Injecting '{old_params}' into {model}-model", verbose)
+            search_list = [out, 'model-gauss', f'stage-{stage}', 'params.pkl']
+            old_params = utils.get_file_from_substring(
+                search_list, 
+                outputdir, 
+                return_msg=None, 
+                exclude=exclude)
+            
+            if old_params != None:
+                if isinstance(old_params, list):
+                    raise TypeError(f"old_params cannot be a list.. {old_params}")
+
+                utils.verbose(f"Injecting '{old_params}' into {model}-model", verbose)
+            else:
+                utils.verbose(f"Could not find Gaussian parameters in '{outputdir}': {search_list}", verbose)
         else:
             old_params = None
 
@@ -487,7 +527,7 @@ Example:
             old_params=old_params,
             constraints=constraints,
             save_grid=save_grid,
-            nr_jobs=1,
+            nr_jobs=n_jobs,
             use_grid_bounds=grid_bounds)
 
         stage1.fit()
