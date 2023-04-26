@@ -61,6 +61,10 @@ if [[ -z ${PYBEST_SPACE} ]]; then
   PYBEST_SPACE="fsnative"
 fi
 
+if [[ -z ${PYBEST_N_COMPS} ]]; then
+  PYBEST_N_COMPS=10
+fi
+
 while getopts :-:os:n:t::c argument
 do
   case ${argument} in
