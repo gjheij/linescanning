@@ -311,7 +311,7 @@ def make_stims(
             else:
                 #2d circle
                 xx,yy = np.meshgrid(xy[0],xy[1])
-                stim[(((xx-loc[0])**2+(yy+loc[1])**2)**0.5)<(xy[0].max()*pp/(len(stims)*factor))] = 1
+                stim[(((xx-loc[0])**2+(yy-loc[1])**2)**0.5)<(xy[0].max()*pp/(len(stims)*factor))] = 1
                 stim_sizes.append(2*(xy[0].max()*pp/(len(stims)*factor)))
 
                 # make concentric rings
@@ -447,9 +447,9 @@ def plot_stims(
     for i, ax in enumerate(fig.axes):
 
         if isinstance(stims, list):
-            ax.imshow(stims[start], extent=extent[0]+extent[1])
+            ax.imshow(np.flipud(stims[start]), extent=extent[0]+extent[1])
         else:
-            ax.imshow(stims[...,start], extent=extent[0]+extent[1])
+            ax.imshow(np.flipud(stims[...,start]), extent=extent[0]+extent[1])
         
         if not axis_on:
             ax.axis('off')
@@ -528,8 +528,8 @@ def norm_2d_sr_function(a,b,c,d,s_1,s_2,x,y,stims,mu_x=0,mu_y=0):
     else:
         raise TypeError(f"Stimuli must be a list or np.ndarray, not {type(stims)}")
 
-    sr_function = ((a[...,np.newaxis]*np.sum(np.tile(np.exp(-((xx[...,np.newaxis]+mu_x)**2+(yy[...,np.newaxis]+mu_y)**2)/(2*s_1**2))[...,np.newaxis],n_stims)*stims[:,:,np.newaxis,:],axis=(0,1)) +b[...,np.newaxis])/\
-    ((c[...,np.newaxis]*np.sum(np.tile(np.exp(-((xx[...,np.newaxis]+mu_x)**2+(yy[...,np.newaxis]+mu_y)**2)/(2*s_2**2))[...,np.newaxis],n_stims)*stims[:,:,np.newaxis,:],axis=(0,1)) +d[...,np.newaxis])) - (b/d)[...,np.newaxis])    
+    sr_function = ((a[...,np.newaxis]*np.sum(np.tile(np.exp(-((xx[...,np.newaxis]-mu_x)**2+(yy[...,np.newaxis]-mu_y)**2)/(2*s_1**2))[...,np.newaxis],n_stims)*stims[:,:,np.newaxis,:],axis=(0,1)) +b[...,np.newaxis])/\
+    ((c[...,np.newaxis]*np.sum(np.tile(np.exp(-((xx[...,np.newaxis]-mu_x)**2+(yy[...,np.newaxis]-mu_y)**2)/(2*s_2**2))[...,np.newaxis],n_stims)*stims[:,:,np.newaxis,:],axis=(0,1)) +d[...,np.newaxis])) - (b/d)[...,np.newaxis])    
     
     return sr_function
 
@@ -2784,7 +2784,7 @@ class SizeResponse():
             else:
                 # custom stimuli for each pRF
                 func = []
-                utils.verbose("Creating unique stimulus set for each pRF", True)
+                utils.verbose(f"Creating unique stimulus (type='{stims}') set for each pRF", True)
                 collect_stims = []
                 for rf_ix in range(df_filtered.shape[0]):
                     
@@ -2906,7 +2906,7 @@ class SizeResponse():
             _,ax = plt.subplots(figsize=(6,6))        
         
         cmap_blue = utils.make_binary_cm(cmap)
-        im = ax.imshow(stim, extent=vf_extent[0]+vf_extent[1], cmap=cmap_blue)
+        im = ax.imshow(np.flipud(stim), extent=vf_extent[0]+vf_extent[1], cmap=cmap_blue)
 
         ax.axvline(0, color='k', linestyle='dashed', lw=0.5)
         ax.axhline(0, color='k', linestyle='dashed', lw=0.5)
