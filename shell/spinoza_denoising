@@ -26,7 +26,7 @@ Arguments:
   -n <session>        session ID (e.g., 1, 2, or none)
   -t <task ID>        limit pybest processing to a specific task. Default is all tasks in TASK_SES1
                       in the spinoza_setup-file
-  -o                  overwrite existing files
+  -o|--ow             overwrite existing files
   -c|--sge            submit job to cluster (called with 'master -m <module> --sge')
   --no_raw            do NOT unzscore the output from pybest (default is to do so)
   --fsaverage         overwrite PYBEST_SPACE-variable and use FSAverage for pybest (defaults to fs-
@@ -69,6 +69,9 @@ do
         no_raw)
           raw_flag="--no_raw"
           ;;
+        ow)
+          OW=1
+          ;;          
         sge)
           SGE=1
           ;;          
@@ -192,6 +195,7 @@ for subID in ${search}; do
           -r ${PYBEST_SPACE} \
           -f ${FPREP} \
           -c ${cpu} \
+          -p ${PYBEST_N_COMPS} \
           ${task_flag} \
           ${raw_flag}
 

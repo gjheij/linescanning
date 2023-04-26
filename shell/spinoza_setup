@@ -150,6 +150,7 @@ export FS_LICENSE=${REPO_DIR}/misc/license.txt                                  
 
 # PYBEST
 export PYBEST_SPACE="fsnative"
+export PYBEST_N_COMPS=10
 
 # PROJECT
 export DIR_PROJECTS="/data1/projects/MicroFunc/Jurjen/projects"
