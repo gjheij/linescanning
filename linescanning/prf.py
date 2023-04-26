@@ -1,3 +1,7 @@
+import mkl
+mkl.set_num_threads=1
+standard_max_threads = mkl.get_max_threads()
+
 import ast
 from datetime import datetime, timedelta
 from linescanning import (
@@ -12,6 +16,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 import pandas as pd
+from joblib import Parallel, delayed
 from past.utils import old_div
 from prfpy import rf,stimulus
 from prfpy.fit import *
@@ -88,19 +93,23 @@ def read_par_file(prf_file):
     """
 
     if isinstance(prf_file, str):
-        if prf_file.endswith("npy"):
-            pars = np.load(prf_file)
-        elif prf_file.endswith("mat"):
-            tmp = io.loadmat(prf_file)
-            pars = tmp[list(tmp.keys())[-1]] # find last key in list
-        elif prf_file.endswith("pkl"):
-            with open(prf_file, 'rb') as input:
-                data = pickle.load(input)
+        if os.path.exists(prf_file):
+            if prf_file.endswith("npy"):
+                pars = np.load(prf_file)
+            elif prf_file.endswith("mat"):
+                tmp = io.loadmat(prf_file)
+                pars = tmp[list(tmp.keys())[-1]] # find last key in list
+            elif prf_file.endswith("pkl"):
+                with open(prf_file, 'rb') as input:
+                    data = pickle.load(input)
 
-                try:
-                    pars = data['pars']
-                except:
-                    raise TypeError(f"Pickle-file did not arise from 'pRFmodelFitting'. I'm looking for 'pars', but got '{data.keys()}'")
+                    try:
+                        pars = data['pars']
+                    except:
+                        raise TypeError(f"Pickle-file did not arise from 'pRFmodelFitting'. I'm looking for 'pars', but got '{data.keys()}'")
+        else:
+            raise TypeError(f"Input '{prf_file}' is not a file..")
+        
     elif isinstance(prf_file, np.ndarray):
         pars = prf_file.copy()
     elif isinstance(prf_file, pd.DataFrame):
@@ -257,12 +266,11 @@ def make_stims(
     dim_stim=2, 
     factor=4, 
     concentric_size=0.65, 
+    loc=(0,0),
     dt="fill"):
 
     """make_stims
-
     Creates a list of stimuli to create size/response curves.
-
     Parameters
     ----------
     x: array
@@ -273,11 +281,12 @@ def make_stims(
         number of dimensions to use: 2 for circle, 1 for bar
     factor: int
         factor with which to increase stimulus size
+    loc: tuple, optional
+        location to center stimuli on. Default is (0,0)
     dt: str
         Set the type of stimulus that needs to be created. by default 'fill', other options are 'full' [fullscreen stimulus], 'concentric' [circles with holes], 'hole' [fullscreen with growing hole]
     concentric_size: float
         proportion of stimulus size that needs to be masked out again
-
     Returns
     ----------
     list
@@ -290,7 +299,7 @@ def make_stims(
     if dim_stim == 1:
         stims = [np.zeros_like(xy[0]) for n in range(int(xy.shape[-1]/factor))]
     else:
-        stims = [np.zeros((xy[1].shape[0],xy[0].shape[0])) for n in range(int(xy[0].shape[-1]/(2*factor)))]
+        stims = [np.zeros((xy[1].shape[0],xy[0].shape[0]), dtype=int) for n in range(int(xy[0].shape[-1]/(2*factor)))]
         stim_sizes=[]
     
     if dt != "full":
@@ -302,7 +311,7 @@ def make_stims(
             else:
                 #2d circle
                 xx,yy = np.meshgrid(xy[0],xy[1])
-                stim[((xx**2+yy**2)**0.5)<(xy[0].max()*pp/(len(stims)*factor))] = 1
+                stim[(((xx-loc[0])**2+(yy+loc[1])**2)**0.5)<(xy[0].max()*pp/(len(stims)*factor))] = 1
                 stim_sizes.append(2*(xy[0].max()*pp/(len(stims)*factor)))
 
                 # make concentric rings
@@ -327,7 +336,7 @@ def make_stims(
         stim_sizes.append(np.inf)
 
     if dim_stim > 1:
-        return stims, stim_sizes
+        return np.concatenate([ii[...,np.newaxis] for ii in stims], axis=-1), stim_sizes
     else:
         return stims
 
@@ -393,7 +402,6 @@ def make_stims2(n_pix, prf_object, dim_stim=2, degrees=[0,6], concentric=False, 
 
 def plot_stims(
     stims, 
-    n_rows=5, 
     n_cols=10, 
     figsize=None, 
     extent=([-5,5],[-5,5]),
@@ -415,13 +423,33 @@ def plot_stims(
     matplotlib.pyplot plot
     """
 
-    if figsize == None:
-        figsize = (n_cols*3,n_rows*3)
+    # get number of plots
+    if isinstance(stims, list):
+        n_elements = len(stims)
+        scalar = stims[0].shape[1]/stims[0].shape[0]
+    else:
+        n_elements = stims.shape[-1]
+        scalar = stims.shape[1]/stims.shape[0]
 
-    fig,_ = plt.subplots(n_rows, n_cols, figsize=figsize)
+    # calculate nr of rows based on nr of elements (account for interval-flag)
+    n_elements = int(round(n_elements/interval))
+    n_rows = int(round(n_elements/n_cols))
+
+    if figsize == None:
+        figsize = (24,n_rows*scalar)
+
+    fig,_ = plt.subplots(
+        n_rows, 
+        n_cols, 
+        figsize=figsize)
+
     start = 0
     for i, ax in enumerate(fig.axes):
-        ax.imshow(stims[start], extent=extent[0]+extent[1])
+
+        if isinstance(stims, list):
+            ax.imshow(stims[start], extent=extent[0]+extent[1])
+        else:
+            ax.imshow(stims[...,start], extent=extent[0]+extent[1])
         
         if not axis_on:
             ax.axis('off')
@@ -433,7 +461,13 @@ def plot_stims(
         fig.savefig(save_as, facecolor='white', dpi=300, bbox_inches='tight')
     # return fig
 
-def make_prf(prf_object, mu_x=0, mu_y=0, size=None, resize_pix=None, **kwargs):
+def make_prf(
+    prf_object, 
+    params,
+    model="gauss",
+    resize_pix=None, 
+    **kwargs):
+
     """make_prf
 
     Create an instantiation of a pRF using the parameters obtained during fitting.
@@ -457,12 +491,17 @@ def make_prf(prf_object, mu_x=0, mu_y=0, size=None, resize_pix=None, **kwargs):
         meshgrid containing Gaussian characteristics of the pRF. Can be plotted with :func:`linescanning.plotting.LazyPRF`
     """
 
-    prf = np.rot90(rf.gauss2D_iso_cart(
-        x=prf_object.x_coordinates[..., np.newaxis],
-        y=prf_object.y_coordinates[..., np.newaxis],
-        mu=(mu_x, mu_y),
-        sigma=size,
-        normalize_RFs=False).T, axes=(1, 2))
+    # prf = np.rot90(rf.gauss2D_iso_cart(
+    #     x=prf_object.x_coordinates[..., np.newaxis],
+    #     y=prf_object.y_coordinates[..., np.newaxis],
+    #     mu=(params[0], params[1]),
+    #     sigma=params[2],
+    #     normalize_RFs=False).T, axes=(1, 2))
+
+    prf = create_model_rf_wrapper(
+        model,
+        prf_object,
+        params)
 
     # spatially smooth for visualization
     if isinstance(resize_pix, int):
@@ -482,7 +521,16 @@ def norm_2d_sr_function(a,b,c,d,s_1,s_2,x,y,stims,mu_x=0,mu_y=0):
 
     xx,yy = np.meshgrid(x,y)
 
-    sr_function = (a*np.sum(np.exp(-((xx-mu_x)**2+(yy-mu_y)**2)/(2*s_1**2))*stims, axis=(-1,-2)) + b) / (c*np.sum(np.exp(-((xx-mu_x)**2+(yy-mu_y)**2)/(2*s_2**2))*stims, axis=(-1,-2)) + d) - b/d
+    if isinstance(stims, np.ndarray):
+        n_stims = stims.shape[-1]
+    elif isinstance(stims, list):
+        n_stims = len(stims)
+    else:
+        raise TypeError(f"Stimuli must be a list or np.ndarray, not {type(stims)}")
+
+    sr_function = ((a[...,np.newaxis]*np.sum(np.tile(np.exp(-((xx[...,np.newaxis]+mu_x)**2+(yy[...,np.newaxis]+mu_y)**2)/(2*s_1**2))[...,np.newaxis],n_stims)*stims[:,:,np.newaxis,:],axis=(0,1)) +b[...,np.newaxis])/\
+    ((c[...,np.newaxis]*np.sum(np.tile(np.exp(-((xx[...,np.newaxis]+mu_x)**2+(yy[...,np.newaxis]+mu_y)**2)/(2*s_2**2))[...,np.newaxis],n_stims)*stims[:,:,np.newaxis,:],axis=(0,1)) +d[...,np.newaxis])) - (b/d)[...,np.newaxis])    
+    
     return sr_function
 
 # from https://github.com/mdaghlian/MD_toy_dn_scotoma/blob/2d0c208307536fd1853a6befdc38be7fe0d969fb/dn_scripts/RF.py
@@ -1191,7 +1239,8 @@ def generate_model_params(
     dm=None, 
     TR=1.5, 
     fit_hrf=False, 
-    verbose=False):
+    verbose=False,
+    old_settings=None):
 
     """generate_model_params
 
@@ -1207,7 +1256,9 @@ def generate_model_params(
         repetition time; can be fetched from gifti-file; default = 1.5
     fit_hrf: bool
         Whether or not to fit two extra parameters for hrf derivative and dispersion. The default is False.
-
+    old_settings: dict, optional
+        Dictionary describing an existing set of settings (e.g., from previous fit)
+        
     Returns
     ----------
     dict
@@ -1226,132 +1277,129 @@ def generate_model_params(
     if yml_file == None:
         yml_file = utils.get_file_from_substring("prf_analysis.yml", opj(os.path.dirname(os.path.dirname(utils.__file__)), 'misc'))
 
-    utils.verbose(f"Reading settings from '{yml_file}'", verbose)
-    with open(yml_file) as file:
-        
-        settings = yaml.safe_load(file)
+    if not isinstance(old_settings, dict):
+        if isinstance(yml_file, str):
+            utils.verbose(f"Reading settings from '{yml_file}'", verbose)
+            with open(yml_file) as file:
+                settings = yaml.safe_load(file)
+        else:
+            raise ValueError("Could not read settings")
+    else:
+        utils.verbose(f"Reading manually specified settings", verbose)
+        settings = old_settings
 
-        if isinstance(dm, str):
-            dm = read_par_file(dm)
+    if isinstance(dm, str):
+        dm = read_par_file(dm)
 
-        prf_stim = stimulus.PRFStimulus2D(
-            screen_size_cm=settings['screen_size_cm'],
-            screen_distance_cm=settings['screen_distance_cm'],
-            design_matrix=dm,
-            TR=TR)
+    prf_stim = stimulus.PRFStimulus2D(
+        screen_size_cm=settings['screen_size_cm'],
+        screen_distance_cm=settings['screen_distance_cm'],
+        design_matrix=dm,
+        TR=TR)
 
-        ss = prf_stim.screen_size_degrees
-        max_ecc_size = ss/2.0
+    ss = prf_stim.screen_size_degrees
+    max_ecc_size = ss/2.0
 
-        # define grids
-        sizes = max_ecc_size * np.linspace(0.25, 1, settings['grid_nr'])**2
-        eccs = max_ecc_size * np.linspace(0.1, 1, settings['grid_nr'])**2
-        polars = np.linspace(0, 2*np.pi, settings['grid_nr'])
+    # define grids
+    sizes = max_ecc_size * np.linspace(0.25, 1, settings['grid_nr'])**2
+    eccs = max_ecc_size * np.linspace(0.1, 1, settings['grid_nr'])**2
+    polars = np.linspace(0, 2*np.pi, settings['grid_nr'])
 
-        coord_bounds = (-1.5*max_ecc_size, 1.5*max_ecc_size)
-        prf_size = (0.2, 1.5*ss)
+    coord_bounds = (-1.5*max_ecc_size, 1.5*max_ecc_size)
+    prf_size = (0.2, 1.5*ss)
 
-        grids = {
-            'screensize_degrees': float(ss), 
-            'grids': {
-                'sizes': [float(item) for item in sizes], 
-                'eccs': [float(item) for item in eccs], 
-                'polars': [float(item) for item in polars]}}
-        
-        allowed_models = ['gauss', 'css', 'dog', 'norm']
-        if model not in allowed_models:
-            raise ValueError(f"Model must be one of {allowed_models}. Not '{model}'")
+    hrf1 = np.linspace(0,10,10)
+    hrf2 = np.linspace(0,0,1)
 
-        # define bounds
-        if model == "gauss":
-            gauss_bounds = [
-                coord_bounds,                                           # x
-                coord_bounds,                                           # y
-                prf_size,                                               # prf size
-                settings['prf_ampl'],                                   # prf amplitude
-                settings['bold_bsl']]                                   # bold baseline
+    grids = {
+        'screensize_degrees': float(ss), 
+        'grids': {
+            'sizes': [float(item) for item in sizes], 
+            'eccs': [float(item) for item in eccs], 
+            'polars': [float(item) for item in polars],
+            'hrf1': hrf1,
+            'hrf2': hrf2}}
+    
+    allowed_models = ['gauss', 'css', 'dog', 'norm']
+    if model not in allowed_models:
+        raise ValueError(f"Model must be one of {allowed_models}. Not '{model}'")
 
-            bounds = {
-                'bounds': {
-                    'x': list(gauss_bounds[0]), 
-                    'y': list(gauss_bounds[1]), 
-                    'size': [float(item) for item in gauss_bounds[2]], 
-                    'prf_ampl': gauss_bounds[3], 
-                    'bold_bsl': gauss_bounds[4]}}
+    # define standard bounds, then add model-specific stuff
+    standard_bounds = [
+        coord_bounds,           # x
+        coord_bounds,           # y
+        prf_size,               # prf size
+        settings['prf_ampl'],   # prf amplitude
+        settings['bold_bsl']    # bold baseline
+    ]
+    
+    # define bounds
+    if model == "gauss":
+        gauss_bounds = standard_bounds.copy()
+        bounds = {
+            'bounds': {
+                'x': list(gauss_bounds[0]), 
+                'y': list(gauss_bounds[1]), 
+                'size': [float(item) for item in gauss_bounds[2]], 
+                'prf_ampl': gauss_bounds[3], 
+                'bold_bsl': gauss_bounds[4]}}
 
-        elif model == "css":
+    elif model == "css":
+        css_bounds = standard_bounds.copy() + [settings['css_exponent']] # CSS exponent
+        bounds = {
+            'bounds': {
+                'x': list(css_bounds[0]),
+                'y': list(css_bounds[1]),
+                'size': [float(item) for item in css_bounds[2]],
+                'prf_ampl': css_bounds[3],
+                'bold_bsl': css_bounds[4],
+                'css_exponent': css_bounds[5]}}
 
-            css_bounds = [
-                coord_bounds,                                             # x
-                coord_bounds,                                             # y
-                prf_size,                                                 # prf size
-                settings['prf_ampl'],                                     # prf amplitude
-                settings['bold_bsl'],                                     # bold baseline
-                settings['css_exponent']]                                 # CSS exponent
+    elif model == "dog":
+        dog_bounds = standard_bounds.copy() + [
+            settings[model]['surround_amplitude_bound'],    # surround amplitude
+            (settings['eps'], 3*ss)                         # surround size
+        ]
 
-            bounds = {
-                'bounds': {
-                    'x': list(css_bounds[0]),
-                    'y': list(css_bounds[1]),
-                    'size': [float(item) for item in css_bounds[2]],
-                    'prf_ampl': css_bounds[3],
-                    'bold_bsl': css_bounds[4],
-                    'css_exponent': css_bounds[5]}}
+        bounds = {
+            'bounds': {
+                'x': list(dog_bounds[0]),
+                'y': list(dog_bounds[1]),
+                'size': [float(item) for item in dog_bounds[2]],
+                'prf_ampl': dog_bounds[3],
+                'bold_bsl': dog_bounds[4],
+                'surr_ampl': dog_bounds[5],
+                'surr_size': [float(item) for item in dog_bounds[6]]}}
 
-        elif model == "dog":
+    elif model == "norm":
+        norm_bounds = standard_bounds.copy() + [
+            settings[model]['surround_amplitude_bound'],    # surround amplitude
+            (settings['eps'], 3*ss),                        # surround size
+            settings[model]['neural_baseline_bound'],       # neural baseline
+            settings[model]['surround_baseline_bound']      # surround baseline
+        ]
 
-            dog_bounds = [
-                coord_bounds,                                             # x
-                coord_bounds,                                             # y
-                prf_size,                                                 # prf size
-                settings['prf_ampl'],                                     # prf amplitude
-                settings['bold_bsl'],                                     # bold baseline
-                settings[model]['surround_amplitude_bound'],              # surround amplitude
-                (settings['eps'], 3*ss)]                                  # surround size
+        bounds = {
+            'bounds': {
+                'x': list(norm_bounds[0]), 
+                'y': list(norm_bounds[1]), 
+                'size': [float(item) for item in norm_bounds[2]], 
+                'prf_ampl': norm_bounds[3], 
+                'bold_bsl': norm_bounds[4],
+                'surr_ampl': norm_bounds[5],
+                'surr_size': [float(item) for item in norm_bounds[6]],
+                'neur_bsl': list(norm_bounds[7]),
+                'surr_bsl': [float(item) for item in norm_bounds[8]]}}
 
-            bounds = {
-                'bounds': {
-                    'x': list(dog_bounds[0]),
-                    'y': list(dog_bounds[1]),
-                    'size': [float(item) for item in dog_bounds[2]],
-                    'prf_ampl': dog_bounds[3],
-                    'bold_bsl': dog_bounds[4],
-                    'surr_ampl': dog_bounds[5],
-                    'surr_size': [float(item) for item in dog_bounds[6]]}}
+    if fit_hrf:
+        bounds['bounds']["hrf_deriv"] = settings["hrf"]["deriv_bound"]
+        bounds['bounds']["hrf_disp"] = settings["hrf"]["disp_bound"]
 
-        elif model == "norm":
-            norm_bounds = [
-                coord_bounds,                                            # x
-                coord_bounds,                                            # x
-                prf_size,                                                # prf size
-                settings['prf_ampl'],                                    # prf amplitude
-                settings['bold_bsl'],                                    # bold baseline
-                settings[model]['surround_amplitude_bound'],             # surround amplitude
-                (settings['eps'], 3*ss),                                 # surround size
-                settings[model]['neural_baseline_bound'],                # neural baseline
-                settings[model]['surround_baseline_bound']]              # surround baseline
-
-            bounds = {
-                'bounds': {
-                    'x': list(norm_bounds[0]), 
-                    'y': list(norm_bounds[1]), 
-                    'size': [float(item) for item in norm_bounds[2]], 
-                    'prf_ampl': norm_bounds[3], 
-                    'bold_bsl': norm_bounds[4],
-                    'surr_ampl': norm_bounds[5],
-                    'surr_size': [float(item) for item in norm_bounds[6]],
-                    'neur_bsl': list(norm_bounds[7]),
-                    'surr_bsl': [float(item) for item in norm_bounds[8]]}}
-
-        if fit_hrf:
-            bounds['bounds']["hrf_deriv"] = settings["hrf"]["deriv_bound"]
-            bounds['bounds']["hrf_disp"] = settings["hrf"]["disp_bound"]
-
-        # update settings file if we've generated a new one
-        settings.update(bounds)
-        settings.update(grids)
-        settings.update({'model': model})
-        settings.update({'TR': TR})
+    # update settings file if we've generated a new one
+    settings.update(bounds)
+    settings.update(grids)
+    settings.update({'model': model})
+    settings.update({'TR': TR})
 
     return settings, prf_stim
 
@@ -1363,7 +1411,8 @@ class GaussianModel():
             data=self.data,
             model=self.gauss_model,
             fit_css=False,
-            fit_hrf=self.fit_hrf)
+            fit_hrf=self.fit_hrf,
+            n_jobs=self.nr_jobs)
 
         if isinstance(self.old_params, np.ndarray):
             
@@ -1392,7 +1441,9 @@ class GaussianModel():
             polar_grid=self.settings['grids']['polars'],
             size_grid=self.settings['grids']['sizes'],
             fixed_grid_baseline=self.fix_grid_baseline,
-            grid_bounds=[tuple(self.settings['bounds']['prf_ampl'])])
+            verbose=self.verbose,
+            grid_bounds=[tuple(self.settings['bounds']['prf_ampl'])],
+            n_batches=self.nr_jobs)
         
         elapsed = (time.time() - start)
 
@@ -1477,17 +1528,23 @@ class ExtendedModel():
                     self.active_model,
                     self.data, 
                     fit_hrf=self.fit_hrf, 
-                    previous_gaussian_fitter=self.gaussian_fitter)
+                    previous_gaussian_fitter=self.gaussian_fitter,
+                    n_jobs=self.nr_jobs)
             else:
                 # we might have manually injected parameters
-                self.tmp_fitter = self.active_fitter(self.active_model, self.data, fit_hrf=self.fit_hrf)
+                self.tmp_fitter = self.active_fitter(
+                    self.active_model, 
+                    self.data, 
+                    fit_hrf=self.fit_hrf,
+                    n_jobs=self.nr_jobs)
         else:
             # inject existing-model object > advised when fitting the HRF
             self.tmp_fitter = self.active_fitter(
                 self.active_model, 
                 self.data, 
                 fit_hrf=self.fit_hrf, 
-                previous_gaussian_fitter=self.previous_gaussian_fitter)
+                previous_gaussian_fitter=self.previous_gaussian_fitter,
+                n_jobs=self.nr_jobs)
 
     def gridfit(self):
         
@@ -1524,6 +1581,7 @@ class ExtendedModel():
             self.tmp_fitter.grid_fit(
                 *self.grid_list,
                 n_batches=self.nr_jobs,
+                verbose=self.verbose,
                 rsq_threshold=self.settings['rsq_threshold'],
                 fixed_grid_baseline=self.fix_grid_baseline,
                 grid_bounds=self.grid_bounds)
@@ -1686,7 +1744,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         hrf=None,
         fit_hrf=False,
         settings=None,
-        nr_jobs=1000,
+        nr_jobs=1,
         prf_stim=None,
         model_obj=None,
         fix_bold_baseline=False,
@@ -1797,14 +1855,15 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
             utils.verbose(f"Setting {self.model_obj} as '{model}_model'-attribute", self.verbose)
             setattr(self, f'{model}_model', self.model_obj)
 
-    def define_settings(self):
+    def define_settings(self, old_settings=None):
 
         self.settings, self.prf_stim_ = generate_model_params(
             model=self.model, 
             dm=self.design_matrix, 
             TR=self.TR,
             fit_hrf=self.fit_hrf,
-            verbose=self.verbose)
+            verbose=self.verbose,
+            old_settings=old_settings)
 
     def define_hrf(self):
 
@@ -1863,10 +1922,11 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
     def fit(self):
 
         # check whether we got old parameters so we can skip Gaussian fit:
-        if isinstance(self.old_params, np.ndarray) or isinstance(self.old_params, str):
+        if isinstance(self.old_params, (np.ndarray,str)):
             
-            # agnostic read-in of existing parameter file
-            self.old_params = read_par_file(self.old_params)
+            # agnostic read-in of existing parameter file; if pkl-file, settings will be overwritting to ensure consistency
+            self.old_params = self.load_params(self.old_params, return_pars=True)
+
             if self.old_params.ndim == 1:
                 self.old_params = self.old_params[np.newaxis,...]
 
@@ -1882,6 +1942,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
             # Check if we should do Gaussian iterfit        
             if 'iter' in self.stage:
                 GaussianModel.iterfit(self)
+                self.previous_gaussian_fitter = self.gaussian_fitter
 
         else:
             utils.verbose(f"Gaussian fitter: {self.previous_gaussian_fitter}", self.verbose)
@@ -1898,14 +1959,14 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                     self.previous_gaussian_fitter.fit_hrf = False
 
                 GaussianModel.iterfit(self)
+                self.previous_gaussian_fitter = self.gaussian_fitter
 
         #----------------------------------------------------------------------------------------------------------------------------------------------------------
         # Check if we should do DN-model
         if self.model.lower() != "gauss":
-            
-            
+
             ## Define settings/grids/fitter/bounds etcs
-            self.define_settings()
+            self.define_settings(old_settings=self.settings)
 
             if self.fix_bold_baseline:
                 self.settings['bounds']['bold_bsl'] = [0,0]
@@ -1913,7 +1974,6 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
             # overwrite settings with custom settings
             self.update_settings()
 
-                
             # initiate and do grid fit
             ExtendedModel.__init__(self)
 
@@ -1990,7 +2050,14 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
 
         return bounds
     
-    def load_params(self, params_file, model='gauss', stage='iter', hemi=None):
+    def load_params(
+        self, 
+        params_file, 
+        model='gauss', 
+        stage='iter', 
+        hemi=None,
+        return_pars=False):
+
         """load_params
 
         Attribute of `self`, with which you can load in an existing file with pRF-estimates. If the input file is a `pkl`-file, you'll get access to all the required information about your analysis: the settings, the input data, the predictions, and the design matrix. To do this, we need the `params_file` as well as information about the origin of the file; which model (e.g., `gauss`) and stage (e.g., 'iter') did the file arise from. We'll then internally set the parameters to the specified model and stage, making it compatible with :func:`linescanning.prf.pRFmodelFitting.plot_vox()`. It can also be a `numpy.ndarray` or `pandas.DataFrame`, but then less information about the analysis is known. 
@@ -2005,6 +2072,8 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
             Stage from which the pRF-estimates came from, by default 'iter'
         hemi: str, optional
             In case `params_file` is a `pandas.DataFrame` indexed by `hemi` and you want a particular subset of the dataframe
+        return_pars: bool, optional
+            Instead of setting the parameters as attributes given `model` and `stage`, just return the parameters as output. This will still update the settings internally if the input was a pickle-file containing the **settings** key.
 
         Raises
         ----------
@@ -2038,14 +2107,11 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                     
                 params = data['pars']
                 self.settings = data['settings']
-                setattr(self, f'{model}_{stage}_predictions', data['predictions'])
 
-                # try to set the HRFs if fit_hrf=True
-                try:
-                    setattr(self, f'{model}_{stage}_hrf', data['hrf'])
-                except:
-                    pass
-                
+                for el in ["predictions","hrf"]:
+                    if el in list(data.keys()):
+                        setattr(self, f'{model}_{stage}_predictions', data['predictions'])
+            
                 utils.verbose(f"Reading settings from '{params_file}' (safest option; overwrites other settings)", self.verbose)
 
         elif isinstance(params_file, np.ndarray):
@@ -2072,9 +2138,11 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         else:
             raise ValueError(f"Unrecognized input type for '{params_file}' ({type(params_file)})")
 
-        utils.verbose(f"Inserting parameters from {type(params_file)} as '{model}_{stage}' in {self}", self.verbose)
-    
-        setattr(self, f'{model}_{stage}', params)
+        if return_pars:
+            return params
+        else:
+            utils.verbose(f"Inserting parameters from {type(params_file)} as '{model}_{stage}' in {self}", self.verbose)
+            setattr(self, f'{model}_{stage}', params)
 
     def make_predictions(self, vox_nr=None, model='gauss', stage='iter'):
         
@@ -2231,9 +2299,11 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
             
         prf_array = make_prf(
             self.prf_stim, 
-            size=params[2], 
-            mu_x=params[0], 
-            mu_y=params[1], 
+            params,
+            model=model,
+            # size=params[2], 
+            # mu_x=params[0], 
+            # mu_y=params[1], 
             resize_pix=resize_pix)
         
         if hasattr(self, "data"):
@@ -2274,21 +2344,22 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                 ax2 = axs[1]
 
             # make plot 
+            cross_col = "white"
+            if model == "gauss":
+                cross_col = "black"
+
             plotting.LazyPRF(
                 prf_array, 
+                cross_color=cross_col,
                 vf_extent=self.settings['vf_extent'], 
                 ax=ax1, 
                 xkcd=xkcd,
                 **kwargs)
 
             # make plot 
-            if title != None:
+            if isinstance(title, str):
                 if title == "pars":
-                    set_title = [round(ii,2) for ii in params]
-                else:
-                    set_title = title
-            else:
-                set_title = None
+                    title = str([round(ii,2) for ii in params])
 
             if axis_type == "time":
                 x_label = "time (s)"
@@ -2307,18 +2378,17 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                         "color": "b",
                         "lw": 2,
                         "marker": None,
-                        "label": "extra"
-                    }
+                        "label": "extra"}
 
                     for key in list(default_dict.keys()):
                         if key not in list(add_tc.keys()):
                             add_tc[key] = default_dict[key]
 
-                    data_list += [add_tc["tc"]]
-                    color_list += [add_tc["color"]]
-                    label_list += [add_tc["label"]]
-                    lw_list += [add_tc["lw"]]
-                    marker_list += [add_tc["marker"]]
+                    for ll,it in zip(
+                        [data_list,color_list,label_list,lw_list,marker_list],
+                        ["tc","color","label","lw","marker"]):
+
+                        ll += [add_tc[it]]
 
             plotting.LazyPlot(
                 data_list,
@@ -2329,7 +2399,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                 x_label=x_label,
                 y_label="amplitude",
                 axs=ax2,
-                title=set_title,
+                title=title,
                 xkcd=xkcd,
                 line_width=lw_list,
                 markers=marker_list,
@@ -2363,7 +2433,11 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
 
             if save_as:
                 print(f"Writing {save_as}")
-                fig.savefig(save_as)
+                fig.savefig(
+                    save_as, 
+                    dpi=300, 
+                    bbox_inches="tight",
+                    facecolor="white")
 
         return params, prf_array, tc, self.prediction
 
@@ -2371,17 +2445,17 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         
         if hasattr(self, f"{model}_{stage}"):
 
+            pkl_file = opj(self.output_dir, f'{self.output_base}_model-{model}_stage-{stage}_desc-prf_params.pkl')
+            utils.verbose(f"Save {stage}-fit parameters in {pkl_file}", self.verbose)
+
             # get parameters given model and stage
             params = getattr(self, f"{model}_{stage}")
 
             # write a pickle-file with relevant outputs
-            pkl_file = opj(self.output_dir, f'{self.output_base}_model-{model}_stage-{stage}_desc-prf_params.pkl')
             out_dict = {}
             out_dict['pars'] = params
             out_dict['settings'] = self.settings
-            out_dict['predictions'] = self.make_predictions(model=model, stage=stage)
-
-            utils.verbose(f"Save {stage}-fit parameters in {pkl_file}", self.verbose)
+            # out_dict['predictions'] = self.make_predictions(model=model, stage=stage)
 
             f = open(pkl_file, "wb")
             pickle.dump(out_dict, f)
@@ -2511,164 +2585,252 @@ class SizeResponse():
     >>> SR = prf.SizeResponse(fitting.prf_stim, new_params, subject_info=subject_info)        
     """
     
-    def __init__(self, prf_stim=None, params=None, model="norm", subject_info=None):
+    def __init__(
+        self, 
+        prf_stim=None, 
+        params=None, 
+        model="norm", 
+        subject_info=None,
+        downsample_factor=6,
+        n_pix=100,
+        srf_file=None,
+        screen_distance_cm=196,
+        screen_size_cm=39.8):
 
         self.prf_stim = prf_stim
         self.params = params
         self.model = model
         self.subject_info = subject_info
+        self.ds = downsample_factor
+        self.srf_file = srf_file
+        self.n_pix = n_pix
+        self.screen_distance_cm = screen_distance_cm
+        self.screen_size_cm = screen_size_cm
 
+        # overwrite info in CollectSubject object was specified
         if isinstance(self.subject_info, CollectSubject):
             if not isinstance(self.params, (np.ndarray,str,pd.DataFrame)):
                 self.params = self.subject_info.pars.copy()
-
-            if self.prf_stim == None:
                 self.prf_stim = self.subject_info.prf_stim
-                
+            
+            self.n_pix = self.prf_stim.design_matrix.shape[0]
+            self.screen_distance_cm = self.prf_stim.screen_distance_cm
+            self.screen_size_cm = self.prf_stim.screen_size_cm
+
+        if isinstance(self.params, str):
+            self.params = read_par_file(self.params)
+
         if isinstance(self.params, np.ndarray):
-            self.params_df = self.parameters_to_df(self.params, model=self.model)
+            self.params_df = Parameters(self.params, model=self.model).to_df()
         elif isinstance(self.params, pd.DataFrame):
             self.params_df = self.params.copy()
-        
-        # read the dimensions from design matrix
-        self.n_pix = self.prf_stim.design_matrix.shape[0]
 
         # define visual field in degree of visual angle
-        self.ss_deg_x = 2*np.degrees(np.arctan(70/(2.0*self.prf_stim.screen_distance_cm)))
-        self.x = np.linspace(-self.ss_deg_x/2, self.ss_deg_x/2, 1920)
+        self.ss_deg_x = 2*np.degrees(np.arctan(70/(2.0*self.screen_distance_cm)))
+        self.x = np.linspace(-self.ss_deg_x/2, self.ss_deg_x/2, 1920)[::self.ds]
 
-        self.ss_deg_y = 2*np.degrees(np.arctan(self.prf_stim.screen_size_cm /(2.0*self.prf_stim.screen_distance_cm)))
-        self.y = np.linspace(-self.ss_deg_y/2, self.ss_deg_y/2, 1080)
+        self.ss_deg_y = 2*np.degrees(np.arctan(self.screen_size_cm /(2.0*self.screen_distance_cm)))
+        self.y = np.linspace(-self.ss_deg_y/2, self.ss_deg_y/2, 1080)[::self.ds]
         self.dx = self.n_pix/len(self.x)
 
         # define visual extent:
         self.x_ext = [-self.ss_deg_x/2,self.ss_deg_x/2]
         self.y_ext = [-self.ss_deg_y/2,self.ss_deg_y/2]
         self.vf_extent = (self.x_ext,self.y_ext)
+    
+    def make_stimuli(
+        self, 
+        factor=4, 
+        dt="fill", 
+        *args, 
+        **kwargs):
 
-    def make_stimuli(self, factor=4, dt="fill"):
         """create stimuli for Size-Response curve simulation. See :func:`linescanning.prf.make_stims`"""
         # create stimuli
         
-        self.stims_tmp, self.stims_tmp_sizes = make_stims(
+        stims, sizes = make_stims(
             (self.x,self.y), 
             factor=factor, 
-            dt=dt)
+            dt=dt,
+            *args,
+            **kwargs)
         
-        setattr(self, f"stims_{dt}", self.stims_tmp)
-        setattr(self, f"stims_{dt}_sizes", self.stims_tmp_sizes)
+        return stims,sizes
 
-    def find_pref_size(self, size=None):
+    def find_pref_size(self, size=None, *args, **kwargs):
         if not hasattr(self, "stims_fill"):
-            self.make_stimuli(factor=2)
+            stims, sizes = self.make_stimuli(factor=2, *args, **kwargs)
 
-        idx,_ = utils.find_nearest(self.stims_fill_sizes, size)
-        return idx,self.stims_fill[idx]
+        idx,_ = utils.find_nearest(sizes, size)
+        return idx,sizes[idx]
 
-    @staticmethod
-    def parameters_to_df(params, model="norm", save_as=None):
-        """store the Divisive Normalization model parameters in a DataFrame"""
+    def make_sr_function(
+        self, 
+        params, 
+        stims=None,
+        center_prf=True):
 
-        if params.ndim == 1:
-            params = params[np.newaxis,:]
+        if not isinstance(params, (pd.DataFrame,pd.Series)):
+            params = Parameters(params, model="norm").to_df()
 
-        # see: https://github.com/VU-Cog-Sci/prfpy_tools/blob/master/utils/postproc_utils.py#L377
-        if model == "gauss":
-            params_dict = {
-                "x": params[:,0], 
-                "y": params[:,1], 
-                "prf_size": params[:,2],
-                "prf_ampl": params[:,3],
-                "bold_bsl": params[:,4],
-                "r2": params[:,-1],
-                "ecc": np.sqrt(params[:,0]**2+params[:,1]**2),
-                "polar": np.angle(params[:,0]+params[:,1]*1j)
-            }
-
-            if params.shape[-1] > 6:
-                params_dict["hrf_deriv"] = params[:,-3]
-                params_dict["hrf_disp"] = params[:,-2]
-
-        elif model == "norm":
-                
-            params_dict = {
-                "x": params[:,0], 
-                "y": params[:,1], 
-                "prf_size": params[:,2],
-                "prf_ampl": params[:,3],
-                "bold_bsl": params[:,4],
-                "neur_bsl": params[:,7],
-                "surr_ampl": params[:,5],
-                "surr_size": params[:,6], 
-                "surr_bsl": params[:,4],
-                "A": params[:,3], 
-                "B": params[:,7], #/params[:,3], 
-                "C": params[:,5], 
-                "D": params[:,8],
-                "ratio (B/D)": params[:,7]/params[:,8],
-                "r2": params[:,-1],
-                "size ratio": params[:,6]/params[:,2],
-                "suppression index": (params[:,5]*params[:,6]**2)/(params[:,3]*params[:,2]**2),
-                "ecc": np.sqrt(params[:,0]**2+params[:,1]**2),
-                "polar": np.angle(params[:,0]+params[:,1]*1j)}
-
-            if params.shape[-1] > 10:
-                params_dict["hrf_deriv"] = params[:,-3]
-                params_dict["hrf_dsip"] = params[:,-2]                
-        else:
-            raise NotImplementedError(f"Im lazy.. Still need to sort out models ['css' and 'dog']")
-
-        df = pd.DataFrame(params_dict)
-        if save_as:
-            df.to_csv(save_as)
-            return df
-        else:
-            return df
-
-    
-    def make_sr_function(self, center_prf=True, scale_factor=None, normalize="max", dt="fill"):
-        """create Size-Response function. If you want to ignore the actual location of the pRF, set `center_prf=True`. You can also scale the pRF-size with a factor `scale_factor`, for instance if you want to simulate pRF-sizes across depth."""
+        # get x,y,size parameters
         if center_prf:
-            mu_x, mu_y = 0,0
+            mu_x, mu_y = np.zeros((params.shape[0])),np.zeros((params.shape[0]))
         else:
-            mu_x = self.params_df['x'][0]
-            mu_y = self.params_df['y'][0]
+            mu_x = params.x.values
+            mu_y = params.y.values
 
-        if scale_factor != None:
-            prf_size = self.params_df['prf_size'][0]*scale_factor
-        else:
-            prf_size = self.params_df['prf_size'][0]
+        if mu_x.ndim == 0:
+            mu_x = mu_x[...,np.newaxis]
+        
+        if mu_y.ndim == 0:
+            mu_y = mu_y[...,np.newaxis]            
 
-        # make the stimuli        
-        self.make_stimuli(factor=2, dt=dt)
-
-        func = norm_2d_sr_function(
-            self.dx**2*self.params_df['A'][0], 
-            self.params_df['B'][0], 
-            self.dx**2*self.params_df['C'][0], 
-            self.params_df['D'][0], 
-            prf_size, 
-            self.params_df['surr_size'][0], 
+        sr = norm_2d_sr_function(
+            self.dx**2*params.A.values, 
+            params.B.values, 
+            self.dx**2*params.C.values, 
+            params.D.values, 
+            params.prf_size.values, 
+            params.surr_size.values, 
             self.x, 
             self.y, 
-            getattr(self,f"stims_{dt}"), 
+            stims, 
             mu_x=mu_x, 
             mu_y=mu_y)
 
-        # normalize by max value or given value
-        if isinstance(normalize, (str,int,float,np.ndarray)):
-            if normalize == "max":
-                norm = func.max()
-            elif isinstance(normalize, np.ndarray):
-                norm = normalize[0]
+        return sr
+
+    def batch_sr_function(
+        self,
+        params=None,
+        center_prf=True, 
+        normalize=None, 
+        stims=None,
+        sizes=None,
+        batch_size=1000,
+        parallel=True):
+
+        """create Size-Response function. If you want to ignore the actual location of the pRF, set `center_prf=True`. You can also scale the pRF-size with a factor `scale_factor`, for instance if you want to simulate pRF-sizes across depth."""
+        
+        if not isinstance(params, np.ndarray):
+            params = Parameters(params, model="norm").to_df()
+        
+        # reset indices, but keep vertex IDs
+        params = params.reset_index(drop=False)
+
+        # get indices where prf size != 0
+        idc_valid = list(params.loc[params.prf_size > 0].index)
+        utils.verbose(f"{len(idc_valid)}/{params.shape[0]} vertices > 0", True)
+
+        # filter out zeros
+        df_filtered = params.loc[params.index[idc_valid]]
+                
+        # use batches
+        if df_filtered.shape[0] > batch_size and center_prf:
+            n_batches = int(np.ceil(df_filtered.shape[0]/batch_size))
+            utils.verbose(f"Split data in {n_batches} batches of {batch_size} vertices", True)
+
+            # parse dataframe into list of batch dataframes for parallellization
+            act = 0
+            df_batches = []
+            for batch in range(n_batches):
+                interval = (batch*batch_size)+batch_size
+
+                try:
+                    df_batch = df_filtered.iloc[act:interval,:]
+                except:
+                    df_batch = df_filtered.iloc[act:,:]
+
+                df_batches.append(df_batch)
+                act += batch_size
+
+            # loop through dfs
+            if parallel:
+                utils.verbose("Running parallel jobs", True)
+                dd = Parallel(n_jobs=n_batches,verbose=False)(
+                delayed(self.make_sr_function)(
+                    batch, 
+                    stims=stims,
+                    center_prf=center_prf)
+                    for batch in df_batches
+                )
             else:
-                norm = normalize
+                utils.verbose("Running serial jobs", True)
 
-            return func/norm
+                # use same stimulus sequence for all pRFs
+                dd = []
+                for batch in df_batches:
+                    tmp = self.make_sr_function(batch, stims=stims)
+                    dd.append(tmp)
+
+            # concatenate into single array
+            func = np.concatenate(dd)
+
+            if normalize == "max":
+                func /= func.max(axis=0)
+
+            n_stims = stims.shape[-1]
         else:
-            return func
+            # make single SR function
+            if center_prf:
+                func = self.make_sr_function(
+                    df_filtered,
+                    stims=stims,
+                    center_prf=True)
 
-    def find_stim_sizes(self, curve1, curve2=None, t="max", dt="fill"):
+                n_stims = stims.shape[-1]
+
+            else:
+                # custom stimuli for each pRF
+                func = []
+                utils.verbose("Creating unique stimulus set for each pRF", True)
+                collect_stims = []
+                for rf_ix in range(df_filtered.shape[0]):
+                    
+                    # get parameters
+                    rf = pd.DataFrame(df_filtered.iloc[rf_ix]).T
+
+                    # make stimulus
+                    rf_stims,rf_sizes = self.make_stimuli(
+                        factor=1, 
+                        dt=stims, 
+                        loc=(rf.x.values[0],rf.y.values[0]))
+
+                    collect_stims.append(rf_stims)
+                    n_stims = rf_stims.shape[-1]
+
+                    # get srf
+                    dd = self.make_sr_function(
+                        rf, 
+                        stims=rf_stims,
+                        center_prf=False)
+                    
+                    func.append(dd)
+
+                stims = rf_stims.copy()
+                sizes = rf_sizes.copy()
+                func = np.concatenate(func)
+
+            if normalize == "max":
+                func /= func.max()
+
+        # initialize empty output array
+        srf = np.zeros((params.shape[0], n_stims))
+        srf[idc_valid,:] = func
+
+        df_srf = pd.DataFrame(srf.T)
+        df_srf["sizes"],df_srf["stim_nr"] = sizes,np.arange(0,len(sizes), dtype=int)
+        
+        return df_srf
+
+    def find_stim_sizes(
+        self, 
+        curve1, 
+        curve2=None, 
+        t="max", 
+        dt="fill",
+        sizes=None):
         """find_stim_sizes
 
         Function to fetch the stimulus sizes that optimally disentangle the responses of two pRFs given the Size-Response curves. Starts by finding the maximum response for each curve, then finds the intersect, then finds the stimulus sizes before and after the intersect where the response difference is largest.
@@ -2724,22 +2886,28 @@ class SizeResponse():
             else:
                 # find minimum
                 size_index = np.where(curve1 == np.amin(curve1))[0][0]
+            
+            if not isinstance(sizes, (list,np.ndarray)):
+                sizes = getattr(self, f"stims_{dt}_sizes")
+            
+            return sizes[size_index]
 
-            stims = getattr(self, f"stims_{dt}_sizes")
-            return stims[size_index]
-
-    def plot_stim_size(self, stim_size, vf_extent=([-5,5],[-5,5]), ax=None, dt="fill", clip=True, cmap=(8,178,240)):
+    def plot_stim_size(
+        self, 
+        stim, 
+        vf_extent=([-5,5],[-5,5]), 
+        ax=None, 
+        clip=True, 
+        cmap=(8,178,240)):
+        
         """plot output of :func:`linescanning.prf.SizeResponse.find_stim_sizes`"""
 
         if ax == None:
-            _,ax = plt.subplots(figsize=(6,6))
-
-        stims = getattr(self, f"stims_{dt}")
-        sizes = getattr(self, f"stims_{dt}_sizes")
-        stim_ix = utils.find_nearest(sizes, stim_size)[0]
+            _,ax = plt.subplots(figsize=(6,6))        
+        
         cmap_blue = utils.make_binary_cm(cmap)
+        im = ax.imshow(stim, extent=vf_extent[0]+vf_extent[1], cmap=cmap_blue)
 
-        im = ax.imshow(stims[stim_ix], extent=vf_extent[0]+vf_extent[1], cmap=cmap_blue)
         ax.axvline(0, color='k', linestyle='dashed', lw=0.5)
         ax.axhline(0, color='k', linestyle='dashed', lw=0.5)
         ax.axis('off')
@@ -2752,13 +2920,9 @@ class SizeResponse():
         self, 
         fname=None, 
         hemi="L", 
-        stim_sizes=None, 
-        factor=None):
+        stim_sizes=None):
         """Write best_vertices-type file for normalization parameters + full normalization parameters in numpy-file"""
             
-        ecc = np.sqrt(self.params_df['x'][0]**2+self.params_df['y'][0]**2)
-        polar = np.angle(self.params_df['x'][0]+self.params_df['y'][0]*1j)
-
         if hemi == "lh":
             hemi = "L"
         elif hemi == "rh":
@@ -2770,59 +2934,60 @@ class SizeResponse():
             else:
                 prf_bestvertex = fname
 
-            if factor != None:
-                print(f"Correcting for closer BOLD-screen [factor={factor}]")
-            else:
-                factor = 1
-
+            # write existing pRF parameters to dictionary
             vert_info = self.subject_info.vert_info.data.copy()
-            data_dict = {
-                "hemi":     [hemi],
-                "x":        [self.params_df['x'][0]*factor],
-                "y":        [self.params_df['y'][0]*factor],
-                "size":     [self.params_df['prf_size'][0]*factor],
-                "beta":     [self.params_df['prf_ampl'][0]],
-                "baseline": [self.params_df['bold_bsl'][0]],
-                "r2":       [self.params_df['r2'][0]],
-                "ecc":      [ecc],
-                "polar":    [polar],
-                "index":    [vert_info['index'][hemi]],
-                "position": [vert_info['position'][hemi]],
-                "normal":   [vert_info['normal'][hemi]]}
+            data_dict = {}
+            data_dict["hemi"] = [hemi]
+            for ii in list(self.params_df.keys()):
+                data_dict[ii] = [self.params_df[ii]]
+
+            # add custom stuff
+            for ii in ["index","position","normal"]:
+                data_dict[ii] = [vert_info[ii]]
 
             # add stim sizes
             if isinstance(stim_sizes, (int,float)):
                 stim_sizes = [stim_sizes]
 
             if isinstance(stim_sizes, list):
-                stim_sizes = np.array(stim_sizes)
-                data_dict['stim_sizes'] = [stim_sizes*factor]
-                
-            best_vertex = pd.DataFrame(data_dict)
-            
+                data_dict['stim_sizes'] = np.array(stim_sizes)
+                            
             # append to existing file
             if os.path.exists(prf_bestvertex):
-                tmp = pd.read_csv(prf_bestvertex, index_col=0).reset_index()
 
-                if hemi in tmp['hemi'].values:
-                    tmp = tmp[tmp.hemi != hemi]
+                # can index an indexed dataframe
+                try:
+                    df = pd.read_csv(prf_bestvertex).set_index(["hemi"])
+                except:
+                    df = pd.read_csv(prf_bestvertex)
+                
+                if not "stim_sizes" in list(df.columns):
+                    df["stim_sizes"] = None
 
-                best_vertex = pd.concat((best_vertex, tmp))
+                df["stim_sizes"][hemi] = data_dict['stim_sizes']
+            else:
+                df = pd.DataFrame(data_dict)
 
-            best_vertex.set_index('hemi').to_csv(prf_bestvertex)
+            # can index an indexed dataframe
+            try:
+                df = df.set_index(["hemi"])
+            except:
+                pass
+
+            df.to_csv(prf_bestvertex)
         
-        # save full parameters as well
-        pars_file = opj(self.subject_info.cx_dir, f'{self.subject_info.subject}_model-norm_desc-params.csv') 
-        self.params_df['hemi'] = hemi
-        if os.path.exists(pars_file):
-            tmp = pd.read_csv(pars_file, index_col=0).reset_index()
+        # # save full parameters as well
+        # pars_file = opj(self.subject_info.cx_dir, f'{self.subject_info.subject}_model-norm_desc-params.csv') 
+        # self.params_df['hemi'] = hemi
+        # if os.path.exists(pars_file):
+        #     tmp = pd.read_csv(pars_file).reset_index()
 
-            if hemi in tmp['hemi'].values:
-                tmp = tmp[tmp.hemi != hemi]
+        #     if hemi in tmp['hemi'].values:
+        #         tmp = tmp[tmp.hemi != hemi]
 
-            self.params_df = pd.concat((self.params_df, tmp))
+        #     self.params_df = pd.concat((self.params_df, tmp))
 
-        self.params_df.set_index('hemi').to_csv(pars_file)
+        # self.params_df.set_index('hemi').to_csv(pars_file)
 
 class CollectSubject(pRFmodelFitting):
     """CollectSubject
@@ -2890,9 +3055,9 @@ class CollectSubject(pRFmodelFitting):
         self.v1_data        = v1
         self.__dict__.update(kwargs)
 
-        if self.hemi == "lh" or self.hemi.lower() == "l" or self.hemi.lower() == "left":
+        if self.hemi.lower() in ["lh","l","left"]:
             self.hemi_tag = "L"
-        elif self.hemi == "rh" or self.hemi.lower() == "r" or self.hemi.lower() == "right":
+        elif self.hemi.lower() in ["rh","r","right"]:
             self.hemi_tag = "R"
         else:
             self.hemi_tag = "both"
@@ -2920,14 +3085,23 @@ class CollectSubject(pRFmodelFitting):
                 exclude = "_roi-V1"
             
             try:
-                self.func_data_lr = np.load(utils.get_file_from_substring(search_for+["hemi-LR_"], self.prf_dir, exclude=exclude))
-                self.func_data_l = np.load(utils.get_file_from_substring(search_for+["hemi-L_"], self.prf_dir, exclude=exclude))
-                self.func_data_r = np.load(utils.get_file_from_substring(search_for+["hemi-R_"], self.prf_dir, exclude=exclude))
+                for item,tag in zip(
+                    ["_lr","_l","_r"],
+                    ["hemi-LR_","hemi-L_","hemi-R_"]):
+
+                    data = np.load(
+                        utils.get_file_from_substring(
+                        search_for+[tag], 
+                        self.prf_dir, 
+                        exclude=exclude))
+                    
+                    setattr(self, f"func_data{item}", data)
+                    
             except:
                 try:
                     self.func_data_lr = np.load(utils.get_file_from_substring(["desc-data.npy"]+self.filter_list, self.prf_dir))
                 except:
-                    print(f"WARNING: could not load functional data from '{self.prf_dir}'")
+                    print(f"WARNING: could not load all functional data from '{self.prf_dir}'")
 
         # try to read iterative fit parameters
         allowed_models = ['gauss', 'css', 'dog', 'norm']
@@ -2945,7 +3119,10 @@ class CollectSubject(pRFmodelFitting):
             par_file = utils.get_file_from_substring(look_for+[f"model-{model}"], self.prf_dir, return_msg=None)
             if isinstance(par_file, str):
                 utils.verbose(f" model: {model}:\t{par_file}", self.verbose)
+                setattr(self, f'{model}_iter_pars_file', par_file)
                 setattr(self, f'{model}_iter_pars', read_par_file(par_file))
+                setattr(self, f'{model}_iter_pars_df', Parameters(getattr(self, f'{model}_iter_pars'), model=model).to_df())
+                setattr(self, f'{model}_iter_pars_arr', Parameters(getattr(self, f'{model}_iter_pars_df'), model=model).to_array())
         
         # set pycortex directory
         if self.cx_dir == None:
@@ -2953,19 +3130,21 @@ class CollectSubject(pRFmodelFitting):
                 self.cx_dir = opj(self.derivatives, 'pycortex', self.subject)
             
         if self.cx_dir != None and os.path.exists(self.cx_dir):
-            self.vert_fn = utils.get_file_from_substring([self.model, "best_vertices.csv"], self.cx_dir)
+            self.vert_fn = utils.get_file_from_substring([self.model, "best_vertices.csv"], self.cx_dir, return_msg=None)
 
-            utils.verbose(f"Reading {self.vert_fn}", self.verbose)
-            self.vert_info = utils.VertexInfo(
-                self.vert_fn, 
-                subject=self.subject, 
-                hemi=self.hemi)
+            if isinstance(self.vert_fn, str):
+                utils.verbose(f"Reading {self.vert_fn}", self.verbose)
+                self.vert_info = utils.VertexInfo(
+                    self.vert_fn, 
+                    subject=self.subject, 
+                    hemi=self.hemi)
         
         # fetch target vertex parameters
         if hasattr(self, "vert_info"):
-            self.target_params = self.return_prf_params(hemi=self.hemi)
             self.target_vertex = self.return_target_vertex(hemi=self.hemi)
             utils.verbose(f"Target vertex: {self.target_vertex}", self.verbose)
+
+            self.target_params = getattr(self, f'{model}_iter_pars_arr')[self.target_vertex,:]
 
         # find the csv file with parameters (generally available with 'norm')
         if self.best_vertex:
@@ -2976,11 +3155,7 @@ class CollectSubject(pRFmodelFitting):
             except:
                 self.pars = np.array(self.target_params)[np.newaxis,...]
             
-            if self.hemi_tag == "L":
-                tmp_data = self.func_data_l.copy()
-            else:
-                tmp_data = self.func_data_r.copy()
-            
+            tmp_data = getattr(self, f"func_data_{self.hemi_tag.lower()}").copy()
             self.data = tmp_data[...,self.target_vertex][np.newaxis,...]
             txt = "target vertex"
         else:
@@ -3057,8 +3232,14 @@ class Parameters():
         self.params = params
         self.model = model
 
+        if isinstance(self.params, str):
+            self.params = read_par_file(self.params)
+            
     def to_df(self):
-
+        
+        if isinstance(self.params, pd.DataFrame):
+            return self.params
+        
         if not isinstance(self.params, np.ndarray):
             raise ValueError(f"Input must be np.ndarray, not '{type(self.params)}'")
 
@@ -3192,3 +3373,39 @@ class Parameters():
                     ct += 1
             
         return np.concatenate(self.parr,axis=1)
+
+def create_model_rf_wrapper(model,stim,params,normalize_RFs=False):
+    prf = params[3][...,np.newaxis,np.newaxis]*np.rot90(
+        rf.gauss2D_iso_cart(
+            x=stim.x_coordinates[...,np.newaxis],
+            y=stim.y_coordinates[...,np.newaxis],
+            mu=(params[0], params[1]),
+            sigma=params[2],
+            normalize_RFs=normalize_RFs).T, axes=(1,2))
+
+    if model == 'css':
+        prf **= params[5][...,np.newaxis,np.newaxis]
+
+    elif model == 'dog':
+        prf -= params[5][...,np.newaxis,np.newaxis]*np.rot90(
+            rf.gauss2D_iso_cart(
+                x=stim.x_coordinates[...,np.newaxis],
+                y=stim.y_coordinates[...,np.newaxis],
+                mu=(params[0], params[1]),
+                sigma=params[6],
+                normalize_RFs=normalize_RFs).T, axes=(1,2))
+
+    elif model == "norm":
+        prf += params[7][...,np.newaxis,np.newaxis]
+        prf /= (params[5][...,np.newaxis,np.newaxis]*np.rot90(
+            rf.gauss2D_iso_cart(
+                x=stim.x_coordinates[...,np.newaxis],
+                y=stim.y_coordinates[...,np.newaxis],
+                mu=(params[0], params[1]),
+                sigma=params[6],
+                normalize_RFs=normalize_RFs).T, 
+            axes=(1,2)) + params[8][...,np.newaxis,np.newaxis])
+
+        prf -= (params[7]/params[8])[...,np.newaxis,np.newaxis]
+
+    return prf
