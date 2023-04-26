@@ -116,6 +116,7 @@ class LazyPRF(Defaults):
         concentric=None,
         z_lines=1,
         z_prf=0,
+        edge_color=None,
         **kwargs):
         
         self.prf            = prf
@@ -136,13 +137,11 @@ class LazyPRF(Defaults):
         self.concentric     = concentric
         self.z_lines        = z_lines
         self.z_prf          = z_prf
+        self.edge_color     = edge_color
 
         super().__init__()
         self.__dict__.update(kwargs)
         self.update_rc(self.fontname)
-
-        if not hasattr(self, "edge_color"):
-            self.edge_color = self.cross_color
 
         if self.xkcd:
             with plt.xkcd():
