@@ -16,7 +16,7 @@ spinoza_fitprfs
 
 Wrapper for call_prf that does the pRF-fitting using the output from pybest and the package pRFpy. 
 There's several options for design matrix cases (in order of priority):
-  - Place a design-matrix file called 'vis_design.mat' in DIR_DATA_HOME/code
+  - Place a design-matrix file called 'design_task-<TASK_NAME>.mat' in DIR_DATA_HOME/code
   - A directory with log-directories. A global search for a directory containing "Screenshots" is 
     done. If more directories are found and '--one_design' is specified, we'll take the first dir
     ectory
@@ -47,6 +47,7 @@ Options:
                   can use the '--tc' or '--bgfs' tags. This input specifically allows you to specify a 
                   list of different minimizers for each stage, e.g., trust-constr for Gaussian model, 
                   and L-BGFS for extended model. The format should be '-x "tc,bgfs"'
+  -j <n_jobs>     number of jobs to parallellize over; default is 10
   --bgfs          use L-BGFS minimization for both the Gaussian as well as the extended model. Use 
                   the '-x'flag if you want different minimizers for both stages   
   --grid          only run grid fit, skip iterative fit
@@ -60,7 +61,7 @@ Options:
                   screen delimiter files
   --no_fit        Stop the process before fitting, right after saving out averaged data. This was use-
                   ful for me to switch to percent-signal change without requiring a re-fit.
-  --no_grid       Don't save out gridsearch parameters
+  --save_grid     Save out gridsearch parameters
   --no_bounds     Turn off grid bounds; sometimes parameters fall outside the grid parameter bounds, 
                   causing 'inf' values. This is especially troublesome when fitting a single time-
                   course. If you trust your iterative fitter, you can turn off the bounds and let 
@@ -119,7 +120,10 @@ lbl_flag=""
 save_grid=""
 bounds_flag=""
 merge_flag=""
-while getopts :-:los:n:m:t:x:c:v: argument
+jobs_flag=""
+model="gauss"
+n_jobs=10
+while getopts :-:los:n:m:t:x:c:v:j: argument
 do
   case ${argument} in
     -)
@@ -129,7 +133,19 @@ do
           ;;           
         hrf)
           fit_hrf="--hrf"
-          ;;           
+          ;;  
+        gauss)
+          model="gauss"
+          ;;  
+        dog)
+          model="dog"
+          ;;   
+        css)
+          model="css"
+          ;;  
+        norm)
+          model="norm"
+          ;;                                                   
         zscore)
           zscore_flag="--zscore"
           ;;  
@@ -157,8 +173,8 @@ do
         no_fit)
           fit_flag="--no_fit"
           ;;      
-        no_grid)
-          save_grid="--no_grid"
+        save_grid)
+          save_grid="--save_grid"
           ;;            
         v1)
           lbl_flag="--v1"
@@ -192,7 +208,9 @@ do
         OW_flag="--overwrite"
           ;;
     c)  clipper=${OPTARG}
-          ;;     
+          ;; 
+    j)  n_jobs=${OPTARG}
+          ;;               
     x)  use_constr="--constr [${OPTARG[@]}]"
           ;;
     v)  cut_vols="--cut_vols ${OPTARG[@]}"
@@ -277,10 +295,6 @@ for subID in ${search}; do
     fi
   fi
 
-  if [[ ! -d ${prf_dir} ]]; then
-    mkdir -p ${prf_dir}
-  fi
-
   # look for parameter file
   if [[ ${grid_only} -eq 1 ]]; then
     txt="grid-fit only with model ${use_model}"
@@ -308,7 +322,11 @@ for subID in ${search}; do
 
     echo
     echo "**************************************** Processing ${sub_name} ***************************************"
-    
+
+    if [[ ! -d ${prf_dir} ]]; then
+      mkdir -p ${prf_dir}
+    fi
+
     # fetch PNG-directories, sort, and save in array
     PNG_UNSORTED=`find ${png_dir} -type d \( -name "*Screenshots*" \) 2>/dev/null`
     IFS=$'\n' PNGS_DIR=($(sort <<<"${PNG_UNSORTED[*]}"))
@@ -340,7 +358,7 @@ for subID in ${search}; do
 
         prf_params=`find ${prf_dir} -type f \( -name "*${use_model}*" -and -name "*roi-${roi}*" -and -name "*${stage}*" -and -name "*task-${task}*" -and -name "*prf_params.pkl" \) 2>/dev/null`
       else
-        prf_params=`find ${prf_dir} -type f \( -name "*${use_model}*" -and -name "*${stage}*" -and -name "*task-${task}*" -and -name "*prf_params.pkl" \) 2>/dev/null`
+        prf_params=`find ${prf_dir} -type f \( -name "*${use_model}*" -and -name "*${stage}*" -and -name "*task-${task}*" -and -name "*prf_params.pkl" -and -not -name "*roi-*" \) 2>/dev/null`
       fi
       
       if [[ ${OW} -eq 1 ]]; then
@@ -464,7 +482,7 @@ for subID in ${search}; do
             job="python"
           else
             if [[ ${run_locally} -eq 0 ]]; then
-              job="qsub -q ${SGE_QUEUE_LONG} -pe smp 1 -wd ${prf_dir} -N ${sub_name}_ses-${}"
+              job="qsub -q ${SGE_QUEUE_LONG} -pe smp ${n_jobs} -wd ${prf_dir} -N ${base}_task-${task}"
             elif [[ ${run_locally} -eq 1 ]]; then
               job="python"
             else
@@ -482,8 +500,9 @@ for subID in ${search}; do
             -o ${prf_dir} \
             -i ${full_input} \
             -p ${use_pngdir} \
-            -m ${use_model} \
             -u ${PYBEST_SPACE} \
+            --${use_model} \
+            --n_jobs ${n_jobs} \
             ${save_grid} \
             ${lbl_flag} \
             ${zscore_flag} \
