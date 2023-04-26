@@ -50,6 +50,7 @@ Arguments:
     -t|--task   <task name>         name of the experiment performed (e.g., "2R")
     -o|--out    <prf dir>           output directory containing pRF-stuff (/derivatives/prf)
     -i|--in     <input dir>         input directory (e.g., output of pybest/fMRIPrep)
+    -j|--n_jobs <nr of jobs>        number of jobs to parallellize over (default = 5)
     -p|--png    <path to pngs>      path to png's if you ran M. Aqil's experiment
     -m|--model  <model type>        one of ['gauss','dog','css','norm'], default = 'gauss'. You can 
                                     also call models with '--gauss', '--dog', '--css', or '--norm'
@@ -150,7 +151,7 @@ Example:
     lbl         = None
     save_grid   = False
     grid_bounds = True   
-    n_jobs      = 10
+    n_jobs      = 5
     merge_sessions = False
 
     try:

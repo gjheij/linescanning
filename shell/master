@@ -389,7 +389,7 @@ Arguments:
   -h <hemisphere>   used for lineplanning, denotes which hemisphere to process
   -i <image path>   specify custom path to PNG's for pRF-fitting. This allows deviation from the 
                     standard path that 'spinoza_fitprfs' will be looking for
-  -j <n_jobs>       number of jobs to parallellize pRF-fitting over; default is 10
+  -j <n_jobs>       number of jobs to parallellize pRF-fitting over; default is 5
   -k <file>         specify a file with additional arguments, similar to FreeSurfer's expert options.
                     See linescanning/misc/fprep_options for an example. Please make sure you have a 
                     final empty white space at the end of the file, otherwise the parser gets confu-
