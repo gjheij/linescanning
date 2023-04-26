@@ -16,6 +16,8 @@ Below the help information for each module, which can also be called with:
 
     $ master -m <module> -q
 
+.. attention:: The help texts below might not always be up-to-date! Please click on the names of the script (e.g., `spinoza_lineplanning`) to get redirected to github, where it actually is up-to-date.
+
 00: spinoza_lineplanning_
 ===========================================
 
@@ -73,11 +75,27 @@ Below the help information for each module, which can also be called with:
     Input options:
       -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
       -n <session>        session ID (e.g., 1, 2, or none)
-      -o                  Overwrite existing output
       <project root>      directory to output BIDSified data to
       <sourcedata>        directory containing to be converted data
+      -o|--ow             Overwrite existing output
+      --full              Overwrite existing output + created nifti folder
       --lines             flag to tell we're dealing with a line-scanning session. By default 'regular',
                           which means standard whole-brain acquisitions.
+      --inv               add individual inversion files from anatomies in 'anat' folder
+      --dcm_fix           Extremely large par/rec's cannot be converted with 'dcm2niix'. Normal fMRI 
+                          sessions are converted using 'call_pydcm2niix', but this flag points it to 'call
+                          _dcm2niix', the same that is used for line-scanning sessions. It pipes the output 
+                          from dcm2niix to a log file to monitor 'Catastrophic errors'. It then tries to 
+                          convert these with 'parrec2nii', which comes with the python pacakge 'nibabel'.
+      --take-avg-tr       Take the average over all TRs from the par file, rather than the first in the
+                          sequence of TRs
+      --ap|--pa|--lr|--rl Specifies the phase-encoding direction for the BOLD run. The phase-encoding 
+                          for the FMAP will be automatically inverted. This flag can be specified to be
+                          a bit more flexible than using the PE_DIR_BOLD-variable in the setup file
+      --no_lpi            do not reorient files to LPI. If you want to use NORDIC or use fMRIprep's out-
+                          puts on more raw data, I'd advise you to reorient to LPI and to NOT use this 
+                          flag. This flag is mainly here because it can take some time with big files
+                          which slows down debugging.
 
     Example:
       spinoza_scanner2bids /path/to/project_root /path/to/your/project/sourcedata     # regular
@@ -125,6 +143,8 @@ Below the help information for each module, which can also be called with:
       -n <session>        session ID (e.g., 1, 2, or n)
       -m <n_echoes>       number of echoes in the acquisition (e.g., 5)
       -c|--sge            submit job to cluster (SGE)
+      --debug             don't submit job, just print inputs/outputs
+      --no_nordic         turn off NORDIC denoising during reconstruction
       -o                  overwrite existing files
       <project root>      base directory containing the derivatives and the subject's folders.
       <sourcedata>        base directory containing the raw data for reconstruction
@@ -136,14 +156,16 @@ Below the help information for each module, which can also be called with:
       relies on matlab scripts stored in '/data1/projects/MicroFunc/common'. As it relies on MRecon,
       we can only run this on the spinoza server
 
-    run with master:  "master -m 03 -s 003 -n 4 -e 5" (sub-003, ses-4, multi-echo (5) acquisition)
-                      "master -m 03 -s 003 -n 4"      (sub-003, ses-4, single-echo acquisition)
-                      "master -m 03 --sge"            (submit to cluster)
-                      "master -m 03 -o"               (overwrite existing files)
-                      "master -m 03 -o --sge"         (overwrite and submit)
+    run with master:  
+      "master -m 03 -s 003 -n 4 -e 5" (sub-003, ses-4, multi-echo (5) acquisition)
+      "master -m 03 -s 003 -n 4"      (sub-003, ses-4, single-echo acquisition)
+      "master -m 03 --sge"            (submit to cluster)
+      "master -m 03 -o"               (overwrite existing files)
+      "master -m 03 -o --sge"         (overwrite and submit)
+      "master -m 03 -s 003 --debug"   (debug mode)
 
     Runs by default NORDIC denoising!
-    -----------------------------------------------------------------------------------------------------
+    ---------------------------------------------------------------------------------------------------
 
 04: spinoza_qmrimaps_
 ===========================================
@@ -162,7 +184,8 @@ Below the help information for each module, which can also be called with:
     Arguments:
       -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
       -n <session>        session ID (e.g., 1, 2, or none)
-      -o                  overwrite existing files
+      -o|--ow             overwrite existing T1w/T1map files
+      -f|--full           overwrite all existing files (including masks)
       -u                  use settings for universal pulse (UP) [parameters are hardcoded]
       <project root>      directory containing the T1w and T2w files; should generally be pymp2rage-
                           folder
@@ -172,6 +195,7 @@ Below the help information for each module, which can also be called with:
       spinoza_qmrimaps DIR_DATA_HOME DERIVATIVES/pymp2rage
       spinoza_qmrimaps DIR_DATA_HOME DIR_DATA_DERIV
       spinoza_qmrimaps -s 999 -n 1 DIR_DATA_HOME DIR_DATA_DERIV/pymp2rage
+
     ---------------------------------------------------------------------------------------------------
 
 05a/05b: spinoza_registration_
@@ -360,6 +384,7 @@ Below the help information for each module, which can also be called with:
 
 ::
 
+
     ---------------------------------------------------------------------------------------------------
     spinoza_nordic
 
@@ -396,6 +421,7 @@ Below the help information for each module, which can also be called with:
                           so that the template file is not overwritten; this can cause problems. If you
                           do not have run identifiers in your filenames, please run serially. This flag
                           is inherited from 'master', so calling it there will pass on the flag here.
+      --mag               use magnitude only
       <bids folder>       parent directory containing the sub-xxx folders for functional data. Can be 
                           e.g., DIR_DATA_HOME or DIR_DATA_HOME/derivatives/pymp2rage
 
@@ -516,7 +542,7 @@ Below the help information for each module, which can also be called with:
 ===========================================
 
 ::
-    
+        
     ---------------------------------------------------------------------------------------------------
     spinoza_freesurfer
 
@@ -526,10 +552,25 @@ Below the help information for each module, which can also be called with:
     Usage:
       spinoza_freesurfer [options] <directory with anats> <stage> <T2-directory>
 
-    Arguments:
+    Flagged arguments:
       -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
       -n <session>        session ID (e.g., 1, 2, or n)
-      -o                  overwrite existing files
+      -e <start>          start stage (maps to '-r' from 'call_freesurfer'). Must be one of 'pial', 
+                          'cp', or 'wm' if <freesurfer stage> != 'all'
+      -o|--ow             overwrite existing files
+      -x <file>           use expert file
+      --force_exec        Force execution even though directory exists already
+      --local             Force local processing even though cluster is available
+      --no_highres        Turn of highres mode by setting '-highres' flag empty
+      --no_t2             Do not reuse T2 with autorecon3. Must be used in concert with '-e' and
+                          '-r'. By default, we'll re-use the T2 if present. Same flag should be 
+                          used for not re-using FLAIR images  
+      --sge               Submit the script to a cluster using a template script
+      --xopts-use         maps to '-xopts-use' for existing expert option file; use existing file
+      --xopts-clean       maps to '-xopts-clean' for existing expert option file; delete existing file
+      --xopts-overwrite   maps to '-xopts-overwrite' for existing expert option file; use new file
+
+    Positional arguments:
       <anat folder>       folder containing the T1w-file. In 'master', we'll look through various fol-
                           ders. In order of priority:
                             -'<derivatives>/masked_${DATA,,}'
@@ -547,24 +588,30 @@ Below the help information for each module, which can also be called with:
       - Fix skullstrip:   call_freesurfer -s <subj ID> -o gcut                    ~10 minutes
       - Run autorecon2:   call_freesurfer -s <subj ID> -r 2                       ~few hours
       - Fix errors with:
-          - norm; then run call_freesurfer -s ${SUBJECT_PREFIX}001 -r 23 -e cp                 ~few hours
-          - pia;  then run call_freesurfer -s ${SUBJECT_PREFIX}001 -r 23 -e pial               ~few hours
+          - norm; then run call_freesurfer -s ${SUBJECT_PREFIX}001 -r 23 -e cp    ~few hours
+          - pia;  then run call_freesurfer -s ${SUBJECT_PREFIX}001 -r 23 -e pial  ~few hours
 
     You can specify in which directory to look for anatomical scans in the first argument. Usually,
-    this is one of the following options: DIR_DATA_HOME if we should use the T1w in the project/${SUBJECT_PREFIX}xxx
-    /anat directory, or DIR_DATA_DERIV/pymp2rage to use T1w-images derived from pymp2rage, or DIR_DATA_
-    DERIV/masked_mp2rage to use T1w-images where the dura and sagittal sinus are masked out (should be
-    default!). In any case, it assumes that the file is in YOURINPUT/${SUBJECT_PREFIX}xxx/ses-1/. If the input is
-    equal to the DIR_DATA_HOME variable, this will be recognize and 'anat' will be appended to YOURINPUT
-    /${SUBJECT_PREFIX}xxx/ses-1/anat.
+    this is one of the following options: DIR_DATA_HOME if we should use the T1w in the project/
+    ${SUBJECT_PREFIX}xxx/anat directory, or DIR_DATA_DERIV/pymp2rage to use T1w-images derived from 
+    pymp2rage, or DIR_DATA_DERIV/masked_mp2rage to use T1w-images where the dura and sagittal sinus 
+    are masked out (should be default!). In any case, it assumes that the file is in YOURINPUT/
+    ${SUBJECT_PREFIX}xxx/ses-1/. If the input is equal to the DIR_DATA_HOME variable, this will 
+    be recognize and 'anat' will be appended to YOURINPUT/${SUBJECT_PREFIX}xxx/ses-1/anat.
 
     You can also specify a directory where the T2-weighted image is located. Do this the same way as de-
-    scribed above. To you path, ${SUBJECT_PREFIX}xxx/ses-x will be appended if the input path is not equal to DIR_DATA
-    _HOME. Again, if it is, ${SUBJECT_PREFIX}xxx/ses-x/anat will be appended as well.
+    scribed above. To you path, ${SUBJECT_PREFIX}xxx/ses-x will be appended if the input path is not 
+    equal to DIR_DATA_HOME. Again, if it is, ${SUBJECT_PREFIX}xxx/ses-x/anat will be appended as well.
 
     Example:
       spinoza_freesurfer DIR_DATA_DERIV/masked_mp2rage all DIR_DATA_HOME
       spinoza_freesurfer -s 001 -n 1 DIR_DATA_ANAT all DIR_DATA_HOME
+
+    Notes:
+      When an expert options is passed, it will be copied to scripts/expert-options. Future calls to 
+      recon-all, the user MUST explicitly specify how to treat this file. Options are (1) use the file 
+      ('--xopts-use'), or (2) delete it ('--xopts-clean'). If this file exsts and the user specifies 
+      another expert options file, then the user must also specify '--xopts-overwrite'.
 
     ---------------------------------------------------------------------------------------------------
 
@@ -590,8 +637,14 @@ Below the help information for each module, which can also be called with:
 
     Arguments:
       --local         don't submit to SGE, run locally
+      --no_bbr        maps to '--force-no-bbr' in call_fmriprep
+      --no_boldref    don't create new boldref images (mean over time) after fMRIprep has finished.
+      --warp_only     skips fMRIPrep, but creates new boldref images (if '--no_boldref' is not specified) 
+                      and copies the bold-to-T1w warps to the subject's output folder
       -s <subject>    subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
-      -n <session>    session ID (e.g., 1, 2, or none)
+      -n <session>    session ID (e.g., 1, 2, or none); used to check for T1w-image. fMRIprep will do all
+                      sessions it finds in the project root regardless of this argument. Use the bids fil-
+                      ter file ('-k' flag) if you want fMRIPrep to to specific sessions/tasks/acquisitions.
       -c <config>     configuration file as specified in /misc/fmriprep_config?.json
       -f <func dir>   directory containing functional data; used after running FreeSurfer outside of
                       fMRIprep <optional>
@@ -601,7 +654,12 @@ Below the help information for each module, which can also be called with:
       -t <task>       By default, the pipeline is setup to run fMRIPrep with '--anat-only'. You can in-
                       ject functional data with the '-t' flag; if you want ALL your tasks to be included,
                       use '-t func'. If you have a specific task that needs to be processed (in case ano-
-                      ther task is already done), use '-t <task_id>'
+                      ther task is already done), use '-t <task_id>'.
+      -k <kwargs>     specify a file with additional arguments, similar to FreeSurfer's expert options.
+                      See linescanning/misc/fprep_options for an example. Please make sure you have a 
+                      final empty white space at the end of the file, otherwise the parser gets confu-
+                      sed. For VSCode: https://stackoverflow.com/a/44704969. If you run with master, the 
+                      '-u' flag maps onto this
       <anat dir>      directory containing the anatomical data. Can also be the regular project root
                       folder if you want fMRIprep do the surface reconstruction
       <derivatives>   output folder for fMRIprep; generally this will be <project>/derivatives
@@ -659,52 +717,77 @@ Below the help information for each module, which can also be called with:
 
     Wrapper for call_prf that does the pRF-fitting using the output from pybest and the package pRFpy. 
     There's several options for design matrix cases (in order of priority):
-      - Place a design-matrix file called 'vis_design.mat' in DIR_DATA_HOME/code
+      - Place a design-matrix file called 'design_task-<TASK_NAME>.mat' in DIR_DATA_HOME/code
       - A directory with log-directories. A global search for a directory containing "Screenshots" is 
-        done. If more directories are found and '--one_design' is specified, we'll take the first direc-
-        tory
-      - A directory with log-directories, but '--one_design' is NOT specified, meaning that each run will
-        get a separate design matrix. This can be useful if you have multiple conditions that have dif-
-        ferent designs.
+        done. If more directories are found and '--one_design' is specified, we'll take the first dir
+        ectory
+      - A directory with log-directories, but '--one_design' is NOT specified, meaning that each run 
+        will get a separate design matrix. This can be useful if you have multiple conditions that have 
+        different designs.
 
     Usage:
       spinoza_fitprfs [options] <input dir> <output dir> <png dir>
 
     Options:
+      -c              list of values used for clipping of design matrix. Format must be [<top>,<bottom>,
+                      <left>,<right>]. Negative values will be set to zero within 'linescanning.prf.
+                      get_prfdesign'
+      -m <model>      one of ['gauss','dog','css','norm'] is accepted, default = "gauss"
+      -n <session>    session ID (e.g., 1, 2, or none)
+      -o              delete existing file and re-run analysis fully. Even if 'model=norm', we'll over-
+                      write the Gaussian parameters. If not specified, and 'model=norm' while Gaussian 
+                      parameters already exist, we'll inject them into the DN-model.
+      -s <subject>    subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
+      -t <task ID>    If you have mutiple tasks specified in TASK_SES1 or you just have multiple tasks and 
+                      you want to run only one, specify the task name here ('task-rest' is ignored).
+                      You can also specify multiple tasks if you want to bypass the setup file completely. 
+                      In that case, use the format '-t <task1>,<task2>,<task3>'
+      -x <constr>     String or list of constraints to use for the gaussian and extended stage. By default, 
+                      we'll use trust-constr minimization for both stages, but you can speed up the exten-
+                      ded models with L-BGFS. Note that if you want the same minimizer for both stages, you 
+                      can use the '--tc' or '--bgfs' tags. This input specifically allows you to specify a 
+                      list of different minimizers for each stage, e.g., trust-constr for Gaussian model, 
+                      and L-BGFS for extended model. The format should be '-x "tc,bgfs"'
+      -j <n_jobs>     number of jobs to parallellize over; default is 10
+      --bgfs          use L-BGFS minimization for both the Gaussian as well as the extended model. Use 
+                      the '-x'flag if you want different minimizers for both stages   
       --grid          only run grid fit, skip iterative fit
-      -o              delete existing file and re-run analysis fully. Even if 'model=norm', we'll overwrite the
-                      Gaussian parameters. If not specified, and 'model=norm' while Gaussian parameters already
-                      exist, we'll inject them into the DN-model.
-      -c              list of values used for clipping of design matrix. Format must be 
-                      [<top>,<bottom>,<left>,<right>]  
-      --multi_design  specifies that for all runs in the dataset have run-/task-specific screenshot direc-
-                      tories. This requires that the directory names you saved must match your naming 
-                      scheme of functional files as we'll match on run-/task-ID
       --hrf           fit the HRF during pRF-fitting. See 'call_prf' for more information
       --local         run locally even though we have SGE available.
-      --no_clip       ensures that the design matrix is NOT clipped, despite the possible presence of screen 
-                      delimiter files    
-      --zscore        use the zscore'd output from pybest, rather than percent signal change. If not specified, 
-                      percent signal change is implemented as follows:
+      --merge_ses     average pRF data from all sessions
+      --multi_design  specifies that for all runs in the dataset have run-/task-specific screenshot di-
+                      rectories. This requires that the directory names you saved must match your naming 
+                      scheme of functional files as we'll match on run-/task-ID
+      --no_clip       ensures that the design matrix is NOT clipped, despite the possible presence of 
+                      screen delimiter files
+      --no_fit        Stop the process before fitting, right after saving out averaged data. This was use-
+                      ful for me to switch to percent-signal change without requiring a re-fit.
+      --save_grid     Save out gridsearch parameters
+      --no_bounds     Turn off grid bounds; sometimes parameters fall outside the grid parameter bounds, 
+                      causing 'inf' values. This is especially troublesome when fitting a single time-
+                      course. If you trust your iterative fitter, you can turn off the bounds and let 
+                      the iterative take care of the parameters
+      --raw           use the raw, un-zscore'd output from pybest, rather than percent signal change
+      --tc            use trust-constr minimization for both the Gaussian as well as the extended model. 
+                      Use the '-x' flag if you want different minimizers for both stages
+      --zscore        use the zscore'd output from pybest, rather than percent signal change. If not spe-
+                      cified, percent signal change is implemented as follows:
                         psc = signals*100/(mean(signals)) - median(signals_without_stimulus)
-      -s <subject>    subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
-      -n <session>    session ID (e.g., 1, 2, or none)
-      -m <model>      one of ['gauss','dog','css','norm'] is accepted, default = "gauss"
-      -t <task ID>    If you have mutiple tasks specified in TASK_SES1 or you just have multiple tasks and 
-                      you want to run only one, specify the task name here ('task-rest' is ignored by default!).
-                      You can also specify multiple tasks if you want to bypass the setup file completely. In
-                      that case, use the format '-t <task1>,<task2>,<task3>'
-
+      --v1|--v1       only fit voxels from ?.V1/2_exvivo.thresh.label; the original dimensions will be 
+                      maintained, but timecourses outside of the ROI are set to zero
+        
     Arguments:
-      <input dir>     base input directory with pybest data (e.g., 'DIR_DATA_DERIV/pybest')
+      <input dir>     base input directory with pybest data (e.g., 'DIR_DATA_DERIV/pybest'). You can also 
+                      point to the fmriprep-folder, in which case the gifti's of 'fsnative' will be used.
       <output dir>    base output directory for prf data (e.g., 'DIR_DATA_DERIV/prf')
       <png dir>       base path of where sourcedata of subjects live. In any case, the subject ID will be
                       appended to this path (if applicable, so will session ID). Inside THAT directory, 
                       we'll search for directories with 'Screenshots'. So, if you specify DIR_DATA_SOURCE 
-                      for 'sub-005' and 'ses-1', we'll search in DIR_DATA_SOURCE/sub-005/ses-1/* for direc-
-                      tories with "Screenshots". If multiple directories are found, it depends on the options
-                      which directory is used: if --multi_design is specified, each directory will be matched
-                      with its corresponding functional run. If not, we'll take the 1st directory in the list.
+                      for 'sub-005' and 'ses-1', we'll search in DIR_DATA_SOURCE/sub-005/ses-1/* for di-
+                      rectories with "Screenshots". If multiple directories are found, it depends on the 
+                      options which directory is used: if --multi_design is specified, each directory will 
+                      be matched with its corresponding functional run. If not, we'll take the 1st direc-
+                      tory in the list.
 
     Eample:
       spinoza_fitprfs DIR_DATA_DERIV/prf DIR_DATA_DERIV/pybest DIR_DATA_SOURCE
