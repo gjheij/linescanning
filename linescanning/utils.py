@@ -137,21 +137,34 @@ def find_nearest(array, value, return_nr=1):
     array = np.asarray(array)
 
     if return_nr == 1:
-        idx = (np.abs(array-value)).argmin()
+        idx = np.nanargmin((np.abs(array-value)))
         return idx, array[idx]
     else:
-        try:
-            idx = (np.abs(array-value))
+        
+        # check nan indices
+        nans = np.isnan(array)
 
-            if return_nr == "all":
-                idc_list = np.sort(np.where(idx == 0.0)[0])
-            else:
-                idc_list = np.sort(np.where(idx == 0.0)[0])[:return_nr]
-            return idc_list, array[idc_list]
+        # initialize output
+        idx = np.full_like(array, np.nan)
 
-        except Exception:
-            print("Could not perform this operation")
+        # loop through values in array
+        for qq,ii in enumerate(array):
 
+            # don't do anything if value is nan
+            if not nans[qq]:
+                idx[qq] = np.abs(ii-value)
+        
+        # sort
+        idx = np.argsort(idx)
+
+        # return everything
+        if return_nr == "all":
+            idc_list = idx.copy()
+        else:
+            # return closest X values
+            idc_list = idx[:return_nr]
+        
+        return idc_list, array[idc_list]
 
 def replace_string(fn, str1, str2, fn_sep='_'):
     """replace_string
@@ -202,7 +215,7 @@ def convert2unit(v, method="np"):
         v[:,2] /= lens
         return v
 
-def string2list(string_array):
+def string2list(string_array, make_float=False):
     """string2list
 
     This function converts a array in string representation to a list of string. This can happen, for instance, when you use bash to give a list of strings to python, where ast.literal_eval fails.
@@ -227,6 +240,9 @@ def string2list(string_array):
         new = string_array.split(',')[0:]
         new = list(filter(None, new))
 
+        if make_float:
+            new = [float(ii) for ii in new]
+            
         return new
 
     else:
@@ -257,7 +273,7 @@ def string2float(string_array):
     if type(string_array) == str:
         new = string_array[1:-1].split(' ')[0:]
         new = list(filter(None, new))
-        new = [float(i) for i in new]
+        new = [float(i.strip(",")) for i in new]
         new = np.array(new)
 
         return new
@@ -683,7 +699,7 @@ class VertexInfo:
     def __init__(self, infofile=None, subject=None, hemi="lh"):
         
         self.infofile = infofile
-        self.data = pd.read_csv(self.infofile, index_col=0)
+        self.data = pd.read_csv(self.infofile)
         
         # try to set the index to hemi. It will throw an error if you want to set the index while there already is an index.
         # E.g., initially we will set the index to 'hemi'. If we then later on read in that file again, the index is already 
@@ -720,8 +736,9 @@ class VertexInfo:
         if keyword == "prf":
 
             if hemi == "both":
-                return {"lh": [self.data[ii]['L'] for ii in ['x', 'y', 'size', 'beta', 'baseline', 'r2']],
-                        "rh": [self.data[ii]['R'] for ii in ['x', 'y', 'size', 'beta', 'baseline', 'r2']]}
+                return {
+                    "lh": [self.data[ii]['L'] for ii in ['x', 'y', 'size', 'beta', 'baseline', 'r2']],
+                    "rh": [self.data[ii]['R'] for ii in ['x', 'y', 'size', 'beta', 'baseline', 'r2']]}
             elif hemi.lower() == "right" or hemi.lower() == "r" or hemi.lower() == "rh":
                 return [self.data[ii]['R'] for ii in ['x', 'y', 'size', 'beta', 'baseline', 'r2']]
             elif hemi.lower() == "left" or hemi.lower() == "l" or hemi.lower() == "lh":
