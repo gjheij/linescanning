@@ -1,13 +1,13 @@
 #fitting tolerance
-xtol: 0.00001
-ftol: 0.00001
+xtol: 0.0001
+ftol: 0.0001
 
 # space our pRF lives in
 vf_extent: [-5, 5]
 
 # screen settings
 screen_size_cm: 39.3
-screen_distance_cm: 210
+screen_distance_cm: 196
 
 #unit volume RFs
 normalize_RFs: False
