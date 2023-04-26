@@ -1546,7 +1546,7 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
                     self.fetch_normal()
 
                     vert = []
-                    for hemi,tag in zip(['left', 'right'],["lh","rh"]):
+                    for hemi,tag,bids_hemi in zip(['left', 'right'],["lh","rh"],["hemi-L","hemi-R"]):
 
                         coord = getattr(self, f"{tag}_best_vertex_coord")
                         vertex = getattr(self, f"{tag}_best_vertex")
@@ -1572,7 +1572,7 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
                                         if it in list(self.file_components.keys()):
                                             base += f"_{it}-{self.file_components[it]}"
                             
-                                fname = opj(self.prf_dir, f"{base}_{tag}_vox-{vertex}_model-{self.model}_stage-iter.svg")
+                                fname = opj(self.prf_dir, f"{base}_{bids_hemi}_vox-{vertex}_model-{self.model}_stage-iter.svg")
 
                                 # create the plot
                                 self.make_srf_plot(hemi=tag, save_as=fname)
