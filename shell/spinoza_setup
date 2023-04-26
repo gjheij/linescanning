@@ -18,8 +18,8 @@ if [[ $1 == "setup" ]]; then
   git config core.fileMode false 2>/dev/null
 
   # make scripts executable
-  chmod -R 775 ${REPO_DIR}/bin
-  chmod -R 775 ${REPO_DIR}/shell
+  chmod -R 2775 ${REPO_DIR}/bin 2>/dev/null
+  chmod -R 2775 ${REPO_DIR}/shell 2>/dev/null
 
   # source call_bashhelper
   source ${REPO_DIR}/bin/call_bashhelper
@@ -61,19 +61,20 @@ if [[ $1 == "setup" ]]; then
   fi
 
   # activate conda environment
-  ACTIVATE_CONDA=1
+  ACTIVATE_CONDA=0
+
+  # mamba is faster; check if we can use it
+  check_mamba=`check_function mamba`
+  cmd="conda"
+  if [[ ${check_mamba} -eq 0 ]]; then
+    cmd="mamba"
+  fi
+
   if [[ ${ACTIVATE_CONDA} -eq 1 ]]; then
 
     echo
     echo "---------------------------------------------------------------------------------------------------"
     echo "Dealing with conda environment"
-    
-    # mamba is faster; check if we can use it
-    check_mamba=`check_function mamba`
-    cmd="conda"
-    if [[ ${check_mamba} -eq 0 ]]; then
-      cmd="mamba"
-    fi
 
     env_name="ls"
     if [[ -z `conda info --envs | grep ${env_name}` ]]; then
@@ -111,6 +112,12 @@ if [[ $1 == "setup" ]]; then
       echo "Found ${package} installation"
     fi
   done
+
+  # scipy get installed by pip again, so uninstall and let mamba/conda sort it out
+  pip uninstall scipy -y
+  ${cmd} install -c conda-forge scipy -y
+
+  # done
   echo "Done. Now enter: \"source ~/.bash_profile\""
 fi
 
@@ -121,8 +128,9 @@ fi
 # If you have access to SGE, leave to SGE; otherwise change to e.g., LOCAL
 export PLACE="SGE"
 export SGE_QUEUE_LONG="long.q@jupiter"
-export SGE_QUEUE_SHORT="short.q@jupiter"
 export OMP_NUM_THREADS=1 
+export MKL_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
 
 # MATLAB
 export MRRECON=/packages/matlab/toolbox/MRecon/3.0.541  
@@ -131,23 +139,22 @@ export SPM_PATH=${PATH_HOME}/spm12
 export SKIP_LINES=34                               
 
 # fMRIPREP
-export MRIQC_SIMG=${PATH_HOME}/mriqc/containers_bids-mriqc--0.15.1.simg
-export FPREP_SIMG=${PATH_HOME}/fmriprep/containers_bids-fmriprep--21.0.2.simg
-export FPREP_OUT_SPACES="fsnative fsaverage T1w func"
+export MRIQC_SIMG=/packages/singularity_containers/containers_bids-mriqc--23.0.1.simg
+export FPREP_SIMG=/packages/singularity_containers/containers_bids-fmriprep--20.2.5.simg
+export FPREP_OUT_SPACES="fsnative func"
 export FPREP_BINDING="/data1/projects"                                          # binding directory for singularity image
-export CIFTI=170k                                                               # leave empty if you don't want cifti output
-export DO_SYN=1                                                                 # set to zero if you do not want additional syn-distortion correction
+export CIFTI=""                                                                 # leave empty if you don't want cifti output
+export DO_SYN=0                                                                 # set to zero if you do not want additional syn-distortion correction
 export BOLD_T1W_INIT="register"                                                 # default = register; for partial FOV, set to 'header'
+export FS_LICENSE=${REPO_DIR}/misc/license.txt                                  # this thing needs to be along the FPREP_BINDING path!
 
 # PYBEST
 export PYBEST_SPACE="fsnative"
-export PYBEST_NORM="zscore"
-export PYBEST_ENV="slowpy"
 
 # PROJECT
 export DIR_PROJECTS="/data1/projects/MicroFunc/Jurjen/projects"
-export PROJECT="VE-pRF"
-export TASK_SES1=("2R")
+export PROJECT="motor"
+export TASK_SES1=("clench")
 export TASK_SES2="LR"
 export SUBJECT_PREFIX="sub-"
 export COMBINE_SEGMENTATIONS="weighted"
@@ -155,6 +162,9 @@ export COMBINE_SEGMENTATIONS="weighted"
 # DATA TYPE(S)
 export ACQ=("MP2RAGE")  # or ("MP2RAGE" "MP2RAGEME")
 export DATA=${ACQ[0]}   # or MP2RAGEME/AVERAGE
+
+# phase encoding direction for BOLD; assume inverse for FMAP
+export PE_DIR_BOLD="AP"
 
 # For DATA == AVERAGE we'll need multiple acquisitions
 if [[ ${DATA} == "AVERAGE" ]]; then
@@ -193,11 +203,6 @@ export PRF=${DIR_DATA_DERIV}/prf
 # Make executables available in environment
 export PATH=${PATH}:${DIR_SCRIPTS}/bin
 export PATH=${PATH}:${DIR_SCRIPTS}/shell
-
-# Store acquisitions file file in data folder
-if [[ -f ${DIR_SCRIPTS}/misc/acq.txt ]]; then
-  rm -r ${DIR_SCRIPTS}/misc/acq.txt 2>/dev/null
-fi
 
 # set SSH_KEY for start_ssh
 export SSH_KEY="${HOME}/.ssh/hp_windows"
