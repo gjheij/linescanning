@@ -29,7 +29,7 @@ Args:
                   ly delete unwanted/unused files.
   --no_freeview   prevent FreeView from opening while verifying the location. ONLY do this if you
                   already know the position. Generally only used for debugging purposes.
-  --v1            use the pRF-estimates that you created with spinoza_fitprfs --v1
+  --v1|--v2       use the pRF-estimates that you created with spinoza_fitprfs --v1/--v2
   --grid          use pRF-estimates from grid search; default is 'iter'
   -s <subject>    subject ID as used throughout the pipeline without prefix (e.g., 001 > 001)
   -n <session>    session ID used to extract the correct pRF-parameters. Will combined with <deriva-
@@ -52,6 +52,12 @@ Args:
 
                   If pRFs are used, we'll also try to include the mean intensities of the functional
                   data as criteria, to exclude veins
+
+Models for pRF fitting:
+  --gauss         use standard Gaussian model (default) [Dumoulin & Wandell, 2008]
+  --dog           use difference-of-gaussian model (suppression) [Zuiderbaan, et al. 2013]
+  --css           use compressive spatial summation model (compression) [Kay, et al. 2013]
+  --norm          use divisive normalization model (suppresion+compression) [Aqil, et al. 2021]
 
 Usage:
   spinoza_bestvertex [options] <sourcedata> <derivatives> <ROI>
@@ -79,6 +85,8 @@ roi="V1_exvivo.thresh"
 OPEN_FV=""
 prf_ext="pkl"
 search_pars=""
+txt=""
+SRF=1
 while getopts :-:fos:v:n:m:t: argument
 do
   case ${argument} in
@@ -95,7 +103,27 @@ do
           ;;       
         v1)
           search_pars="roi-V1_"
-          ;;               
+          txt=" and \"${search_pars}\""
+          ;;
+        v2)
+          search_pars="roi-V2_"
+          txt=" and \"${search_pars}\""          
+          ;;       
+        gauss)
+          model="gauss"
+          ;;  
+        dog)
+          model="dog"
+          ;;   
+        css)
+          model="css"
+          ;;  
+        norm)
+          model="norm"
+          ;;       
+        no_srf)
+          SRF=0
+          ;;                          
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}"
@@ -229,18 +257,26 @@ for subID in ${search}; do
 
       # find prf parameters
       if [[ ! -z ${search_pars} ]]; then
-        pars=`find ${prf_dir} -type f \( -name "*model-${model}*" -and -name "*stage-${stage}*" -and -name "*task-${task}*" -and -name "*prf_params.${prf_ext}" -and -name "*${search_pars}*" \) 2>/dev/null`
+        pars=`find -L ${prf_dir} -type f \( -name "*model-${model}*" -and -name "*stage-${stage}*" -and -name "*task-${task}*" -and -name "*prf_params.${prf_ext}" -and -name "*${search_pars}*" \) 2>/dev/null`
       else
-        pars=`find ${prf_dir} -type f \( -name "*model-${model}*" -and -name "*stage-${stage}*" -and -name "*task-${task}*" -and -name "*prf_params.${prf_ext}" -and -not -name "*_roi-*" \) 2>/dev/null`        
+        pars=`find -L ${prf_dir} -type f \( -name "*model-${model}*" -and -name "*stage-${stage}*" -and -name "*task-${task}*" -and -name "*prf_params.${prf_ext}" -and -not -name "*_roi-*" \) 2>/dev/null`        
       fi
 
 
       if [[ -z ${pars} ]]; then
-        echo "${sub_name}: No pRF file found with \"model-${model}\", \"stage-${stage}\", \"task-${task}\", and \"*prf_params.${prf_ext}\" (and \"${search_pars}\") in \"${prf_dir}\""
+        echo "Could not find pRF file with \"model-${model}\", \"stage-${stage}\", \"task-${task}\", and \"*prf_params.${prf_ext}\"${txt} in \"${prf_dir}\""
         continue
       fi
     fi
     
+    # set srf flag if model is norm
+    srf_flag=""
+    if [[ ${model} == "norm" ]]; then
+      if [[ ${SRF} -eq 1 ]]; then
+        srf_flag="--srf"
+      fi
+    fi
+
     call_targetvertex \
       -s ${sub_name} \
       -d ${DERIV} \
@@ -251,6 +287,7 @@ for subID in ${search}; do
       ${fv_flag} \
       ${man_verts} \
       ${use_prfs} \
+      ${srf_flag}
 
     if [[ $? != 0 ]]; then
       echo
