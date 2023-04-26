@@ -128,6 +128,7 @@ fi
 # If you have access to SGE, leave to SGE; otherwise change to e.g., LOCAL
 export PLACE="SGE"
 export SGE_QUEUE_LONG="long.q@jupiter"
+export SGE_QUEUE_SHORT="short.q@jupiter"
 export OMP_NUM_THREADS=1 
 export MKL_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
