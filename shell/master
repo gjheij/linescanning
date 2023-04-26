@@ -25,6 +25,7 @@ OW=""                     # multiple (overwrite mode)
 verb_flag=""              # multiple (turn on verboses)
 FREEVIEW=""               # spinoza_bestvertex
 VERT=""                   # spinoza_bestvertex
+SRF_FLAG=""               # spinoza_bestvertex
 PROC=""                   # spinoza_brainextraction
 raw_flag=""               # spinoza_denoising
 SGE=""                    # spinoza_denoising/spinoza_nordic/spinoza_linerecon/spinoza_registration
@@ -81,7 +82,7 @@ mod_flag=""               # spinoza_mriqc
 
 # use long options in bash:
 # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options
-declare -a array=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv" "--no_fit" "--fmriprep" "--fprep" "--v1" "--v2" "--save_grid" "--debug" "--no_nordic" "--dcm_fix" "--ow" "--no_bounds" "--tsnr" "--mag" "--no_highres" "--xopts-use" "--xopts-clean" "--xopts-overwrite" "--take-avg-tr" "--force_exec" "--no_t2" "--merge_ses" "--fsaverage" "--fsnative" "--ap" "--pa" "--lr" "--rl" "--no_lpi" "--anat_only" "--func_only" "--no_boldref" "--gauss" "--dog" "--css" "--norm")
+declare -a array=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv" "--no_fit" "--fmriprep" "--fprep" "--v1" "--v2" "--save_grid" "--debug" "--no_nordic" "--dcm_fix" "--ow" "--no_bounds" "--tsnr" "--mag" "--no_highres" "--xopts-use" "--xopts-clean" "--xopts-overwrite" "--take-avg-tr" "--force_exec" "--no_t2" "--merge_ses" "--fsaverage" "--fsnative" "--ap" "--pa" "--lr" "--rl" "--no_lpi" "--anat_only" "--func_only" "--no_boldref" "--gauss" "--dog" "--css" "--norm" "--no_srf")
 
 # sort options array
 IFS=$'\n' opts=($(sort <<<"${array[*]}"))
@@ -296,7 +297,10 @@ do
           ;;  
         norm)
           MODEL_FLAG="--norm"
-          ;;                    
+          ;;
+        no_srf)
+          SRF_FLAG="--no_srf"
+          ;;                              
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             for ii in ${opts[@]}; do echo " ${ii}"; done
@@ -1519,10 +1523,6 @@ if [[ $? -eq 0 ]]; then
     LABEL_FILE="V1_exvivo.thresh"
   fi
 
-  if [[ ! -z ${PRF_MODEL} ]]; then
-    MODEL="-m ${PRF_MODEL}"
-  fi
-
   if [[ ! -z ${TYPE} ]]; then
     TASK_ID="-t ${TYPE}"
   fi
@@ -1537,6 +1537,8 @@ if [[ $? -eq 0 ]]; then
     ${FREEVIEW} \
     ${OW} \
     ${lbl_flag} \
+    ${MODEL_FLAG} \
+    ${SRF_FLAG} \
     ${DIR_DATA_HOME} ${DIR_DATA_DERIV} ${LABEL_FILE}
 
   if [[ $? -ne 0 ]]; then
