@@ -88,6 +88,12 @@ Arguments:
                   be matched with its corresponding functional run. If not, we'll take the 1st direc-
                   tory in the list.
 
+Models for pRF fitting:
+  --gauss         run standard Gaussian model (default) [Dumoulin & Wandell, 2008]
+  --dog           run difference-of-gaussian model (suppression) [Zuiderbaan, et al. 2013]
+  --css           run compressive spatial summation model (compression) [Kay, et al. 2013]
+  --norm          run divisive normalization model (suppresion+compression) [Aqil, et al. 2021]
+
 Eample:
   spinoza_fitprfs DIR_DATA_DERIV/prf DIR_DATA_DERIV/pybest DIR_DATA_SOURCE
   spinoza_fitprfs -s 001 -n 1 DIR_DATA_DERIV/prf DIR_DATA_DERIV/pybest DIR_DATA_SOURCE
