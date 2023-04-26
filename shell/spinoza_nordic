@@ -42,6 +42,7 @@ Arguments:
                       so that the template file is not overwritten; this can cause problems. If you
                       do not have run identifiers in your filenames, please run serially. This flag
                       is inherited from 'master', so calling it there will pass on the flag here.
+  --mag               use magnitude only
   <bids folder>       parent directory containing the sub-xxx folders for functional data. Can be 
                       e.g., DIR_DATA_HOME or DIR_DATA_HOME/derivatives/pymp2rage
 
@@ -60,6 +61,7 @@ USAGE
 job="bash"
 smp=1
 SGE=0
+mag_only=0
 tsnr_flag=""
 while getopts :-:s:n: argument
 do
@@ -71,7 +73,10 @@ do
           ;;   
         tsnr)
           tsnr_flag="--tsnr"
-          ;;                                                                          
+          ;;  
+        mag)
+          mag_only=1
+          ;;                                                                                     
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}"
