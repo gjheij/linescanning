@@ -2523,19 +2523,48 @@ def find_most_similar_prf(reference_prf, look_in_params, verbose=False, return_n
 class SizeResponse():
     """SizeResponse
 
-    Perform size-response related operations given a pRF-stimulus/parameters. Simulate the pRF-response using a set of growing stimuli using :func:`linescanning.prf.make_stims`, create size response functions, and find stimulus sizes that best reflect the difference between two given SR-curves. Only needs a *prfpy.stimulus.PRFStimulus2D*-object and a set of parameters derived from a Divisive Normalization model.
+    Perform size-response related operations given a pRF-stimulus/parameters. Simulate the pRF-response using a set of growing stimuli (or growing holes) using :func:`linescanning.prf.make_stims`, create size/hole response functions, and find stimulus sizes that maximize activation and suppression.
 
     Parameters
     ----------
+    params: numpy.ndarray, str, pd.DataFrame
+        Output of a Divisive Normalization fit 
     prf_stim: :class:`prfpy.stimulus.PRFStimulus2D`
         Object describing the nature of the stimulus
-    params: numpy.ndarray
-        array with shape (10,) as per the output of a Divisive Normalization fit operation.
     subject_info: :class:`linescanning.utils.VertexInfo`-object
         Subject information collected in :class:`linescanning.utils.VertexInfo` that can be used for :func:`linescanning.prf.SizeResponse.save_target_params`
+    model: str, optional
+        Model from which `params` is derived. Default = "norm"
+    subject_info: :class:`linescanning.prf.CollectSubject`, optional
+        Object collection defaults given a subject. Mainly used to generate the `prf_stim` object, which is used to derive information about screen settings, which can also be set with the flags below. Therefore, not mandatory.
+    downsample_factor: int, optional
+        The default screen is [1920,1080]. This is rather large and can be complicated CPU wise. This flag downsamples the screen size by selecting every `downsample_factor` along the x and y axis
+    n_pix: int, optional
+        Number of pixels in the design matrix to simulate (smaller is faster)
+    screen_distance_cm: int, optional
+        Distance from viewer to screen. Default is the MRI-scanner value of 196 cm
+    screen_size_cm: float, tuple, list, optional
+        Dimensions of the screen in **centimeters**. Default is the BOLD screen: [70,39.8]. Specify a single value to create square stimuli
+    screen_size_px: float, tuple, list, optional
+        Dimensions of the screen in **pixels**. Default is the BOLD screen: [1920,1080]. Specify a single value to create square stimuli
 
     Example
     ----------
+    >>> from linescanning import prf
+    >>> # define file with pRF estimates
+    >>> in_file = "sub-01_ses-1_task-2R_model-norm_stage-iter_desc-prf_params.pkl"
+    >>> #
+    >>> # read the input file into a dataframe
+    >>> df_for_srfs = prf.Parameters(in_file, model="norm").to_df()
+    >>> #
+    >>> # initialize class
+    >>> SR_ = prf.SizeResponse(
+    >>>     params=df_for_srfs, 
+    >>>     model="norm",
+    >>>     screen_distance_cm=196,
+    >>>     screen_size_cm=[70,39.8],
+    >>>     screen_size_px=[1920,1080])
+
     >>> from linescanning import utils
     >>> # Collect subject-relevant information in class
     >>> subject = "sub-001"
@@ -2593,19 +2622,19 @@ class SizeResponse():
         subject_info=None,
         downsample_factor=6,
         n_pix=100,
-        srf_file=None,
         screen_distance_cm=196,
-        screen_size_cm=39.8):
+        screen_size_cm=[70,39.8],
+        screen_size_px=[1920,1080]):
 
         self.prf_stim = prf_stim
         self.params = params
         self.model = model
         self.subject_info = subject_info
         self.ds = downsample_factor
-        self.srf_file = srf_file
         self.n_pix = n_pix
         self.screen_distance_cm = screen_distance_cm
         self.screen_size_cm = screen_size_cm
+        self.screen_size_px = screen_size_px
 
         # overwrite info in CollectSubject object was specified
         if isinstance(self.subject_info, CollectSubject):
@@ -2614,7 +2643,7 @@ class SizeResponse():
                 self.prf_stim = self.subject_info.prf_stim
             
             self.n_pix = self.prf_stim.design_matrix.shape[0]
-            self.screen_distance_cm = self.prf_stim.screen_distance_cm
+            self.screen_distance_cm = [self.prf_stim.screen_distance_cm,self.prf_stim.screen_distance_cm]
             self.screen_size_cm = self.prf_stim.screen_size_cm
 
         if isinstance(self.params, str):
@@ -2624,13 +2653,19 @@ class SizeResponse():
             self.params_df = Parameters(self.params, model=self.model).to_df()
         elif isinstance(self.params, pd.DataFrame):
             self.params_df = self.params.copy()
+        
+        # parse potential floats into list
+        for ii in ["screen_size_cm", "screen_size_px"]:
+            el = getattr(self, ii)
+            if isinstance(el, float):
+                setattr(self, ii, [el,el])
 
         # define visual field in degree of visual angle
-        self.ss_deg_x = 2*np.degrees(np.arctan(70/(2.0*self.screen_distance_cm)))
-        self.x = np.linspace(-self.ss_deg_x/2, self.ss_deg_x/2, 1920)[::self.ds]
+        self.ss_deg_x = 2*np.degrees(np.arctan(self.screen_size_cm[0]/(2.0*self.screen_distance_cm)))
+        self.x = np.linspace(-self.ss_deg_x/2, self.ss_deg_x/2, self.screen_size_px[0])[::self.ds]
 
-        self.ss_deg_y = 2*np.degrees(np.arctan(self.screen_size_cm /(2.0*self.screen_distance_cm)))
-        self.y = np.linspace(-self.ss_deg_y/2, self.ss_deg_y/2, 1080)[::self.ds]
+        self.ss_deg_y = 2*np.degrees(np.arctan(self.screen_size_cm[1]/(2.0*self.screen_distance_cm)))
+        self.y = np.linspace(-self.ss_deg_y/2, self.ss_deg_y/2, self.screen_size_px[1])[::self.ds]
         self.dx = self.n_pix/len(self.x)
 
         # define visual extent:
@@ -2709,7 +2744,9 @@ class SizeResponse():
         stims=None,
         sizes=None,
         batch_size=1000,
-        parallel=True):
+        parallel=True,
+        thresh=0,
+        max_jobs=20):
 
         """create Size-Response function. If you want to ignore the actual location of the pRF, set `center_prf=True`. You can also scale the pRF-size with a factor `scale_factor`, for instance if you want to simulate pRF-sizes across depth."""
         
@@ -2720,8 +2757,8 @@ class SizeResponse():
         params = params.reset_index(drop=False)
 
         # get indices where prf size != 0
-        idc_valid = list(params.loc[params.prf_size > 0].index)
-        utils.verbose(f"{len(idc_valid)}/{params.shape[0]} vertices > 0", True)
+        idc_valid = list(params.loc[params.prf_size > thresh].index)
+        utils.verbose(f"{len(idc_valid)}/{params.shape[0]} vertices > {thresh}", True)
 
         # filter out zeros
         df_filtered = params.loc[params.index[idc_valid]]
@@ -2729,6 +2766,10 @@ class SizeResponse():
         # use batches
         if df_filtered.shape[0] > batch_size and center_prf:
             n_batches = int(np.ceil(df_filtered.shape[0]/batch_size))
+            if n_batches > max_jobs:
+                n_batches = max_jobs
+                batch_size = int(np.ceil(df_filtered.shape[0]/n_batches))
+
             utils.verbose(f"Split data in {n_batches} batches of {batch_size} vertices", True)
 
             # parse dataframe into list of batch dataframes for parallellization
