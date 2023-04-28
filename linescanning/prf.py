@@ -3151,13 +3151,16 @@ class CollectSubject(pRFmodelFitting):
         # add some filters
         if self.v1_data:
             look_for += ["_roi-V1"]
+            exclude = None
+        else:
+            exclude = "_roi-V1"
 
         if self.fit_hrf:
             look_for += ["hrf-true_"]
 
         utils.verbose(f"Reading full-cortex pRF estimates with {look_for}", self.verbose)
         for model in allowed_models:
-            par_file = utils.get_file_from_substring(look_for+[f"model-{model}"], self.prf_dir, return_msg=None)
+            par_file = utils.get_file_from_substring(look_for+[f"model-{model}"], self.prf_dir, return_msg=None, exclude=exclude)
             if isinstance(par_file, str):
                 utils.verbose(f" model: {model}:\t{par_file}", self.verbose)
                 setattr(self, f'{model}_iter_pars_file', par_file)
