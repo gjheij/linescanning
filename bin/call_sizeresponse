@@ -121,7 +121,6 @@ Example
         screen_size_cm=screen_size_cm,
         screen_size_px=screen_size_px)
     
-    sys.exit(1)
     # derive file components
     try:
         file_components = utils.split_bids_components(os.path.basename(in_file))
