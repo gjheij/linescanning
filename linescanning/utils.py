@@ -1007,7 +1007,7 @@ def split_bids_components(fname):
     if len(comps) != 0:
         return comps
     else:
-        print(f"Could not find any element of {ids} in {fname}")
+        raise ValueError(f"Could not find any element of {ids} in {fname}")
 
 def subjects_in_list(input):
 
