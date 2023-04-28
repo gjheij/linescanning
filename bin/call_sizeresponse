@@ -5,14 +5,11 @@
 
 from linescanning import (
     prf, 
-    plotting)
-import matplotlib.pyplot as plt
-import numpy as np
+    utils)
 import os
 import sys, getopt
-import warnings
-warnings.filterwarnings('ignore')
-np.set_printoptions(precision=3)
+import pandas as pd
+import ast
 opj = os.path.join
 
 def main(argv):
@@ -21,293 +18,185 @@ def main(argv):
 ---------------------------------------------------------------------------------------------------
 call_sizeresponse
 
-Find stimulus sizes that maximally stimulate either the activation pool or the normalization pool of
-the target vertex. We fit a Divisive Normalization model, and derive the response curves in response 
-to full field stimuli ('full'), growing stimulus size ('fill'), and growing hole size ('hole'). The 
-'fill' stimuli are used to estimate the activation response, while the 'hole' stimuli probe the re-
-sponse of the normalization pool. The response to the 'full' stimulus will be used to normalize the 
-'fill' and 'hole' curves. Eventually, this will produce a file in the pycortex-folder containing the
-normalization parameters, as well as the stimulus size to be used for the activation pool and normali-
-zation pool. These values are read from the file in the 'ActNorm' experiment.
-(see https://github.com/gjheij/LineExps/tree/main/ActNorm)
+Create size-response curves given a set of pRF estimates from the DN-model. Aside from size-response
+functions, we can also create hole-response functions - which simulate the response of a pRF to sti-
+muli of growing holes starting from a full field stimulus. This is a proxy for suppression response
+of a given pRF. You can choose to center the pRFs in the middle of the screen (= faster), or create
+a stimulus set specific for each pRF (= slower, but more accurate representation).
 
 Parameters
 ----------
-    -s|--sub    Subject name as defined in FreeSurfer directory
-    -n|--ses    Session to use pRF-parameters from. Default assumes that we have a 'ses-1'-folder. 
-                If this is not the case, use '-n none'. This will remove the 'ses'-indexer from the
-                folder we'll be looking for parameters
-    --lh|--rh   Process a single hemisphere, default is to loop through both
-    --grid      Do not proceed to iterative fit after grid stage
-    --deriv     Path to 'derivatives'-folder. From there, assume 'prf' and 'pycortex' folder. Loses
-                the need to specify '--ctx' and '--prf'
-    --ctx       Path to pycortex directory up to subject specific directories (defaults to <de-
-                rivatives>/pycortex/<subject>
-    --prf       Path to pRF directory up to subject specific directories (defaults to <deriva-
-                tives/<prf>/<subject>/ses-<session>)
-    --v1        use the normalization parameters from the V1-fit. Skips re-fitting, takes the target-
-                vertex index from the full-brain fit. If not specified, the Gaussian parameters are
-                read in, and a DN-model is fit from which the size-response curves are derived.
+    -i|--in_file    file containing pRF estimates; if formatted according to BIDS, we can derive an 
+                    output name from its elements
+    -o|--out_file   output dataframe indexed on subject, stimulus type, stimulus size, by nr of ver-
+                    tices. If nothing is specified, we'll try to read the file components from `in_
+                    file`, and append {"_desc-srfs_unique.csv"|"_desc-srfs_centered.csv"}
+    --unique        create unique stimulus sets for each pRF so that the simulation is more accurate. 
+                    Default is to center the pRF in the visual field
+    --act_only      Only create size-response functions (activation component)
+    --suppr_only    Only create hole-response functions (suppression component)
+    --screen_dist   Distance viewer to screen (default = 196cm)
+    --screen_cm     Screen sizes for x,y. Default is [70,39.8], representing the actual screen size.
+                    If you want a square screen, specify 1 value
+    --screen_pix    Nr of pixels on the screen for x,y. Default is [1920,1080]. If you want a
+                    square screen, specify 1 value
+    --factor        stimulus factor; the lower the number, the larger the stimulus range. Default 
+                    = 1, resulting in stimulus sizes of 20dva
 
 Returns
 ----------
-    a *csv-file containing stimulus sizes
-    a *pdf-file containing matplotlib figure
+    a *csv-file containing a  dataframe indexed on subject, stimulus type, stimulus size by nr of 
+    vertices
 
 Example
 ----------
-    call_sizeresponse -s sub-001 --ctx /path/pycortex --prf /path/prf
-    call_sizeresponse -s sub-001
-    qsub -N SR_001 -q $SGE_QUEUE_SHORT -wd $DIR_LOGS $DIR_SCRIPTS/bin/call_sizeresponse -s sub-001
+    call_sizeresponse -i sub-01_ses-1_task-2R_model-norm_stage-iter_desc-prf_params.pkl
+    call_sizeresponse -i prf_estimates.pkl -o srfs.csv --unique
 
 ---------------------------------------------------------------------------------------------------
     """
 
-    subject     = None
-    session     = 1
-    hemi_list   = ['lh', 'rh']
-    cx_dir      = None
-    prf_dir     = None
-    stage       = "iter"
-    model       = "gauss"
-    verbose     = False
-    deriv       = os.environ.get("DIR_DATA_DERIV")
-    v1_data     = False
-    bv          = True
-    v_target    = 0
+    in_file = None
+    out_file = None
+    center_prf = True
+    verbose = False
+    srf_act = True
+    srf_suppr = True
+    screen_distance_cm = 196
+    screen_size_cm = [70,39.8]
+    screen_dimensions = [1920,1080]
+    stim_factor = 1
 
     try:
-        opts = getopt.getopt(argv,"vqs:n:h:m:l:d:",["help", "sub=", "deriv=", "lh", "rh", "ses=", "cx=", "prf=", "grid", "verbose", "v1"])[0]
+        opts = getopt.getopt(argv,"hi:o:",["help", "in_file=", "out_file=", "unique", "act_only", "suppr_only", "screen_dist=", "screen_cm=", "screen_pix=", "factor="])[0]
     except getopt.GetoptError:
         print("ERROR IN ARGUMENT HANDLING!")
         print(main.__doc__)
         sys.exit(2)
 
     for opt, arg in opts:
-        if opt in ('-q', "--help"):
+        if opt in ('-h', "--help"):
             print(main.__doc__)
             sys.exit()
-        elif opt in ('-v', "--verbose"):
-            verbose=True
-        elif opt in ("-s", "--sub"):
-            subject = arg
-        elif opt in ("-n", "--ses"):
-            session = arg
-        elif opt in ("--grid"):
-            stage = "grid"
-        elif opt in ("--lh"):
-            hemi_list = ["lh"]
-        elif opt in ("--rh"):
-            hemi_list = ["rh"]
-        elif opt in ("-d", "--deriv"):
-            deriv = arg          
-        elif opt in ("--cx"):
-            cx_dir = arg
-        elif opt in ("--prf"):
-            prf_dir = arg 
-        elif opt in ("--v1"):
-            v1_data = True
-            bv = False
-            model = "norm"
+        elif opt in ('-i', "--in_file"):
+            in_file = arg
+        elif opt in ('-o', "--out_file"):
+            out_file = arg
+        elif opt in ("--unique"):
+            center_prf = False
+        elif opt in ("--act_only"):
+            srf_act = True
+            srf_suppr = False
+        elif opt in ("--suppr_only"):
+            srf_act = False
+            srf_suppr = True
+        elif opt in ("--screen_dist"):
+            screen_distance_cm = arg
+        elif opt in ("--screen_cm"):
+            screen_size_cm = ast.literal_eval(arg)
+        elif opt in ("--screen_pix"):
+            screen_size_px = ast.literal_eval(arg)
+        elif opt in ("--factor"):
+            stim_factor = arg
 
     if len(argv) < 1:
-        print("\nNEED AT LEAST A SUBJECT ID")
+        print("\nNEED AT LEAST A FILE WITH PRF ESTIMATES")
         print(main.__doc__)
         sys.exit()
 
-    #---------------------------------------------------------------------------------------------------
-    # set some defaults
-    if not prf_dir or not cx_dir:
-        if deriv:
-            if isinstance(session, str):
-                if session.lower() == "none":
-                    ses = ""
-                else:
-                    raise ValueError(f"Unknown session type '{session}'. Must be an integer or 'none'")
-            else:
-                ses = f'ses-{session}'
-                
-            prf_dir = opj(os.environ.get('DIR_DATA_DERIV'), 'prf', subject, ses)
-            cx_dir = opj(os.environ.get('DIR_DATA_DERIV'), 'pycortex', subject)
+    if not os.path.exists(in_file):
+        raise FileNotFoundError(f"Could not find file '{in_file}'..")
+    else:
+        in_file = os.path.abspath(in_file)
+        out_dir = os.path.dirname(in_file)
 
-    if stage != "grid" and stage != "iter" and stage != "grid+iter":
-        raise ValueError(f"Stage must be 'grid' or 'iter', not {stage}")
+    # read the input file into a dataframe
+    df_for_srfs = prf.Parameters(in_file, model="norm").to_df()
 
-    for hemi in hemi_list:
+    # size response functions
+    SR_ = prf.SizeResponse(
+        params=df_for_srfs, 
+        model="norm",
+        screen_distance_cm=screen_distance_cm,
+        screen_size_cm=screen_size_cm,
+        screen_size_px=screen_size_px)
+    
+    sys.exit(1)
+    # derive file components
+    try:
+        file_components = utils.split_bids_components(os.path.basename(in_file))
+    except:
+        file_components = []
 
-        if verbose:
-            print("\n---------------------------------------------------------------------------------------------------")
-            print(f"Dealing with hemisphere: {hemi}")
-        
-        if hemi == "lh":
-            hemi_tag = "hemi-L"
-        elif hemi == "rh":
-            hemi_tag = "hemi-R"
+    out_comps = []
+    if len(file_components) > 0:
+        for comp in ['sub', 'ses', 'task', 'acq', 'rec', 'run', 'space', 'hemi', 'model', 'stage']:
+            if comp in file_components.keys():
+                out_comps.append(f"{comp}-{file_components[comp]}")
+    
+    if len(out_comps) == 0:
+        subject = "sub-01"
+        out_comps = [subject]
 
-        #---------------------------------------------------------------------------------------------------
-        # figure settings
-        fig = plt.figure(constrained_layout=True, figsize=(24,5))
-        subfigs = fig.subfigures(ncols=2, width_ratios=[4,1])
-        gs00 = subfigs[0].subplots(ncols=3, gridspec_kw={"width_ratios": [10,20,10]})
-        gs01 = subfigs[1].subplots(nrows=2)
-        cols = ["#1B9E77","#D95F02"]
-        
-        #---------------------------------------------------------------------------------------------------
-        # load in subject
-        SI_ = prf.CollectSubject(
-            subject, 
-            prf_dir=prf_dir, 
-            cx_dir=cx_dir, 
-            hemi=hemi, 
-            resize_pix=270,
-            best_vertex=bv,
-            verbose=verbose,
-            model=model,
-            v1=v1_data)
+    # append stuff based on centering of pRF or not
+    if not center_prf:
+        out_comps.append("desc-srfs_unique.csv")
+    else:
+        out_comps.append("desc-srfs_centered.csv")
 
-        if v1_data:
-            if not hasattr(SI_, "target_vertex"):
-                raise ValueError(f"Something doesn't add up.. You requested the normalization parameters from the V1-fit, but I cannot find the index of the target vertex. Did CollectSubject do what it was supposed to..?")
-            v_target = SI_.target_vertex
+    # check if we got a specified output file
+    if not isinstance(out_file, str):
+        out_file = opj(out_dir, "_".join(out_comps))
 
-            # add the shape of left hemisphere data to target in right hemisphere
-            if hemi == "rh":
-                v_target += SI_.func_data_l.shape[-1]
-        
-        # get the prf, timecourse, and prediction
-        pars,prf_old,tc_bold,pred_old = SI_.plot_vox(
-            vox_nr=v_target,
-            model=model,
-            stage="iter",
-            make_figure=False)
+    utils.verbose(f"Creating {out_file}", True)
+    
+    #SRFs for activation & normalization parameters
+    srfs = []
+    if srf_act:
 
-        if not v1_data:
-            # initiate class (saved data does not have volumes cut at the beginning)
-            fitting = prf.pRFmodelFitting(
-                tc_bold,
-                design_matrix=SI_.design_matrix, 
-                TR=SI_.settings['TR'], 
-                model="norm", 
-                stage=stage, 
-                old_params=pars, 
-                verbose=verbose,
-                fix_bold_baseline=True,
-                rsq_threshold=0,
-                nr_jobs=1)
-
-            # fit
-            fitting.fit()
-
-            # get new information from fitting object
-            pars_new,prf_new,_,tc_new = fitting.plot_vox(
-                model="norm",
-                stage=stage,
-                make_figure=False)
-        
-            if verbose:
-                print(f"Params in: \t{[round(ii, 2) for ii in SI_.pars[0,...]]}")
-                print(f"Params out: \t{[round(ii, 2) for ii in pars_new]}")
-
+        # create singular stimulus-set if center_prf=True
+        if center_prf:
+            stims,_ = SR_.make_stimuli(
+                factor=stim_factor,
+                dt="fill"
+            )
         else:
-            pars_new = pars.copy()
-            prf_new = prf_old.copy()
-            tc_new = pred_old.copy()
+            stims = "fill"
 
-            if verbose:
-                print(f"Copying original parameters: {[round(ii, 2) for ii in pars]}")
-        
-        if np.all(pars_new == 0):
-            raise ValueError("All parameters in 'new_params' are equal to zero..")
+        sr_fill = SR_.batch_sr_function(
+            SR_.params_df,
+            stims=stims,
+            center_prf=center_prf
+        )
+        sr_fill["type"] = "act"
+        srfs.append(sr_fill)
 
-        #---------------------------------------------------------------------------------------------------
-        # plot pRF output
-        plotting.LazyPRF(
-            prf_new, 
-            [-5,5], 
-            ax=gs00[0])  
+    if srf_suppr:
 
-        plotting.LazyPlot(
-            [tc_bold, tc_new],
-            xx=np.arange(0,tc_bold.shape[0],1)*SI_.TR,
-            color=['#cccccc', 'r'], 
-            labels=['real', 'pred'], 
-            add_hline='default', 
-            axs=gs00[1],
-            y_label="amplitude",
-            x_label="time (s)",
-            line_width=[0.5, 3],
-            markers=['.', None])
+        # create singular stimulus-set if center_prf=True
+        if center_prf:
+            stims,_ = SR_.make_stimuli(
+                factor=stim_factor,
+                dt="hole"
+            )
+        else:
+            stims = "hole"
 
-        #---------------------------------------------------------------------------------------------------
-        # size response functions
-        SR_ = prf.SizeResponse(params=pars_new, subject_info=SI_)
-        
-        if verbose:
-            print("Making response-curves for 'full', 'fill', 'hole' stimuli")
+        sr_hole = SR_.batch_sr_function(
+            SR_.params_df,
+            stims=stims,
+            center_prf=center_prf
+        )
+        sr_hole["type"] = "norm"
+        srfs.append(sr_hole)
+    
+    # add indices
+    df_sr = pd.concat(srfs)
+    df_sr["subject"] = subject
+    df_sr = df_sr.set_index(["subject","type","sizes","stim_nr"]) 
 
-        # full field stimulation
-        sr_full = SR_.make_sr_function(
-            center_prf=True, 
-            dt="full", 
-            normalize=None)
-
-        # activation
-        sr_act = SR_.make_sr_function(
-            center_prf=True, 
-            dt="fill", 
-            normalize=sr_full)
-
-        # suppression
-        sr_suppr = SR_.make_sr_function(
-            center_prf=True, 
-            dt="hole", 
-            normalize=sr_full)
-
-        #---------------------------------------------------------------------------------------------------
-        # get optimal stimulus size
-        size_act = SR_.find_stim_sizes(sr_act, t="max", dt="fill")
-        size_suppr = SR_.find_stim_sizes(sr_suppr, t="min", dt="hole")
-
-        # make plot 
-        plotting.LazyPlot(
-            [sr_act,sr_suppr],
-            axs=gs00[2],
-            xx=SR_.stims_fill_sizes,
-            line_width=2, 
-            color=cols,
-            labels=[f"act ({round(size_act,2)}dva)",f"suppr ({round(size_suppr,2)}dva)"],
-            x_label="stimulus size",
-            y_label="response",
-            add_vline={
-                "pos": [size_act,size_suppr],
-                "color": cols},
-            x_lim=[0,5],
-            add_hline=0)
-
-        for ix,ii in enumerate([size_act,size_suppr]):
-            SR_.plot_stim_size(
-                ii, 
-                ax=gs01[ix], 
-                dt=["fill","hole"][ix],
-                clip=False, 
-                cmap=cols[ix],
-                vf_extent=SR_.vf_extent)
-
-        plt.tight_layout()
-
-        #---------------------------------------------------------------------------------------------------
-        # finalize figure and save output
-        fig.savefig(
-            opj(cx_dir, f"{subject}_{hemi_tag}_desc-sizeresponse.svg"),
-            dpi=300,
-            bbox_inches="tight")
-            
-        SR_.save_target_params(
-            hemi=hemi, 
-            stim_sizes=[size_act,size_suppr])
-
-    ff = opj(cx_dir, f"{subject}_model-norm_desc-best_vertices2.csv")
-    print(f"Copy '{ff}' to the 'LineExps/data' folder")
+    # save
+    df_sr.to_csv(out_file)
 
 if __name__ == "__main__":
     main(sys.argv[1:])
