@@ -1421,7 +1421,7 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
                 model=self.model)
 
             if self.use_epi & self.use_prf:
-                utils.verbose("Also generate pRFmodelFitter object", self.verbose)
+                utils.verbose("Also initialize CollectSubject object", self.verbose)
                 # load in subject
                 self.SI_ = prf.CollectSubject(
                     self.subject, 
@@ -1430,7 +1430,7 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
                     hemi="lh", 
                     resize_pix=270,
                     best_vertex=False,
-                    verbose=False,
+                    verbose=True,
                     model=self.model,
                     v1=v1_data)
                 
@@ -1709,7 +1709,7 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
         cols = ["#1B9E77","#D95F02"]
 
         # plot pRF and timecourse + prediction of ses-1 paradigm
-        pars,prf_old,tc_bold,pred_old = self.SI_.plot_vox(
+        _,_,_,_ = self.SI_.plot_vox(
             vox_nr=min_index,
             model=self.model,
             stage="iter",
@@ -1770,7 +1770,7 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
 
         self.pyc = pycortex.SavePycortexViews(
             self.data_dict,
-            subject=self.subject
+            subject=self.subject,
             **kwargs)
 
 class Neighbours(SurfaceCalc):
