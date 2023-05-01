@@ -389,7 +389,7 @@ class SurfaceCalc(object):
             'whole_roi': whole_roi,
             'whole_roi_v': whole_roi_v}
 
-class pRFCalc():
+class pRFCalc(pycortex.SavePycortexViews):
 
     """pRFCalc
 
@@ -424,16 +424,16 @@ class pRFCalc():
             prf_file, 
             subject=None, 
             save=False, 
+            model=None,
             thr=0.1,
-            model="gauss",
             fs_dir=None):
         
         # set defaults
         self.prf_file   = prf_file
-        self.thr        = thr
         self.model      = model
         self.save       = save
         self.subject    = subject
+        self.thr        = thr
         self.fs_dir     = fs_dir
 
         # check SUBJECTS_DIR
@@ -441,12 +441,19 @@ class pRFCalc():
             self.fs_dir = os.environ.get("SUBJECTS_DIR")
         
         # read BIDS components from prf-file
-        self.comps = utils.split_bids_components(self.prf_file)
+        self.comps = utils.split_bids_components(os.path.basename(self.prf_file))
 
         # set subject
-        if not self.subject:
+        if not isinstance(self.subject, str):
             if "sub" in list(self.comps.keys()):
                 self.subject = f"sub-{self.comps['sub']}"
+
+        # set model
+        if not isinstance(self.model, str):
+            if "model" in list(self.comps.keys()):
+                self.model = self.comps["model"]
+            else:
+                self.model = "gauss"           
             
         # create output string from input file if we found BIDS components
         self.out_ = ""
@@ -492,7 +499,8 @@ class pRFCalc():
                 self.df_prf.r2,
                 subject=self.subject,
                 cmap="magma",
-                vmax1=self.df_prf.r2.max(),
+                vmax1=round(self.df_prf.r2.max(),2),
+                vmin2=self.thr,
                 vmax2=0.5)
 
             # make object for eccentricity
@@ -502,6 +510,7 @@ class pRFCalc():
                 subject=self.subject,
                 cmap="nipy_spectral",
                 vmax1=5,
+                vmin2=self.thr,
                 vmax2=0.5)
 
             # make object for polar angle
@@ -512,8 +521,49 @@ class pRFCalc():
                 cmap="hsv_r",
                 vmin1=-np.pi,
                 vmax1=np.pi,
+                vmin2=self.thr,                
                 vmax2=0.5)
+            
+            self.prf_data_dict = {}
+            for el in ["r2","ecc","polar"]:
+                self.prf_data_dict[el] = getattr(self, f"{el}_v")
+            
+            # create objects for A,B,C,D
+            if self.model == "norm":
+                for par in ["B","D","ratio (B/D)"]:
+                    if par in ["B","D"]:
+                        minmax = [0,100]
+                        obj_par = par
+                    else:
+                        minmax = [
+                            np.nanquantile(self.df_prf["ratio (B/D)"].loc[self.df_prf.r2>self.thr].values,0.1),
+                            round(np.nanquantile(self.df_prf["ratio (B/D)"].loc[self.df_prf.r2>self.thr].values,0.9),2)
+                        ]
 
+                        obj_par = par.replace(" ","")
+                        
+                    obj_ = pycortex.Vertex2D_fix(
+                        self.df_prf[par],
+                        self.df_prf.r2,
+                        subject=self.subject,
+                        vmin1=minmax[0],
+                        vmax1=minmax[1],
+                        vmin2=self.thr,
+                        vmax2=0.5,
+                        cmap="viridis_r"
+                    )
+
+                    setattr(self, f"{obj_par}_v", obj_)
+                    self.prf_data_dict[obj_par] = obj_
+
+    def open_pycortex(
+        self,
+        **kwargs):
+
+        super().__init__(
+            self.prf_data_dict,
+            subject=self.subject,
+            **kwargs)                    
 
 class CalcBestVertex():
 
@@ -738,12 +788,10 @@ class CalcBestVertex():
                 else:
                     self.criteria[par] = float(val)
 
-                # add vertex objects
-                if par == "polar angle":
-                    par = "polar"
-
-                if hasattr(self.prf, f"{par}_v"):
-                    self.data_dict[par] = getattr(self.prf, f"{par}_v")
+                # store vertex objects in self.data_dict
+                if hasattr(self.prf, "prf_data_dict"):
+                    for key,val in self.prf.prf_data_dict.items():
+                        self.data_dict[key] = val
 
             # set normalization criteria
             if self.model == "norm":
