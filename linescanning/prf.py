@@ -3275,6 +3275,7 @@ class Parameters():
 
         self.params = params
         self.model = model
+        self.allow_models = ["gauss","dog","css","norm"]
 
         if isinstance(self.params, str):
             self.params = read_par_file(self.params)
@@ -3291,101 +3292,102 @@ class Parameters():
             self.params = self.params[np.newaxis,:]
 
         # see: https://github.com/VU-Cog-Sci/prfpy_tools/blob/master/utils/postproc_utils.py#L377
-        if self.model == "gauss":
-            params_dict = {
-                "x": self.params[:,0], 
-                "y": self.params[:,1], 
-                "prf_size": self.params[:,2],
-                "prf_ampl": self.params[:,3],
-                "bold_bsl": self.params[:,4],
-                "r2": self.params[:,-1],
-                "ecc": np.sqrt(self.params[:,0]**2+self.params[:,1]**2),
-                "polar": np.angle(self.params[:,0]+self.params[:,1]*1j)
-            }
+        if self.model in self.allow_models:
+            if self.model == "gauss":
+                params_dict = {
+                    "x": self.params[:,0], 
+                    "y": self.params[:,1], 
+                    "prf_size": self.params[:,2],
+                    "prf_ampl": self.params[:,3],
+                    "bold_bsl": self.params[:,4],
+                    "r2": self.params[:,-1],
+                    "ecc": np.sqrt(self.params[:,0]**2+self.params[:,1]**2),
+                    "polar": np.angle(self.params[:,0]+self.params[:,1]*1j)
+                }
 
-            if self.params.shape[-1] > 6:
-                params_dict["hrf_deriv"] = self.params[:,-3]
-                params_dict["hrf_disp"] = self.params[:,-2]
+                if self.params.shape[-1] > 6:
+                    params_dict["hrf_deriv"] = self.params[:,-3]
+                    params_dict["hrf_disp"] = self.params[:,-2]
 
-        elif self.model == "norm":
+            elif self.model == "norm":
+                    
+                params_dict = {
+                    "x": self.params[:,0], 
+                    "y": self.params[:,1], 
+                    "prf_size": self.params[:,2],
+                    "prf_ampl": self.params[:,3],
+                    "bold_bsl": self.params[:,4],
+                    "surr_ampl": self.params[:,5],
+                    "surr_size": self.params[:,6], 
+                    "neur_bsl": self.params[:,7],
+                    "surr_bsl": self.params[:,8],
+                    "A": self.params[:,3], 
+                    "B": self.params[:,7], #/params[:,3], 
+                    "C": self.params[:,5], 
+                    "D": self.params[:,8],
+                    "ratio (B/D)": self.params[:,7]/self.params[:,8],
+                    "r2": self.params[:,-1],
+                    "size ratio": self.params[:,6]/self.params[:,2],
+                    "suppression index": (self.params[:,5]*self.params[:,6]**2)/(self.params[:,3]*self.params[:,2]**2),
+                    "ecc": np.sqrt(self.params[:,0]**2+self.params[:,1]**2),
+                    "polar": np.angle(self.params[:,0]+self.params[:,1]*1j)}
+
+                if self.params.shape[-1] > 10:
+                    params_dict["hrf_deriv"] = self.params[:,-3]
+                    params_dict["hrf_dsip"] = self.params[:,-2]
+
+            elif self.model == "dog":
+                params_dict = {
+                    "x": self.params[:,0], 
+                    "y": self.params[:,1], 
+                    "prf_size": self.params[:,2],
+                    "prf_ampl": self.params[:,3],
+                    "bold_bsl": self.params[:,4],
+                    "surr_ampl": self.params[:,5],
+                    "surr_size": self.params[:,6], 
+                    "r2": self.params[:,-1],
+                    "size ratio": self.params[:,6]/self.params[:,2],
+                    "suppression index": (self.params[:,5]*self.params[:,6]**2)/(self.params[:,3]*self.params[:,2]**2),
+                    "ecc": np.sqrt(self.params[:,0]**2+self.params[:,1]**2),
+                    "polar": np.angle(self.params[:,0]+self.params[:,1]*1j)}
+
+            elif self.model == "dog":
+                params_dict = {
+                    "x": self.params[:,0], 
+                    "y": self.params[:,1], 
+                    "prf_size": self.params[:,2],
+                    "prf_ampl": self.params[:,3],
+                    "bold_bsl": self.params[:,4],
+                    "surr_ampl": self.params[:,5],
+                    "surr_size": self.params[:,6], 
+                    "r2": self.params[:,-1],
+                    "size ratio": self.params[:,6]/self.params[:,2],
+                    "suppression index": (self.params[:,5]*self.params[:,6]**2)/(self.params[:,3]*self.params[:,2]**2),
+                    "ecc": np.sqrt(self.params[:,0]**2+self.params[:,1]**2),
+                    "polar": np.angle(self.params[:,0]+self.params[:,1]*1j)}     
                 
-            params_dict = {
-                "x": self.params[:,0], 
-                "y": self.params[:,1], 
-                "prf_size": self.params[:,2],
-                "prf_ampl": self.params[:,3],
-                "bold_bsl": self.params[:,4],
-                "surr_ampl": self.params[:,5],
-                "surr_size": self.params[:,6], 
-                "neur_bsl": self.params[:,7],
-                "surr_bsl": self.params[:,8],
-                "A": self.params[:,3], 
-                "B": self.params[:,7], #/params[:,3], 
-                "C": self.params[:,5], 
-                "D": self.params[:,8],
-                "ratio (B/D)": self.params[:,7]/self.params[:,8],
-                "r2": self.params[:,-1],
-                "size ratio": self.params[:,6]/self.params[:,2],
-                "suppression index": (self.params[:,5]*self.params[:,6]**2)/(self.params[:,3]*self.params[:,2]**2),
-                "ecc": np.sqrt(self.params[:,0]**2+self.params[:,1]**2),
-                "polar": np.angle(self.params[:,0]+self.params[:,1]*1j)}
+                if self.params.shape[-1] > 8:
+                    params_dict["hrf_deriv"] = self.params[:,-3]
+                    params_dict["hrf_dsip"] = self.params[:,-2]
 
-            if self.params.shape[-1] > 10:
-                params_dict["hrf_deriv"] = self.params[:,-3]
-                params_dict["hrf_dsip"] = self.params[:,-2]
-
-        elif self.model == "dog":
-            params_dict = {
-                "x": self.params[:,0], 
-                "y": self.params[:,1], 
-                "prf_size": self.params[:,2],
-                "prf_ampl": self.params[:,3],
-                "bold_bsl": self.params[:,4],
-                "surr_ampl": self.params[:,5],
-                "surr_size": self.params[:,6], 
-                "r2": self.params[:,-1],
-                "size ratio": self.params[:,6]/self.params[:,2],
-                "suppression index": (self.params[:,5]*self.params[:,6]**2)/(self.params[:,3]*self.params[:,2]**2),
-                "ecc": np.sqrt(self.params[:,0]**2+self.params[:,1]**2),
-                "polar": np.angle(self.params[:,0]+self.params[:,1]*1j)}
-
-        elif self.model == "dog":
-            params_dict = {
-                "x": self.params[:,0], 
-                "y": self.params[:,1], 
-                "prf_size": self.params[:,2],
-                "prf_ampl": self.params[:,3],
-                "bold_bsl": self.params[:,4],
-                "surr_ampl": self.params[:,5],
-                "surr_size": self.params[:,6], 
-                "r2": self.params[:,-1],
-                "size ratio": self.params[:,6]/self.params[:,2],
-                "suppression index": (self.params[:,5]*self.params[:,6]**2)/(self.params[:,3]*self.params[:,2]**2),
-                "ecc": np.sqrt(self.params[:,0]**2+self.params[:,1]**2),
-                "polar": np.angle(self.params[:,0]+self.params[:,1]*1j)}     
-            
-            if self.params.shape[-1] > 8:
-                params_dict["hrf_deriv"] = self.params[:,-3]
-                params_dict["hrf_dsip"] = self.params[:,-2]
-
-        elif self.model == "css":
-            params_dict = {
-                "x": self.params[:,0], 
-                "y": self.params[:,1], 
-                "prf_size": self.params[:,2],
-                "prf_ampl": self.params[:,3],
-                "bold_bsl": self.params[:,4],
-                "css_exp": self.params[:,5],
-                "r2": self.params[:,-1],
-                "ecc": np.sqrt(self.params[:,0]**2+self.params[:,1]**2),
-                "polar": np.angle(self.params[:,0]+self.params[:,1]*1j)}     
-            
-            if self.params.shape[-1] > 7:
-                params_dict["hrf_deriv"] = self.params[:,-3]
-                params_dict["hrf_dsip"] = self.params[:,-2]
+            elif self.model == "css":
+                params_dict = {
+                    "x": self.params[:,0], 
+                    "y": self.params[:,1], 
+                    "prf_size": self.params[:,2],
+                    "prf_ampl": self.params[:,3],
+                    "bold_bsl": self.params[:,4],
+                    "css_exp": self.params[:,5],
+                    "r2": self.params[:,-1],
+                    "ecc": np.sqrt(self.params[:,0]**2+self.params[:,1]**2),
+                    "polar": np.angle(self.params[:,0]+self.params[:,1]*1j)}     
+                
+                if self.params.shape[-1] > 7:
+                    params_dict["hrf_deriv"] = self.params[:,-3]
+                    params_dict["hrf_dsip"] = self.params[:,-2]
 
         else:
-            raise NotImplementedError(f"Im lazy.. Still need to sort out models ['css' and 'dog']")
+            raise ValueError(f"Model must be one of {self.allow_models}. Not '{self.model}'")
 
         return pd.DataFrame(params_dict)
 
