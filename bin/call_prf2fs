@@ -1,0 +1,154 @@
+#!/usr/bin/env python
+
+import sys
+import getopt
+from linescanning import prf, utils
+import os
+import numpy as np
+from nibabel.freesurfer.io import read_morph_data, write_morph_data
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_prf2fs
+
+Convert the pRF-estimates obtained with pRFpy to files that freesurfer can understand. This allows
+us to draw ROIs on the surface using Freeview
+
+Usage:
+  call_prf2fs [arguments] [options]
+
+Arguments:
+    -i|--in     <prf file>      file containing the pRF estimates
+    -s|--sub    <sub number>    number of subject's FreeSurfer directory. If not specified, we'll 
+                                try to read it from `prf file`
+    -m|--model  <model type>    one of ['gauss','dog','css','norm'], default = 'gauss'. You can 
+                                also call models with '--gauss', '--dog', '--css', or '--norm'
+                                (see below). If these flags are not used, we'll try to read the
+                                model-type from the filename if it contains the 'model-' flag. If
+                                that also fails, we'll default to 'gauss', which should also be 
+                                fine given that we're mainly interested in polar angle maps and 
+                                eccentricities; these are extracted regardless of model type
+    -t|--thr <r2 thresh>        r2 threshold to use for thresholding the eccentricity/polar angle
+                                maps
+
+Options
+    --max_ecc   <value>         maximum eccentricity value to consider when plotting. Default = 10
+    --freeview                  immediately open freeview to draw stuff
+
+Models:
+    --gauss         use standard Gaussian model (default) [Dumoulin & Wandell, 2008]
+    --dog           use difference-of-gaussian model (suppression) [Zuiderbaan, et al. 2013]
+    --css           use compressive spatial summation model (compression) [Kay, et al. 2013]
+    --norm          use divisive normalization model (suppresion+compression) [Aqil, et al. 2021]
+
+Example:
+  call_prf2fs -i sub-001_task-2R_model-gauss_desc-prf_params.pkl # read elements from file
+  call_prf2fs -i sub-001_task-2R_model-gauss_desc-prf_params.pkl --thr 0.05 # reduce r2 threshold
+  call_prf2fs -i sub-001_task-2R_model-gauss_desc-prf_params.pkl --freeview # open freeview too
+  call_prf2fs -i prf_estimates -s sub-001 --gauss # manually set subject & model
+
+---------------------------------------------------------------------------------------------------
+"""
+
+    subject     = None
+    prf_file    = None
+    model       = None
+    r2_thresh   = 0.1
+    max_ecc     = 10.0
+    freeview    = False
+
+    try:
+        opts = getopt.getopt(argv,"h:n:m:t:i:",["help", "sub=", "model=", "gauss", "dog", "css", "norm", "thr=", "max_ecc=", "freeview"])[0]
+    except getopt.GetoptError:
+        print("ERROR while reading arguments; did you specify an illegal argument?")
+        print(main.__doc__)
+        sys.exit(2)
+    
+    for opt, arg in opts:
+        if opt in ('-h', '--help'):
+            print(main.__doc__)
+            sys.exit()
+        elif opt in ("-s", "--sub"):
+            subject = arg
+        elif opt in ("-i", "--in"):
+            prf_file = os.path.abspath(arg)
+        elif opt in ("-m", "--model"):
+            model = arg
+        elif opt in ("-t", "--thr"):
+            r2_thresh = float(arg)
+        elif opt in ("--gauss"):
+            model = "gauss" 
+        elif opt in ("--dog"):
+            model = "dog"
+        elif opt in ("--css"):
+            model = "css"
+        elif opt in ("--norm"):
+            model = "norm"
+        elif opt in ("--max_ecc"):
+            max_ecc = float(max_ecc)
+        elif opt in ("--freeview"):
+            freeview = True            
+
+    if len(argv) < 1:
+        print("NEED AT LEAST THE FILE WITH PRF ESTIMATES")
+        print(main.__doc__)
+        sys.exit()
+
+    # try to derive model type from file
+    if not isinstance(model, str) or not isinstance(subject, str):
+        file_components = utils.split_bids_components(os.path.basename(prf_file))
+        if "model" in list(file_components.keys()):
+            model = file_components["model"]
+        else:
+            model = "gauss"
+
+        if "sub" in list(file_components.keys()):
+            subject = f"sub-{file_components['sub']}"
+        else:
+            raise ValueError(f"Could not derive subject ID from '{prf_file}'. Use the '-s' flag")
+
+    # set output directory
+    fs_dir = os.environ.get("SUBJECTS_DIR")
+    output_dir = opj(
+        fs_dir,
+        subject,
+        "surf")    
+
+    # read the estimates into a dataframe
+    print(f"Reading '{prf_file}'")
+    prf_est = prf.Parameters(prf_file, model=model).to_df()
+
+    # parse relevant data to arrays
+    r2 = prf_est.r2.values
+    ecc = prf_est.ecc.values
+    polar = prf_est.polar.values
+
+    # create masks
+    r2_mask = r2 > r2_thresh
+    ecc_mask = ecc < max_ecc
+    total_mask = r2_mask*ecc_mask
+
+    # mask polar angles
+    masked_polar_angle = np.where(total_mask, polar, -10)
+
+    # curv-file to get lh-shape
+    lh_c = read_morph_data(opj(output_dir, "lh.curv"))
+    lh_masked_pol = masked_polar_angle[:lh_c.shape[0]]
+    rh_masked_pol = masked_polar_angle[lh_c.shape[0]:]
+
+    # save
+    for ff,dd in zip(["lh","rh"],[lh_masked_pol,rh_masked_pol]):
+        out_f = opj(output_dir, f"{ff}.masked_pol")
+        print(f"Writing '{out_f}'")
+        write_morph_data(out_f, dd)
+
+    if freeview:
+        cmd=f"freeview -f {opj(output_dir, 'lh.inflated')}:overlay={opj(output_dir, 'lh.masked_pol')}:overlay_custom=-3.14,255,0,0,-2.65,255,255,0,-2.09,0,128,0,-1.75,0,255,255,-1.05,0,0,255,-0.5,238,130,238,0,255,0,0,0.5,255,255,0,1.05,0,128,0,1.57,0,255,255,2.09,0,0,255,2.65,238,130,238,3.14,255,0,0 {opj(output_dir, 'rh.inflated')}:overlay={opj(output_dir, 'rh.masked_pol')}:overlay_custom=-3.14,255,0,0,-2.65,255,255,0,-2.09,0,128,0,-1.75,0,255,255,-1.05,0,0,255,-0.5,238,130,238,0,255,0,0,0.5,255,255,0,1.05,0,128,0,1.57,0,255,255,2.09,0,0,255,2.65,238,130,238,3.14,255,0,0 2>/dev/null"
+        print(cmd)
+        os.system(cmd)
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
