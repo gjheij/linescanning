@@ -1831,7 +1831,7 @@ class LazyColorbar(Defaults):
             if isinstance(self.save_as, str):
                 self.fig, self.axs = plt.subplots(figsize=self.figsize)
             else:
-                _, self.axs = plt.subplots(figsize=self.figsize)
+                self.fig, self.axs = plt.subplots(figsize=self.figsize)
             
         # set ticks to integer intervals if nothing's specified
         if not isinstance(self.ticks, list):
@@ -1880,11 +1880,18 @@ class LazyColorbar(Defaults):
         # turn off frame
         self.axs.set_frame_on(False)
 
-        if hasattr(self, "fig"):
+        if isinstance(self.save_as, str):
             self.fig.savefig(
                 self.save_as,
                 facecolor="white",
                 bbox_inches="tight")
+
+    def show(self):
+        
+        fig = plt.figure()
+        new_manager = fig.canvas.manager
+        new_manager.canvas.figure = self.fig
+        self.fig.set_canvas(new_manager.canvas)
 
 def fig_annot(fig, y=1.01, x0_corr=0, x_corr=-0.09, fontsize=28):
 
@@ -1905,4 +1912,4 @@ def fig_annot(fig, y=1.01, x0_corr=0, x_corr=-0.09, fontsize=28):
             alphabet[ix], 
             (pos,y), 
             fontsize=fontsize, 
-            xycoords="axes fraction")        
+            xycoords="axes fraction")
