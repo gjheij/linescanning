@@ -11,6 +11,7 @@ import configparser
 import sys
 import time
 from matplotlib.colors import Normalize
+import matplotlib.pyplot as plt
 from typing import Union
 opj = os.path.join
 
@@ -243,7 +244,7 @@ def get_ctxsurfmove(subject):
 class SavePycortexViews():
     """SavePycortexViews
 
-    Save the elements of a `dict` containing vertex/volume objects to images given a set of viewing settings. If all goes well, a browser will open. Just wait for your settings to be applied in the viewer. You can then proceed from there. If your selected orientation is not exactly right, you can still manually adapt it before running :func:`linescanning.pycortex.SavePycortexViews.save_all()`, which will save all elements in the dataset to png-files given `fig_dir` and `base_name`. 
+    Save the elements of a `dict` containing vertex/volume objects to images given a set of viewing settings. If all goes well, a browser will open. Just wait for your settings to be applied in the viewer. You can then proceed from there. If your selected orientation is not exactly right, you can still manually adapt it before running :func:`linescanning.pycortex.SavePycortexViews.save_all()`, which will save all elements in the dataset to png-files given `fig_dir` and `base_name`. Additionally, colormaps will be produced if `data_dict` contains instances of :class:`linescanning.pycortex.Vertex2D_fix` and will produce instances of :class:`linescanning.plotting.LazyColorbar` in a single figure for all elements in `data_dict`. This figure will also be saved when calling :func:`linescanning.pycortex.SavePycortexViews.save_all()` with suffix `_desc-colormaps.<ext>`, where <ext> is set by `cm_ext` (default = **pdf**).
 
     Parameters
     ----------
@@ -280,9 +281,11 @@ class SavePycortexViews():
     sulci_labels: int, optional
         Show the sulci labels on the FSAverage brain. Default = 0
     cm_ext: str, optional
-        File extension to save the colormap images with. Default = "pdf"
-    save_cm: bool, optional
-        If the input is an instance of :class:`linescanning.pycortex.Vertex2D_fix`, we can automatically create colormaps from these inputs. These colormaps will be printed to the terminal, but we can also write them to a file. In that case, `fig_dir` and `base_name` is preferred; `_desc-{input_name}_cm.{cm_ext}` will be appended.
+        File extension to save the colormap images with. Default = "pdf". These colormaps will be produced if `data_dict` contains instances of :class:`linescanning.pycortex.Vertex2D_fix` and will produce instances of :class:`linescanning.plotting.LazyColorbar` in a single figure for all elements in `data_dict`
+    cm_scalar: float, optional
+        Decides more or less the height of the colorbars. By default 0.85. Higher values = thicker bar. This default value scales well with the font size
+    cm_width: int, optional
+        Width of the colormaps, by default 6
     viewer: bool, optional
         Open the viewer (`viewer=True`, default) or suppress it (`viewer=False`)
 
@@ -337,7 +340,8 @@ class SavePycortexViews():
         rois_labels: int=0,
         sulci_visible: int=1,
         sulci_labels: int=0,
-        save_cm: bool=False,
+        cm_scalar: float=0.85,
+        cm_width: int=6,
         cm_ext: str="pdf",
         viewer: bool=True,
         **kwargs):
@@ -358,8 +362,9 @@ class SavePycortexViews():
         self.rois_labels = rois_labels
         self.sulci_labels = sulci_labels
         self.sulci_visible = sulci_visible
-        self.save_cm = save_cm
         self.cm_ext = cm_ext
+        self.cm_scalar = cm_scalar
+        self.cm_width = cm_width
         self.viewer = viewer
 
         if not isinstance(self.base_name, str):
@@ -370,32 +375,43 @@ class SavePycortexViews():
 
         if not isinstance(self.tmp_dict, dict):
             if isinstance(self.tmp_dict, np.ndarray):
-                self.tmp_dict = {"data": cortex.Vertex(self.tmp_dict, subject=self.subject, **kwargs)}
+                self.tmp_dict = {
+                    "data": cortex.Vertex(
+                        self.tmp_dict, 
+                        subject=self.subject, 
+                        **kwargs)}
             else:
                 self.tmp_dict = {"data": self.tmp_dict}
 
         # check what kind of object they are; if Vertex2D_fix, make colormaps
         self.data_dict = {}
         self.cms = {}
-        for key,val in self.tmp_dict.items():
+        self.cm_fig, self.cm_axs = plt.subplots(
+            nrows=len(self.tmp_dict), 
+            figsize=(self.cm_width,self.cm_scalar*len(self.tmp_dict)),
+            constrained_layout=True
+        )
+        
+        for ix,(key,val) in enumerate(self.tmp_dict.items()):
             if isinstance(val, Vertex2D_fix):
                 self.data_dict[key] = val.get_result()
                 
-                if self.save_cm:
-                    if key == "polar":
-                        ticks = [-np.pi,0,np.pi]
-                    else:
-                        ticks = list(np.arange(val.vmin1,val.vmax1+(val.vmax1*0.2), (val.vmax1-val.vmin1)*0.2))
-                    
-                    ticks = [round(ii,2) for ii in ticks]
-                    cm = val.get_colormap(
-                        ori="horizontal", 
-                        label=key, 
-                        flip_label=True, 
-                        ticks=ticks,
-                        save_as=opj(self.fig_dir, f"{base_name}_desc-{key}_cm.{self.cm_ext}"))
-                    
-                    self.cms[key] = cm
+                # store colormaps
+                if key == "polar":
+                    ticks = [-np.pi,0,np.pi]
+                else:
+                    ticks = list(np.linspace(val.vmin1,val.vmax1, endpoint=True, num=5))
+                
+                ticks = [round(ii,2) for ii in ticks]
+                cm = val.get_colormap(
+                    ori="horizontal", 
+                    label=key, 
+                    flip_label=True, 
+                    ticks=ticks,
+                    axs=self.cm_axs[ix])
+                
+                self.cms[key] = cm
+                
             else:
                 self.data_dict[key] = val
         
@@ -439,6 +455,16 @@ class SavePycortexViews():
             self.save(
                 param_to_save,
                 self.base_name)
+
+        # save colormap figure
+        if len(self.cms) > 0:
+            filename = f"{self.base_name}_desc-colormaps.{self.cm_ext}"
+            output_path = os.path.join(self.fig_dir, filename)            
+            self.cm_fig.savefig(
+                output_path,
+                bbox_inches="tight",
+                facecolor="white",
+                dpi=300)
 
     def set_view(self):
         # set specified view
@@ -637,13 +663,14 @@ class Vertex2D_fix():
         label=None, 
         **kwargs):
 
-        self.cm = plotting.LazyColorbar(
+        cm = plotting.LazyColorbar(
             cmap=self.cmap,
             txt=label,
             vmin=self.vmin1,
             vmax=self.vmax1,
             **kwargs)
+
+        return cm
         
     def get_colormap(self, *args, **kwargs):
-        self.make_colormap(*args, **kwargs)
-        return self.cm
+        return self.make_colormap(*args, **kwargs)
