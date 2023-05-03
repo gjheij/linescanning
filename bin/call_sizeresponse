@@ -147,6 +147,8 @@ Example
     if len(out_comps) == 0:
         subject = "sub-01"
         out_comps = [subject]
+    else:
+        subject = out_comps[0]
 
     # append stuff based on centering of pRF or not
     if not center_prf:
