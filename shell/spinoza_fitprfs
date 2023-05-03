@@ -31,6 +31,10 @@ Options:
   -c              list of values used for clipping of design matrix. Format must be [<top>,<bottom>,
                   <left>,<right>]. Negative values will be set to zero within 'linescanning.prf.
                   get_prfdesign'
+  -k <kwargs>     specify a file with additional arguments, similar to FreeSurfer's expert options.
+                  See linescanning/misc/prf_options for an example. Please make sure you have a 
+                  final empty white space at the end of the file, otherwise the parser gets confu-
+                  sed. For VSCode: https://stackoverflow.com/a/44704969.
   -m <model>      one of ['gauss','dog','css','norm'] is accepted, default = "gauss"
   -n <session>    session ID (e.g., 1, 2, or none)
   -o              delete existing file and re-run analysis fully. Even if 'model=norm', we'll over-
@@ -129,7 +133,8 @@ merge_flag=""
 jobs_flag=""
 model="gauss"
 n_jobs=5
-while getopts :-:los:n:m:t:x:c:v:j: argument
+kwargs_file=""
+while getopts :-:los:n:m:t:x:c:v:j:k: argument
 do
   case ${argument} in
     -)
@@ -220,7 +225,9 @@ do
     x)  use_constr="--constr [${OPTARG[@]}]"
           ;;
     v)  cut_vols="--cut_vols ${OPTARG[@]}"
-          ;;          
+          ;;        
+    k)  kwargs_file="--kwargs ${OPTARG}"
+          ;;            
   esac
 done
 
@@ -509,6 +516,7 @@ for subID in ${search}; do
             -u ${PYBEST_SPACE} \
             --${use_model} \
             --n_jobs ${n_jobs} \
+            ${kwargs_file} \
             ${save_grid} \
             ${lbl_flag} \
             ${zscore_flag} \

@@ -1485,6 +1485,7 @@ if [[ $? -eq 0 ]]; then
     ${bouds_flag} \
     ${merge_flag} \
     ${jobs_flag} \
+    ${kwargs_file} \
     ${PRF_INPUT} ${DIR_DATA_DERIV}/prf ${PNG_DIR}
 
   if [[ $? -ne 0 ]]; then

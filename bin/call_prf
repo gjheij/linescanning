@@ -20,6 +20,7 @@ import sys
 import warnings
 import json
 import pickle
+import yaml
 warnings.filterwarnings('ignore')
 opj = os.path.join
 
@@ -55,8 +56,8 @@ Arguments:
     -m|--model  <model type>        one of ['gauss','dog','css','norm'], default = 'gauss'. You can 
                                     also call models with '--gauss', '--dog', '--css', or '--norm'
                                     (see below).
-    -x|--params <gaussian params>   path to numpy array containing old parameters of Gaussian model
-                                    to use for the Normalization model
+    -x|--kwargs <file>              path to file containing arguments you want to set manually, 
+                                    rather than taking the settings in `prf_analysis.yml`.
     -u|--space  <fit space>         default is set as PYBEST_SPACE in spinoza_setup
     -c|--constr <constraints>       string or list representing the type of constraints to use for
                                     each stage (Gaussian and beyond). By default, we'll use trust-
@@ -98,7 +99,7 @@ Options:
     --no_fit        Stop the process before fitting, right after saving out averaged data. This was 
                     useful for me to switch to percent-signal change without requiring a re-fit.
     --overwrite     If specified, we'll overwrite existing Gaussian parameters. If not, we'll look
-                    for a file with ['model-gauss', 'stage-iter', 'params.npy'] in *outputdir* and,
+                    for a file with ['model-gauss', 'stage-iter', 'params.pkl'] in *outputdir* and,
                     if it exists, inject it in the normalization model (if `model=norm`)  
     --raw           use unzscore'd data from pybest; do not percent-signal change.
     --tc            use trust-constr minimization for both the Gaussian as well as the extended mo-
@@ -152,10 +153,11 @@ Example:
     save_grid   = False
     grid_bounds = True   
     n_jobs      = 5
+    kwargs_file = None
     merge_sessions = False
 
     try:
-        opts = getopt.getopt(argv,"ghs:n:t:o:i:p:m:x:u:c:v:j:",["help", "sub=", "model=", "ses=", "task=", "out=", "in=", "png=", "params=", "grid", "space=", "hrf", "n_pix=", "clip=", "verbose", "file_ending=", "zscore", "overwrite", "constr=", "tc", "bgfs", "no_fit", "raw", "cut_vols=", "v1", "v2", "save_grid", "merge_ses", "n_jobs=", "gauss", "dog", "css", "norm"])[0]
+        opts = getopt.getopt(argv,"ghs:n:t:o:i:p:m:x:u:c:v:j:",["help", "sub=", "model=", "ses=", "task=", "out=", "in=", "png=", "kwargs=", "grid", "space=", "hrf", "n_pix=", "clip=", "verbose", "file_ending=", "zscore", "overwrite", "constr=", "tc", "bgfs", "no_fit", "raw", "cut_vols=", "v1", "v2", "save_grid", "merge_ses", "n_jobs=", "gauss", "dog", "css", "norm"])[0]
     except getopt.GetoptError:
         print("ERROR while reading arguments; did you specify an illegal argument?")
         print(main.__doc__)
@@ -183,6 +185,8 @@ Example:
             space = arg
         elif opt in ("-g", "--grid"):
             grid_only = True
+        elif opt in ("-x", "--kwargs"):
+            kwargs_file = arg
         elif opt in ("--hrf"):
             fit_hrf = True
         elif opt in ("--n_pix"):
@@ -512,6 +516,16 @@ Example:
         else:
             old_params = None
 
+        # read kwargs file if exists
+        if isinstance(kwargs_file, str):
+            try:
+                with open(kwargs_file) as ff:
+                    kwargs = yaml.safe_load(ff)
+            except:
+                raise TypeError(f"Could not read '{kwargs_file}'. Please format like a yaml-file.")
+        else:
+            kwargs = {}
+
         # stage 1 - no HRF
         stage1 = prf.pRFmodelFitting(
             m_prf_tc_data.T, 
@@ -529,7 +543,8 @@ Example:
             constraints=constraints,
             save_grid=save_grid,
             nr_jobs=n_jobs,
-            use_grid_bounds=grid_bounds)
+            use_grid_bounds=grid_bounds,
+            **kwargs)
 
         stage1.fit()
 
@@ -560,7 +575,8 @@ Example:
                 constraints=constraints,
                 save_grid=save_grid,
                 use_grid_bounds=grid_bounds,
-                nr_jobs=1)
+                nr_jobs=n_jobs,
+                **kwargs)
 
             stage2.fit()    
 
