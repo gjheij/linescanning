@@ -264,6 +264,10 @@ class SavePycortexViews():
         Rotation around the left-right axis, by default 90
     radius: int, optional
         distance of object, by default 163
+    lh: int, bool, optional
+        show left hemisphere. Default is 1 (True)
+    rh: int, bool, optional
+        show right hemisphere. Default is 1 (True)
     pivot: int, optional
         rotate the hemispheres away from one another (positive values = lateral view, negative values = medial view), by default 0
     size: tuple, optional
@@ -286,6 +290,10 @@ class SavePycortexViews():
         Decides more or less the height of the colorbars. By default 0.85. Higher values = thicker bar. This default value scales well with the font size
     cm_width: int, optional
         Width of the colormaps, by default 6
+    cm_decimals: int, optional
+        Decimal accuracy to use for the colormaps. Minimum and maximum values will be rounded up/down accordingly if the initial rounding resulted in values outside of the bounds of the data. This will operate on float values; integer values are left alone. Default = 2.
+    cm_nr: int, optional
+        Number of ticks to use in colormap. Default = 5
     viewer: bool, optional
         Open the viewer (`viewer=True`, default) or suppress it (`viewer=False`)
 
@@ -339,10 +347,14 @@ class SavePycortexViews():
         rois_visible: int=0,
         rois_labels: int=0,
         sulci_visible: int=1,
+        lh: bool=True,
+        rh: bool=True,
         sulci_labels: int=0,
         cm_scalar: float=0.85,
         cm_width: int=6,
         cm_ext: str="pdf",
+        cm_decimals: int=2,
+        cm_nr: int=5,
         viewer: bool=True,
         **kwargs):
 
@@ -358,6 +370,8 @@ class SavePycortexViews():
         self.specularity = specularity
         self.data_name = data_name
         self.base_name = base_name
+        self.show_left = lh
+        self.show_right = rh
         self.rois_visible = rois_visible
         self.rois_labels = rois_labels
         self.sulci_labels = sulci_labels
@@ -365,8 +379,13 @@ class SavePycortexViews():
         self.cm_ext = cm_ext
         self.cm_scalar = cm_scalar
         self.cm_width = cm_width
+        self.cm_nr = cm_nr
+        self.cm_decimals = cm_decimals
         self.viewer = viewer
 
+        if not isinstance(self.subject, str):
+            raise ValueError("Please specify the subject ID as per pycortex' filestore naming")
+        
         if not isinstance(self.base_name, str):
             self.base_name = self.subject
 
@@ -400,9 +419,23 @@ class SavePycortexViews():
                 if key == "polar":
                     ticks = [-np.pi,0,np.pi]
                 else:
-                    ticks = list(np.linspace(val.vmin1,val.vmax1, endpoint=True, num=5))
-                
-                ticks = [round(ii,2) for ii in ticks]
+                    ticks = list(np.linspace(val.vmin1,val.vmax1, endpoint=True, num=self.cm_nr))
+
+                # empty data results in nan-ticks; which crashes the colormap creator
+                if all(i == np.nan or pd.isna(i) for i in ticks):
+                    raise ValueError(f"Ticks are all NaN; is your data empty? {ticks}")
+
+                # round ticks
+                ticks = [round(ii,self.cm_decimals) for ii in ticks]
+
+                # check if minimum of ticks > minimum of data
+                if ticks[0] < val.vmin1:
+                    ticks[0] = utils.round_decimals_up(val.vmin1, self.cm_decimals)
+
+                # check if maximum of ticks < maximum of data
+                if ticks[-1] > val.vmax1:
+                    ticks[-1] = utils.round_decimals_down(val.vmax1, self.cm_decimals)             
+
                 cm = val.get_colormap(
                     ori="horizontal", 
                     label=key, 
@@ -413,14 +446,58 @@ class SavePycortexViews():
                 self.cms[key] = cm
                 
             else:
+
+                # store colormaps
+                if key == "polar":
+                    ticks = [-np.pi,0,np.pi]
+                else:
+                    ticks = list(np.linspace(val.vmin,val.vmax, endpoint=True, num=self.cm_nr))
+                
+                # round ticks
+                ticks = [round(ii,self.cm_decimals) for ii in ticks]
+
+                # check if minimum of ticks > minimum of data
+                if ticks[0] < val.vmin1:
+                    ticks[0] = utils.round_decimals_up(val.vmin, self.cm_decimals)
+
+                # check if maximum of ticks < maximum of data
+                if ticks[-1] > val.vmax1:
+                    ticks[-1] = utils.round_decimals_down(val.vmax, self.cm_decimals)             
+                
+                cm = plotting.LazyColorbar(
+                    cmap=val.cmap,
+                    txt=key,
+                    vmin=val.vmin,
+                    vmax=val.vmax, 
+                    flip_label=True, 
+                    ticks=ticks,
+                    ori="horizontal", 
+                    axs=self.cm_axs[ix])
+                
+                self.cms[key] = cm                
                 self.data_dict[key] = val
         
+        # check what do to with hemispheres
+        for ii in ["left","right"]:
+            attr = getattr(self, f"show_{ii}")
+            if isinstance(attr, int):
+                if attr == 1:
+                    new_attr = True
+                elif attr == 0:
+                    new_attr = False
+                else:
+                    raise ValueError(f"Input must be 0 or 1, not '{attr}'")
+                
+                setattr(self, f"show_{ii}", new_attr)
+
         # set the views
         self.view = {
             self.data_name: {
                 f'surface.{self.subject}.unfold': self.unfold, 
                 f'surface.{self.subject}.pivot': self.pivot, 
                 f'surface.{self.subject}.specularity': self.specularity,
+                f'surface.{self.subject}.left': self.show_left, 
+                f'surface.{self.subject}.right': self.show_right, 
                 # 'camera.target':self.target,
                 'camera.azimuth': self.azimuth,
                 'camera.altitude': self.altitude, 
@@ -531,6 +608,7 @@ class Vertex2D_fix():
         Type of curvature to be displayed, by default "hcp". Options are:
         - "hcp"; aesthetically the most pleasing; can be made darker or brighter with `fc`
         - "standard"; the more discrete light gray/dark gray contrast version of curvature
+        - "cortex"; pass all arguments to a regular :class:`cortex.Vertex` object, rather than the transparency fix
         - None; don't display curvature below, sometimes useful to just display masks as they are
     fc: float, optional
         Factor to scale the curvature level, by default -1.25
@@ -569,7 +647,8 @@ class Vertex2D_fix():
         vmax2: int=1, 
         roi_borders: np.ndarray=None,
         curv_type: str="hcp",
-        fc: float=-1.25):
+        fc: float=-1.25,
+        **kwargs):
 
         self.data1 = data1
         self.data2 = data2
@@ -583,6 +662,9 @@ class Vertex2D_fix():
         self.curv_type = curv_type
         self.fc = fc
 
+        if not isinstance(self.subject, str):
+            raise ValueError("Please specify the subject ID as per pycortex' filestore naming")
+        
         #this provides a nice workaround for pycortex opacity issues, at the cost of interactivity    
         # Get curvature
         self.curv = cortex.db.get_surfinfo(self.subject)
@@ -599,59 +681,78 @@ class Vertex2D_fix():
             alpha = np.zeros_like(self.data1)
             alpha[self.data1>0] = 1
             self.data2 = alpha.copy()
+            self.vmin2 = 0
+            self.vmax2 = 1
         else:
             if isinstance(self.data2, pd.Series):
                 self.data2 = self.data2.values
 
         #standard
+        self.fix_transparancy = True
         if self.curv_type == "standard":
             self.curv.data *= (fc+0.1)
         elif self.curv_type == "hcp":
             self.curv.data *= (fc+0.1)
+        elif self.curv_type == "cortex":
+            self.fix_transparancy = False
         else:
-            # self.curv.data = np.sign(self.curv.data) * .25
             self.curv.data = np.ones_like(self.curv.data)
+
+        # create transparancy object
+        if self.fix_transparancy:
         
-        self.curv = cortex.Vertex(
-            self.curv.data, 
-            self.subject, 
-            vmin=-1,
-            vmax=1,
-            cmap='gray')
-        
-        self.norm2 = Normalize(self.vmin2, self.vmax2)   
-        self.vx = cortex.Vertex(
-            self.data1, 
-            self.subject, 
-            cmap=self.cmap, 
-            vmin=self.vmin1, 
-            vmax=self.vmax1)
-        
-        # Map to RGB
-        self.vx_rgb = np.vstack([self.vx.raw.red.data, self.vx.raw.green.data, self.vx.raw.blue.data])
+            self.curv = cortex.Vertex(
+                self.curv.data, 
+                self.subject, 
+                vmin=-1,
+                vmax=1,
+                cmap='gray')
             
-        # Pick an arbitrary region to mask out
-        # (in your case you could use np.isnan on your data in similar fashion)
-        self.alpha = np.clip(self.norm2(self.data2), 0, 1).astype(float)
+            self.norm2 = Normalize(self.vmin2, self.vmax2)   
+            self.vx = cortex.Vertex(
+                self.data1, 
+                self.subject, 
+                cmap=self.cmap, 
+                vmin=self.vmin1, 
+                vmax=self.vmax1)
+            
+            # Map to RGB
+            self.vx_rgb = np.vstack([self.vx.raw.red.data, self.vx.raw.green.data, self.vx.raw.blue.data])
+                
+            # Pick an arbitrary region to mask out
+            # (in your case you could use np.isnan on your data in similar fashion)
+            self.alpha = np.clip(self.norm2(self.data2), 0, 1).astype(float)
 
-        # Map to RGB
-        self.vx_rgb[:,self.alpha>0] = self.vx_rgb[:,self.alpha>0] * self.alpha[self.alpha>0]
-        
-        self.curv_rgb = np.vstack([self.curv.raw.red.data, self.curv.raw.green.data, self.curv.raw.blue.data])
-        
-        # do this to avoid artifacts where curvature gets color of 0 valur of colormap
-        self.curv_rgb[:,np.where((self.vx_rgb > 0))[-1]] = self.curv_rgb[:,np.where((self.vx_rgb > 0))[-1]] * (1-self.alpha)[np.where((self.vx_rgb > 0))[-1]]
+            # Map to RGB
+            self.vx_rgb[:,self.alpha>0] = self.vx_rgb[:,self.alpha>0] * self.alpha[self.alpha>0]
+            
+            self.curv_rgb = np.vstack([self.curv.raw.red.data, self.curv.raw.green.data, self.curv.raw.blue.data])
+            
+            # do this to avoid artifacts where curvature gets color of 0 valur of colormap
+            self.curv_rgb[:,np.where((self.vx_rgb > 0))[-1]] = self.curv_rgb[:,np.where((self.vx_rgb > 0))[-1]] * (1-self.alpha)[np.where((self.vx_rgb > 0))[-1]]
 
-        # Alpha mask
-        self.display_data = self.curv_rgb + self.vx_rgb 
+            # Alpha mask
+            self.display_data = self.curv_rgb + self.vx_rgb 
 
-        # display_data = curv_rgb * (1-alpha) + vx_rgb * alpha
-        if self.roi_borders is not None:
-            self.display_data[:,self.roi_borders.astype(bool)] = 0#255-display_data[:,roi_borders.astype('bool')]#0#255
-        
-        # Create vertex RGB object out of R, G, B channels
-        self.final_result = cortex.VertexRGB(*self.display_data, self.subject)
-        
+            # display_data = curv_rgb * (1-alpha) + vx_rgb * alpha
+            if self.roi_borders is not None:
+                self.display_data[:,self.roi_borders.astype(bool)] = 0#255-display_data[:,roi_borders.astype('bool')]#0#255
+            
+            # Create vertex RGB object out of R, G, B channels
+            self.final_result = cortex.VertexRGB(*self.display_data, self.subject)
+
+        else:
+
+            # make standard cortex.Vertex object
+            self.final_result = cortex.Vertex(
+                self.data1,
+                subject=self.subject,
+                cmap=self.cmap,
+                vmin=self.vmin1,
+                vmax=self.vmax1,
+                **kwargs
+                )
+                        
     def get_result(self):
         return self.final_result
     
