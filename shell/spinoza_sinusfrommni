@@ -168,16 +168,23 @@ for dir in ${search}; do
           mat_file=`find "${pn_matrix}" -type f \( -name "*from-MNI152NLin6Asym*" -and -name "*.mat" \) 2>/dev/null`
           warp_file=`find "${pn_matrix}" -type f \( -name "*from-MNI152NLin6Asym*" -and -name "*invwarp.nii.gz" \) 2>/dev/null`
           
+          echo "Warping MNI152_T1_1mm_Dil3_sagsinus_mask to subject space"
           if [[ ! -z ${mat_file} && ! -z ${warp_file} ]]; then
-            echo "Warping MNI152_T1_1mm_Dil3_sagsinus_mask to subject space"
-
+            # got SyN registration
             call_antsapplytransforms -i "1 0" --gen ${fn_nuisance} ${mni_mask} ${fn_mni} "${mat_file} ${warp_file}"
 
             if [[ $? -ne 0 ]]; then
               echo "ERROR in `basename ${0}`: call_antsapplytransforms exited with non-zero status"
               exit 1
             fi
+          elif [[ ! -z ${mat_file} && -z ${warp_file} ]]; then
+            # got affine registration
+            call_antsapplytransforms --gen ${fn_nuisance} ${mni_mask} ${fn_mni} ${mat_file}
 
+            if [[ $? -ne 0 ]]; then
+              echo "ERROR in `basename ${0}`: call_antsapplytransforms exited with non-zero status"
+              exit 1
+            fi          
           else
             echo "`basename ${dir}`: missing warp-files for call_antsapplytransforms"
             continue
