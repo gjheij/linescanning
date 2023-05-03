@@ -2624,7 +2624,8 @@ class SizeResponse():
         n_pix=100,
         screen_distance_cm=196,
         screen_size_cm=[70,39.8],
-        screen_size_px=[1920,1080]):
+        screen_size_px=[1920,1080],
+        verbose=False):
 
         self.prf_stim = prf_stim
         self.params = params
@@ -2635,6 +2636,7 @@ class SizeResponse():
         self.screen_distance_cm = screen_distance_cm
         self.screen_size_cm = screen_size_cm
         self.screen_size_px = screen_size_px
+        self.verbose = verbose
 
         # overwrite info in CollectSubject object was specified
         if isinstance(self.subject_info, CollectSubject):
@@ -2645,6 +2647,9 @@ class SizeResponse():
             self.n_pix = self.prf_stim.design_matrix.shape[0]
             self.screen_distance_cm = [self.prf_stim.screen_distance_cm,self.prf_stim.screen_distance_cm]
             self.screen_size_cm = self.prf_stim.screen_size_cm
+            
+            # overwrite verbose-flag from CollectSubject
+            self.verbose = verbose
 
         if isinstance(self.params, str):
             self.params = read_par_file(self.params)
@@ -2743,7 +2748,7 @@ class SizeResponse():
         normalize=None, 
         stims=None,
         sizes=None,
-        batch_size=1000,
+        batch_size=100,
         parallel=True,
         thresh=0,
         max_jobs=20):
@@ -2758,19 +2763,21 @@ class SizeResponse():
 
         # get indices where prf size != 0
         idc_valid = list(params.loc[params.prf_size > thresh].index)
-        utils.verbose(f"{len(idc_valid)}/{params.shape[0]} vertices > {thresh}", True)
+        utils.verbose(f"{len(idc_valid)}/{params.shape[0]} vertices > {thresh}", self.verbose)
 
         # filter out zeros
         df_filtered = params.loc[params.index[idc_valid]]
                 
         # use batches
         if df_filtered.shape[0] > batch_size and center_prf:
+            
             n_batches = int(np.ceil(df_filtered.shape[0]/batch_size))
-            if n_batches > max_jobs:
-                n_batches = max_jobs
-                batch_size = int(np.ceil(df_filtered.shape[0]/n_batches))
+            if parallel:
+                if n_batches > max_jobs:
+                    n_batches = max_jobs
+                    batch_size = int(np.ceil(df_filtered.shape[0]/n_batches))
 
-            utils.verbose(f"Split data in {n_batches} batches of {batch_size} vertices", True)
+            utils.verbose(f"Split data in {n_batches} batches of {batch_size} vertices", self.verbose)
 
             # parse dataframe into list of batch dataframes for parallellization
             act = 0
@@ -2788,8 +2795,8 @@ class SizeResponse():
 
             # loop through dfs
             if parallel:
-                utils.verbose("Running parallel jobs", True)
-                dd = Parallel(n_jobs=n_batches,verbose=False)(
+                utils.verbose("Running parallel jobs", self.verbose)
+                dd = Parallel(n_jobs=n_batches,verbose=True)(
                 delayed(self.make_sr_function)(
                     batch, 
                     stims=stims,
@@ -2797,12 +2804,15 @@ class SizeResponse():
                     for batch in df_batches
                 )
             else:
-                utils.verbose("Running serial jobs", True)
+                utils.verbose("Running serial jobs", self.verbose)
 
                 # use same stimulus sequence for all pRFs
                 dd = []
-                for batch in df_batches:
+                for ix,batch in enumerate(df_batches):
+                    start = time.time()
                     tmp = self.make_sr_function(batch, stims=stims)
+                    elapsed = (time.time() - start)
+                    utils.verbose(f"batch #{ix}: {tmp.shape} | process took {timedelta(seconds=elapsed)}", self.verbose)
                     dd.append(tmp)
 
             # concatenate into single array
@@ -2825,7 +2835,7 @@ class SizeResponse():
             else:
                 # custom stimuli for each pRF
                 func = []
-                utils.verbose(f"Creating unique stimulus (type='{stims}') set for each pRF", True)
+                utils.verbose(f"Creating unique stimulus (type='{stims}') set for each pRF", self.verbose)
                 collect_stims = []
                 for rf_ix in range(df_filtered.shape[0]):
                     
