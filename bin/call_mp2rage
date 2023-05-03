@@ -282,12 +282,18 @@ Notes:
                 # remove files starting with 'tmp'
                 remove_files(inputdir, 'tmp', ext=False)
 
-        # try:
-        print("Removing background")
+        # remove pepper noise pattern around brain
+        print("Removing noise pattern around the brain")
         os.system(f"call_rmbackground -t {OUTPUT['t1w_uni']} -m {brainmask} -i {select_fn[2]} -o {OUTPUT['t1w_uni']}")
-        # except:
-        #     pass
         print("TIP: check the brain mask; if needed, edit it, remove T1w.nii.gz-file and re-run")
+
+        # truncate image intensities
+        cmd = f"ImageMath 3 {OUTPUT['t1w_uni']} TruncateImageIntensity {OUTPUT['t1w_uni']} 0.01 0.999 256"
+        try:
+            print("Winsorizing image intensities [0.01,0.999] with 256 bins")
+            os.system(cmd)
+        except:
+            print("Could not run 'ImageMath' to truncate image intensities. Check the contrast and use 'call_clipimage' if the image is too dark..")
 
     print("Done")
 

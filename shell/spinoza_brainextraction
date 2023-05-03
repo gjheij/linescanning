@@ -384,7 +384,7 @@ for subID in ${search}; do
           #   call_clipimage ${biascorr} 1.1 ${biascorr}
           # fi
 
-          call_clipimage ${biascorr} 1.1 ${biascorr}
+          ImageMath 3 ${biascorr} TruncateImageIntensity ${biascorr} 0.01 0.999 256
 
           if [[ $? != 0 ]]; then
             echo
@@ -420,12 +420,15 @@ for subID in ${search}; do
             fi
 
             # check manually were to clip
-            echo "Opening ITK-Snap; go to \"tools\" > \"colormap editor\""
-            itksnap -g ${corrected_t1w} 2>/dev/null
-            printf "Set clipping value (leave empty for default values) [ENTER]: "
-            read CLIPVALUE
+            # echo "Opening ITK-Snap; go to \"tools\" > \"colormap editor\""
+            # itksnap -g ${corrected_t1w} 2>/dev/null
+            # printf "Set clipping value (leave empty for default values) [ENTER]: "
+            # read CLIPVALUE
 
-            call_clipimage ${corrected_t1w} ${CLIPVALUE} # should be *1000 of clipvalue above
+            # call_clipimage ${corrected_t1w} ${CLIPVALUE} # should be *1000 of clipvalue above
+
+            # truncate image intensities
+            ImageMath 3 ${corrected_t1w} TruncateImageIntensity ${corrected_t1w} 0.01 0.999 256
             if [[ $? != 0 ]]; then
               echo
               echo "---------------------------------------------------------------------------------------------------"
