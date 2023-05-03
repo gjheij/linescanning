@@ -26,8 +26,9 @@ Arguments:
   -n <session>        session ID (e.g., 1, 2, or none)
   -t <task ID>        limit pybest processing to a specific task. Default is all tasks in TASK_SES1
                       in the spinoza_setup-file
+  -c <n_cpus>         number of CPUs to use (default = 5 on SoGE; 1 for local)
   -o|--ow             overwrite existing files
-  -c|--sge            submit job to cluster (called with 'master -m <module> --sge')
+  --sge               submit job to cluster (called with 'master -m <module> --sge')
   --no_raw            do NOT unzscore the output from pybest (default is to do so)
   --fsaverage         overwrite PYBEST_SPACE-variable and use FSAverage for pybest (defaults to fs-
                       native)
@@ -50,10 +51,9 @@ USAGE
 # Check for subject & session flags
 OW=0
 job="bash"
-cpu=1
+cpu=""
 task_flag=""
 raw_flag=""
-smp=1
 SGE=0
 
 # check if variable is set in setup file
@@ -98,7 +98,7 @@ do
           ;;
     o)  OW=1
           ;;         
-    c)  SGE=1
+    c)  cpu=${OPTARG}
           ;;
     t)  task_flag="-t ${OPTARG}" 
           ;;
@@ -111,10 +111,17 @@ if [[ $# -lt 2 ]] ; then
 fi
 
 if [[ ${SGE} -eq 1 ]]; then
-  job="qsub -q ${SGE_QUEUE_LONG} -wd ${DIR_LOGS} -pe smp ${smp}"
-  cpu=10
+  if [[ -z ${cpu} ]]; then
+    cpu=5
+  fi
+  job="qsub -q ${SGE_QUEUE_LONG} -wd ${DIR_LOGS} -pe smp ${cpu}"
+
   if [ ! -d ${DIR_LOGS} ]; then
     mkdir -p ${DIR_LOGS}
+  fi
+else
+  if [[ -z ${cpu} ]]; then
+    cpu=1
   fi
 fi
 
