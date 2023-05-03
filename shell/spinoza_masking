@@ -165,15 +165,9 @@ for subID in ${search}; do
 
           MASKED=`find "${output_dir}" -maxdepth 1 -type f \( -name "*${DATA^^}*" -and -name "*masked_T1w.nii.gz" \) 2>/dev/null`
           if [[ ! -z ${MASKED} ]]; then
-            # check manually were to clip
-            echo "Opening ITK-Snap; go to \"tools\" > \"Color Map Editor\""
-            itksnap -g ${MASKED} 2>/dev/null
-            printf "Set clipping value (leave empty for default values) [ENTER]: "
-            read CLIPVALUE
 
-            if [[ ! -z ${CLIPVALUE} ]]; then
-              call_clipimage ${MASKED} ${CLIPVALUE} ${MASKED}
-            fi
+            # truncate image intensities
+            ImageMath 3 ${MASKED} TruncateImageIntensity ${MASKED} 0.01 0.99 256
 
             # rescale clipped image
             echo "Rescaling masked image to [0,4095]"
