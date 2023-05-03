@@ -825,7 +825,7 @@ if [[ ! -f ${DIR_DATA_HOME}/dataset_description.json ]]; then
   echo "}"
   ) > dataset_description.json
 
-  cd -
+  cd $OLDPWD
 
 fi
 
