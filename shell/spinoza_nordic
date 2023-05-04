@@ -228,8 +228,10 @@ for subID in ${search}; do
         # check if we switched or not..
         if [[ ${mag_only} -eq 0 ]]; then
           tt="[phase+magnitude]"
+          ph_tag="_ph"
         else
           mag_flag="--mag"
+          ph_tag=""
           tt="[magnitude only]"
           ph_img=${mag_img}
         fi
@@ -250,7 +252,7 @@ for subID in ${search}; do
         fi
 
         # run if basenames of phase and magnitude match
-        if [[ $(basename ${ph_img} _ph.nii.gz) == $(basename ${mag_img} .nii.gz) ]]; then
+        if [[ $(basename ${ph_img} ${ph_tag}.nii.gz) == $(basename ${mag_img} .nii.gz) ]]; then
           out=${func_folder}/$(basename ${mag_img})
           ${job} ${DIR_SCRIPTS}/bin/call_nordic \
             ${mag_flag} \
@@ -262,7 +264,7 @@ for subID in ${search}; do
             continue
           fi
         else
-          echo "ERROR in `basename ${0}`: mismatch between \"$(basename ${ph_img} _ph.nii.gz)\" & \"$(basename ${mag_img} .nii.gz)\""
+          echo "ERROR in `basename ${0}`: mismatch between \"$(basename ${ph_img} ${ph_tag}.nii.gz)\" & \"$(basename ${mag_img} .nii.gz)\""
         fi
       else
         echo "Found NORDIC tag; ${mag_img} already NORDIC'ed"
