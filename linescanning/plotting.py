@@ -949,7 +949,7 @@ class LazyBar():
     points_alpha: float, optional
         Alpha of the points, by default 1. Sometimes useful to adjust if you have LOADS of data points
     error: str, optional
-        Type of error bar to use for the bar, by default "sem"
+        Type of error bar to use for the bar, by default "sem". Can be "sem" or "std". Internally, we'll check if there's enough samples to calculate errors from, otherwise `error` will be set to `None`
     fancy: bool, optional
         Flag to round the edges of the bars, by default False. By default, the rounding is scaled by the min/max of the plot, regardless whether `lim` was specified. This ensures equal rounding across inputs. The other `fancy`-arguments below are a bit vague, so leaving them default will ensure nice rounding of the bars
     fancy_rounding: float, optional
@@ -1163,21 +1163,33 @@ class LazyBar():
         self.sem = None
         self.ci = None
         if isinstance(self.error, str):
-            if self.error == "sem":
-                self.ci = None
-                if isinstance(self.data, pd.DataFrame):
+            
+            # check if nr_samples in y > 1
+            if self.data[yy].shape[0] > 1:
+                if self.error == "sem" or self.error == "std":
+                    self.ci = None
+                    if isinstance(self.data, pd.DataFrame):
 
-                    # filter out relevant colums
-                    self.data = self.data[[self.x,self.y]]
+                        # filter out relevant colums
+                        self.data = self.data[[self.x,self.y]]
 
-                    # get relevant error
-                    if hasattr(self, "hue"):
-                        self.sem = self.data.groupby([self.hue,self.x]).sem()[self.y].values
-                        n_x = len(np.unique(self.data[self.x].values))
-                        n_h = len(np.unique(self.data[self.hue].values))
-                        self.sem = self.sem.reshape(n_h,n_x)
-                    else:
-                        self.sem = self.data.groupby(self.x).sem()[self.y].values
+                        # get relevant error
+                        if self.error == "sem":
+                            if hasattr(self, "hue"):
+                                self.sem = self.data.groupby([self.hue,self.x]).sem()[self.y].values
+                                n_x = len(np.unique(self.data[self.x].values))
+                                n_h = len(np.unique(self.data[self.hue].values))
+                                self.sem = self.sem.reshape(n_h,n_x)
+                            else:
+                                self.sem = self.data.groupby(self.x).sem()[self.y].values
+                        elif self.error == "std":
+                            if hasattr(self, "hue"):
+                                self.sem = self.data.groupby([self.hue,self.x]).std()[self.y].values
+                                n_x = len(np.unique(self.data[self.x].values))
+                                n_h = len(np.unique(self.data[self.hue].values))
+                                self.sem = self.sem.reshape(n_h,n_x)
+                            else:
+                                self.sem = self.data.groupby(self.x).std()[self.y].values
             else:
                 self.sem = None
                 self.ci = self.error
