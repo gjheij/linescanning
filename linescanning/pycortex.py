@@ -423,7 +423,7 @@ class SavePycortexViews():
 
                 # empty data results in nan-ticks; which crashes the colormap creator
                 if all(i == np.nan or pd.isna(i) for i in ticks):
-                    raise ValueError(f"Ticks are all NaN; is your data empty? {ticks}")
+                    raise ValueError(f"Ticks are all NaN for '{key}'; is your data empty? {ticks}")
 
                 # round ticks
                 ticks = [round(ii,self.cm_decimals) for ii in ticks]
@@ -436,12 +436,17 @@ class SavePycortexViews():
                 if ticks[-1] > val.vmax1:
                     ticks[-1] = utils.round_decimals_down(val.vmax1, self.cm_decimals)             
 
+                if len(self.tmp_dict) == 1:
+                    ax = self.cm_axs
+                else:
+                    ax = self.cm_axs[ix]
+
                 cm = val.get_colormap(
                     ori="horizontal", 
                     label=key, 
                     flip_label=True, 
                     ticks=ticks,
-                    axs=self.cm_axs[ix])
+                    axs=ax)
                 
                 self.cms[key] = cm
                 
@@ -457,11 +462,11 @@ class SavePycortexViews():
                 ticks = [round(ii,self.cm_decimals) for ii in ticks]
 
                 # check if minimum of ticks > minimum of data
-                if ticks[0] < val.vmin1:
+                if ticks[0] < val.vmin:
                     ticks[0] = utils.round_decimals_up(val.vmin, self.cm_decimals)
 
                 # check if maximum of ticks < maximum of data
-                if ticks[-1] > val.vmax1:
+                if ticks[-1] > val.vmax:
                     ticks[-1] = utils.round_decimals_down(val.vmax, self.cm_decimals)             
                 
                 cm = plotting.LazyColorbar(
@@ -752,9 +757,15 @@ class Vertex2D_fix():
                 vmax=self.vmax1,
                 **kwargs
                 )
-                        
+
     def get_result(self):
         return self.final_result
+                        
+    def open(self, **kwargs):
+        self.pyc = SavePycortexViews(
+            self,
+            subject=self.subject,
+            **kwargs)
     
     def get_curv(self):
         return self.curv
