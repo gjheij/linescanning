@@ -183,7 +183,10 @@ class SurfaceCalc(object):
             self.lh_roi_mask = getattr(self, f'lh_{self.roi_label}')
             self.rh_roi_mask = getattr(self, f'rh_{self.roi_label}')
             self.whole_roi   = np.concatenate((self.lh_roi_mask, self.rh_roi_mask))
-            self.whole_roi_v = cortex.Vertex(self.whole_roi, subject=subject, vmin=-0.5, vmax=1)
+
+            self.whole_roi_v = pycortex.Vertex2D_fix(
+                self.whole_roi,
+                subject=subject)
 
     def smooth_surfs(self, kernel=10, nr_iter=1):
         """smooth_surfs
@@ -382,12 +385,280 @@ class SurfaceCalc(object):
             raise ValueError(f"Invalid option '{hemi}' for hemi. Must be one of 'both', 'lh', or 'rh'")
 
         whole_roi = np.concatenate((lh_mask, rh_mask))
-        whole_roi_v = cortex.Vertex(whole_roi, subject=subject, vmin=-0.5, vmax=1)
+        whole_roi_v = pycortex.Vertex2D_fix(
+            whole_roi,
+            subject=subject)
+        
         return {
             'lh_mask': lh_mask,
             'rh_mask': rh_mask,
             'whole_roi': whole_roi,
             'whole_roi_v': whole_roi_v}
+
+
+class Neighbours(SurfaceCalc):
+
+    def __init__(
+        self, 
+        subject:str=None, 
+        fs_dir:str=None, 
+        fs_label:str="V1_exvivo.thresh",
+        hemi:str="lh",
+        verbose:bool=False,
+        **kwargs):
+
+        self.subject = subject
+        self.fs_dir = fs_dir
+        self.fs_label = fs_label
+        self.hemi = hemi
+        self.verbose = verbose
+        self.__dict__.update(kwargs)
+
+        # pycortex path will be read from 'filestore' key in options.cfg file from pycortex
+        if not isinstance(self.fs_dir, str):
+            self.fs_dir = os.environ.get("SUBJECTS_DIR")
+
+        allowed_options = ["lh","left","rh","right","both"]
+        if self.hemi == "both":
+            self.hemi_list = ["lh","rh"]
+        elif self.hemi == "lh" or self.hemi == "left":
+            self.hemi_list = ["lh"]
+        elif self.hemi == "rh" or self.hemi == "right":
+            self.hemi_list = ["right"]
+        else:
+            raise ValueError(f"'hemi' must one of {allowed_options}")
+
+        # set flag for subsurface or not
+        self.sub_surface = False
+        if isinstance(self.fs_label, str):
+            self.sub_surface = True
+
+        # initialize SurfaceCalc
+        if not hasattr(self, "lh_surf"):
+            utils.verbose("Initializing SurfaceCalc", self.verbose)
+
+            super().__init__(
+                subject=self.subject, 
+                fs_dir=self.fs_dir,
+                fs_label=self.fs_label)
+
+        if isinstance(self.fs_label, str):
+            self.create_subsurface()
+
+        if hasattr(self, "target_vert"):
+            if isinstance(self.target_vert, int):
+                self.distances_to_target(self.target_vert, self.hemi)
+
+    def create_subsurface(self):
+        utils.verbose(f"Creating subsurfaces for {self.fs_label}", self.verbose)
+                    
+        for mask,surf,attr in zip(
+            ["lh_roi_mask","rh_roi_mask"],
+            [self.lh_surf,self.rh_surf],
+            ["lh_subsurf","rh_subsurf"]):
+
+            # create the subsurface
+            subsurface = surf.create_subsurface(vertex_mask=getattr(self, mask))
+            setattr(self, attr, subsurface)
+
+        # get the vertices belonging to subsurface
+        self.lh_subsurf_v = np.where(self.lh_subsurf.subsurface_vertex_map != stats.mode(self.lh_subsurf.subsurface_vertex_map)[0][0])[0]
+
+        self.rh_subsurf_v = np.where(self.rh_subsurf.subsurface_vertex_map != stats.mode(self.rh_subsurf.subsurface_vertex_map)[0][0])[0]+ self.lh_subsurf.subsurface_vertex_map.shape[-1]
+
+        self.leftlim = np.max(self.lh_subsurf_v)
+        self.subsurface_verts = np.concatenate([self.lh_subsurf_v, self.rh_subsurf_v])
+
+    def smooth_subsurface(
+        self, 
+        data, 
+        kernel=1, 
+        iterations=1):
+        
+        data_sm = np.full(data.shape[0], np.nan)
+
+        # smooth distance map on V1 subsurfaces
+        for vert,surf in zip(
+            [self.lh_subsurf_v,self.rh_subsurf_v],
+            [self.lh_subsurf,self.rh_subsurf]):
+
+            data_sm[vert] = surf.smooth(
+                data[vert], 
+                factor=kernel, 
+                iterations=iterations)
+
+        return data_sm
+    def create_distance(self):
+        # Make the distance x distance matrix.
+        ldists, rdists = [], []
+
+        utils.verbose('Creating distance by distance matrices', self.verbose)
+
+        for i in range(len(self.lh_subsurf_v)):
+            ldists.append(self.lh_subsurf.geodesic_distance([i]))
+
+        self.dists_L = np.array(ldists)
+
+        for i in range(len(self.rh_subsurf_v)):
+            rdists.append(self.rh_subsurf.geodesic_distance([i]))
+
+        self.dists_R = np.array(rdists)
+
+        # Pad the right hem with np.inf.
+        padL = np.pad(
+            self.dists_L, ((0, 0), (0, self.dists_R.shape[-1])), constant_values=np.Inf)
+        # pad the left hem with np.inf..
+        padR = np.pad(
+            self.dists_R, ((0, 0), (self.dists_L.shape[-1], 0)), constant_values=np.Inf)
+
+        self.distance_matrix = np.vstack([padL, padR])  # Now stack.
+        self.distance_matrix = (self.distance_matrix + self.distance_matrix.T)/2 # Make symmetrical        
+
+    def distances_to_target(self, target_vert:int=None, hemi:str=None, vert_dict:Union[dict,str]=None):
+
+        txt = "full surface"
+        if self.sub_surface:
+            txt = self.fs_label
+
+        if not isinstance(vert_dict, (dict,str)):
+
+            if isinstance(self.fs_label, str):
+                use_surf = getattr(self, f"{hemi}_subsurf")
+                use_vert = getattr(self, f"{hemi}_subsurf_v")
+
+                # find the index of the target vertex within the subsurface
+                target_wb = target_vert
+                target_vert = np.where(use_vert == target_vert)[0][0]
+                
+                utils.verbose(f"Target vertex '{target_wb}' is at index '{target_vert}' in subsurface", self.verbose)
+            else:
+                use_surf = getattr(self, f"{hemi}_surf")
+
+            utils.verbose(f"Finding distances from {txt} to vertex #{target_vert}", self.verbose)
+                
+            # get distance to target
+            dist_to_targ = use_surf.geodesic_distance(target_vert)
+
+            # make into convenient dictionary index on whole-brain
+            self.tmp = {}
+            self.df = {}
+            self.df["idx"] = np.zeros((dist_to_targ.shape[0]))
+            self.df["distance"] = np.zeros((dist_to_targ.shape[0]))
+            for ii in range(dist_to_targ.shape[0]):
+                self.tmp[use_vert[ii]] = dist_to_targ[ii]
+                self.df["idx"][ii] = use_vert[ii]
+                self.df["distance"][ii] = dist_to_targ[ii]
+                
+                # make dataframe
+                self.df = pd.DataFrame(self.df)
+
+            # store
+            setattr(self, f"{hemi}_dist_to_targ_arr", dist_to_targ)
+            setattr(self, f"{hemi}_dist_to_targ", self.tmp)
+            
+        else:
+            if isinstance(vert_dict, str):
+                utils.verbose(f"Reading distances from {vert_dict}", self.verbose)
+                with open(vert_dict) as f:
+                    dist_to_targ = json.load(f)
+
+                # store
+                setattr(self, f"{hemi}_dist_to_targ", dist_to_targ)
+                data = np.array(list(getattr(self, f"{hemi}_dist_to_targ").items()))
+                self.df = pd.DataFrame(data, columns=["idx","distance"])
+
+        convert_dict = {
+            'idx': int,
+            'distance': float
+            }
+
+        self.df = self.df.astype(convert_dict)
+        setattr(self, f"{hemi}_dist_to_targ_df", self.df)
+
+    def find_distance_range(
+        self, 
+        hemi:str="lh", 
+        vmin:Union[int,float]=None, 
+        vmax:Union[int,float]=None):
+
+        """find_distance_range
+
+        Find the vertices given a range of distance using `vmin` and `vmax`. For instance, if you want the vertices within 2mm of your target vertex, specify `vmax=2`. If you want the vertices within 2-4mm, specify `vmin=2,vmax=4`. If vertices are found given your criteria, a dictionary collecting key-value pairings between the vertices and their distances to the target will be returned.
+
+        Parameters
+        ----------
+        hemi: str, optional
+            Which hemisphere to use. Should be one of ['lh','rh'], by default "lh"
+        vmin: Union[int,float], optional
+            Minimum distance to extract, by default None
+        vmax: Union[int,float], optional
+            Maximum distance to extract, by default None
+        verbose: bool, optional
+            Turn on verbosity, by default False
+
+        Returns
+        ----------
+        dict
+            Key-value pairing between the vertices surviving the criteria + their distance to the target vertex
+
+        Raises
+        ----------
+        ValueError
+            If both `vmin` and `vmax` are `None`. One or both should be specified
+        ValueError
+            If no vertices could be found with the criteria
+
+        Example
+        ----------
+        >>> from linescanning.pycortex import Neighbours
+        >>> # initialize the class, which - given a target vertex - will start to do some
+        >>> # initial calculations
+        >>> nbr = Neighbours(
+        >>>     subject="sub-001",
+        >>>     target=1053,
+        >>>     verbose=True)
+        >>> #
+        >>> # call find_distance_range
+        >>> nbr.find_distance_range(vmin=2,vmax=4)
+        """
+        # check if we ran distances_to_target()
+        if hasattr(self, f"{hemi}_dist_to_targ"):
+            distances = getattr(self, f"{hemi}_dist_to_targ")
+
+            if isinstance(distances, np.ndarray):
+                if isinstance(vmin, (int,float)) and not isinstance(vmax, (int,float)):
+                    result = np.where(distances >= vmin)
+                elif not isinstance(vmin, (int,float)) and isinstance(vmax, (int,float)):
+                    result = np.where(distances <= vmax)
+                elif isinstance(vmin, (int,float)) and isinstance(vmax, (int,float)):
+                    result = np.where((distances >= vmin) & (distances <= vmax))
+                else:
+                    raise ValueError("Not sure what to do. Please specify 'vmin' and/or 'vmax', or use 'self.<hemi>_dist_to_target to fetch all distances")
+
+                try:
+                    verts = result[0]
+                    if self.verbose:
+                        utils.verbose(f"Found {len(verts)} vertices to target for vmin={vmin} & vmax={vmax}", self.verbose)
+                    output = {}
+                    for ii in verts:
+                        output[ii] = distances[ii]
+                    
+                    return output
+
+                except:
+                    raise ValueError(f"Could not find vertices complying to criteria: vmin = {vmin}; vmax = {vmax}")
+            
+            elif isinstance(distances, dict):
+                if isinstance(vmin, (int,float)) and not isinstance(vmax, (int,float)):
+                    result = [int(k) for k, v in distances.items() if v >= vmin]
+                elif not isinstance(vmin, (int,float)) and isinstance(vmax, (int,float)):
+                    result = [int(k) for k, v in distances.items() if v <= vmax]
+                elif isinstance(vmin, (int,float)) and isinstance(vmax, (int,float)):
+                    result = [int(k) for k, v in distances.items() if vmin <= v <= vmax]
+                else:
+                    raise ValueError("Not sure what to do. Please specify 'vmin' and/or 'vmax', or use 'self.<hemi>_dist_to_target to fetch all distances")
+
+                return result
 
 class pRFCalc(pycortex.SavePycortexViews):
 
@@ -420,13 +691,13 @@ class pRFCalc(pycortex.SavePycortexViews):
 
     # Get stuff from SurfaceCalc
     def __init__(
-            self, 
-            prf_file, 
-            subject=None, 
-            save=False, 
-            model=None,
-            thr=0.1,
-            fs_dir=None):
+        self, 
+        prf_file, 
+        subject=None, 
+        save=False, 
+        model=None,
+        thr=0.1,
+        fs_dir=None):
         
         # set defaults
         self.prf_file   = prf_file
@@ -541,16 +812,18 @@ class pRFCalc(pycortex.SavePycortexViews):
                         ]
 
                         obj_par = par.replace(" ","")
-                        
+                    
+                    data = self.df_prf[par]
+                    # data[data>minmax[1]] = 0
                     obj_ = pycortex.Vertex2D_fix(
-                        self.df_prf[par],
+                        data,
                         self.df_prf.r2,
                         subject=self.subject,
                         vmin1=minmax[0],
                         vmax1=minmax[1],
                         vmin2=self.thr,
                         vmax2=0.5,
-                        cmap="viridis_r"
+                        cmap="inferno"
                     )
 
                     setattr(self, f"{obj_par}_v", obj_)
@@ -600,7 +873,8 @@ class CalcBestVertex():
         use_epi=False,
         epi_space="fsnative",
         model="gauss",
-        fs_label="V1_exvivo.thresh"):
+        fs_label="V1_exvivo.thresh",
+        verbose=False):
 
         # read arguments
         self.subject    = subject
@@ -611,6 +885,7 @@ class CalcBestVertex():
         self.epi_space  = epi_space
         self.fs_label   = fs_label
         self.model      = model
+        self.verbose    = verbose
 
         # set EPI=True if a file/array is specified
         if isinstance(self.epi_file, (np.ndarray, str, bool)):
@@ -625,7 +900,11 @@ class CalcBestVertex():
         self.cx_dir = opj(self.deriv, 'pycortex')
 
         # Get surface object
-        self.surface = SurfaceCalc(subject=self.subject, fs_dir=self.fs_dir, fs_label=self.fs_label)
+        self.surface = Neighbours(
+            subject=self.subject, 
+            fs_dir=self.fs_dir, 
+            fs_label=self.fs_label,
+            verbose=self.verbose)
 
         if self.prf_file != None:
             self.prf_dir = os.path.dirname(self.prf_file)
@@ -672,6 +951,10 @@ class CalcBestVertex():
                     self.epi = tmp.copy()
 
             # save vertex object too
+            self.epi_sm = self.epi.copy()
+            self.epi_sm[self.surface.whole_roi.astype(int) < 1] = 0
+            # self.epi_sm = self.surface.smooth_subsurface(self.epi_sm)
+
             self.epi_v = pycortex.Vertex2D_fix(
                 self.epi,
                 subject=self.subject,
@@ -679,7 +962,13 @@ class CalcBestVertex():
                 vmax1=self.epi.max(),
                 cmap="magma")
 
-
+            self.epi_sm_v = pycortex.Vertex2D_fix(
+                self.epi_sm,
+                subject=self.subject,
+                vmin1=0,
+                vmax1=self.epi_sm.max(),
+                cmap="magma")
+            
     def apply_thresholds(
         self, 
         r2_thresh=None, 
@@ -693,7 +982,8 @@ class CalcBestVertex():
         polar_thresh=None, 
         thick_thresh=None, 
         depth_thresh=None,
-        srf=False):
+        srf=False,
+        srf_file=None):
 
         """apply_thresholds
 
@@ -721,6 +1011,8 @@ class CalcBestVertex():
             refers to sulcal depth (location of deep/superficial sulci) as per the `sulcaldepth.npz` file created during the importing of a `FreeSurfer` subjects into `Pycortex`. Defaults to the minimum value of the sulcaldepth array. Threshold is specified as 'greater than <value>'.
         srf: bool, optional
             Select vertex based on size-response function (SRF) properties. For now it maximizes suppression
+        srf_file: str, optional
+            Specify a precomputed dataframe with SRFs
 
         Returns
         ----------
@@ -824,20 +1116,15 @@ class CalcBestVertex():
         # include epi intensity mask
         if hasattr(self, 'epi'):
             
-            self.epi_thresh = epi_thresh or 0
+            self.epi_thresh = float(epi_thresh) or 0
             utils.verbose(f" EPI intensity: >= {self.epi_thresh}th percentile", True)
 
             self.epi_mask = np.zeros_like(self.epi, dtype=bool)
             self.epi_mask[self.epi >= np.percentile(self.epi, self.epi_thresh)] = True
             self.criteria["EPI_intensity"] = float(self.epi_thresh)
 
-            self.epi_mask_v = pycortex.Vertex2D_fix(
-                self.epi_mask,
-                self.epi_mask,
-                subject=self.subject)
-
-            self.data_dict["epi_mask"] = self.epi_mask_v
             self.data_dict["epi"] = self.epi_v
+            self.data_dict["epi_smoothed"] = self.epi_sm_v
 
         # include curvature mask
         if hasattr(self, 'surface'):
@@ -863,17 +1150,38 @@ class CalcBestVertex():
         # start with full mask
         self.joint_mask = self.surface.whole_roi.copy()
 
-        # apply pRF mask
-        if hasattr(self, 'prf_mask'):
-            self.joint_mask = (self.prf_mask * self.joint_mask)
-
         # and structural mask
         if hasattr(self, 'struct_mask'):
             self.joint_mask = (self.struct_mask * self.joint_mask)
         
+            self.struct_mask = pycortex.Vertex2D_fix(
+                self.struct_mask,
+                self.struct_mask,
+                subject=self.subject)
+                    
+            # self.data_dict["struct_mask"] = self.struct_mask
+
         # and EPI mask
         if hasattr(self, "epi_mask"):
             self.joint_mask = (self.epi_mask * self.joint_mask)
+
+            self.epi_mask_v = pycortex.Vertex2D_fix(
+                self.epi_mask,
+                self.epi_mask,
+                subject=self.subject)
+            
+            # self.data_dict["epi_mask"] = self.epi_mask_v
+
+        # apply pRF mask
+        if hasattr(self, 'prf_mask'):
+            self.joint_mask = (self.prf_mask * self.joint_mask)
+
+            self.prf_mask_v = pycortex.Vertex2D_fix(
+                self.prf_mask,
+                self.prf_mask,
+                subject=self.subject)
+                    
+            self.data_dict["prf_mask"] = self.prf_mask_v
 
         self.n_vertices = np.count_nonzero(self.joint_mask.astype(int))
         utils.verbose(f"Mask contains {self.n_vertices} vertices", True)
@@ -882,43 +1190,149 @@ class CalcBestVertex():
         # initialize dataframe with whole-brain dimensions, but only with surviving_vertices' pRF estimates
         if hasattr(self, 'prf'):
             if srf:
-                utils.verbose("Calculating SRFs for surviving vertices", True)
-                tmp_init = np.zeros_like(self.prf.df_prf)
-                self.df_for_srfs = pd.DataFrame(
-                    tmp_init, 
-                    index=self.prf.df_prf.index, 
-                    columns=self.prf.df_prf.columns)
 
-                self.df_for_srfs.iloc[self.surviving_vertices] = self.prf.df_prf.iloc[self.surviving_vertices]
+                if not isinstance(srf_file, str):
+                    utils.verbose("Calculating SRFs for surviving vertices", True)
+                    tmp_init = np.zeros_like(self.prf.df_prf)
+                    self.df_for_srfs = pd.DataFrame(
+                        tmp_init, 
+                        index=self.prf.df_prf.index, 
+                        columns=self.prf.df_prf.columns)
 
-                # size response functions
-                self.SR_ = prf.SizeResponse(params=self.df_for_srfs, model="norm")
-                
-                #SRFs for activation & normalization parameters
-                self.sr_fill = self.SR_.batch_sr_function(
-                    self.SR_.params_df,
-                    stims="fill",
-                    center_prf=False
-                )
+                    self.df_for_srfs.iloc[self.surviving_vertices] = self.prf.df_prf.iloc[self.surviving_vertices]
 
-                self.sr_hole = self.SR_.batch_sr_function(
-                    self.SR_.params_df,
-                    stims="hole",
-                    center_prf=False
-                )
+                    # size response functions
+                    self.SR_ = prf.SizeResponse(params=self.df_for_srfs, model="norm")
+                    
+                    # size-response
+                    self.fill_cent, self.fill_cent_sizes = self.SR_.make_stimuli(
+                        factor=1,
+                        dt="fill"
+                    )
 
-                self.sr_fill["type"] = "act"
-                self.sr_hole["type"] = "norm"
+                    # hole-response
+                    self.hole_cent, self.hole_cent_sizes = self.SR_.make_stimuli(
+                        factor=1,
+                        dt="hole"
+                    )
 
-                self.df_sr = pd.concat([self.sr_fill,self.sr_hole])
-                self.df_sr["subject"] = self.subject
-                self.df_sr = self.df_sr.set_index(["subject","type","sizes","stim_nr"])           
+                    #SRFs for activation & normalization parameters
+                    self.sr_fill = self.SR_.batch_sr_function(
+                        self.SR_.params_df,
+                        stims=self.fill_cent,
+                        sizes=self.fill_cent_sizes,
+                        center_prf=True
+                    )
+
+                    self.sr_hole = self.SR_.batch_sr_function(
+                        self.SR_.params_df,
+                        stims=self.hole_cent,
+                        sizes=self.hole_cent_sizes,
+                        center_prf=True
+                    )
+
+                    self.sr_fill["type"] = "act"
+                    self.sr_hole["type"] = "norm"
+
+                    self.df_sr = pd.concat([self.sr_fill,self.sr_hole])
+                    self.df_sr["subject"] = self.subject
+                    self.df_sr = self.df_sr.set_index(["subject","type","sizes","stim_nr"])
+
+                else:
+                    if isinstance(srf_file, str):
+                        utils.verbose(f"Reading SRFs from '{srf_file}'", self.verbose)
+                        if srf_file.endswith("pkl"):
+                            self.df_sr = pd.read_pickle(srf_file)
+                        elif srf_file.endswith("csv"):
+                            self.df_sr = pd.read_csv(srf_file)
+                        else:
+                            raise ValueError(f"File must end with 'pkl' (preferred) or 'csv', not '{srf_file}'")
+                        self.df_sr = self.df_sr.set_index(["subject","type","sizes","stim_nr"])
+                    else:
+                        raise TypeError(f"SRF-file must be a string, not '{srf_file}' of type {type(srf_file)}")
+                    
+                    # size response functions
+                    self.SR_ = prf.SizeResponse(params=self.prf.df_prf, model="norm")
+
+                    # create max activation/suppression maps
+                    self.df_activation = utils.select_from_df(self.df_sr, expression="type = act")
+                    self.df_suppression = utils.select_from_df(self.df_sr, expression="type = norm")
+
+                    self.df_max_activation = self.df_activation.max(axis=0)
+                    self.df_max_suppression = self.df_suppression.min(axis=0)
+
+                    # set values < 0 to 0 in activation; only want real positive activation
+                    self.df_max_activation[self.df_max_activation < 0] = 0                    
+
+                    # set values > 0 to 0 in suppression; only want real negative suppression
+                    self.df_max_suppression[self.df_max_suppression > 0] = 0
+
+                    # get ratio, but only divide non-zero numbers
+                    self.df_ratio = np.divide(self.df_max_activation.values, np.abs(self.df_max_suppression.values), out=np.zeros_like(self.df_max_activation.values), where=np.abs(self.df_max_suppression.values)!=0)
+
+                    # make object for activation
+                    self.act_v = pycortex.Vertex2D_fix(
+                        self.df_max_activation,
+                        subject=self.subject,
+                        cmap="inferno",
+                        vmax1=5)
+
+                    # make object for suppression
+                    alpha = np.zeros_like(self.df_max_suppression)
+                    alpha[self.df_max_suppression < 0] = 1
+                    self.suppr_v = pycortex.Vertex2D_fix(
+                        self.df_max_suppression,
+                        alpha,
+                        subject=self.subject,
+                        cmap="cool",
+                        vmin1=-3,
+                        vmax1=0)
+                    
+                    # make object for ratio
+                    self.ratio_v = pycortex.Vertex2D_fix(
+                        self.df_ratio,
+                        subject=self.subject,
+                        cmap="hot",
+                        vmax1=5)
+                    
+                    # make object for ratio
+                    self.ratio_v = pycortex.Vertex2D_fix(
+                        self.df_ratio,
+                        subject=self.subject,
+                        cmap="hot",
+                        vmax1=5)       
+
+                self.srf_surviving = utils.select_from_df(self.df_sr, expression="ribbon", indices=self.surviving_vertices)
+                self.act_surviving = utils.select_from_df(self.srf_surviving, expression="type = act")             
+                self.suppr_surviving = utils.select_from_df(self.srf_surviving, expression="type = norm")
+
+                self.final_suppr = np.zeros((self.df_sr.shape[-1]))
+                self.final_suppr[self.surviving_vertices] = self.suppr_surviving.min().values
+
+                alpha = np.zeros_like(self.final_suppr)
+                alpha[self.final_suppr < 0] = 1
+                self.final_suppr_v = pycortex.Vertex2D_fix(
+                    self.final_suppr,
+                    alpha,
+                    subject=self.subject,
+                    cmap="cool",
+                    vmin1=-3,
+                    vmax1=0)
+
+
+        # try to find suppression/activation maps based on SRF file
+        for tag,obj in zip(
+            ["suppression", "activation","act/abs(suppr)"],
+            ["suppr_v","act_v","ratio_v"]):
+            
+            if hasattr(self, obj):
+                self.data_dict[tag] = getattr(self, obj)
 
         # save prf information
         self.lh_prf = self.joint_mask[:self.surface.lh_surf_data[0].shape[0]]
         self.rh_prf = self.joint_mask[self.surface.lh_surf_data[0].shape[0]:]
         
-        if self.fs_label != "V1_exvivo.thresh":
+        if not "V1_" in self.fs_label:
             self.joint_mask[self.joint_mask < 1] = np.nan
         
         self.joint_mask_v = pycortex.Vertex2D_fix(
@@ -926,7 +1340,35 @@ class CalcBestVertex():
             self.joint_mask,
             subject=self.subject)
 
+        self.data_dict["roi"] = self.surface.whole_roi_v
         self.data_dict["final_mask"] = self.joint_mask_v
+
+        # also create a mask scaled by the curvature
+        self.mask_by_curv = np.zeros_like(self.joint_mask, dtype=float)
+        self.curv_both = []
+        for hh in ["lh","rh"]:
+            curv = getattr(self.surface, f"{hh}_surf_sm")
+            self.curv_both.append(curv)
+
+        self.curv_both = np.concatenate(self.curv_both)
+        indices = np.where(self.joint_mask == True)[0]
+        self.mask_by_curv[indices] = self.curv_both[indices]
+
+        self.mask_by_curv_v = pycortex.Vertex2D_fix(
+            self.mask_by_curv,
+            vmin1=self.mask_by_curv.min(),
+            vmax1=self.mask_by_curv.max(),
+            cmap="viridis_r",
+            subject=self.subject,
+            curv_type="cortex"
+        )
+        
+        # surviving vertices colored by curvature
+        self.data_dict["final_curv"] = self.mask_by_curv_v   
+
+        # surviving vertices colored by suppression
+        if hasattr(self, "final_suppr_v"):
+            self.data_dict["final_suppr"] = self.final_suppr_v
 
     def best_vertex(self):
 
@@ -1383,6 +1825,7 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
         deriv=None,
         prf_file=None,
         epi_file=None,
+        srf_file=None,
         use_epi=False,
         webshow=True,
         out=None,
@@ -1402,6 +1845,7 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
         self.roi = roi
         self.use_prf = use_prf
         self.vert = vert
+        self.srf_file = srf_file
         self.srf = srf
         self.verbose = verbose
 
@@ -1424,6 +1868,9 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
 
         #----------------------------------------------------------------------------------------------------------------
         # Read in surface and pRF-data
+
+        if isinstance(self.srf_file, str):
+            self.srf = True
 
         if isinstance(self.out, str) and os.path.isfile(self.out):
             utils.verbose(f"Loading in {self.out}", self.verbose)
@@ -1466,7 +1913,8 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
                 epi_file=self.epi_file,
                 use_epi=self.use_epi,
                 fs_label=self.roi,
-                model=self.model)
+                model=self.model,
+                verbose=self.verbose)
 
             if self.use_epi & self.use_prf:
                 utils.verbose("Also initialize CollectSubject object", self.verbose)
@@ -1574,7 +2022,8 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
                         b_thresh=self.b_val,
                         c_thresh=self.c_val,
                         d_thresh=self.d_val,
-                        srf=self.srf)
+                        srf=self.srf,
+                        srf_file=self.srf_file)
 
                     # Pick out best vertex
                     self.best_vertex()
@@ -1717,10 +2166,9 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
 
                 # we should have stimulus sizes if srf=True
                 if self.srf:
-                    self.dd_dict["stim_sizes"] = [
-                        np.array(
-                            [getattr(self, f"{i}_stim_size_activation"), getattr(self, f"{i}_stim_size_suppression")]) 
-                        for i in ["lh","rh"]]
+                    self.dd_dict["stim_sizes"] = [np.array([getattr(self, f"{i}_stim_size_activation"), getattr(self, f"{i}_stim_size_suppression")]) for i in ["lh","rh"]]
+
+                    self.dd_dict["stim_betas"] = [np.array([getattr(self, f"{i}_max_suppression"), getattr(self, f"{i}_max_activation")]) for i in ["lh","rh"]]                    
 
                 self.final_df = pd.DataFrame(self.dd_dict)
 
@@ -1820,251 +2268,3 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
             self.data_dict,
             subject=self.subject,
             **kwargs)
-
-class Neighbours(SurfaceCalc):
-
-    def __init__(
-        self, 
-        subject:str=None, 
-        fs_dir:str=None, 
-        fs_label:str="V1_exvivo.thresh",
-        hemi:str="lh",
-        verbose:bool=False,
-        **kwargs):
-
-        self.subject = subject
-        self.fs_dir = fs_dir
-        self.fs_label = fs_label
-        self.hemi = hemi
-        self.verbose = verbose
-        self.__dict__.update(kwargs)
-
-        # pycortex path will be read from 'filestore' key in options.cfg file from pycortex
-        if not isinstance(self.fs_dir, str):
-            self.fs_dir = os.environ.get("SUBJECTS_DIR")
-
-        allowed_options = ["lh","left","rh","right","both"]
-        if self.hemi == "both":
-            self.hemi_list = ["lh","rh"]
-        elif self.hemi == "lh" or self.hemi == "left":
-            self.hemi_list = ["lh"]
-        elif self.hemi == "rh" or self.hemi == "right":
-            self.hemi_list = ["right"]
-        else:
-            raise ValueError(f"'hemi' must one of {allowed_options}")
-
-        # set flag for subsurface or not
-        self.sub_surface = False
-        if isinstance(self.fs_label, str):
-            self.sub_surface = True
-
-        # initialize SurfaceCalc
-        if not hasattr(self, "lh_surf"):
-            if self.verbose:
-                print("Initializing SurfaceCalc")
-
-            super().__init__(
-                subject=self.subject, 
-                fs_dir=self.fs_dir,
-                fs_label=self.fs_label)
-
-        if isinstance(self.fs_label, str):
-            self.create_subsurface()
-
-        if hasattr(self, "target_vert"):
-            if isinstance(self.target_vert, int):
-                self.distances_to_target(self.target_vert, self.hemi)
-
-    def create_subsurface(self):
-        if self.verbose:
-            print(f"Creating subsurfaces for {self.fs_label}")        
-                    
-        for mask,surf,attr in zip(
-            ["lh_roi_mask","rh_roi_mask"],
-            [self.lh_surf,self.rh_surf],
-            ["lh_subsurf","rh_subsurf"]):
-
-            # create the subsurface
-            subsurface = surf.create_subsurface(vertex_mask=getattr(self, mask))
-            setattr(self, attr, subsurface)
-
-        # get the vertices belonging to subsurface
-        self.lh_subsurf_v = np.where(self.lh_subsurf.subsurface_vertex_map != stats.mode(self.lh_subsurf.subsurface_vertex_map)[0][0])[0]
-
-        self.rh_subsurf_v = np.where(self.rh_subsurf.subsurface_vertex_map != stats.mode(self.rh_subsurf.subsurface_vertex_map)[0][0])[0]+ self.lh_subsurf.subsurface_vertex_map.shape[-1]
-
-        self.leftlim = np.max(self.lh_subsurf_v)
-        self.subsurface_verts = np.concatenate([self.lh_subsurf_v, self.rh_subsurf_v])
-
-    def create_distance(self):
-        # Make the distance x distance matrix.
-        ldists, rdists = [], []
-
-        if self.verbose:
-            print('Creating distance by distance matrices')
-
-        for i in range(len(self.lh_subsurf_v)):
-            ldists.append(self.lh_subsurf.geodesic_distance([i]))
-
-        self.dists_L = np.array(ldists)
-
-        for i in range(len(self.rh_subsurf_v)):
-            rdists.append(self.rh_subsurf.geodesic_distance([i]))
-
-        self.dists_R = np.array(rdists)
-
-        # Pad the right hem with np.inf.
-        padL = np.pad(
-            self.dists_L, ((0, 0), (0, self.dists_R.shape[-1])), constant_values=np.Inf)
-        # pad the left hem with np.inf..
-        padR = np.pad(
-            self.dists_R, ((0, 0), (self.dists_L.shape[-1], 0)), constant_values=np.Inf)
-
-        self.distance_matrix = np.vstack([padL, padR])  # Now stack.
-        self.distance_matrix = (self.distance_matrix + self.distance_matrix.T)/2 # Make symmetrical        
-
-    def distances_to_target(self, target_vert:int=None, hemi:str=None, vert_dict:Union[dict,str]=None):
-
-        txt = "full surface"
-        if self.sub_surface:
-            txt = self.fs_label
-
-        if not isinstance(vert_dict, (dict,str)):
-
-            if isinstance(self.fs_label, str):
-                use_surf = getattr(self, f"{hemi}_subsurf")
-                use_vert = getattr(self, f"{hemi}_subsurf_v")
-
-                # find the index of the target vertex within the subsurface
-                target_wb = target_vert
-                target_vert = np.where(use_vert == target_vert)[0][0]
-                
-                utils.verbose(f"Target vertex '{target_wb}' is at index '{target_vert}' in subsurface", self.verbose)
-            else:
-                use_surf = getattr(self, f"{hemi}_surf")
-
-            utils.verbose(f"Finding distances from {txt} to vertex #{target_vert}", self.verbose)
-                
-            # get distance to target
-            dist_to_targ = use_surf.geodesic_distance(target_vert)
-
-            # make into convenient dictionary index on whole-brain
-            self.tmp = {}
-            self.df = {}
-            self.df["idx"] = np.zeros((dist_to_targ.shape[0]))
-            self.df["distance"] = np.zeros((dist_to_targ.shape[0]))
-            for ii in range(dist_to_targ.shape[0]):
-                self.tmp[use_vert[ii]] = dist_to_targ[ii]
-                self.df["idx"][ii] = use_vert[ii]
-                self.df["distance"][ii] = dist_to_targ[ii]
-                
-                # make dataframe
-                self.df = pd.DataFrame(self.df)
-
-            # store
-            setattr(self, f"{hemi}_dist_to_targ_arr", dist_to_targ)
-            setattr(self, f"{hemi}_dist_to_targ", self.tmp)
-            
-        else:
-            if isinstance(vert_dict, str):
-                utils.verbose(f"Reading distances from {vert_dict}", self.verbose)
-                with open(vert_dict) as f:
-                    dist_to_targ = json.load(f)
-
-                # store
-                setattr(self, f"{hemi}_dist_to_targ", dist_to_targ)
-                data = np.array(list(getattr(self, f"{hemi}_dist_to_targ").items()))
-                self.df = pd.DataFrame(data, columns=["idx","distance"])
-
-        convert_dict = {
-            'idx': int,
-            'distance': float
-            }
-
-        self.df = self.df.astype(convert_dict)
-        setattr(self, f"{hemi}_dist_to_targ_df", self.df)
-
-    def find_distance_range(
-        self, 
-        hemi:str="lh", 
-        vmin:Union[int,float]=None, 
-        vmax:Union[int,float]=None):
-
-        """find_distance_range
-
-        Find the vertices given a range of distance using `vmin` and `vmax`. For instance, if you want the vertices within 2mm of your target vertex, specify `vmax=2`. If you want the vertices within 2-4mm, specify `vmin=2,vmax=4`. If vertices are found given your criteria, a dictionary collecting key-value pairings between the vertices and their distances to the target will be returned.
-
-        Parameters
-        ----------
-        hemi: str, optional
-            Which hemisphere to use. Should be one of ['lh','rh'], by default "lh"
-        vmin: Union[int,float], optional
-            Minimum distance to extract, by default None
-        vmax: Union[int,float], optional
-            Maximum distance to extract, by default None
-        verbose: bool, optional
-            Turn on verbosity, by default False
-
-        Returns
-        ----------
-        dict
-            Key-value pairing between the vertices surviving the criteria + their distance to the target vertex
-
-        Raises
-        ----------
-        ValueError
-            If both `vmin` and `vmax` are `None`. One or both should be specified
-        ValueError
-            If no vertices could be found with the criteria
-
-        Example
-        ----------
-        >>> from linescanning.pycortex import Neighbours
-        >>> # initialize the class, which - given a target vertex - will start to do some
-        >>> # initial calculations
-        >>> nbr = Neighbours(
-        >>>     subject="sub-001",
-        >>>     target=1053,
-        >>>     verbose=True)
-        >>> #
-        >>> # call find_distance_range
-        >>> nbr.find_distance_range(vmin=2,vmax=4)
-        """
-        # check if we ran distances_to_target()
-        if hasattr(self, f"{hemi}_dist_to_targ"):
-            distances = getattr(self, f"{hemi}_dist_to_targ")
-
-            if isinstance(distances, np.ndarray):
-                if isinstance(vmin, (int,float)) and not isinstance(vmax, (int,float)):
-                    result = np.where(distances >= vmin)
-                elif not isinstance(vmin, (int,float)) and isinstance(vmax, (int,float)):
-                    result = np.where(distances <= vmax)
-                elif isinstance(vmin, (int,float)) and isinstance(vmax, (int,float)):
-                    result = np.where((distances >= vmin) & (distances <= vmax))
-                else:
-                    raise ValueError("Not sure what to do. Please specify 'vmin' and/or 'vmax', or use 'self.<hemi>_dist_to_target to fetch all distances")
-
-                try:
-                    verts = result[0]
-                    if self.verbose:
-                        utils.verbose(f"Found {len(verts)} vertices to target for vmin={vmin} & vmax={vmax}", self.verbose)
-                    output = {}
-                    for ii in verts:
-                        output[ii] = distances[ii]
-                    
-                    return output
-
-                except:
-                    raise ValueError(f"Could not find vertices complying to criteria: vmin = {vmin}; vmax = {vmax}")
-            
-            elif isinstance(distances, dict):
-                if isinstance(vmin, (int,float)) and not isinstance(vmax, (int,float)):
-                    result = [int(k) for k, v in distances.items() if v >= vmin]
-                elif not isinstance(vmin, (int,float)) and isinstance(vmax, (int,float)):
-                    result = [int(k) for k, v in distances.items() if v <= vmax]
-                elif isinstance(vmin, (int,float)) and isinstance(vmax, (int,float)):
-                    result = [int(k) for k, v in distances.items() if vmin <= v <= vmax]
-                else:
-                    raise ValueError("Not sure what to do. Please specify 'vmin' and/or 'vmax', or use 'self.<hemi>_dist_to_target to fetch all distances")
-
-                return result
