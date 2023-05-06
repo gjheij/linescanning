@@ -56,7 +56,7 @@ def set_threshold(name=None, borders=None, set_default=None):
     while True:
         try:
             # check if range is specified
-            val = input(f" {name} [def = {set_default}]: \t") or set_default
+            val = input(f" {name} [def = {set_default}]: ") or set_default
             if isinstance(val, str):
                 if "," in val:
                     val = utils.string2list(val, make_float=True)
@@ -810,8 +810,7 @@ class pRFCalc(pycortex.SavePycortexViews):
                             np.nanquantile(self.df_prf["ratio (B/D)"].loc[self.df_prf.r2>self.thr].values,0.1),
                             round(np.nanquantile(self.df_prf["ratio (B/D)"].loc[self.df_prf.r2>self.thr].values,0.9),2)
                         ]
-
-                        obj_par = par.replace(" ","")
+                        obj_par = "ratio_bd"
                     
                     data = self.df_prf[par]
                     # data[data>minmax[1]] = 0
@@ -836,7 +835,7 @@ class pRFCalc(pycortex.SavePycortexViews):
         super().__init__(
             self.prf_data_dict,
             subject=self.subject,
-            **kwargs)                    
+            **kwargs)
 
 class CalcBestVertex():
 
@@ -1322,7 +1321,7 @@ class CalcBestVertex():
 
         # try to find suppression/activation maps based on SRF file
         for tag,obj in zip(
-            ["suppression", "activation","act/abs(suppr)"],
+            ["suppression", "activation","abs_ratio"],
             ["suppr_v","act_v","ratio_v"]):
             
             if hasattr(self, obj):
@@ -2268,3 +2267,13 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
             self.data_dict,
             subject=self.subject,
             **kwargs)
+
+    def save_all(
+        self,
+        *args,
+        **kwargs):
+
+        if not hasattr(self, "pyc"):
+            self.open_pycortex(**kwargs)
+
+        self.pyc.save_all(*args, **kwargs)          
