@@ -1,4 +1,5 @@
 import numpy as np
+from linescanning import utils
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
@@ -1821,6 +1822,8 @@ class LazyColorbar(Defaults):
         flip_label=False,
         figsize=(6,0.5),
         save_as=None,
+        cm_nr=5,
+        cm_decimal=3,
         **kwargs):
 
         self.axs = axs
@@ -1834,6 +1837,8 @@ class LazyColorbar(Defaults):
         self.flip_label = flip_label
         self.figsize = figsize
         self.save_as = save_as
+        self.cm_nr = cm_nr
+        self.cm_decimal = cm_decimal
 
         super().__init__()
         self.__dict__.update(kwargs)
@@ -1845,13 +1850,19 @@ class LazyColorbar(Defaults):
             else:
                 self.fig, self.axs = plt.subplots(figsize=self.figsize)
             
-        # set ticks to integer intervals if nothing's specified
-        if not isinstance(self.ticks, list):
-            self.ticks = [int(ii) for ii in range(vmin,vmax+1)]
-
         # make colorbase instance
         if isinstance(self.cmap, str):
             self.cmap = mpl.cm.get_cmap(self.cmap, 256)
+
+        # decide ticks
+        if not isinstance(self.ticks, (np.ndarray,list)):
+            self.ticks = self.colormap_ticks(
+                vmin=self.vmin,
+                vmax=self.vmax,
+                key=self.txt,
+                dec=self.cm_decimal,
+                nr=self.cm_nr
+            )   
 
         # plop everything in class
         mpl.colorbar.ColorbarBase(
@@ -1898,6 +1909,36 @@ class LazyColorbar(Defaults):
                 facecolor="white",
                 bbox_inches="tight")
 
+    @staticmethod
+    def colormap_ticks(
+        vmin=None, 
+        vmax=None, 
+        key=None,
+        dec=3, 
+        nr=5):
+
+        # store colormaps
+        if isinstance(key, str):
+            if key == "polar" or key == "polar angle" or "polar" in key:
+                ticks = [-np.pi,0,np.pi]
+            else:
+                ticks = list(np.linspace(vmin,vmax, endpoint=True, num=nr))
+        else:
+            ticks = list(np.linspace(vmin,vmax, endpoint=True, num=nr))
+        
+        # round ticks
+        ticks = [round(ii,dec) for ii in ticks]
+
+        # check if minimum of ticks > minimum of data
+        if ticks[0] < vmin:
+            ticks[0] = utils.round_decimals_up(vmin, dec)
+
+        # check if maximum of ticks < maximum of data
+        if ticks[-1] > vmax:
+            ticks[-1] = utils.round_decimals_down(vmax, dec)  
+
+        return ticks
+    
     def show(self):
         
         fig = plt.figure()

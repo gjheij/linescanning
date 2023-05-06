@@ -1,4 +1,5 @@
 import cortex
+import imageio
 from linescanning import (
     image, 
     utils,
@@ -413,28 +414,7 @@ class SavePycortexViews():
         
         for ix,(key,val) in enumerate(self.tmp_dict.items()):
             if isinstance(val, Vertex2D_fix):
-                self.data_dict[key] = val.get_result()
-                
-                # store colormaps
-                if key == "polar":
-                    ticks = [-np.pi,0,np.pi]
-                else:
-                    ticks = list(np.linspace(val.vmin1,val.vmax1, endpoint=True, num=self.cm_nr))
-
-                # empty data results in nan-ticks; which crashes the colormap creator
-                if all(i == np.nan or pd.isna(i) for i in ticks):
-                    raise ValueError(f"Ticks are all NaN for '{key}'; is your data empty? {ticks}")
-
-                # round ticks
-                ticks = [round(ii,self.cm_decimals) for ii in ticks]
-
-                # check if minimum of ticks > minimum of data
-                if ticks[0] < val.vmin1:
-                    ticks[0] = utils.round_decimals_up(val.vmin1, self.cm_decimals)
-
-                # check if maximum of ticks < maximum of data
-                if ticks[-1] > val.vmax1:
-                    ticks[-1] = utils.round_decimals_down(val.vmax1, self.cm_decimals)             
+                self.data_dict[key] = val.get_result()        
 
                 if len(self.tmp_dict) == 1:
                     ax = self.cm_axs
@@ -445,29 +425,11 @@ class SavePycortexViews():
                     ori="horizontal", 
                     label=key, 
                     flip_label=True, 
-                    ticks=ticks,
                     axs=ax)
                 
                 self.cms[key] = cm
                 
-            else:
-
-                # store colormaps
-                if key == "polar":
-                    ticks = [-np.pi,0,np.pi]
-                else:
-                    ticks = list(np.linspace(val.vmin,val.vmax, endpoint=True, num=self.cm_nr))
-                
-                # round ticks
-                ticks = [round(ii,self.cm_decimals) for ii in ticks]
-
-                # check if minimum of ticks > minimum of data
-                if ticks[0] < val.vmin:
-                    ticks[0] = utils.round_decimals_up(val.vmin, self.cm_decimals)
-
-                # check if maximum of ticks < maximum of data
-                if ticks[-1] > val.vmax:
-                    ticks[-1] = utils.round_decimals_down(val.vmax, self.cm_decimals)             
+            else: 
                 
                 cm = plotting.LazyColorbar(
                     cmap=val.cmap,
@@ -475,11 +437,10 @@ class SavePycortexViews():
                     vmin=val.vmin,
                     vmax=val.vmax, 
                     flip_label=True, 
-                    ticks=ticks,
                     ori="horizontal", 
                     axs=self.cm_axs[ix])
                 
-                self.cms[key] = cm                
+                self.cms[key] = cm  
                 self.data_dict[key] = val
         
         # check what do to with hemispheres
@@ -521,7 +482,7 @@ class SavePycortexViews():
             self.js_handle = cortex.webgl.show(self.data_dict)
             self.params_to_save = list(self.data_dict.keys())
             self.set_view()
-
+    
     def to_static(self, *args, **kwargs):
         filename = f"{self.base_name}_desc-static"
         cortex.webgl.make_static(
@@ -530,23 +491,136 @@ class SavePycortexViews():
             *args,
             **kwargs)
         
-    def save_all(self):
+    def save_all(
+        self, 
+        base_name=None,
+        fig_dir=None,
+        gallery=False,
+        add_cms=False,
+        *args,
+        **kwargs):
+        
+        # set output directory
+        if not isinstance(fig_dir, str):
+            if not isinstance(self.fig_dir, str):
+                fig_dir = os.getcwd()
+            else:
+                fig_dir = self.fig_dir
 
+        # set base name
+        if not isinstance(base_name, str):
+            if not isinstance(self.base_name, str):
+                base_name = self.subject
+            else:
+                base_name = self.base_name                
+
+        # store output in separete imgs-directory to prevent clogging
+        img_dir = opj(fig_dir, "imgs")
+        if not os.path.exists(img_dir):
+            os.makedirs(img_dir, exist_ok=True)
+
+        self.imgs = {}
         for param_to_save in self.js_handle.dataviews.attrs.keys():
             print(f"saving {param_to_save}")
             self.save(
                 param_to_save,
-                self.base_name)
+                fig_dir=img_dir,
+                base_name=base_name)
+            
+            # store filenames in list
+            filename = opj(img_dir, f"{base_name}_desc-{param_to_save}.png")
+            self.imgs[param_to_save] = filename
 
         # save colormap figure
         if len(self.cms) > 0:
-            filename = f"{self.base_name}_desc-colormaps.{self.cm_ext}"
-            output_path = os.path.join(self.fig_dir, filename)            
+            filename = f"{base_name}_desc-colormaps.{self.cm_ext}"
+            output_path = os.path.join(fig_dir, filename)            
             self.cm_fig.savefig(
                 output_path,
                 bbox_inches="tight",
                 facecolor="white",
                 dpi=300)
+            
+        if gallery:
+            filename = opj(fig_dir, f"{base_name}_desc-brainmaps.pdf")
+
+            # check if we should add the colorbars
+            if add_cms:
+                dd = self.tmp_dict
+            else:
+                dd = None
+
+            self.make_gallery(
+                self.imgs, 
+                data_dict=dd,
+                save_as=filename, 
+                add_cms=add_cms,
+                *args,
+                **kwargs)
+    
+    def make_gallery(
+        self,
+        img_dict,
+        data_dict=None,
+        n_cols=3,
+        cb=[0,900,350,1900],
+        title="brain maps",
+        save_as=None,
+        add_cms=False,
+        cm_inset=[0.99,0.15,0.05,0.75],
+        *args,
+        **kwargs):
+
+        if len(img_dict) < n_cols:
+            n_cols = len(img_dict)
+            n_rows = 1
+        else:
+            n_rows = int(np.ceil(len(img_dict)/n_cols))
+
+        fig = plt.figure(figsize=(n_cols*8,n_rows*6), constrained_layout=True)
+        gs = fig.add_gridspec(ncols=n_cols, nrows=n_rows)
+
+        for ix,(key,val) in enumerate(img_dict.items()):
+            axs = fig.add_subplot(gs[ix])
+            img_d = imageio.v2.imread(val)
+            axs.imshow(img_d[cb[0]:cb[1],cb[2]:cb[3],:])
+            axs.set_title(key, fontsize=24),
+            axs.axis("off")
+
+            if add_cms:
+                if not isinstance(data_dict, dict):
+                    raise TypeError(f"add_cms requires 'data_dict' to be a dictionary, not {data_dict} of type {type(data_dict)}")
+                
+                try:
+                    min_max = [data_dict[key].vmin1,data_dict[key].vmax1]
+                except:
+                    min_max = [data_dict[key].vmin,data_dict[key].vmax]
+
+                cm_ax = axs.inset_axes(cm_inset)
+                plotting.LazyColorbar(
+                    cmap=data_dict[key].cmap,
+                    vmin=min_max[0],
+                    vmax=min_max[1], 
+                    axs=cm_ax,
+                    dec=self.cm_decimals,
+                    nr=self.cm_nr,
+                    *args,
+                    **kwargs)
+
+        plt.tight_layout()
+        fig.suptitle(
+            title, 
+            fontsize=30,
+            **kwargs)
+
+        if isinstance(save_as, str):
+            print(f"saving {save_as}")
+            fig.savefig(
+                save_as,
+                bbox_inches="tight",
+                dpi=300,
+                facecolor="white"
+            )
 
     def set_view(self):
         # set specified view
@@ -559,14 +633,15 @@ class SavePycortexViews():
     def save(
         self, 
         param_to_save,
-        base_name):
+        fig_dir=None,
+        base_name=None):
 
         self.js_handle.setData([param_to_save])
         time.sleep(1)
         
         # Save images by iterating over the different views and surfaces
         filename = f"{base_name}_desc-{param_to_save}.png"
-        output_path = os.path.join(self.fig_dir, filename)
+        output_path = os.path.join(fig_dir, filename)
             
         # Save image           
         self.js_handle.getImage(output_path, size=self.size)
