@@ -20,17 +20,22 @@ this script requires input from FreeSurfer, so it won't do much if that hasn't r
 should perform FreeSurfer with the pRF-mapping in fMRIprep (module before [13]), then run this thing so
 it can also take in the pRF to locate an even better vertex.
 
-(need to update this so it takes in variable areas, now it's just set to V1)
-
 Args:
-  -o              rename existing file to numerically increasing (e.g., line_pycortex > line_pycor-
+  -o|--ow         rename existing file to numerically increasing (e.g., line_pycortex > line_pycor-
                   tex1.csv) so that a new line_pycortex.csv-file is created. Given that the original
                   file is NOT deleted, I consider this a soft-overwrite mode. You can always manual-
-                  ly delete unwanted/unused files.
+                  ly delete unwanted/unused files or use '--full' to remove the file.
+  --full          full overwrite mode
   --no_freeview   prevent FreeView from opening while verifying the location. ONLY do this if you
                   already know the position. Generally only used for debugging purposes.
+  --no_srf        do not use size-response functions (SRFs) despite the usage of DN-model estimates
+  --srf_file      search for file with SRFs (should be call "desc-srfs_centered.csv" in the subjects'
+                  pRF folder, e.g., 'derivatives/prf/<subject>/ses-<x>/sub-001_desc-srfs_centered.csv')        
   --v1|--v2       use the pRF-estimates that you created with spinoza_fitprfs --v1/--v2
   --grid          use pRF-estimates from grid search; default is 'iter'
+  --gallery       save all cortex-objects from 'optimal.TargetVertex()' in a figure. If pRFs and SRFs
+                  are included, this will yield in a 4x5 grid with brainmaps of various kinds that 
+                  were used in the selection process of the target vertex.
   -s <subject>    subject ID as used throughout the pipeline without prefix (e.g., 001 > 001)
   -n <session>    session ID used to extract the correct pRF-parameters. Will combined with <deriva-
                   tives>/prf/ses-<session>
@@ -87,6 +92,9 @@ prf_ext="pkl"
 search_pars=""
 txt=""
 SRF=1
+srf_file=0
+FULL_OW=0
+gallery_flag=""
 while getopts :-:fos:v:n:m:t: argument
 do
   case ${argument} in
@@ -120,10 +128,22 @@ do
           ;;  
         norm)
           model="norm"
-          ;;       
+          ;; 
+        ow)
+          OW=1
+          ;; 
+        full)
+          FULL_OW=1
+          ;;                           
         no_srf)
           SRF=0
-          ;;                          
+          ;;  
+        srf_file)
+          srf_file=1
+          ;; 
+        gallery)
+          gallery_flag="--gallery"
+          ;;                                              
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}"
@@ -154,7 +174,7 @@ fi
 # this deals with the fact that we might have flags before positional arguments
 BASE=${@:$OPTIND:1}
 DERIV=${@:$OPTIND+1:1}
-ROI=${@:$OPTIND+2:1}
+roi=${@:$OPTIND+2:1}
 
 # check if we should loop through subjects or do it for 1 subject only
 if [[ -z ${sub} ]]; then
@@ -217,11 +237,15 @@ for subID in ${search}; do
   # The file without any numbering will be the most recent one and also the one that will be used; unless otherwise
   # specified in the master script
   line_orientation_file=${cx_dir}/${sub_name}/line_pycortex.csv
-  if [[ ${OW} -eq 1 ]]; then
-    if [[ -f ${line_orientation_file} ]]; then
-      nr=`find $(dirname ${line_orientation_file}) -type f -name "line_pycortex*" | wc -w`
-      fname=${DERIV}/pycortex/${sub_name}/line_pycortex${nr}.csv
-      mv ${line_orientation_file} ${fname}
+  if [[ ${FULL_OW} -eq 1 ]]; then
+    rm -r ${line_orientation_file} 2>/dev/null
+  else
+    if [[ ${OW} -eq 1 ]]; then
+      if [[ -f ${line_orientation_file} ]]; then
+        nr=`find $(dirname ${line_orientation_file}) -type f -name "line_pycortex*" | wc -w`
+        fname=${DERIV}/pycortex/${sub_name}/line_pycortex${nr}.csv
+        mv ${line_orientation_file} ${fname}
+      fi
     fi
   fi
 
@@ -242,15 +266,12 @@ for subID in ${search}; do
       man_verts="-v [${vert}]"
     fi
 
-    # set default ROI if not specified
-    if [[ -z ${ROI} ]]; then
-      roi=${ROI}
-    fi
-    
     epi_flag=""
     # use the --use-prf flag if the roi = V1. Otherwise exclude pRFs in the selecting of the vertex
-    if [[ ${roi} != "V1_exvivo.thresh" ]] && [[ ${roi} != "V2_exvivo.thresh" ]]; then
+    if [[ ${roi} != "V1_exvivo.thresh" ]] && [[ ${roi} != "V2_exvivo.thresh" ]] && [[ ${roi} != "V1_custom" ]]; then
       use_prfs=""
+      srf_file_flag=""
+      srf_flag=""
     else
       use_prfs="--use-prf"
       epi_flag="--use-epi"
@@ -262,10 +283,20 @@ for subID in ${search}; do
         pars=`find -L ${prf_dir} -type f \( -name "*model-${model}*" -and -name "*stage-${stage}*" -and -name "*task-${task}*" -and -name "*prf_params.${prf_ext}" -and -not -name "*_roi-*" \) 2>/dev/null`        
       fi
 
-
       if [[ -z ${pars} ]]; then
         echo "Could not find pRF file with \"model-${model}\", \"stage-${stage}\", \"task-${task}\", and \"*prf_params.${prf_ext}\"${txt} in \"${prf_dir}\""
         continue
+      fi
+
+      if [[ ${srf_file} -eq 1 ]]; then
+        srf_file=`find -L ${prf_dir} -type f \(  -name "*desc-srfs_centered.pkl" \) 2>/dev/null`
+        srf_file_flag="--srf_file ${srf_file}"
+        if [[ -z ${srf_file} ]]; then
+          echo "ERROR in `basename ${0}`: \"--srf_file\" was specified, but could find file with \"*desc-srfs_centered.pkl\" in \"${prf_dir}\". Please create it with \"call_sizeresponse\""
+          exit 1
+        fi
+      else
+        srf_file_flag=""
       fi
     fi
     
@@ -287,7 +318,9 @@ for subID in ${search}; do
       ${fv_flag} \
       ${man_verts} \
       ${use_prfs} \
-      ${srf_flag}
+      ${srf_flag} \
+      ${srf_file_flag} \
+      ${gallery_flag}
 
     if [[ $? != 0 ]]; then
       echo

@@ -4,7 +4,7 @@ import ast
 import os
 import numpy as np
 import sys, getopt
-from linescanning import optimal
+from linescanning import optimal, utils
 import warnings
 warnings.filterwarnings('ignore')
 opj = os.path.join
@@ -40,7 +40,12 @@ Parameters
                     know where it's located!
     -p|--prf_file   File containing the pRF-estimates. Required if '--use-prf' is specified
     -e|--use_epi    Use EPI intensity data from fmriprep
-
+    --srf           Include size-response functions (SRFs) in criteria
+    --srf_file      specify custom .csv-file containing the SRFs. Otherwise SRFs are calculated
+                    for the vertices that survive the initial criterias
+    --gallery       save all cortex-objects from 'optimal.TargetVertex()' in a figure. If pRFs and 
+                    SRFs are included, this will yield in a 4x5 grid with brainmaps of various 
+                    kinds that were used in the selection process of the target vertex.
 Returns
 ----------
 a csv-file called line_pycortex.csv in the pycortex/sub-xxx directory specifying the orientation 
@@ -80,9 +85,11 @@ Notes
     deriv       = None
     prf_file    = None
     srf_flag    = False
+    srf_file    = None
+    gallery     = False
 
     try:
-        opts = getopt.getopt(argv,"fuhd:s:t:r:o:b:v:m:n:p:",["help", "deriv=", "sub=", "roi=", "out=", "vert=", "use-prf", "no-freeview", "prf_file=", "use-epi", "srf"])[0]
+        opts = getopt.getopt(argv,"fuhd:s:t:r:o:b:v:m:n:p:",["help", "deriv=", "sub=", "roi=", "out=", "vert=", "use-prf", "no-freeview", "prf_file=", "use-epi", "srf", "srf_file=", "gallery"])[0]
     except getopt.GetoptError:
         print("ERROR IN ARGUMENT HANDLING!")
         print(main.__doc__)
@@ -111,7 +118,11 @@ Notes
         elif opt in ("--vert"):
             verts = arg
         elif opt in ("--srf"):
-            srf_flag = True            
+            srf_flag = True  
+        elif opt in ("--srf_file"):
+            srf_file = arg
+        elif opt in ("--gallery"):
+            gallery = True
 
     if len(argv) < 1:
         print("\nNEED AT LEAST A SUBJECT ID")
@@ -126,7 +137,7 @@ Notes
         except:
             raise ValueError(f"You used '{verts}'. Make sure to use '[x,y,z]' (comma-separated and no spaces)")
     
-    optimal.TargetVertex(
+    targ_obj = optimal.TargetVertex(
         subject,
         prf_file=prf_file,
         use_epi=use_epi,
@@ -136,7 +147,48 @@ Notes
         out=out,
         roi=roi,
         webshow=open_fv,
-        srf=srf_flag)
+        srf=srf_flag,
+        srf_file=srf_file)
+
+    if gallery:
+
+        # derive file components
+        try:
+            file_components = utils.split_bids_components(os.path.basename(prf_file))
+        except:
+            file_components = []
+
+        out_comps = []
+        if len(file_components) > 0:
+            for comp in ['sub', 'ses', 'task', 'acq', 'rec', 'run', 'space', 'hemi', 'model', 'stage']:
+                if comp in file_components.keys():
+                    out_comps.append(f"{comp}-{file_components[comp]}")
+                
+        if len(out_comps) == 0:
+            out_comps = [subject]
+
+        # check if we got a specified output file
+        out_dir = os.path.dirname(out)
+        base_name = "_".join(out_comps)
+        out_file = opj(out_dir, base_name)
+
+        # open cortex webviewer
+        targ_obj.open_pycortex(
+            radius=240,
+            pivot=-40,
+            rh=0
+        )
+
+        # save elements, make figure, and add colormaps
+        targ_obj.save_all(
+            base_name=base_name,
+            fig_dir=out_dir,
+            gallery=True,
+            y=1.05,
+            n_cols=5,
+            cb=[0,900,350,1200],
+            add_cms=True
+        )
 
 if __name__ == "__main__":
     main(sys.argv[1:])
