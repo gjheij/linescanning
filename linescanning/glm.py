@@ -173,7 +173,15 @@ class GenericGLM():
         # make the stimulus vectors
         if verbose:
             print("Creating stimulus vector(s)")
-        self.stims = make_stimulus_vector(self.onsets, scan_length=self.data.shape[0], osf=self.osf, type=self.exp_type, TR=self.TR)
+
+        self.stims = make_stimulus_vector(
+            self.onsets, 
+            scan_length=self.data.shape[0], 
+            osf=self.osf, 
+            type=self.exp_type, 
+            TR=self.TR,
+            block_length=self.block_length,
+            amplitude=self.amplitude)
 
         # define HRF
         if verbose:
@@ -274,7 +282,14 @@ class GenericGLM():
             self.tstats = np.array(self.tstats)
             
         else:
-            self.results = fit_first_level(self.design, self.data, make_figure=self.make_figure, xkcd=self.xkcd, plot_vox=self.plot_vox, plot_event=self.plot_event, cmap=self.cmap)
+            self.results = fit_first_level(
+                self.design, 
+                self.data, 
+                make_figure=self.make_figure, 
+                xkcd=self.xkcd, 
+                plot_vox=self.plot_vox, 
+                plot_event=self.plot_event, 
+                cmap=self.cmap)
 
     def plot_contrast_matrix(self, save_as=None):
         if self.nilearn_method:
