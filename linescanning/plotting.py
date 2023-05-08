@@ -1191,9 +1191,6 @@ class LazyBar():
                                 self.sem = self.sem.reshape(n_h,n_x)
                             else:
                                 self.sem = self.data.groupby(self.x).std()[self.y].values
-            else:
-                self.sem = None
-                self.ci = self.error
         
         self.ff = sns.barplot(
             data=self.data,
@@ -1724,7 +1721,8 @@ def conform_ax_to_obj(
     obj=None,
     title=None,
     x_label=None,
-    y_label=None):
+    y_label=None,
+    **lazy_args):
 
     """
 
@@ -1742,6 +1740,8 @@ def conform_ax_to_obj(
         overwrite any existing `x_label` in `ax`
     y_label: str
         overwrite any existing `y_label` in `ax`
+    **lazy_args: dict, optional
+        other elements defined in :class:`linescanning.plotting.Defaults`, such as `font_size`, `label_size`, or `axis_width`. Overwrites elements in `obj`, if passed
 
     Returns
     ----------
@@ -1762,6 +1762,11 @@ def conform_ax_to_obj(
     
     if obj == None:
         obj = Defaults()
+
+    # update with lazy_args
+    if len(lazy_args) > 0:
+        for key,val in lazy_args.items():
+            setattr(obj,key,val)
 
     if not isinstance(title, str):
         title = ax.get_title()
