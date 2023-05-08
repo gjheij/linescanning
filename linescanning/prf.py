@@ -2949,7 +2949,8 @@ class SizeResponse():
         vf_extent=([-5,5],[-5,5]), 
         ax=None, 
         clip=True, 
-        cmap=(8,178,240)):
+        cmap=(8,178,240),
+        axis=False):
         
         """plot output of :func:`linescanning.prf.SizeResponse.find_stim_sizes`"""
 
@@ -2961,7 +2962,9 @@ class SizeResponse():
 
         ax.axvline(0, color='k', linestyle='dashed', lw=0.5)
         ax.axhline(0, color='k', linestyle='dashed', lw=0.5)
-        ax.axis('off')
+
+        if not axis:
+            ax.axis('off')
 
         if clip:
             patch = patches.Circle((0,0), radius=vf_extent[0][-1], transform=ax.transData)
