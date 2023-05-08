@@ -1579,7 +1579,7 @@ class CalcBestVertex():
             raise ValueError(f"Unknown option {hemi} specified. Use 'both', or 'lh/rh', 'l/r', 'R/L', 'left/right'")
 
 
-    def vertex_to_map(self, concat=True, write_files=True):
+    def vertex_to_map(self, concat=True, write_files=False):
 
         """vertex_to_map
         
@@ -1613,7 +1613,9 @@ class CalcBestVertex():
                     else:
                         min_curv_map[self.rh_best_vertex] = 1
 
-                min_curv_map_v = cortex.Vertex(min_curv_map, subject=self.subject, cmap='magma', vmin=-0.5, vmax=1)
+                min_curv_map_v = pycortex.Vertex2D_fix(
+                    min_curv_map, 
+                    subject=self.subject)
 
                 setattr(self, f'{i}_best_vertex_map', min_curv_map)
                 setattr(self, f'{i}_best_vertex_map_v', min_curv_map_v)
@@ -1626,10 +1628,16 @@ class CalcBestVertex():
 
             both = np.copy(self.lh_best_vertex_map)
             both[np.where(self.rh_best_vertex_map == 1)] = 1
-            both_v = cortex.Vertex(both, subject=self.subject, cmap='magma', vmin=-0.5, vmax=1)
-
+            both_v = pycortex.Vertex2D_fix(
+                both, 
+                subject=self.subject)
+        
             self.lr_best_vertex_map = both
             self.lr_best_vertex_map_v = both_v
+
+            if hasattr(self, "data_dict"):
+                if isinstance(self.data_dict, dict):
+                    self.data_dict["targets"] = self.lr_best_vertex_map_v
 
         if write_files == True:
 
@@ -2075,7 +2083,7 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
 
                     # # Smooth vertex maps
                     # print("Smooth vertex maps for visual verification")
-                    # self.vertex_to_map()
+                    self.vertex_to_map()
                     # self.smooth_vertexmap()
 
                     if isinstance(vert,np.ndarray):
