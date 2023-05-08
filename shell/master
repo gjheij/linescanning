@@ -1649,7 +1649,13 @@ if [[ $? -eq 0 ]]; then
     ROI="cerebrum"
   fi
 
-  ${job} spinoza_extractregions ${SUBJECT} ${SESSION} ${OW} ${COMB_ONLY} -f ${DIR_DATA_DERIV}/fmriprep ${DIR_DATA_DERIV}/nighres ${DIR_DATA_DERIV}/manual_masks ${ROI}
+  ${job} spinoza_extractregions \
+    ${SUBJECT} \
+    ${SESSION} \
+    ${OW} \
+    ${COMB_ONLY} \
+    -f ${DIR_DATA_DERIV}/fmriprep \
+    ${DIR_DATA_DERIV}/nighres ${DIR_DATA_DERIV}/manual_masks ${ROI}
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_extractregions exited with non-zero status"
