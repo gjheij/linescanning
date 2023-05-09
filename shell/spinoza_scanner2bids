@@ -728,13 +728,15 @@ for subID in ${search}; do
               # we have twice the nr of BOLDs vs FMAPs
               echo "Received an FMAP file for every 2 BOLD files; fixing IntendedFor"
               
+              # loop through fieldmaps, get accompaning fc-elements from funcs
               fm_ct=0
+              fc=`expr ${#funcs[@]} / ${#fmaps[@]}`
               for ii in ${fmaps[@]}; do
-                tmp=(${funcs[@]:fm_ct:fm_ct+${#fmaps[@]}})
+                tmp=(${funcs[@]:fm_ct:fm_ct+${fc}})
                 tmp_list=""; ct=0; for f in ${tmp[@]}; do ((ct++)); if [[ ${ct} -eq ${#tmp[@]} ]]; then add_="${f}"; else add_="${f},"; fi; tmp_list+=${add_}; done
                 call_json ${ii} IntendedFor "${tmp_list}"
 
-                fm_ct=`expr ${fm_ct} + ${#fmaps[@]}`
+                fm_ct=`expr ${fm_ct} + ${fc}`
               done
               
             else
