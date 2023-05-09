@@ -152,9 +152,9 @@ Example
 
     # append stuff based on centering of pRF or not
     if not center_prf:
-        out_comps.append("desc-srfs_unique.csv")
+        out_comps.append("desc-srfs_unique.pkl")
     else:
-        out_comps.append("desc-srfs_centered.csv")
+        out_comps.append("desc-srfs_centered.pkl")
 
     # check if we got a specified output file
     if not isinstance(out_file, str):
@@ -210,7 +210,7 @@ Example
     df_sr = df_sr.set_index(["subject","type","sizes","stim_nr"]) 
 
     # save
-    df_sr.to_csv(out_file)
+    df_sr.to_pickle(out_file)
     utils.verbose("Done", verbose)
 
 if __name__ == "__main__":
