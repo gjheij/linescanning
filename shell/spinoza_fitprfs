@@ -156,7 +156,13 @@ do
           ;;  
         norm)
           model="norm"
-          ;;                                                   
+          ;;       
+        abc)
+          model="abc"
+          ;;     
+        abd)
+          model="abd"
+          ;;                                                        
         zscore)
           zscore_flag="--zscore"
           ;;  
@@ -300,7 +306,9 @@ for subID in ${search}; do
   if [[ -z ${model} ]]; then
     use_model="gauss"
   else
-    if [[ ${model,,} == "gauss" || ${model,,} == "css" || ${model,,} == "dog" || ${model,,} == "norm" ]]; then
+    allowed_models=("gauss" "css" "dog" "norm" "abc" "abd")
+    # https://stackoverflow.com/a/15394738
+    if [[ " ${allowed_models[*]} " =~ " ${model} " ]]; then
       use_model=${model,,}
     else
       echo "ERROR in `basename ${0}`: model specified was \"${model}\". Please use \"gauss\", \"dog\", \"css\", or \"norm\"."
@@ -495,7 +503,7 @@ for subID in ${search}; do
             job="python"
           else
             if [[ ${run_locally} -eq 0 ]]; then
-              job="qsub -q ${SGE_QUEUE_LONG} -pe smp ${n_jobs} -wd ${prf_dir} -N ${base}_task-${task}"
+              job="qsub -q ${SGE_QUEUE_LONG} -pe smp ${n_jobs} -wd ${prf_dir} -N ${base}_task-${task}_model-${model}"
             elif [[ ${run_locally} -eq 1 ]]; then
               job="python"
             else

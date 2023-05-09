@@ -1320,7 +1320,7 @@ def generate_model_params(
             'hrf1': hrf1,
             'hrf2': hrf2}}
     
-    allowed_models = ['gauss', 'css', 'dog', 'norm']
+    allowed_models = ['gauss', 'css', 'dog', 'norm', 'abc', 'abd']
     if model not in allowed_models:
         raise ValueError(f"Model must be one of {allowed_models}. Not '{model}'")
 
@@ -1370,13 +1370,25 @@ def generate_model_params(
                 'bold_bsl': dog_bounds[4],
                 'surr_ampl': dog_bounds[5],
                 'surr_size': [float(item) for item in dog_bounds[6]]}}
+    else:
+        # set D-param to 1
+        if model == "abc":
+            neur_bsl_bound = [1,1]
+            surr_bsl_bound = settings['norm']['surround_baseline_bound']
+        # set C-param to 1
+        elif model == "abd":
+            neur_bsl_bound = settings['norm']['neural_baseline_bound']
+            surr_bsl_bound = [1,1]
+        # ful model
+        else:
+            neur_bsl_bound = settings['norm']['neural_baseline_bound']
+            surr_bsl_bound = settings['norm']['surround_baseline_bound']
 
-    elif model == "norm":
         norm_bounds = standard_bounds.copy() + [
-            settings[model]['surround_amplitude_bound'],    # surround amplitude
+            settings['norm']['surround_amplitude_bound'],    # surround amplitude
             (settings['eps'], 3*ss),                        # surround size
-            settings[model]['neural_baseline_bound'],       # neural baseline
-            settings[model]['surround_baseline_bound']      # surround baseline
+            neur_bsl_bound,                                 # neural baseline
+            surr_bsl_bound                                  # surround baseline
         ]
 
         bounds = {
@@ -1514,7 +1526,7 @@ class ExtendedModel():
             self.active_fitter = DoG_Iso2DGaussianFitter
         elif self.model == "css":
             self.active_fitter = CSS_Iso2DGaussianFitter
-        elif self.model == "norm":
+        elif self.model in ["norm","abc","abd"]:
             self.active_fitter = Norm_Iso2DGaussianFitter
 
         self.active_model = getattr(self, f"{self.model}_model")
@@ -1555,18 +1567,25 @@ class ExtendedModel():
             self.grid_list      = [np.array(self.settings['css']['css_exponent_grid'], dtype='float32')]
             self.grid_bounds    = [tuple(self.settings['bounds']['prf_ampl'])]
         elif self.model == "dog":
-            self.grid_list      = [np.array(self.settings['dog']['dog_surround_amplitude_grid'], dtype='float32'),
-                                   np.array(self.settings['dog']['dog_surround_size_grid'], dtype='float32')]
+            # self.grid_list      = [np.array(self.settings['dog']['dog_surround_amplitude_grid'], dtype='float32'),
+            #                        np.array(self.settings['dog']['dog_surround_size_grid'], dtype='float32')]
+            self.grid_list      = [np.linspace(0.05,3, self.settings['grid_nr'], dtype='float32'),
+                                   np.linspace(5,18, self.settings['grid_nr'], dtype='float32')]         
             self.grid_bounds    = [tuple(self.settings['prf_ampl']),
                                    tuple(self.settings['bounds']['surr_ampl'])]
-        elif self.model == "norm":
-            self.grid_list      = [np.array(self.settings['norm']['surround_amplitude_grid'], dtype='float32'),
-                                   np.array(self.settings['norm']['surround_size_grid'], dtype='float32'),
-                                   np.array(self.settings['norm']['neural_baseline_grid'], dtype='float32'),
-                                   np.array(self.settings['norm']['surround_baseline_grid'], dtype='float32')]
+        elif self.model in ["norm","abc","abd"]:
+            # self.grid_list      = [np.array(self.settings['norm']['surround_amplitude_grid'], dtype='float32'),
+            #                        np.array(self.settings['norm']['surround_size_grid'], dtype='float32'),
+            #                        np.array(self.settings['norm']['neural_baseline_grid'], dtype='float32'),
+            #                        np.array(self.settings['norm']['surround_baseline_grid'], dtype='float32')]
+            self.grid_list      = [np.linspace(0.05,3, self.settings['grid_nr'], dtype='float32'),
+                                   np.linspace(5,18, self.settings['grid_nr'], dtype='float32'),
+                                   np.linspace(0,100, self.settings['grid_nr'], dtype='float32'),
+                                   np.linspace(0,100, self.settings['grid_nr'], dtype='float32')]            
             self.grid_bounds    = [tuple(self.settings['bounds']['prf_ampl']),
                                    tuple(self.settings['bounds']['neur_bsl'])]
-
+        
+        print(self.grid_bounds)
         # grid fit
         if not self.skip_grid:
 
@@ -1753,6 +1772,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         save_grid=True,
         skip_grid=False,
         use_grid_bounds=True,
+        mask=None,
         **kwargs):
 
         self.data               = data
@@ -1777,6 +1797,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         self.save_grid          = save_grid
         self.skip_grid          = skip_grid
         self.use_grid_bounds    = use_grid_bounds
+        self.mask               = mask
         self.__dict__.update(kwargs)
 
         # read design matrix if needed
@@ -1821,7 +1842,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         else:
             self.prf_stim = self.prf_stim_
         
-        self.allowed_models = ["gauss", "css", "dog", "norm"]
+        self.allowed_models = ["gauss", "css", "dog", "norm", "abc", "abd"]
         if self.model.lower() not in self.allowed_models:
             raise ValueError(f"Model specification needs to be one of {self.allowed_models}; got {model}.")
 
@@ -1849,7 +1870,9 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         self.gauss_model    = Iso2DGaussianModel(stimulus=self.prf_stim, hrf=self.hrf)
         self.css_model      = CSS_Iso2DGaussianModel(stimulus=self.prf_stim, hrf=self.hrf)
         self.dog_model      = DoG_Iso2DGaussianModel(stimulus=self.prf_stim, hrf=self.hrf)
-        self.norm_model     = Norm_Iso2DGaussianModel(stimulus=self.prf_stim, hrf=self.hrf)
+
+        if self.model in ["norm","abc","abd"]:
+            setattr(self, f"{self.model}_model", Norm_Iso2DGaussianModel(stimulus=self.prf_stim, hrf=self.hrf))
 
         if self.model_obj != None:
             utils.verbose(f"Setting {self.model_obj} as '{model}_model'-attribute", self.verbose)
@@ -1982,7 +2005,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                 max_shape = 8
             elif self.model == "css":
                 max_shape = 7
-            elif self.model == "norm":
+            elif self.model in ["norm","abc","abd"]:
                 max_shape = 10
             else:
                 raise ValueError(f"Model must be one of 'dog', 'css', or 'norm', not '{self.model}'")
@@ -2000,46 +2023,30 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
 
     def fetch_bounds(self, model=None):
         
+        bounds = [
+            tuple(self.settings['bounds']['x']),                # x
+            tuple(self.settings['bounds']['y']),                # y
+            tuple(self.settings['bounds']['size']),             # prf size
+            tuple(self.settings['bounds']['prf_ampl']),         # prf amplitude
+            tuple(self.settings['bounds']['bold_bsl'])          # bold baseline   
+        ]
+            
         if model == "norm":
-            bounds = [
-                tuple(self.settings['bounds']['x']),                  # x
-                tuple(self.settings['bounds']['y']),                  # y
-                tuple(self.settings['bounds']['size']),               # prf size
-                tuple(self.settings['bounds']['prf_ampl']),           # prf amplitude
-                tuple(self.settings['bounds']['bold_bsl']),           # bold baseline
-                tuple(self.settings['bounds']['surr_ampl']),          # surround amplitude
-                tuple(self.settings['bounds']['surr_size']),          # surround size
-                tuple(self.settings['bounds']['neur_bsl']),           # neural baseline
-                tuple(self.settings['bounds']['surr_bsl'])]           # surround baseline
-
-        elif model == "gauss":
-            bounds = [
-                tuple(self.settings['bounds']['x']),                  # x
-                tuple(self.settings['bounds']['y']),                  # y
-                tuple(self.settings['bounds']['size']),               # prf size
-                tuple(self.settings['bounds']['prf_ampl']),           # prf amplitude
-                tuple(self.settings['bounds']['bold_bsl'])]           # bold baseline   
+            bounds += [
+                tuple(self.settings['bounds']['surr_ampl']),    # surround amplitude
+                tuple(self.settings['bounds']['surr_size']),    # surround size
+                tuple(self.settings['bounds']['neur_bsl']),     # neural baseline
+                tuple(self.settings['bounds']['surr_bsl'])      # surround baseline
+            ]
 
         elif model == "css":
-
-            bounds = [
-                tuple(self.settings['bounds']['x']),                  # x
-                tuple(self.settings['bounds']['y']),                  # y
-                tuple(self.settings['bounds']['size']),               # prf size
-                tuple(self.settings['bounds']['prf_ampl']),           # prf amplitude
-                tuple(self.settings['bounds']['bold_bsl']),           # bold baseline
-                tuple(self.settings['bounds']['css_exponent'])]       # CSS exponent
+            bounds += [tuple(self.settings['bounds']['css_exponent'])]  # CSS exponent
 
         elif model == "dog":
-
-            bounds = [
-                tuple(self.settings['bounds']['x']),                  # x
-                tuple(self.settings['bounds']['y']),                  # y
-                tuple(self.settings['bounds']['size']),               # prf size
-                tuple(self.settings['bounds']['prf_ampl']),           # prf amplitude
-                tuple(self.settings['bounds']['bold_bsl']),           # bold baseline
-                tuple(self.settings['bounds']['surr_ampl']),          # surround amplitude
-                tuple(self.settings['bounds']['surr_size'])]          # surround size
+            bounds += [
+                tuple(self.settings['bounds']['surr_ampl']),    # surround amplitude
+                tuple(self.settings['bounds']['surr_size'])     # surround size
+            ]
 
         else:
             raise ValueError(f"Unrecognized model '{model}'")               
@@ -3158,7 +3165,7 @@ class CollectSubject(pRFmodelFitting):
                     print(f"WARNING: could not load all functional data from '{self.prf_dir}'")
 
         # try to read iterative fit parameters
-        allowed_models = ['gauss', 'css', 'dog', 'norm']
+        allowed_models = ['gauss', 'css', 'dog', 'norm', 'abc', 'abd']
         look_for = ["stage-iter", "params.pkl"]
         
         # add some filters
@@ -3288,7 +3295,7 @@ class Parameters():
 
         self.params = params
         self.model = model
-        self.allow_models = ["gauss","dog","css","norm"]
+        self.allow_models = ["gauss","dog","css","norm",'abc','abd']
 
         if isinstance(self.params, str):
             self.params = read_par_file(self.params)
@@ -3322,7 +3329,7 @@ class Parameters():
                     params_dict["hrf_deriv"] = self.params[:,-3]
                     params_dict["hrf_disp"] = self.params[:,-2]
 
-            elif self.model == "norm":
+            elif self.model in ["norm","abc","abd"]:
                     
                 params_dict = {
                     "x": self.params[:,0], 
@@ -3364,20 +3371,6 @@ class Parameters():
                     "ecc": np.sqrt(self.params[:,0]**2+self.params[:,1]**2),
                     "polar": np.angle(self.params[:,0]+self.params[:,1]*1j)}
 
-            elif self.model == "dog":
-                params_dict = {
-                    "x": self.params[:,0], 
-                    "y": self.params[:,1], 
-                    "prf_size": self.params[:,2],
-                    "prf_ampl": self.params[:,3],
-                    "bold_bsl": self.params[:,4],
-                    "surr_ampl": self.params[:,5],
-                    "surr_size": self.params[:,6], 
-                    "r2": self.params[:,-1],
-                    "size ratio": self.params[:,6]/self.params[:,2],
-                    "suppression index": (self.params[:,5]*self.params[:,6]**2)/(self.params[:,3]*self.params[:,2]**2),
-                    "ecc": np.sqrt(self.params[:,0]**2+self.params[:,1]**2),
-                    "polar": np.angle(self.params[:,0]+self.params[:,1]*1j)}     
                 
                 if self.params.shape[-1] > 8:
                     params_dict["hrf_deriv"] = self.params[:,-3]
@@ -3411,7 +3404,7 @@ class Parameters():
 
         if self.model == "gauss":
             item_list = ["x","y","prf_size","prf_ampl","bold_bsl","hrf_deriv","hrf_disp","r2"]
-        elif self.model == "norm":
+        elif self.model in ["norm","abc","abd"]:
             item_list = ["x","y","prf_size","prf_ampl","bold_bsl","surr_ampl","surr_size","neur_bsl","surr_bsl","hrf_deriv","hrf_disp","r2"]
         elif self.model == "dog":
             item_list = ["x","y","prf_size","prf_ampl","bold_bsl","surr_ampl","surr_size","hrf_deriv","hrf_disp","r2"]
@@ -3454,7 +3447,7 @@ def create_model_rf_wrapper(model,stim,params,normalize_RFs=False):
                 sigma=params[6],
                 normalize_RFs=normalize_RFs).T, axes=(1,2))
 
-    elif model == "norm":
+    elif model in ["norm","abc","abd"]:
         prf += params[7][...,np.newaxis,np.newaxis]
         prf /= (params[5][...,np.newaxis,np.newaxis]*np.rot90(
             rf.gauss2D_iso_cart(

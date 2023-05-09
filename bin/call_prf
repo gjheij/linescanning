@@ -157,7 +157,7 @@ Example:
     merge_sessions = False
 
     try:
-        opts = getopt.getopt(argv,"ghs:n:t:o:i:p:m:x:u:c:v:j:",["help", "sub=", "model=", "ses=", "task=", "out=", "in=", "png=", "kwargs=", "grid", "space=", "hrf", "n_pix=", "clip=", "verbose", "file_ending=", "zscore", "overwrite", "constr=", "tc", "bgfs", "no_fit", "raw", "cut_vols=", "v1", "v2", "save_grid", "merge_ses", "n_jobs=", "gauss", "dog", "css", "norm"])[0]
+        opts = getopt.getopt(argv,"ghs:n:t:o:i:p:m:x:u:c:v:j:",["help", "sub=", "model=", "ses=", "task=", "out=", "in=", "png=", "kwargs=", "grid", "space=", "hrf", "n_pix=", "clip=", "verbose", "file_ending=", "zscore", "overwrite", "constr=", "tc", "bgfs", "no_fit", "raw", "cut_vols=", "v1", "v2", "save_grid", "merge_ses", "n_jobs=", "gauss", "dog", "css", "norm", "abc", "abd"])[0]
     except getopt.GetoptError:
         print("ERROR while reading arguments; did you specify an illegal argument?")
         print(main.__doc__)
@@ -210,7 +210,11 @@ Example:
         elif opt in ("--css"):
             model = "css"
         elif opt in ("--norm"):
-            model = "norm"                                                              
+            model = "norm"  
+        elif opt in ("--abc"):
+            model = "abc"  
+        elif opt in ("--abd"):
+            model = "abd"
         elif opt in ("--overwrite"):
             overwrite = True
         elif opt in ("--tc"):
@@ -238,6 +242,8 @@ Example:
             if grid_only:
                 print("WARNING: '--no_grid' was specified (meaning 'do not save out gridsearch parameters', though '-g' or '--grid' was specified (meaning do gridsearch only). Overruling '--no_grid'")
                 save_grid = True         
+        elif opt in ("--save_grid"):
+            save_grid = True                    
 
     if len(argv) < 2:
         print(main.__doc__)
