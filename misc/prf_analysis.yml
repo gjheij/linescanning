@@ -40,7 +40,7 @@ dog:
   surround_amplitude_bound: [0,1000]
 
 hrf:
-  pars: [1,1,0]
+  pars: [1,4.6,0]
   deriv_bound: [0,10]
   disp_bound: [0,0]
 
