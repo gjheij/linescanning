@@ -87,7 +87,7 @@ Example:
         elif opt in ("--ow","--overwrite"):
             overwrite = True
         elif opt in ("--t","--tr"):
-            tr = arg
+            tr = float(arg)
         elif opt in ("--full_ow"):
             full_ow = True     
         elif opt in ("--conf_only"):
