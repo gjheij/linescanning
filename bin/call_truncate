@@ -187,7 +187,7 @@ Example:
             # DONT USE SKIP_ROWS, YOU NEED THE COLUMN NAMES
             if execute:
                 pd.read_csv(tsv, delimiter="\t").to_csv(out_tsv, index=False)
-                utils.verbose(f"wrote ({ix+1}/{len(all_tsv)}) confs '{out_file}': {pd.read_csv(out_tsv.shape)}", verbose)
+                utils.verbose(f"wrote ({ix+1}/{len(all_tsv)}) confs '{out_tsv}': {pd.read_csv(out_tsv.shape)}", verbose)
     
 if __name__ == "__main__":
     main(sys.argv[1:])
