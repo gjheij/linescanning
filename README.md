@@ -83,7 +83,7 @@ On the VU cluster (`node230`), there is also an environment called `preproc` whi
 
 - Append the correct environment directory to the configuration:
   ```bash
-  conda config --append envs_dir /tank/shared/software/environments
+  conda config --append envs_dirs /tank/shared/software/environments
   ```
 
   This will create the file `~/.condarc`. Run `vi ~/.condarc` and add the following (this will prevent the full conda-path to be shown):
