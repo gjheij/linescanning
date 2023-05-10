@@ -2900,6 +2900,7 @@ class ParseGiftiFile():
             self.f_gif = nb.load(self.gifti_file)
             self.data = np.vstack([arr.data for arr in self.f_gif.darrays])
         elif isinstance(gifti_file, np.ndarray):
+            self.gifti_file = None
             self.data = gifti_file
         else:
             raise ValueError("Input must be a string ending with '.gii' or a numpy array")
@@ -2915,10 +2916,23 @@ class ParseGiftiFile():
             # overwrite original file
             if isinstance(self.gifti_file, str):
                 self.write_file(self.gifti_file, *gii_args, **gii_kwargs)
+        else:
+            if len(self.f_gif.darrays[0].metadata) > 0:
+                self.TR_ms = float(self.f_gif.darrays[0].metadata['TimeStep'])
+                self.TR_sec = float(self.f_gif.darrays[0].metadata['TimeStep']) / 1000                
 
     def set_metadata(self, tr=None):
         self.meta_dict = {'TimeStep': str(float(tr))}
         return nb.gifti.GiftiMetaData().from_dict(self.meta_dict)
+
+    def get_tr(self, units="sec"):
+        if units not in ["sec", "ms"]:
+            raise ValueError(f"units must be one of 'sec' or 'ms', not '{units}'")
+
+        if hasattr(self, f"TR_{units}"):
+            return getattr(self, f"TR_{units}")
+        else:
+            return None
 
     def write_file(
         self, 
@@ -2949,5 +2963,3 @@ class ParseGiftiFile():
         
         # save in same file name
         nb.save(gifti_image, filename)
-
-        return gifti_image
