@@ -25,6 +25,7 @@ Args:
     -o|--output     output directory
     -c|--cut_vols   nr of volumes to cut. Default = 5
     -x|--filters    additional filters when selecting files from fmriprep (e.g., acq-)
+    -t|--tr         set TimeStep field in the gifti's metadata (Repetition time in milliseconds!)
 
 Options
     --no_confounds  skip confounds even if you have them
@@ -53,9 +54,10 @@ Example:
     filters = None
     conf_only = False
     overwrite = False
+    tr = None
 
     try:
-        opts = getopt.getopt(argv,"hf:s:o:c:x:",["subject=", "fprep=", "cut_vols=", "fsaverage", "fsnative", "no_confounds", "verbose", "overwrite", "ow", "full_ow", "filters=", "conf_only"])[0]
+        opts = getopt.getopt(argv,"hf:s:o:c:x:t:",["subject=", "fprep=", "cut_vols=", "fsaverage", "fsnative", "no_confounds", "verbose", "overwrite", "ow", "full_ow", "filters=", "conf_only","tr="])[0]
     except getopt.GetoptError:
         print(main.__doc__)
         sys.exit(2)
@@ -84,6 +86,8 @@ Example:
             verbose = True  
         elif opt in ("--ow","--overwrite"):
             overwrite = True
+        elif opt in ("--t","--tr"):
+            tr = arg
         elif opt in ("--full_ow"):
             full_ow = True     
         elif opt in ("--conf_only"):
@@ -158,7 +162,7 @@ Example:
                     execute = False 
 
             if execute:
-                obj_new.write_file(out_file)
+                obj_new.write_file(out_file, tr=tr)
                 utils.verbose(f"wrote ({ix+1}/{len(filtered_gifti_list)}) funcs {obj_new.data.shape}, TR={obj_new.TR_ms}: '{out_file}'", verbose)
 
     # check confounds
