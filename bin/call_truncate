@@ -159,7 +159,7 @@ Example:
 
             if execute:
                 obj_new.write_file(out_file)
-                utils.verbose(f"wrote ({ix+1}/{len(filtered_gifti_list)}) funcs {obj_new.data.shape}: '{out_file}'", verbose)
+                utils.verbose(f"wrote ({ix+1}/{len(filtered_gifti_list)}) funcs {obj_new.data.shape}, TR={obj_new.TR_ms}: '{out_file}'", verbose)
 
     # check confounds
     if confounds:
