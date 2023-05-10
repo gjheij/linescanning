@@ -1589,6 +1589,13 @@ class LazyHist(Defaults):
         if self.axs == None:
             _,self.axs = plt.subplots(figsize=self.figsize)
 
+        if isinstance(self.data, pd.DataFrame):
+            if not isinstance(self.y, str):
+                raise ValueError(f"'y' must be a column name of {type(self.data)}, not '{self.y}'")
+            self.data = self.data[self.y].values
+        elif isinstance(self.data, pd.Series):
+            self.data = self.data.values
+
         if self.hist:
             self.vals, self.bins, self.patches = self.axs.hist(
                 self.data,
