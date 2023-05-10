@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import ast
 import os
 import sys, getopt
 from linescanning import utils, dataset
@@ -23,6 +24,7 @@ Args:
     -f|--fprep      fmriprep directory
     -o|--output     output directory
     -c|--cut_vols   nr of volumes to cut. Default = 5
+    -x|--filters    additional filters when selecting files from fmriprep (e.g., acq-)
 
 Options
     --no_confounds  skip confounds even if you have them
@@ -47,9 +49,10 @@ Example:
     verbose = False
     overwite = False
     full_ow = False
+    filters = None
 
     try:
-        opts = getopt.getopt(argv,"hf:s:o:c:",["subject=", "fprep=", "cut_vols=", "fsaverage", "fsnative", "no_confounds", "verbose", "overwrite", "ow", "full_ow"])[0]
+        opts = getopt.getopt(argv,"hf:s:o:c:x:",["subject=", "fprep=", "cut_vols=", "fsaverage", "fsnative", "no_confounds", "verbose", "overwrite", "ow", "full_ow", "filters="])[0]
     except getopt.GetoptError:
         print(main.__doc__)
         sys.exit(2)
@@ -79,7 +82,13 @@ Example:
         elif opt in ("--ow","--overwrite"):
             overwrite = True
         elif opt in ("--full_ow"):
-            full_ow = True                
+            full_ow = True     
+        elif opt in ("-x","--filters"):
+            filters = arg
+            if "," in filters:
+                filters = utils.string2list(filters)
+            else:
+                filters = [filters]
 
     if len(argv) < 1:
         print("\nNEED AT LEAST A SUBJECT ID")
@@ -96,6 +105,10 @@ Example:
     utils.verbose(f"Input directory: {opj(fprep_dir, subject)}", verbose)
     utils.verbose(f"Output directory: {opj(output, subject)}", verbose)
     utils.verbose(f"Cutting {cut_vols} volumes", verbose)
+
+    if isinstance(filters, list):
+        utils.verbose(f"Extra filters: {filters}", verbose)
+        search_list += filters
 
     if full_ow:
         if os.path.exists(opj(output, subject)):
@@ -114,6 +127,7 @@ Example:
         filtered_gifti_list = [filtered_gifti_list]
 
     utils.verbose(f"Found {len(filtered_gifti_list)} functional files", verbose)
+    
     # loop
     for ix,gii in enumerate(filtered_gifti_list):
 
