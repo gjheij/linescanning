@@ -2893,35 +2893,53 @@ class DatasetCollector():
 # this is basically a wrapper around pybest.utils.load_gifti
 class ParseGiftiFile():
 
-    def __init__(self, gifti_file, set_tr=None):
+    def __init__(self, gifti_file, set_tr=None, *gii_args, **gii_kwargs):
 
-        self.gifti_file = gifti_file
-        self.f_gif = nb.load(self.gifti_file)
-        self.data = np.vstack([arr.data for arr in self.f_gif.darrays])
+        if isinstance(gifti_file, str):
+            self.gifti_file = gifti_file
+            self.f_gif = nb.load(self.gifti_file)
+            self.data = np.vstack([arr.data for arr in self.f_gif.darrays])
+        elif isinstance(gifti_file, np.ndarray):
+            self.data = gifti_file
+        else:
+            raise ValueError("Input must be a string ending with '.gii' or a numpy array")
+    
+        # get TR
         self.set_tr = set_tr
-
-        if set_tr != None:
-            if len(self.f_gif.darrays[0].metadata) == 0:
-                self.f_gif = self.set_metadata()
-            elif int(float(self.f_gif.darrays[0].metadata['TimeStep'])) == 0:
-                # int(float) construction from https://stackoverflow.com/questions/1841565/valueerror-invalid-literal-for-int-with-base-10
-                self.f_gif = self.set_metadata()
-            elif int(float(self.f_gif.darrays[0].metadata['TimeStep'])) == set_tr:
-                pass
-            else:
-                raise ValueError("Could not update TR..")
         
-        self.meta = self.f_gif.darrays[0].metadata
-        self.TR_ms = float(self.meta['TimeStep'])
-        self.TR_sec = float(self.meta['TimeStep']) / 1000
+        if isinstance(self.set_tr, (int,float)):
+            self.meta_obj = self.set_metadata(tr=self.set_tr)
+            self.TR_ms = float(self.meta_dict['TimeStep'])
+            self.TR_sec = float(self.meta_dict['TimeStep']) / 1000
 
-    def set_metadata(self):
+            # overwrite original file
+            if isinstance(self.gifti_file, str):
+                self.write_file(self.gifti_file, *gii_args, **gii_kwargs)
+
+    def set_metadata(self, tr=None):
+        self.meta_dict = {'TimeStep': str(float(tr))}
+        return nb.gifti.GiftiMetaData().from_dict(self.meta_dict)
+
+    def write_file(
+        self, 
+        filename, 
+        tr=None,
+        *gii_args,
+        **gii_kwargs):
         
-        # define metadata
-        image_metadata = nb.gifti.GiftiMetaData().from_dict({'TimeStep': str(float(self.set_tr))})
+        metadata = None
+        if not isinstance(tr, (int,float)):
+            if hasattr(self, "meta_obj"):
+                metadata = self.meta_obj
+        else:
+            metadata = self.set_metadata(tr=tr)
 
         # copy old data and combine it with metadata
-        darray = nb.gifti.GiftiDataArray(self.data, meta=image_metadata)
+        darray = nb.gifti.GiftiDataArray(
+            self.data, 
+            meta=metadata, 
+            *gii_args, 
+            **gii_kwargs)
 
         # store in new gifti image object
         gifti_image = nb.GiftiImage()
@@ -2930,6 +2948,6 @@ class ParseGiftiFile():
         gifti_image.add_gifti_data_array(darray)
         
         # save in same file name
-        nb.save(gifti_image, self.gifti_file)
+        nb.save(gifti_image, filename)
 
         return gifti_image
