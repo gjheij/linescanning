@@ -713,6 +713,8 @@ def first_level_matrix(stims_dict, regressors=None, add_intercept=True, names=No
     elif isinstance(regressors, dict):
         regressors_df = pd.DataFrame(regressors)
         return pd.concat([X_matrix, regressors_df], axis=1)
+    elif isinstance(regressors, pd.DataFrame):
+        return pd.concat([X_matrix, regressors], axis=1)    
     else:
         return X_matrix
 
