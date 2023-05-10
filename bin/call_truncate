@@ -52,6 +52,7 @@ Example:
     full_ow = False
     filters = None
     conf_only = False
+    overwrite = False
 
     try:
         opts = getopt.getopt(argv,"hf:s:o:c:x:",["subject=", "fprep=", "cut_vols=", "fsaverage", "fsnative", "no_confounds", "verbose", "overwrite", "ow", "full_ow", "filters=", "conf_only"])[0]
