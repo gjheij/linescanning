@@ -33,6 +33,7 @@ Options
     --verbose       print progress to terminal
     --ow|--overwrite overwrite existing output files
     --full_ow       delete output_folder/subject
+    --conf_only     only do the confound files
 
 Example:
     call_truncate -s sub-001 -c 5
@@ -50,9 +51,10 @@ Example:
     overwite = False
     full_ow = False
     filters = None
+    conf_only = False
 
     try:
-        opts = getopt.getopt(argv,"hf:s:o:c:x:",["subject=", "fprep=", "cut_vols=", "fsaverage", "fsnative", "no_confounds", "verbose", "overwrite", "ow", "full_ow", "filters="])[0]
+        opts = getopt.getopt(argv,"hf:s:o:c:x:",["subject=", "fprep=", "cut_vols=", "fsaverage", "fsnative", "no_confounds", "verbose", "overwrite", "ow", "full_ow", "filters=", "conf_only"])[0]
     except getopt.GetoptError:
         print(main.__doc__)
         sys.exit(2)
@@ -83,6 +85,8 @@ Example:
             overwrite = True
         elif opt in ("--full_ow"):
             full_ow = True     
+        elif opt in ("--conf_only"):
+            conf_only = True             
         elif opt in ("-x","--filters"):
             filters = arg
             if "," in filters:
@@ -115,45 +119,46 @@ Example:
             utils.verbose(f"Removing old files in '{opj(output, subject)}'", verbose)
             shutil.rmtree(opj(output, subject))
 
-    # find all files while excluding the anatomicals
-    all_giftis = utils.FindFiles(opj(fprep_dir, subject), extension="gii", exclude="anat").files
-    if not isinstance(all_giftis, list):
-        raise TypeError(f"Could not find files in '{opj(fprep_dir, subject)}' with extension 'gii'")
+    if not conf_only:
+        # find all files while excluding the anatomicals
+        all_giftis = utils.FindFiles(opj(fprep_dir, subject), extension="gii", exclude="anat").files
+        if not isinstance(all_giftis, list):
+            raise TypeError(f"Could not find files in '{opj(fprep_dir, subject)}' with extension 'gii'")
 
-    # filter out space
-    filtered_gifti_list = utils.get_file_from_substring(search_list, all_giftis)
+        # filter out space
+        filtered_gifti_list = utils.get_file_from_substring(search_list, all_giftis)
 
-    if isinstance(filtered_gifti_list, str):
-        filtered_gifti_list = [filtered_gifti_list]
+        if isinstance(filtered_gifti_list, str):
+            filtered_gifti_list = [filtered_gifti_list]
 
-    utils.verbose(f"Found {len(filtered_gifti_list)} functional files", verbose)
-    
-    # loop
-    for ix,gii in enumerate(filtered_gifti_list):
+        utils.verbose(f"Found {len(filtered_gifti_list)} functional files", verbose)
 
-        # find where subject occurs in string
-        sub_ix = gii.split(os.sep).index(subject)
+        # loop
+        for ix,gii in enumerate(filtered_gifti_list):
 
-        # get path after that and plop outputdir in front of it
-        out_file = opj(output, os.sep.join(gii.split(os.sep)[sub_ix:]))
-        if not os.path.exists(os.path.dirname(out_file)):
-            os.makedirs(os.path.dirname(out_file), exist_ok=True)
+            # find where subject occurs in string
+            sub_ix = gii.split(os.sep).index(subject)
 
-        # read original file
-        obj_ = dataset.ParseGiftiFile(gii)
-        
-        # write new one
-        obj_new = dataset.ParseGiftiFile(obj_.data[cut_vols:,:], set_tr=int(obj_.TR_ms))
+            # get path after that and plop outputdir in front of it
+            out_file = opj(output, os.sep.join(gii.split(os.sep)[sub_ix:]))
+            if not os.path.exists(os.path.dirname(out_file)):
+                os.makedirs(os.path.dirname(out_file), exist_ok=True)
 
-        # check if we should overwrite or not
-        execute = True
-        if os.path.exists(out_file):
-            if not overwrite:
-                execute = False 
+            # read original file
+            obj_ = dataset.ParseGiftiFile(gii)
+            
+            # write new one
+            obj_new = dataset.ParseGiftiFile(obj_.data[cut_vols:,:], set_tr=int(obj_.TR_ms))
 
-        if execute:
-            obj_new.write_file(out_file)
-            utils.verbose(f"wrote ({ix+1}/{len(filtered_gifti_list)}) funcs {obj_new.data.shape}: '{out_file}'", verbose)
+            # check if we should overwrite or not
+            execute = True
+            if os.path.exists(out_file):
+                if not overwrite:
+                    execute = False 
+
+            if execute:
+                obj_new.write_file(out_file)
+                utils.verbose(f"wrote ({ix+1}/{len(filtered_gifti_list)}) funcs {obj_new.data.shape}: '{out_file}'", verbose)
 
     # check confounds
     if confounds:
