@@ -115,9 +115,9 @@ Example:
     utils.verbose(f"Output directory: {opj(output, subject)}", verbose)
     utils.verbose(f"Cutting {cut_vols} volumes", verbose)
     
-    if not isinstance(tr, (str,float,int)):
+    if isinstance(tr, (str,float,int)):
         utils.verbose(f"Setting TR to {tr}", verbose)
-        
+
     if isinstance(filters, list):
         utils.verbose(f"Extra filters: {filters}", verbose)
         search_list += filters
