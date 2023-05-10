@@ -167,6 +167,9 @@ Example:
         if isinstance(all_tsv, str):
             all_tsv = [all_tsv]
 
+        if len(filters) > 0:
+            all_tsv = utils.get_file_from_substring(filters, all_tsv)
+
         utils.verbose(f"Found {len(all_tsv)} confound files", verbose)
         for ix,tsv in enumerate(all_tsv):
 
@@ -187,7 +190,7 @@ Example:
             # cut columes, skip index so that "Unnamed" column is not made.
             # DONT USE SKIP_ROWS, YOU NEED THE COLUMN NAMES
             if execute:
-                pd.read_csv(tsv, delimiter="\t").to_csv(out_tsv, index=False)
+                pd.read_csv(tsv, delimiter="\t").iloc[cut_vols:,:].to_csv(out_tsv, index=False)
                 utils.verbose(f"wrote ({ix+1}/{len(all_tsv)}) confs {pd.read_csv(out_tsv).shape}: '{out_tsv}'", verbose)
     
 if __name__ == "__main__":
