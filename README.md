@@ -60,6 +60,14 @@ At the Spinoza Centre for Neuroimaging, there is an environment called `preproc`
   module load itksnap/3.8.0 # 3.6.0-qt4 if you only see black panels
   module load fsl/6.5.0.2
   module load ANTs/20200131
+
+  # useful aliases
+  alias ll="ls -la --color=auto"
+  alias SOU="source ~/.bash_profile"  # enter SOU in the terminal to source the ~/.bash_profile file
+  alias PROJ="cd ${DIR_DATA_HOME}"    # enter PROJ in the terminal to directly 'cd' into your project folder
+
+  # expand variables
+  shopt -s direxpand                  # allows tab-completion with paths stored in variables
   ```
 
 ### VU
@@ -129,6 +137,14 @@ On the VU cluster (`node230`), there is also an environment called `preproc` whi
 
   # append ANTs to PATH
   export PATH=$PATH:/tank/shared/software/ants/install/bin
+
+  # useful aliases
+  alias ll="ls -la --color=auto"
+  alias SOU="source ~/.bash_profile"  # enter SOU in the terminal to source the ~/.bash_profile file
+  alias PROJ="cd ${DIR_DATA_HOME}"    # enter PROJ in the terminal to directly 'cd' into your project folder
+
+  # expand variables
+  shopt -s direxpand                  # allows tab-completion with paths stored in variables
   ```
 
 - Check that `python` points to the correct path:
