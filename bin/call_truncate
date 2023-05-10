@@ -114,7 +114,10 @@ Example:
     utils.verbose(f"Input directory: {opj(fprep_dir, subject)}", verbose)
     utils.verbose(f"Output directory: {opj(output, subject)}", verbose)
     utils.verbose(f"Cutting {cut_vols} volumes", verbose)
-
+    
+    if not isinstance(tr, (str,float,int)):
+        utils.verbose(f"Setting TR to {tr}", verbose)
+        
     if isinstance(filters, list):
         utils.verbose(f"Extra filters: {filters}", verbose)
         search_list += filters
@@ -152,8 +155,11 @@ Example:
             # read original file
             obj_ = dataset.ParseGiftiFile(gii)
             
+            if not isinstance(tr, (str,float,int)):
+                tr = obj_.TR_ms
+                
             # write new one
-            obj_new = dataset.ParseGiftiFile(obj_.data[cut_vols:,:], set_tr=int(obj_.TR_ms))
+            obj_new = dataset.ParseGiftiFile(obj_.data[cut_vols:,:], set_tr=tr)
 
             # check if we should overwrite or not
             execute = True
@@ -162,7 +168,7 @@ Example:
                     execute = False 
 
             if execute:
-                obj_new.write_file(out_file, tr=tr)
+                obj_new.write_file(out_file)
                 utils.verbose(f"wrote ({ix+1}/{len(filtered_gifti_list)}) funcs {obj_new.data.shape}, TR={obj_new.TR_ms}: '{out_file}'", verbose)
 
     # check confounds
