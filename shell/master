@@ -405,8 +405,11 @@ Arguments:
                         one of 'pial' (for pial edits), 'wm' (for white matter edits), or 'cp' if
                         you added control points. See 'call_freesurfer' for more information
   -h <hemisphere>   used for lineplanning, denotes which hemisphere to process
-  -i <image path>   specify custom path to PNG's for pRF-fitting. This allows deviation from the 
-                    standard path that 'spinoza_fitprfs' will be looking for
+  -i <image path>   specify custom path to:
+                      - spinoza_fitprfs: PNG's for pRF-fitting. This allows deviation from the stan-
+                        dard path that 'spinoza_fitprfs' will be looking for
+                      - spinoza_denoising: input directory for pybest. By default 'fmriprep', but 
+                        can be something else
   -j <n_jobs>       number of jobs to parallellize pRF-fitting over; default is 5
   -k <file>         specify a file with additional arguments, similar to FreeSurfer's expert options.
                     See linescanning/misc/fprep_options for an example. Please make sure you have a 
@@ -1416,6 +1419,12 @@ if [[ $? -eq 0 ]]; then
     TASK_ID="-t ${TYPE}"
   fi   
 
+  if [[ -z ${images} ]]; then
+    INPUT_DIR=${DIR_DATA_DERIV}/fmriprep
+  else
+    INPUT_DIR=${images}
+  fi
+
   ${job} spinoza_denoising \
     ${raw_flag} \
     ${SUBJECT} \
@@ -1424,7 +1433,7 @@ if [[ $? -eq 0 ]]; then
     ${OW} \
     ${TASK_ID} \
     ${space_flag} \
-    ${DIR_DATA_DERIV}/fmriprep ${DIR_DATA_DERIV}/pybest
+    ${INPUT_DIR} ${DIR_DATA_DERIV}/pybest
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_denoising exited with non-zero status"
