@@ -2947,7 +2947,9 @@ class ParseGiftiFile():
                 metadata = self.meta_obj
         else:
             metadata = self.set_metadata(tr=tr)
-
+            self.TR_ms = tr
+            self.TR_sec = tr/1000
+            
         # copy old data and combine it with metadata
         darray = nb.gifti.GiftiDataArray(
             self.data, 
