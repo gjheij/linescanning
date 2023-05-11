@@ -201,7 +201,7 @@ Example:
             # DONT USE SKIP_ROWS, YOU NEED THE COLUMN NAMES
             if execute:
                 pd.read_csv(tsv, delimiter="\t").iloc[cut_vols:,:].to_csv(out_tsv, index=False, sep="\t")
-                utils.verbose(f"wrote ({ix+1}/{len(all_tsv)}) confs {pd.read_csv(out_tsv).shape}: '{out_tsv}'", verbose)
+                utils.verbose(f"wrote ({ix+1}/{len(all_tsv)}) confs {pd.read_csv(out_tsv, sep="\t").shape}: '{out_tsv}'", verbose)
     
 if __name__ == "__main__":
     main(sys.argv[1:])
