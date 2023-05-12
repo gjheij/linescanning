@@ -1113,7 +1113,7 @@ class LazyBar():
             axs = self.axs
 
         # construct dataframe from loose inputs
-        if isinstance(self.y, np.ndarray):
+        if isinstance(self.y, (list,np.ndarray)):
             if not isinstance(self.x, (np.ndarray, list)):
                 self.x = np.arange(0,self.y.shape[0])
 
