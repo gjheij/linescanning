@@ -46,6 +46,8 @@ Parameters
     --gallery       save all cortex-objects from 'optimal.TargetVertex()' in a figure. If pRFs and 
                     SRFs are included, this will yield in a 4x5 grid with brainmaps of various 
                     kinds that were used in the selection process of the target vertex.
+    --manual        use manual selection of vertices using Freeview
+
 Returns
 ----------
 a csv-file called line_pycortex.csv in the pycortex/sub-xxx directory specifying the orientation 
@@ -87,9 +89,10 @@ Notes
     srf_flag    = False
     srf_file    = None
     gallery     = False
+    selection   = None
 
     try:
-        opts = getopt.getopt(argv,"fuhd:s:t:r:o:b:v:m:n:p:",["help", "deriv=", "sub=", "roi=", "out=", "vert=", "use-prf", "no-freeview", "prf_file=", "use-epi", "srf", "srf_file=", "gallery"])[0]
+        opts = getopt.getopt(argv,"fuhd:s:t:r:o:b:v:m:n:p:",["help", "deriv=", "sub=", "roi=", "out=", "vert=", "use-prf", "no-freeview", "prf_file=", "use-epi", "srf", "srf_file=", "gallery", "manual"])[0]
     except getopt.GetoptError:
         print("ERROR IN ARGUMENT HANDLING!")
         print(main.__doc__)
@@ -123,6 +126,8 @@ Notes
             srf_file = arg
         elif opt in ("--gallery"):
             gallery = True
+        elif opt in ("--manual"):
+            selection = "manual"
 
     if len(argv) < 1:
         print("\nNEED AT LEAST A SUBJECT ID")
@@ -148,7 +153,8 @@ Notes
         roi=roi,
         webshow=open_fv,
         srf=srf_flag,
-        srf_file=srf_file)
+        srf_file=srf_file,
+        selection=selection)
 
     if gallery:
 

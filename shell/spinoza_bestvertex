@@ -36,6 +36,7 @@ Args:
   --gallery       save all cortex-objects from 'optimal.TargetVertex()' in a figure. If pRFs and SRFs
                   are included, this will yield in a 4x5 grid with brainmaps of various kinds that 
                   were used in the selection process of the target vertex.
+  --manual        use manual selection for the vertex, rather than minimizing for curvature                  
   -s <subject>    subject ID as used throughout the pipeline without prefix (e.g., 001 > 001)
   -n <session>    session ID used to extract the correct pRF-parameters. Will combined with <deriva-
                   tives>/prf/ses-<session>
@@ -95,6 +96,7 @@ SRF=1
 srf_file=0
 FULL_OW=0
 gallery_flag=""
+selection=""
 while getopts :-:fos:v:n:m:t: argument
 do
   case ${argument} in
@@ -143,7 +145,10 @@ do
           ;; 
         gallery)
           gallery_flag="--gallery"
-          ;;                                              
+          ;;      
+        manual)
+          selection="--manual"
+          ;;                                                    
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}"
@@ -320,7 +325,8 @@ for subID in ${search}; do
       ${use_prfs} \
       ${srf_flag} \
       ${srf_file_flag} \
-      ${gallery_flag}
+      ${gallery_flag} \
+      ${selection}
 
     if [[ $? != 0 ]]; then
       echo
