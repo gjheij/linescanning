@@ -1567,21 +1567,21 @@ class ExtendedModel():
             self.grid_list      = [np.array(self.settings['css']['css_exponent_grid'], dtype='float32')]
             self.grid_bounds    = [tuple(self.settings['bounds']['prf_ampl'])]
         elif self.model == "dog":
-            # self.grid_list      = [np.array(self.settings['dog']['dog_surround_amplitude_grid'], dtype='float32'),
-            #                        np.array(self.settings['dog']['dog_surround_size_grid'], dtype='float32')]
-            self.grid_list      = [np.linspace(0.05,3, self.settings['grid_nr'], dtype='float32'),
-                                   np.linspace(5,18, self.settings['grid_nr'], dtype='float32')]         
+            self.grid_list      = [np.array(self.settings['dog']['dog_surround_amplitude_grid'], dtype='float32'),
+                                   np.array(self.settings['dog']['dog_surround_size_grid'], dtype='float32')]
+            # self.grid_list      = [np.linspace(0.05,3, self.settings['grid_nr'], dtype='float32'),
+            #                        np.linspace(5,18, self.settings['grid_nr'], dtype='float32')]         
             self.grid_bounds    = [tuple(self.settings['prf_ampl']),
                                    tuple(self.settings['bounds']['surr_ampl'])]
         elif self.model in ["norm","abc","abd"]:
-            # self.grid_list      = [np.array(self.settings['norm']['surround_amplitude_grid'], dtype='float32'),
-            #                        np.array(self.settings['norm']['surround_size_grid'], dtype='float32'),
-            #                        np.array(self.settings['norm']['neural_baseline_grid'], dtype='float32'),
-            #                        np.array(self.settings['norm']['surround_baseline_grid'], dtype='float32')]
-            self.grid_list      = [np.linspace(0.05,3, self.settings['grid_nr'], dtype='float32'),
-                                   np.linspace(5,18, self.settings['grid_nr'], dtype='float32'),
-                                   np.linspace(0,100, self.settings['grid_nr'], dtype='float32'),
-                                   np.linspace(0,100, self.settings['grid_nr'], dtype='float32')]            
+            self.grid_list      = [np.array(self.settings['norm']['surround_amplitude_grid'], dtype='float32'),
+                                   np.array(self.settings['norm']['surround_size_grid'], dtype='float32'),
+                                   np.array(self.settings['norm']['neural_baseline_grid'], dtype='float32'),
+                                   np.array(self.settings['norm']['surround_baseline_grid'], dtype='float32')]
+            # self.grid_list      = [np.linspace(0.05,3, self.settings['grid_nr'], dtype='float32'),
+            #                        np.linspace(5,18, self.settings['grid_nr'], dtype='float32'),
+            #                        np.linspace(0,100, self.settings['grid_nr'], dtype='float32'),
+            #                        np.linspace(0,100, self.settings['grid_nr'], dtype='float32')]            
             self.grid_bounds    = [tuple(self.settings['bounds']['prf_ampl']),
                                    tuple(self.settings['bounds']['neur_bsl'])]
         
