@@ -3,6 +3,7 @@ import fnmatch
 import json
 import math
 import matplotlib.colors as mcolors
+from matplotlib import cm
 import nibabel as nb
 from nilearn.signal import _standardize
 import numpy as np
@@ -953,7 +954,7 @@ def select_from_df(df, expression="run = 1", index=True, indices=None, match_exa
                 ops1 = str2operator(operator1)
                 
                 # use dtype of whatever dtype the colum is
-                search_value = np.array([val1], dtype=type(sub_df.reset_index()[col1].values[0]))
+                search_value = np.array([val1], dtype=type(sub_df[col1].values[0]))
                 sub_df = sub_df.loc[ops1(sub_df[col1], search_value[0])]
                 
             if len(expressions) == 2:
@@ -965,8 +966,8 @@ def select_from_df(df, expression="run = 1", index=True, indices=None, match_exa
                 ops2 = str2operator(operator2)
 
                 # check if we should interpret values invididually as integers
-                search_value1 = np.array([val1], dtype=type(sub_df.reset_index()[col1].values[0]))[0]
-                search_value2 = np.array([val2], dtype=type(sub_df.reset_index()[col2].values[0]))[0]
+                search_value1 = np.array([val1], dtype=type(sub_df[col1].values[0]))[0]
+                search_value2 = np.array([val2], dtype=type(sub_df[col2].values[0]))[0]
 
                 sub_df = sub_df.loc[main_ops(ops1(sub_df[col1], search_value1), ops2(sub_df[col2], search_value2))]
 
@@ -1292,3 +1293,13 @@ def round_decimals_up(number:float, decimals:int=2):
 
     factor = 10 ** decimals
     return math.ceil(number * factor) / factor
+
+def make_polar_cmap():
+
+    top = cm.get_cmap('hsv', 256)
+    bottom = cm.get_cmap('hsv', 256)
+
+    newcolors = np.vstack((top(np.linspace(0, 1, 256)), bottom(np.linspace(0, 1, 256))))
+    cmap = mcolors.ListedColormap(newcolors, name='hsvx2')
+
+    return cmap
