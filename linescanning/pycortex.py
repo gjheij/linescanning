@@ -788,7 +788,11 @@ class Vertex2D_fix():
                 vmax=1,
                 cmap='gray')
             
-            self.norm2 = Normalize(self.vmin2, self.vmax2)   
+            self.norm2 = Normalize(self.vmin2, self.vmax2)
+
+            if self.cmap == "hsvx2":
+                self.cmap = utils.make_polar_cmap()
+
             self.vx = cortex.Vertex(
                 self.data1, 
                 self.subject, 
