@@ -148,10 +148,14 @@ class SurfaceCalc(object):
         self.lh_surf_data, self.rh_surf_data = cortex.db.get_surf(self.subject, 'fiducial')
         self.lh_surf,self.rh_surf = cortex.polyutils.Surface(self.lh_surf_data[0], self.lh_surf_data[1]), cortex.polyutils.Surface(self.rh_surf_data[0], self.rh_surf_data[1])
 
+        self.surf_coords = np.vstack([self.lh_surf_data[0],self.rh_surf_data[0]])
         # Normal vector for each vertex (average of normals for neighboring faces)
         self.lh_surf_normals = self.lh_surf.vertex_normals
         self.rh_surf_normals = self.rh_surf.vertex_normals
         self.smooth_surfs(kernel=3,nr_iter=3)
+
+        # concatenate into one array
+        self.surf_sm = np.squeeze(np.vstack([self.lh_surf_sm[...,np.newaxis],self.rh_surf_sm[...,np.newaxis]]))
 
         # try:
         setattr(self, 'roi_label', fs_label.replace('.', '_'))
@@ -789,7 +793,7 @@ class pRFCalc(pycortex.SavePycortexViews):
                 self.df_prf.polar,
                 self.df_prf.r2,
                 subject=self.subject,
-                cmap="hsv_r",
+                cmap="hsvx2",
                 vmin1=-np.pi,
                 vmax1=np.pi,
                 vmin2=self.thr,                
@@ -973,6 +977,7 @@ class CalcBestVertex():
         r2_thresh=None, 
         size_thresh=None, 
         ecc_thresh=None, 
+        curv_thresh=None,
         a_thresh=None, 
         b_thresh=None, 
         c_thresh=None, 
@@ -996,6 +1001,8 @@ class CalcBestVertex():
             refers to size of the pRF in visual space. Usually between 0 and 5 (defaults to 0). Threshold is specified as 'greater than <value>'            
         ecc_thresh: int, float, optional
             refers to `size` of pRF (smaller = foveal, larger = peripheral). Usually between 0 and 15. Defaults to minimum of `r2 array`. Threshold is specified as 'lower than <value>'
+        curv_thresh: int, float, optional
+            refers to curvature of the cortex. Usually between -1 and 1. Used when `selection=="manual"`, otherwise the minimum curvature is specified
         a_thresh: int, float, optional
         b_thresh: int, float, optional
         c_thresh: int, float, optional
@@ -1127,8 +1134,15 @@ class CalcBestVertex():
 
         # include curvature mask
         if hasattr(self, 'surface'):
+            self.df_struct = pd.DataFrame({
+                "thickness": self.surface.thickness.data,
+                "depth": self.surface.depth.data,
+                "curvature": self.surface.surf_sm
+            })
+
             self.thick_thresh   = thick_thresh or max(self.surface.thickness.data)
             self.depth_thresh   = depth_thresh or min(self.surface.depth.data)
+            self.curv_thresh    = curv_thresh or None
 
             # got a positive value; convert to negative
             if self.thick_thresh:
@@ -1140,9 +1154,28 @@ class CalcBestVertex():
             self.criteria["thickness"] = float(self.thick_thresh)
             self.criteria["depth"] = float(self.depth_thresh)
 
-            self.struct_mask =  (
-                (self.surface.thickness.data <= self.thick_thresh) 
-                * (self.surface.depth.data >= self.depth_thresh))
+            struct_idc = list(
+                self.df_struct.loc[
+                    (self.df_struct.thickness <= self.thick_thresh)
+                    & (self.df_struct.depth >= self.depth_thresh)
+                ].index)                    
+            
+            if isinstance(self.curv_thresh, list):
+                utils.verbose(f" curvature:     {self.curv_thresh}", True)
+                struct_idc += list(
+                    self.df_struct.loc[
+                        (self.df_struct.curvature >= self.curv_thresh[0])
+                        & (self.df_struct.curvature <= self.curv_thresh[1])
+                    ].index)
+
+            # make mask
+            self.struct_mask = np.zeros((self.df_struct.shape[0]), dtype=bool)
+            self.struct_mask[struct_idc] = True
+            
+            # self.struct_mask =  (
+            #     (self.surface.thickness.data <= self.thick_thresh) 
+            #     * (self.surface.depth.data >= self.depth_thresh))
+
 
         ### APPLY MASKS
 
@@ -1158,7 +1191,7 @@ class CalcBestVertex():
                 self.struct_mask,
                 subject=self.subject)
                     
-            # self.data_dict["struct_mask"] = self.struct_mask
+            self.data_dict["struct_mask"] = self.struct_mask
 
         # and EPI mask
         if hasattr(self, "epi_mask"):
@@ -1253,70 +1286,70 @@ class CalcBestVertex():
                     # size response functions
                     self.SR_ = prf.SizeResponse(params=self.prf.df_prf, model="norm")
 
-                    # create max activation/suppression maps
-                    self.df_activation = utils.select_from_df(self.df_sr, expression="type = act")
-                    self.df_suppression = utils.select_from_df(self.df_sr, expression="type = norm")
+                #     # create max activation/suppression maps
+                #     self.df_activation = utils.select_from_df(self.df_sr, expression="type = act")
+                #     self.df_suppression = utils.select_from_df(self.df_sr, expression="type = norm")
 
-                    self.df_max_activation = self.df_activation.max(axis=0)
-                    self.df_max_suppression = self.df_suppression.min(axis=0)
+                #     self.df_max_activation = self.df_activation.max(axis=0)
+                #     self.df_max_suppression = self.df_suppression.min(axis=0)
 
-                    # set values < 0 to 0 in activation; only want real positive activation
-                    self.df_max_activation[self.df_max_activation < 0] = 0                    
+                #     # set values < 0 to 0 in activation; only want real positive activation
+                #     self.df_max_activation[self.df_max_activation < 0] = 0                    
 
-                    # set values > 0 to 0 in suppression; only want real negative suppression
-                    self.df_max_suppression[self.df_max_suppression > 0] = 0
+                #     # set values > 0 to 0 in suppression; only want real negative suppression
+                #     self.df_max_suppression[self.df_max_suppression > 0] = 0
 
-                    # get ratio, but only divide non-zero numbers
-                    self.df_ratio = np.divide(self.df_max_activation.values, np.abs(self.df_max_suppression.values), out=np.zeros_like(self.df_max_activation.values), where=np.abs(self.df_max_suppression.values)!=0)
+                #     # get ratio, but only divide non-zero numbers
+                #     self.df_ratio = np.divide(self.df_max_activation.values, np.abs(self.df_max_suppression.values), out=np.zeros_like(self.df_max_activation.values), where=np.abs(self.df_max_suppression.values)!=0)
 
-                    # make object for activation
-                    self.act_v = pycortex.Vertex2D_fix(
-                        self.df_max_activation,
-                        subject=self.subject,
-                        cmap="inferno",
-                        vmax1=5)
+                #     # make object for activation
+                #     self.act_v = pycortex.Vertex2D_fix(
+                #         self.df_max_activation,
+                #         subject=self.subject,
+                #         cmap="inferno",
+                #         vmax1=5)
 
-                    # make object for suppression
-                    alpha = np.zeros_like(self.df_max_suppression)
-                    alpha[self.df_max_suppression < 0] = 1
-                    self.suppr_v = pycortex.Vertex2D_fix(
-                        self.df_max_suppression,
-                        alpha,
-                        subject=self.subject,
-                        cmap="cool",
-                        vmin1=-3,
-                        vmax1=0)
+                #     # make object for suppression
+                #     alpha = np.zeros_like(self.df_max_suppression)
+                #     alpha[self.df_max_suppression < 0] = 1
+                #     self.suppr_v = pycortex.Vertex2D_fix(
+                #         self.df_max_suppression,
+                #         alpha,
+                #         subject=self.subject,
+                #         cmap="cool",
+                #         vmin1=-3,
+                #         vmax1=0)
                     
-                    # make object for ratio
-                    self.ratio_v = pycortex.Vertex2D_fix(
-                        self.df_ratio,
-                        subject=self.subject,
-                        cmap="hot",
-                        vmax1=5)
+                #     # make object for ratio
+                #     self.ratio_v = pycortex.Vertex2D_fix(
+                #         self.df_ratio,
+                #         subject=self.subject,
+                #         cmap="hot",
+                #         vmax1=5)
                     
-                    # make object for ratio
-                    self.ratio_v = pycortex.Vertex2D_fix(
-                        self.df_ratio,
-                        subject=self.subject,
-                        cmap="hot",
-                        vmax1=5)       
+                #     # make object for ratio
+                #     self.ratio_v = pycortex.Vertex2D_fix(
+                #         self.df_ratio,
+                #         subject=self.subject,
+                #         cmap="hot",
+                #         vmax1=5)       
 
-                self.srf_surviving = utils.select_from_df(self.df_sr, expression="ribbon", indices=self.surviving_vertices)
-                self.act_surviving = utils.select_from_df(self.srf_surviving, expression="type = act")             
-                self.suppr_surviving = utils.select_from_df(self.srf_surviving, expression="type = norm")
+                # self.srf_surviving = utils.select_from_df(self.df_sr, expression="ribbon", indices=self.surviving_vertices)
+                # self.act_surviving = utils.select_from_df(self.srf_surviving, expression="type = act")             
+                # self.suppr_surviving = utils.select_from_df(self.srf_surviving, expression="type = norm")
 
-                self.final_suppr = np.zeros((self.df_sr.shape[-1]))
-                self.final_suppr[self.surviving_vertices] = self.suppr_surviving.min().values
+                # self.final_suppr = np.zeros((self.df_sr.shape[-1]))
+                # self.final_suppr[self.surviving_vertices] = self.suppr_surviving.min().values
 
-                alpha = np.zeros_like(self.final_suppr)
-                alpha[self.final_suppr < 0] = 1
-                self.final_suppr_v = pycortex.Vertex2D_fix(
-                    self.final_suppr,
-                    alpha,
-                    subject=self.subject,
-                    cmap="cool",
-                    vmin1=-3,
-                    vmax1=0)
+                # alpha = np.zeros_like(self.final_suppr)
+                # alpha[self.final_suppr < 0] = 1
+                # self.final_suppr_v = pycortex.Vertex2D_fix(
+                #     self.final_suppr,
+                #     alpha,
+                #     subject=self.subject,
+                #     cmap="cool",
+                #     vmin1=-3,
+                #     vmax1=0)
 
 
         # try to find suppression/activation maps based on SRF file
@@ -1373,118 +1406,195 @@ class CalcBestVertex():
 
         """Fetch best vertex given pRF-properties and minimal curvature"""
 
-        for i in ['lh', 'rh']:
-
-            if hasattr(self, f'{i}_prf'):
+        # check if selection is manual or automatic
+        if not isinstance(self.selection, str):
+            
+            self.srfs_best_vertices = []
+            for i in ['lh', 'rh']:
                 
-                curv = getattr(self.surface, f'{i}_surf_sm') # smoothed curvature from SurfaceCalc
-                mask = getattr(self, f'{i}_prf')
-                surf = getattr(self.surface, f'{i}_surf_data')
+                if hasattr(self, f'{i}_prf'):
 
-                # get all vertices where mask = True
-                vv = np.where(mask == True)[0]
-                curv_dict = {}
-                for pp in vv:                      
-                    curv_dict[pp] = curv[pp]
-                #     print(f"vert {pp} = {curv[pp]}")
+                    curv = getattr(self.surface, f'{i}_surf_sm') # smoothed curvature from SurfaceCalc
+                    mask = getattr(self, f'{i}_prf')
+                    surf = getattr(self.surface, f'{i}_surf_data')
 
-                # sys.exit(1)
-                # get list of curvatures in selected vertices
-                val = list(curv_dict.values())
+                    # get all vertices where mask = True
+                    vv = np.where(mask == True)[0]
+                    curv_dict = {}
+                    for pp in vv:                      
+                        curv_dict[pp] = curv[pp]
+                    #     print(f"vert {pp} = {curv[pp]}")
 
-                if len(val) == 0:
-                    print(f"WARNING [{i}]: Could not find a vertex with these parameters. Try lowering your r2-criteria if used.")
-                    setattr(self, f'{i}_best_vert_mask', None)
-                else:
-                    if len(val) < 10:
-                        add_txt = f": {list(vv)}"
+                    # sys.exit(1)
+                    # get list of curvatures in selected vertices
+                    val = list(curv_dict.values())
+
+                    if len(val) == 0:
+                        print(f"WARNING [{i}]: Could not find a vertex with these parameters. Try lowering your r2-criteria if used.")
+                        setattr(self, f'{i}_best_vert_mask', None)
                     else:
-                        add_txt = ""
-                    print(f"{i}: {len(val)} voxels matched criteria{add_txt}")
-
-                    if self.srf:
-
-                        # get hemi-specific SRFs
-                        if i == "rh":
-                            idc = vv+self.surface.lh_surf_data[0].shape[0]
+                        if len(val) < 10:
+                            add_txt = f": {list(vv)}"
                         else:
-                            idc = vv.copy()
+                            add_txt = ""
+                        print(f"{i}: {len(val)} voxels matched criteria{add_txt}")
 
-                        srfs_hemi = utils.select_from_df(self.df_sr, expression="ribbon", indices=idc)
-                        setattr(self, f"{i}_srfs", srfs_hemi)
+                        if self.srf:
 
-                        # get hole-response functions
-                        suppr_hemi = utils.select_from_df(srfs_hemi, expression="type = norm")
-                        act_hemi = utils.select_from_df(srfs_hemi, expression="type = act")
+                            # get hemi-specific SRFs
+                            if i == "rh":
+                                idc = vv+self.surface.lh_surf_data[0].shape[0]
+                            else:
+                                idc = vv.copy()
+
+                            srfs_hemi = utils.select_from_df(self.df_sr, expression="ribbon", indices=idc)
+                            setattr(self, f"{i}_srfs", srfs_hemi)
+
+                            # get hole-response functions
+                            suppr_hemi = utils.select_from_df(srfs_hemi, expression="type = norm")
+                            act_hemi = utils.select_from_df(srfs_hemi, expression="type = act")
+                            
+                            # get the minimum values
+                            suppr_vals = suppr_hemi.values.T.min(axis=-1)
+                            act_vals = act_hemi.values.T.max(axis=-1)
+
+                            setattr(self, f"{i}_suppression", suppr_vals)
+                            setattr(self, f"{i}_activation", act_vals)
+
+                            # get corresponding curvature values
+                            curv_suppr_ix = self.surface.curvature.data[vv]
+                            setattr(self, f"{i}_curvature", curv_suppr_ix)
+
+                            # reverse the sign of suppression to that highest value = highest suppression
+                            x_1 = utils.reverse_sign(suppr_vals)
+                            setattr(self, f"{i}_reversed_suppression", x_1)
+
+                            # take the square of curvature so that all values are positive), then flip sign so that highest value is best curvature
+                            x_2 = utils.reverse_sign(curv_suppr_ix**2)
+                            setattr(self, f"{i}_reversed_curvature", x_2)
+
+                            # add them together; the result should be maximized
+                            optimal_curv_suppr = np.add(x_1,x_2)
+                            opt_ix,_ = utils.find_nearest(optimal_curv_suppr, optimal_curv_suppr.max())
+                            
+                            # index surviving vertex list with opt_ix
+                            min_index = vv[opt_ix]
+                            setattr(self, f'{i}_best_vertex', min_index)
+                            
+                            # get maximum suppression
+                            suppr_strength = suppr_vals[opt_ix]
+                            setattr(self, f"{i}_max_suppression", suppr_strength)
+
+                            # get max positive response of this vertex
+                            act_strength = act_vals[opt_ix]
+                            setattr(self, f"{i}_max_activation", act_strength)
+
+                            # find associated stimulus ID
+                            stim_suppr_ix = np.where(suppr_hemi.values.T[opt_ix] == suppr_strength)[0][0]
+                            setattr(self, f"{i}_stim_ix_suppression", stim_suppr_ix)
+
+                            stim_act_ix = np.where(act_hemi.values.T[opt_ix] == act_strength)[0][0]
+                            setattr(self, f"{i}_stim_ix_activation", stim_act_ix)
+
+                            # find associated stimulus sizes
+                            size_suppr = utils.select_from_df(self.df_sr, expression=("type = norm","&",f"stim_nr = {stim_suppr_ix}")).reset_index()["sizes"][0]
+                            setattr(self, f"{i}_stim_size_suppression", size_suppr)
+
+                            size_act = utils.select_from_df(self.df_sr, expression=("type = act","&",f"stim_nr = {stim_act_ix}")).reset_index()["sizes"][0]
+                            setattr(self, f"{i}_stim_size_activation", size_act)
+                            
+                            self.srfs_best_vertices.append(utils.select_from_df(self.df_sr, expression="ribbon", indices=[min_index]))
+                        else:
+                            # find curvature closest to zero
+                            low,_ = utils.find_nearest(val, 0)
+                            min_index = vv[low]
+
+                            setattr(self, f'{i}_best_vertex', min_index) 
+                                            
+                        # 'curv' contains 1e8 for values outside ROI and absolute values for inside ROI (see mask_curv_with_prf)
+                        # min_index = find_nearest(curv,0)[0]; setattr(self, f'{i}_best_vertex', min_index) # np.argmin(curv); 
+                        min_vertex = surf[0][min_index]; setattr(self, f'{i}_best_vertex_coord', min_vertex)
+                        min_vert_mask = (surf[1] == min_vertex).sum(0); setattr(self, f'{i}_best_vert_mask', min_vert_mask)
+
+                        # setattr(self, f'{i}_best_vertex', np.argmin(curv))
+                        # setattr(self, f'{i}_best_vertex_coord', surf[0][getattr(self, f'{i}_best_vertex')])
+                        # setattr(self, f'{i}_best_vert_mask', (surf[1] == getattr(self, f'{i}_best_vertex_coord')).sum(0))
+
+                else:
+                    raise TypeError(f'Attribute {i}_prf does not exist')
+
+            if self.srf:
+                self.srfs_best_vertices = pd.concat(self.srfs_best_vertices, axis=1)  
+        else:
+            # select manually with freeview
+            if self.selection == "manual":
+                
+                utils.verbose(f"Selection method is MANUAL", self.verbose)
+                self.lh_final_mask = self.joint_mask[:self.surface.lh_surf_data[0].shape[0]]
+                self.rh_final_mask = self.joint_mask[self.surface.lh_surf_data[0].shape[0]:]                
+
+                # write joint_mask to label file that FreeSurfer understands
+                self.label_files = []
+                output_dir = os.path.dirname(self.lh_fid)
+                for hemi in ["lh", "rh"]:
+                    out_f = opj(output_dir, f"{hemi}.finalmask")
+                    self.label_files.append(out_f)
+                    nb.freesurfer.io.write_morph_data(out_f, getattr(self, f"{hemi}_final_mask"))
+
+                cmd = f"freeview -v {self.orig} -f {self.lh_fid}:edgecolor=green:overlay={self.label_files[0]} {self.rh_fid}:edgecolor=green:overlay={self.label_files[1]} 2>/dev/null"
+
+                os.system(cmd)
+
+                # fetch vertices
+                self.srfs_best_vertices = []
+                for tag,hemi,surf in zip(
+                    ["left","right"],
+                    ["lh","rh"],
+                    [self.surface.lh_surf_data,self.surface.rh_surf_data]):
+
+                    min_index = int(input(f"vertex {tag.upper()} hemi: "))
+                    min_vertex = surf[0][min_index]; setattr(self, f'{hemi}_best_vertex_coord', min_vertex)
+                    min_vert_mask = (surf[1] == min_vertex).sum(0); setattr(self, f'{hemi}_best_vert_mask', min_vert_mask)
+                    setattr(self, f'{hemi}_best_vertex', min_index) 
+
+                    # set bunch of attributes related to SRFs
+                    if self.srf:
                         
-                        # get the minimum values
-                        suppr_vals = suppr_hemi.values.T.min(axis=-1)
-                        act_vals = act_hemi.values.T.max(axis=-1)
+                        if hemi == "right":
+                            min_index += self.surface.lh_surf_data[0].shape[0]
+                            
+                        srf_idx = utils.select_from_df(self.df_sr, expression="ribbon", indices=[min_index])
 
-                        setattr(self, f"{i}_suppression", suppr_vals)
-                        setattr(self, f"{i}_activation", act_vals)
+                        df_suppr = utils.select_from_df(srf_idx, expression="type = norm")
+                        df_act = utils.select_from_df(srf_idx, expression="type = act")
 
-                        # get corresponding curvature values
-                        curv_suppr_ix = self.surface.curvature.data[vv]
-                        setattr(self, f"{i}_curvature", curv_suppr_ix)
+                        self.srfs_best_vertices.append(srf_idx)
 
-                        # reverse the sign of suppression to that highest value = highest suppression
-                        x_1 = utils.reverse_sign(suppr_vals)
-                        setattr(self, f"{i}_reversed_suppression", x_1)
-
-                        # take the square of curvature so that all values are positive), then flip sign so that highest value is best curvature
-                        x_2 = utils.reverse_sign(curv_suppr_ix**2)
-                        setattr(self, f"{i}_reversed_curvature", x_2)
-
-                        # add them together; the result should be maximized
-                        optimal_curv_suppr = np.add(x_1,x_2)
-                        opt_ix,_ = utils.find_nearest(optimal_curv_suppr, optimal_curv_suppr.max())
-                        
-                        # index surviving vertex list with opt_ix
-                        min_index = vv[opt_ix]
-                        setattr(self, f'{i}_best_vertex', min_index)
-                        
                         # get maximum suppression
-                        suppr_strength = suppr_vals[opt_ix]
-                        setattr(self, f"{i}_max_suppression", suppr_strength)
+                        setattr(self, f"{hemi}_max_suppression", df_suppr[str(min_index)].min())
 
                         # get max positive response of this vertex
-                        act_strength = act_vals[opt_ix]
-                        setattr(self, f"{i}_max_activation", act_strength)
+                        setattr(self, f"{hemi}_max_activation", df_act[str(min_index)].max())
+                        
+                        stim_suppr_ix = df_suppr[str(min_index)].argmin()
+                        setattr(self, f"{hemi}_stim_ix_suppression", stim_suppr_ix)
 
-                        # find associated stimulus ID
-                        stim_suppr_ix = np.where(suppr_hemi.values.T[opt_ix] == suppr_strength)[0][0]
-                        setattr(self, f"{i}_stim_ix_suppression", stim_suppr_ix)
-
-                        stim_act_ix = np.where(act_hemi.values.T[opt_ix] == act_strength)[0][0]
-                        setattr(self, f"{i}_stim_ix_activation", stim_act_ix)
+                        stim_act_ix = df_act[str(min_index)].argmax()
+                        setattr(self, f"{hemi}_stim_ix_activation", stim_act_ix)
 
                         # find associated stimulus sizes
-                        size_suppr = utils.select_from_df(self.df_sr, expression=("type = norm","&",f"stim_nr = {stim_suppr_ix}")).reset_index()["sizes"][0]
-                        setattr(self, f"{i}_stim_size_suppression", size_suppr)
+                        size_suppr = utils.select_from_df(df_suppr, expression=f"stim_nr = {stim_suppr_ix}").reset_index()["sizes"][0]
+                        setattr(self, f"{hemi}_stim_size_suppression", size_suppr)
 
-                        size_act = utils.select_from_df(self.df_sr, expression=("type = act","&",f"stim_nr = {stim_act_ix}")).reset_index()["sizes"][0]
-                        setattr(self, f"{i}_stim_size_activation", size_act)
-                        
-                    else:
-                        # find curvature closest to zero
-                        low,_ = utils.find_nearest(val, 0)
-                        min_index = vv[low]
+                        size_act = utils.select_from_df(df_act, expression=f"stim_nr = {stim_act_ix}").reset_index()["sizes"][0]
+                        setattr(self, f"{hemi}_stim_size_activation", size_act)                        
 
-                        setattr(self, f'{i}_best_vertex', min_index) 
-                                        
-                    # 'curv' contains 1e8 for values outside ROI and absolute values for inside ROI (see mask_curv_with_prf)
-                    # min_index = find_nearest(curv,0)[0]; setattr(self, f'{i}_best_vertex', min_index) # np.argmin(curv); 
-                    min_vertex = surf[0][min_index]; setattr(self, f'{i}_best_vertex_coord', min_vertex)
-                    min_vert_mask = (surf[1] == min_vertex).sum(0); setattr(self, f'{i}_best_vert_mask', min_vert_mask)
-
-                    # setattr(self, f'{i}_best_vertex', np.argmin(curv))
-                    # setattr(self, f'{i}_best_vertex_coord', surf[0][getattr(self, f'{i}_best_vertex')])
-                    # setattr(self, f'{i}_best_vert_mask', (surf[1] == getattr(self, f'{i}_best_vertex_coord')).sum(0))
+                if self.srf:
+                    self.srfs_best_vertices = pd.concat(self.srfs_best_vertices, axis=1)  
 
             else:
-                raise TypeError(f'Attribute {i}_prf does not exist')
-
+                raise ValueError(f"selection must be 'manual', not '{self.method}'")
+            
     def fetch_normal(self, method="ctx"):
         """fetch_normal
 
@@ -1805,7 +1915,9 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
         List of manually selected vertices rather than selecting the vertices based on structural/functional properties
     srf: bool, optional
         Select vertices based on size-response function (SRF) characteristics
-
+    selection: str, optional
+        Method of selection the best vertex. By default `None`, entailing we'll go for vertex surviving all criteria and has minimum curvature. Can also be 'manual', meaning we'll open FreeView, allowing you to select a vertex manually
+        
     Returns
     ---------
     str
@@ -1840,7 +1952,8 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
         use_prf=True,
         vert=None,
         srf=False,
-        verbose=True):
+        verbose=True,
+        selection=None):
 
         self.subject = subject
         self.deriv = deriv
@@ -1855,6 +1968,7 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
         self.srf_file = srf_file
         self.srf = srf
         self.verbose = verbose
+        self.selection = selection
 
         # check if we can read DIR_DATA_DERIV if necessary
         if not self.deriv:
@@ -1878,6 +1992,11 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
 
         if isinstance(self.srf_file, str):
             self.srf = True
+        
+        # set default volumes/surface
+        self.orig = opj(self.fs_dir, self.subject, 'mri', 'orig.mgz')
+        self.lh_fid = opj(self.fs_dir, self.subject, 'surf', "lh.fiducial")
+        self.rh_fid = opj(self.fs_dir, self.subject, 'surf', "rh.fiducial")
 
         if isinstance(self.out, str) and os.path.isfile(self.out):
             utils.verbose(f"Loading in {self.out}", self.verbose)
@@ -1947,6 +2066,7 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
                 for ii in ["a","b","c","d"]:
                     setattr(self, f"{ii}_val", 0)
 
+                self.manual_vertices = False
                 if not isinstance(self.vert, np.ndarray):
                     utils.verbose("Set thresholds (leave empty and press [ENTER] to not use a particular property):", self.verbose)
                     # get user input with set_threshold > included the possibility to have only pRF or structure only!
@@ -2006,6 +2126,14 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
                         self.depth_val = set_threshold(
                             name="sulcal depth", 
                             set_default=round(min(self.surface.depth.data)))
+                        
+                        # specify curvature band
+                        self.curv_val = None
+                        if isinstance(self.selection, str):
+                            self.curv_val = set_threshold(
+                                name="curv band", 
+                                borders=(-1,1), 
+                                set_default=(round(self.surface.surf_sm.min()),round(self.surface.surf_sm.max(),2)))                                
 
                     else:
                         self.thick_val   = 0
@@ -2025,6 +2153,7 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
                         depth_thresh=self.depth_val,
                         thick_thresh=self.thick_val,
                         epi_thresh=self.epi_val,
+                        curv_thresh=self.curv_val,
                         a_thresh=self.a_val,
                         b_thresh=self.b_val,
                         c_thresh=self.c_val,
@@ -2036,7 +2165,7 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
                     self.best_vertex()
                     
                 else:
-                    
+                    self.manual_vertices = True
                     # set manual vertices in self object
                     for i,r in enumerate(['lh', 'rh']):
                         setattr(self, f"{r}_best_vertex", self.vert[i])
@@ -2079,7 +2208,10 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
                                 fname = opj(self.prf_dir, f"{base}_{bids_hemi}_vox-{vertex}_model-{self.model}_stage-iter.svg")
 
                                 # create the plot
-                                self.make_srf_plot(hemi=tag, save_as=fname)
+                                if not self.manual_vertices:
+                                    self.make_srf_plot(hemi=tag, save_as=fname)
+                                else:
+                                    self.make_prf_plot(hemi=tag, save_as=fname)
 
                     # # Smooth vertex maps
                     # print("Smooth vertex maps for visual verification")
@@ -2090,11 +2222,8 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
                         webshow = False
                 
                     if self.webshow:
-                        self.orig = opj(self.fs_dir, self.subject, 'mri', 'orig.mgz')
                         self.tkr = transform.ctx2tkr(self.subject, coord=[self.lh_best_vertex_coord,self.rh_best_vertex_coord])
                         self.tkr_ = {'lh': self.tkr[0], 'rh': self.tkr[1]}
-                        self.lh_fid=opj(self.fs_dir, self.subject, 'surf', "lh.fiducial")
-                        self.rh_fid=opj(self.fs_dir, self.subject, 'surf', "rh.fiducial")
                         os.system(f"freeview -v {self.orig} -f {self.lh_fid}:edgecolor=green {self.rh_fid}:edgecolor=green  --ras {round(self.tkr_['lh'][0],2)} {round(self.tkr_['lh'][1],2)} {round(self.tkr_['lh'][2],2)} tkreg 2>/dev/null")
                     else:
                         utils.verbose("Verification with FreeView disabled", self.verbose)
@@ -2189,6 +2318,23 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
     def return_criteria(self):
         return self.criteria
 
+    def make_prf_plot(
+        self,
+        hemi="lh",
+        **kwargs):
+
+        min_index = getattr(self, f"{hemi}_best_vertex")
+
+        # plot pRF and timecourse + prediction of ses-1 paradigm
+        _,_,_,_ = self.SI_.plot_vox(
+            vox_nr=min_index,
+            model=self.model,
+            stage="iter",
+            title="pars",
+            edge_color=None,
+            make_figure=True,
+            **kwargs)
+
     def make_srf_plot(
         self,
         hemi="lh",
@@ -2200,9 +2346,6 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
         size_act        = getattr(self, f"{hemi}_stim_size_activation")
         stim_suppr_ix   = getattr(self, f"{hemi}_stim_ix_suppression")
         stim_act_ix     = getattr(self, f"{hemi}_stim_ix_activation")
-
-        if hemi == "rh":
-            min_index+=self.surface.lh_surf_data[0].shape[0]
 
         # initialize figure
         fig = plt.figure(constrained_layout=True, figsize=(24,5))
@@ -2222,7 +2365,7 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
             axs=[gs00[0],gs00[1]])
         
         # plot SRFs for suppression/activation
-        tc_sizes = [utils.select_from_df(self.df_sr, expression=f"type = {ii}").iloc[:,min_index] for ii in ["act","norm"]]
+        tc_sizes = [utils.select_from_df(self.srfs_best_vertices, expression=f"type = {ii}")[str(min_index)].values for ii in ["act","norm"]]
         sizes = np.unique(self.df_sr.reset_index().sizes.values)
         plotting.LazyPlot(
             tc_sizes,
@@ -2238,6 +2381,9 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
                 "color": ["#1B9E77","#D95F02"]},    
             # x_lim=x_lim,
             add_hline=0)
+
+        if hemi == "rh":
+            min_index+=self.surface.lh_surf_data[0].shape[0]
 
         # plot the actual stimuli to use
         for ix,(dt,vx) in enumerate(zip(
