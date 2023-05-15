@@ -473,6 +473,15 @@ Example:
         else:
             exclude = "roi-"
 
+    elif space == "fsaverage":
+
+        # get FSaverage vertices
+        n_verts = []
+        for i in ['lh', 'rh']:
+            surf = opj(os.environ.get('SUBJECTS_DIR'), "fsaverage", 'surf', f'{i}.white')
+            verts = nb.freesurfer.io.read_geometry(surf)[0].shape[0]
+            n_verts.append(verts)
+
     else:
         exclude = None
 
