@@ -497,6 +497,10 @@ Arguments:
                         gressive than '--ow', which only removes specific files.
   --force_exec      force the execution of FreeSurfer even though directory exists already
   --fv              use FreeView to draw sinus mask (spinoza_sagittalsinus) 
+  --fsaverage       overwrite PYBEST_SPACE-variable and use FSAverage for denoising/fitting (see your 
+                    setup file)
+  --fsnative        overwrite PYBEST_SPACE-variable and use FSNative for denoising/fitting (see your 
+                    setup file)     
   --fsl             use FSLeyes to draw sinus mask (spinoza_sagittalsinus) 
   --gallery         save all cortex-objects from 'optimal.TargetVertex()' in a figure. If pRFs and SRFs
                     are included, this will yield in a 4x5 grid with brainmaps of various kinds that 
@@ -1521,6 +1525,7 @@ if [[ $? -eq 0 ]]; then
     ${merge_flag} \
     ${jobs_flag} \
     ${kwargs_file} \
+    ${space_flag} \
     ${PRF_INPUT} ${DIR_DATA_DERIV}/prf ${PNG_DIR}
 
   if [[ $? -ne 0 ]]; then

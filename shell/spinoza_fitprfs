@@ -54,6 +54,8 @@ Options:
   -j <n_jobs>     number of jobs to parallellize over; default is 10
   --bgfs          use L-BGFS minimization for both the Gaussian as well as the extended model. Use 
                   the '-x'flag if you want different minimizers for both stages   
+  --fsaverage     overwrite PYBEST_SPACE-variable and use FSAverage for fitting (see your setup file)
+  --fsnative      overwrite PYBEST_SPACE-variable and use FSNative for fitting (see your setup file)                  
   --grid          only run grid fit, skip iterative fit
   --hrf           fit the HRF during pRF-fitting. See 'call_prf' for more information
   --local         run locally even though we have SGE available.
@@ -134,6 +136,7 @@ jobs_flag=""
 model="gauss"
 n_jobs=5
 kwargs_file=""
+use_space=${PYBEST_SPACE}
 while getopts :-:los:n:m:t:x:c:v:j:k: argument
 do
   case ${argument} in
@@ -205,7 +208,13 @@ do
         merge_ses)
           merge_flag="--merge_ses"
           ses_id="avg"
-          ;;                      
+          ;;        
+        fsaverage)
+          use_space="fsaverage"
+          ;; 
+        fsnative)
+          use_space="fsnative"
+          ;;                           
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}"
@@ -521,7 +530,7 @@ for subID in ${search}; do
             -o ${prf_dir} \
             -i ${full_input} \
             -p ${use_pngdir} \
-            -u ${PYBEST_SPACE} \
+            -u ${use_space} \
             --${use_model} \
             --n_jobs ${n_jobs} \
             ${kwargs_file} \
