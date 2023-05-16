@@ -1585,7 +1585,6 @@ class ExtendedModel():
             self.grid_bounds    = [tuple(self.settings['bounds']['prf_ampl']),
                                    tuple(self.settings['bounds']['neur_bsl'])]
         
-        print(self.grid_bounds)
         # grid fit
         if not self.skip_grid:
 
@@ -2046,10 +2045,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
             bounds += [
                 tuple(self.settings['bounds']['surr_ampl']),    # surround amplitude
                 tuple(self.settings['bounds']['surr_size'])     # surround size
-            ]
-
-        else:
-            raise ValueError(f"Unrecognized model '{model}'")               
+            ]              
 
         if self.fit_hrf:
             bounds.append(tuple(self.settings["bounds"]['hrf_deriv']))      # HRF time derivative
