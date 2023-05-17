@@ -97,6 +97,7 @@ srf_file=0
 FULL_OW=0
 gallery_flag=""
 selection=""
+open_with=""
 while getopts :-:fos:v:n:m:t: argument
 do
   case ${argument} in
@@ -148,7 +149,10 @@ do
           ;;      
         manual)
           selection="--manual"
-          ;;                                                    
+          ;;     
+        ctx)
+          open_with="--ctx"
+          ;;                                                          
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}"
@@ -326,7 +330,8 @@ for subID in ${search}; do
       ${srf_flag} \
       ${srf_file_flag} \
       ${gallery_flag} \
-      ${selection}
+      ${selection} \
+      ${open_with}
 
     if [[ $? != 0 ]]; then
       echo
