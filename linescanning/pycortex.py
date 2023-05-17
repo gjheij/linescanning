@@ -1,7 +1,8 @@
 import cortex
 import imageio
 from linescanning import (
-    image, 
+    image,
+    prf, 
     utils,
     plotting)
 import nibabel as nb
@@ -479,10 +480,34 @@ class SavePycortexViews():
         self.view[self.data_name]['camera.Save image.Height'] = self.size[1]
 
         if self.viewer:
-            self.js_handle = cortex.webgl.show(self.data_dict)
+            self.js_handle = cortex.webgl.show(self.data_dict, pickerfun=self.clicker_function)
+            # self.js_handle = cortex.webgl.show(self.data_dict)
             self.params_to_save = list(self.data_dict.keys())
             self.set_view()
-    
+
+    def clicker_function(
+        self,
+        voxel,
+        hemi,
+        vertex, 
+        prf_file=None,
+        model=None):
+
+        #translate javascript indeing to python
+        lctm, rctm = cortex.utils.get_ctmmap(self.subject, method='mg2', level=9)
+        if hemi == 'left':
+            index = lctm[int(vertex)]
+        else:
+            index = rctm[int(vertex)]
+        
+        print(f"vertex ID: {index} (hemi = {hemi})")
+        # if isinstance(prf_file, (pd.DataFrame,str,dict,np.ndarray)):
+        #     self.obj_ = prf.pRFmodelFitting(
+        #         prf_file,
+
+        #     )
+
+        return
     def to_static(self, *args, **kwargs):
         filename = f"{self.base_name}_desc-static"
         cortex.webgl.make_static(
