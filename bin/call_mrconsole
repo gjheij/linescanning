@@ -105,8 +105,9 @@ Usage:
         prf_dir = opj(deriv, 'prf', subject, f'ses-{prf_ses}')
 
     # this scan object will do everyting
-    scanner.Scanner(optimal.target_vertex(subject,
-                                          out=line_fn),
+    scanner.Scanner(optimal.TargetVertex(subject,
+                                          out=line_fn,
+                                          deriv=deriv),
                     fs_dir=fs_dir, new_anat=anat2, fs2ses=affine, hemi=hemi,ses=new_ses)
 
 if __name__ == "__main__":

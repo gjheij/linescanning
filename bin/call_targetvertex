@@ -46,7 +46,9 @@ Parameters
     --gallery       save all cortex-objects from 'optimal.TargetVertex()' in a figure. If pRFs and 
                     SRFs are included, this will yield in a 4x5 grid with brainmaps of various 
                     kinds that were used in the selection process of the target vertex.
-    --manual        use manual selection of vertices using Freeview
+    --manual        use manual selection of vertices using Freeview/pycortex
+    --ctx           open pycortex viewer for vertex selection if '--manual' is specified. Default 
+                    is FreeView because it also open a volumetric view
 
 Returns
 ----------
@@ -90,9 +92,10 @@ Notes
     srf_file    = None
     gallery     = False
     selection   = None
+    open_with   = "fs"
 
     try:
-        opts = getopt.getopt(argv,"fuhd:s:t:r:o:b:v:m:n:p:",["help", "deriv=", "sub=", "roi=", "out=", "vert=", "use-prf", "no-freeview", "prf_file=", "use-epi", "srf", "srf_file=", "gallery", "manual"])[0]
+        opts = getopt.getopt(argv,"fuhd:s:t:r:o:b:v:m:n:p:",["help", "deriv=", "sub=", "roi=", "out=", "vert=", "use-prf", "no-freeview", "prf_file=", "use-epi", "srf", "srf_file=", "gallery", "manual", "ctx"])[0]
     except getopt.GetoptError:
         print("ERROR IN ARGUMENT HANDLING!")
         print(main.__doc__)
@@ -128,6 +131,8 @@ Notes
             gallery = True
         elif opt in ("--manual"):
             selection = "manual"
+        elif opt in ("--ctx"):
+            open_with = "ctx"            
 
     if len(argv) < 1:
         print("\nNEED AT LEAST A SUBJECT ID")
@@ -154,7 +159,8 @@ Notes
         webshow=open_fv,
         srf=srf_flag,
         srf_file=srf_file,
-        selection=selection)
+        selection=selection,
+        open_with=open_with)
 
     if gallery:
 
