@@ -18,6 +18,7 @@ import os
 import pandas as pd
 from scipy import stats
 from typing import Union
+import time
 import warnings
 
 warnings.filterwarnings('ignore')
@@ -974,6 +975,8 @@ class CalcBestVertex():
             
     def apply_thresholds(
         self, 
+        x_thresh=None,
+        y_thresh=None,
         r2_thresh=None, 
         size_thresh=None, 
         ecc_thresh=None, 
@@ -995,6 +998,10 @@ class CalcBestVertex():
 
         Parameters
         ----------
+        x_thres: int, float, optional
+            refers to `x-position` (left-to-right vertical meridian). Usually between -10 and 10. Defaults to 0. A list of values for left and right hemisphere should be given. For the right hemisphere, thresholds are treated as `smaller than` (left hemifield); for left hemisphere, thresholds denote `greater than` (right hemifield). Used to push the vertex away from the fovea
+        y_thres: int, float, optional
+            refers to y-position in visual space. Usually between -5 and 5 (defaults to the minimum of `y`). Threshold is specified as 'greater than <value>'                
         r2_thres: int, float, optional
             refers to amount of variance explained. Usually between 0 and 1 (defaults to the minimum `r2`). Threshold is specified as 'greater than <value>'
         size_thres: int, float, optional
@@ -1043,6 +1050,7 @@ class CalcBestVertex():
         if hasattr(self, 'prf'):
             
             # set thresholds
+            self.y_thresh       = y_thresh or self.prf.y.r2.min()
             self.r2_thresh      = r2_thresh or self.prf.df_prf.r2.min()
             self.size_thresh    = size_thresh or self.prf.df_prf.prf_size.max()
             self.ecc_thresh     = ecc_thresh or self.prf.df_prf.ecc.max()
@@ -1055,6 +1063,14 @@ class CalcBestVertex():
             rh_polar = self.polar_array[self.surface.lh_surf_data[0].shape[0]:] >= self.polar_thresh[1]
             polar = np.concatenate((lh_polar,rh_polar))
 
+            # parse out polar angle
+            self.x_array    = self.prf.df_prf.x.values
+            self.x_thresh   = x_thresh or [0,0]
+
+            lh_x = self.x_array[:self.surface.lh_surf_data[0].shape[0]] >= self.x_thresh[0]
+            rh_x = self.x_array[self.surface.lh_surf_data[0].shape[0]:] <= self.x_thresh[1]
+            x_pos = np.concatenate((lh_x,rh_x))            
+
             # compile mask
             df = self.prf.df_prf.copy()
             self.prf_mask = np.zeros(df.shape[0], dtype=bool)
@@ -1062,7 +1078,8 @@ class CalcBestVertex():
             # check if ecc was list or not
             prf_idc = list(
                 df.loc[
-                    (df.r2 >= self.r2_thresh)
+                    (df.y >= self.y_thresh)
+                    & (df.r2 >= self.r2_thresh)
                     & (df.ecc >= self.ecc_thresh[0])
                     & (df.ecc <= self.ecc_thresh[1])
                     & (df.prf_size <= self.size_thresh)
@@ -1070,8 +1087,10 @@ class CalcBestVertex():
 
             # sort out polar angle
             self.prf_mask[prf_idc] = True
-            self.prf_mask = (self.prf_mask * polar)
-        
+            self.prf_mask = (self.prf_mask * polar * x_pos)
+
+            utils.verbose(f" x-position:    >={self.x_thresh[0]}/<={self.x_thresh[1]}", True)
+            utils.verbose(f" y-position:    >= {round(self.y_thresh,2)}", True)
             utils.verbose(f" pRF size:      <= {round(self.size_thresh,2)}", True)
             utils.verbose(f" eccentricity:  {round(self.ecc_thresh[0],4)}-{round(self.ecc_thresh[1],4)}", True)
             utils.verbose(f" variance (r2): >= {round(self.r2_thresh,4)}", True)
@@ -1268,7 +1287,11 @@ class CalcBestVertex():
 
                     self.df_sr = pd.concat([self.sr_fill,self.sr_hole])
                     self.df_sr["subject"] = self.subject
-                    self.df_sr = self.df_sr.set_index(["subject","type","sizes","stim_nr"])
+
+                    try:
+                        self.df_sr = self.df_sr.set_index(["subject","type","sizes","stim_nr"])
+                    except:
+                        pass
 
                 else:
                     if isinstance(srf_file, str):
@@ -1279,7 +1302,11 @@ class CalcBestVertex():
                             self.df_sr = pd.read_csv(srf_file)
                         else:
                             raise ValueError(f"File must end with 'pkl' (preferred) or 'csv', not '{srf_file}'")
-                        self.df_sr = self.df_sr.set_index(["subject","type","sizes","stim_nr"])
+                        
+                        try:
+                            self.df_sr = self.df_sr.set_index(["subject","type","sizes","stim_nr"])
+                        except:
+                            pass
                     else:
                         raise TypeError(f"SRF-file must be a string, not '{srf_file}' of type {type(srf_file)}")
                     
@@ -1402,7 +1429,7 @@ class CalcBestVertex():
         if hasattr(self, "final_suppr_v"):
             self.data_dict["final_suppr"] = self.final_suppr_v
 
-    def best_vertex(self):
+    def best_vertex(self, open_with="ctx"):
 
         """Fetch best vertex given pRF-properties and minimal curvature"""
 
@@ -1530,21 +1557,30 @@ class CalcBestVertex():
             if self.selection == "manual":
                 
                 utils.verbose(f"Selection method is MANUAL", self.verbose)
-                self.lh_final_mask = self.joint_mask[:self.surface.lh_surf_data[0].shape[0]]
-                self.rh_final_mask = self.joint_mask[self.surface.lh_surf_data[0].shape[0]:]                
 
-                # write joint_mask to label file that FreeSurfer understands
-                self.label_files = []
-                output_dir = os.path.dirname(self.lh_fid)
-                for hemi in ["lh", "rh"]:
-                    out_f = opj(output_dir, f"{hemi}.finalmask")
-                    self.label_files.append(out_f)
-                    nb.freesurfer.io.write_morph_data(out_f, getattr(self, f"{hemi}_final_mask"))
+                self.webshow = False
+                if open_with == "ctx":
+                    self.open_pycortex(
+                        radius=240,
+                        pivot=0)
 
-                cmd = f"freeview -v {self.orig} -f {self.lh_fid}:edgecolor=green:overlay={self.label_files[0]} {self.rh_fid}:edgecolor=green:overlay={self.label_files[1]} 2>/dev/null"
+                    # time.sleep(50)
+                else:
+                    self.lh_final_mask = self.joint_mask[:self.surface.lh_surf_data[0].shape[0]]
+                    self.rh_final_mask = self.joint_mask[self.surface.lh_surf_data[0].shape[0]:]                
 
-                os.system(cmd)
+                    # write joint_mask to label file that FreeSurfer understands
+                    self.label_files = []
+                    output_dir = os.path.dirname(self.lh_fid)
+                    for hemi in ["lh", "rh"]:
+                        out_f = opj(output_dir, f"{hemi}.finalmask")
+                        self.label_files.append(out_f)
+                        nb.freesurfer.io.write_morph_data(out_f, getattr(self, f"{hemi}_final_mask"))
 
+                    cmd = f"freeview -v {self.orig} -f {self.lh_fid}:edgecolor=green:overlay={self.label_files[0]} {self.rh_fid}:edgecolor=green:overlay={self.label_files[1]} {opj(output_dir, 'lh.inflated')}:edgecolor=blue:overlay={self.label_files[0]} {opj(output_dir, 'rh.inflated')}:edgecolor=blue:overlay={self.label_files[1]} 2>/dev/null &"
+
+                    os.system(cmd)
+                
                 # fetch vertices
                 self.srfs_best_vertices = []
                 for tag,hemi,surf in zip(
@@ -1552,7 +1588,20 @@ class CalcBestVertex():
                     ["lh","rh"],
                     [self.surface.lh_surf_data,self.surface.rh_surf_data]):
 
-                    min_index = int(input(f"vertex {tag.upper()} hemi: "))
+                    while True:
+                        try:
+                            # check if range is specified
+                            min_index = input(f"vertex {tag.upper()} hemi: ")
+                            try:
+                                min_index = int(min_index)
+                                break
+                            except ValueError:
+                                print(" Please enter a number")
+                                continue
+                        except ValueError:
+                            print(" Please enter a number")
+                            continue
+
                     min_vertex = surf[0][min_index]; setattr(self, f'{hemi}_best_vertex_coord', min_vertex)
                     min_vert_mask = (surf[1] == min_vertex).sum(0); setattr(self, f'{hemi}_best_vert_mask', min_vert_mask)
                     setattr(self, f'{hemi}_best_vertex', min_index) 
@@ -1560,7 +1609,7 @@ class CalcBestVertex():
                     # set bunch of attributes related to SRFs
                     if self.srf:
                         
-                        if hemi == "right":
+                        if tag == "right":
                             min_index += self.surface.lh_surf_data[0].shape[0]
                             
                         srf_idx = utils.select_from_df(self.df_sr, expression="ribbon", indices=[min_index])
@@ -1571,15 +1620,33 @@ class CalcBestVertex():
                         self.srfs_best_vertices.append(srf_idx)
 
                         # get maximum suppression
-                        setattr(self, f"{hemi}_max_suppression", df_suppr[str(min_index)].min())
+                        try:
+                            suppr_val = df_suppr[str(min_index)].min()
+                        except:
+                            suppr_val = df_suppr[min_index].min()
+
+                        setattr(self, f"{hemi}_max_suppression", suppr_val)
 
                         # get max positive response of this vertex
-                        setattr(self, f"{hemi}_max_activation", df_act[str(min_index)].max())
+                        try:
+                            act_val = df_act[str(min_index)].max()
+                        except:
+                            act_val = df_act[min_index].max()
+
+                        setattr(self, f"{hemi}_max_activation", act_val)
                         
-                        stim_suppr_ix = df_suppr[str(min_index)].argmin()
+                        try:
+                            stim_suppr_ix = df_suppr[str(min_index)].argmin()
+                        except:
+                            stim_suppr_ix = df_suppr[min_index].argmin()
+
                         setattr(self, f"{hemi}_stim_ix_suppression", stim_suppr_ix)
 
-                        stim_act_ix = df_act[str(min_index)].argmax()
+                        try:
+                            stim_act_ix = df_act[str(min_index)].argmax()
+                        except:
+                            stim_act_ix = df_act[min_index].argmax()
+
                         setattr(self, f"{hemi}_stim_ix_activation", stim_act_ix)
 
                         # find associated stimulus sizes
@@ -1748,6 +1815,8 @@ class CalcBestVertex():
             if hasattr(self, "data_dict"):
                 if isinstance(self.data_dict, dict):
                     self.data_dict["targets"] = self.lr_best_vertex_map_v
+            else:
+                self.data_dict = {"targets": self.lr_best_vertex_map_v}
 
         if write_files == True:
 
@@ -1917,6 +1986,8 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
         Select vertices based on size-response function (SRF) characteristics
     selection: str, optional
         Method of selection the best vertex. By default `None`, entailing we'll go for vertex surviving all criteria and has minimum curvature. Can also be 'manual', meaning we'll open FreeView, allowing you to select a vertex manually
+    open_with: str, optional
+        if `selection="manual"`, we can either open a viewer with FreeView (defualt, as it open a volumetric view too), but can also be `ctx` to open a Pycortex webgl instance
         
     Returns
     ---------
@@ -1953,7 +2024,8 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
         vert=None,
         srf=False,
         verbose=True,
-        selection=None):
+        selection=None,
+        open_with="fs"):
 
         self.subject = subject
         self.deriv = deriv
@@ -1969,6 +2041,7 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
         self.srf = srf
         self.verbose = verbose
         self.selection = selection
+        self.open_with = open_with
 
         # check if we can read DIR_DATA_DERIV if necessary
         if not self.deriv:
@@ -2067,10 +2140,31 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
                     setattr(self, f"{ii}_val", 0)
 
                 self.manual_vertices = False
-                if not isinstance(self.vert, np.ndarray):
+                if not isinstance(self.vert, (np.ndarray, list)):
                     utils.verbose("Set thresholds (leave empty and press [ENTER] to not use a particular property):", self.verbose)
                     # get user input with set_threshold > included the possibility to have only pRF or structure only!
                     if hasattr(self, 'prf'):
+
+                        # polar angle left hemi
+                        self.x_val_lh = set_threshold(
+                            name="x-position (lh)", 
+                            borders=(0,10), 
+                            set_default=0)
+                        
+                        # polar angle left hemi
+                        self.x_val_rh = set_threshold(
+                            name="x-position (rh)", 
+                            borders=(-10,0), 
+                            set_default=0)
+
+                        # combine polar
+                        self.x_val = [self.x_val_lh,self.x_val_rh]
+
+                        # y-position
+                        self.y_val = set_threshold(
+                            name="y-position", 
+                            borders=(-10,10), 
+                            set_default=round(self.prf.df_prf.y.min(),2))            
 
                         # pRF size
                         self.size_val = set_threshold(
@@ -2114,7 +2208,7 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
                                 setattr(self, f"{col}_val", thr)
 
                     else:
-                        for ii in ["size","ecc","r2","pol"]:
+                        for ii in ["x","y","size","ecc","r2","pol"]:
                             setattr(self, f"{ii}_val", 0)
 
                     if hasattr(self, 'surface'):
@@ -2136,8 +2230,8 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
                                 set_default=(round(self.surface.surf_sm.min()),round(self.surface.surf_sm.max(),2)))                                
 
                     else:
-                        self.thick_val   = 0
-                        self.depth_val   = 0
+                        self.thick_val = 0
+                        self.depth_val = 0
 
                     if hasattr(self, 'epi'):
                         self.epi_val   = set_threshold(name="EPI value (%)", set_default=10)
@@ -2146,6 +2240,8 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
 
                     # Create mask using selected criteria
                     self.apply_thresholds(
+                        x_thresh=self.x_val,
+                        y_thresh=self.y_val,
                         ecc_thresh=self.ecc_val,
                         size_thresh=self.size_val,
                         r2_thresh=self.r2_val,
@@ -2162,7 +2258,7 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
                         srf_file=self.srf_file)
 
                     # Pick out best vertex
-                    self.best_vertex()
+                    self.best_vertex(open_with=self.open_with)
                     
                 else:
                     self.manual_vertices = True
@@ -2171,6 +2267,11 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
                         setattr(self, f"{r}_best_vertex", self.vert[i])
                         setattr(self, f"{r}_best_vertex_coord", getattr(self.surface, f'{r}_surf_data')[0][self.vert[i]])
                         setattr(self, f"{r}_best_vert_mask", (getattr(self.surface, f'{r}_surf_data')[1] == [self.vert[i]]).sum(0))
+
+                    self.data_dict = {}
+                    if hasattr(self.prf, "prf_data_dict"):
+                        for key,val in self.prf.prf_data_dict.items():
+                            self.data_dict[key] = val                        
 
                 # check if we found a vertex for both hemispheres; if not, go to criteria
                 if isinstance(self.lh_best_vert_mask, np.ndarray) and isinstance(self.rh_best_vert_mask, np.ndarray):
@@ -2195,8 +2296,12 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
                         if self.use_prf == True:
 
                             if not self.srf:
+                                # print parameters and make plot
                                 os.system(f"call_prfinfo -s {self.subject} -v {vertex} --{tag} --{self.model} -p {self.prf_file} --plot {v1_flag}")
                             else:
+                                # print parameters
+                                os.system(f"call_prfinfo -s {self.subject} -v {vertex} --{tag} --{self.model} -p {self.prf_file}")
+
                                 # compile output name for figures
                                 base = f"{self.subject}"
 
@@ -2218,8 +2323,8 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
                     self.vertex_to_map()
                     # self.smooth_vertexmap()
 
-                    if isinstance(vert,np.ndarray):
-                        webshow = False
+                    if isinstance(vert,(list,np.ndarray)):
+                        self.webshow = False
                 
                     if self.webshow:
                         self.tkr = transform.ctx2tkr(self.subject, coord=[self.lh_best_vertex_coord,self.rh_best_vertex_coord])
@@ -2234,7 +2339,7 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
                     if happy.lower() == 'y' or happy == 'yes':
                         utils.verbose(" Alrighty, continuing with these parameters", self.verbose)
 
-                        if not isinstance(vert, np.ndarray):
+                        if not isinstance(vert, (list,np.ndarray)):
                             self.write_dict = self.criteria
                         else:
                             self.write_dict = {}
@@ -2302,9 +2407,12 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
 
                 # we should have stimulus sizes if srf=True
                 if self.srf:
-                    self.dd_dict["stim_sizes"] = [np.array([getattr(self, f"{i}_stim_size_activation"), getattr(self, f"{i}_stim_size_suppression")]) for i in ["lh","rh"]]
+                    try:
+                        self.dd_dict["stim_sizes"] = [np.array([getattr(self, f"{i}_stim_size_activation"), getattr(self, f"{i}_stim_size_suppression")]) for i in ["lh","rh"]]
 
-                    self.dd_dict["stim_betas"] = [np.array([getattr(self, f"{i}_max_suppression"), getattr(self, f"{i}_max_activation")]) for i in ["lh","rh"]]                    
+                        self.dd_dict["stim_betas"] = [np.array([getattr(self, f"{i}_max_suppression"), getattr(self, f"{i}_max_activation")]) for i in ["lh","rh"]]                    
+                    except:
+                        pass
 
                 self.final_df = pd.DataFrame(self.dd_dict)
 
@@ -2354,9 +2462,14 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
         gs01 = subfigs[1].subplots(nrows=2)
         cols = ["#1B9E77","#D95F02"]
 
+        hemi_vert = int(min_index)
+        if hemi == "rh":
+            hemi_vert += self.surface.lh_surf_data[0].shape[0]
+
         # plot pRF and timecourse + prediction of ses-1 paradigm
+        # this stuff is indexed based on whole-brain vertex indices
         _,_,_,_ = self.SI_.plot_vox(
-            vox_nr=min_index,
+            vox_nr=hemi_vert,
             model=self.model,
             stage="iter",
             title="pars",
@@ -2364,8 +2477,14 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
             make_figure=True,
             axs=[gs00[0],gs00[1]])
         
-        # plot SRFs for suppression/activation
-        tc_sizes = [utils.select_from_df(self.srfs_best_vertices, expression=f"type = {ii}")[str(min_index)].values for ii in ["act","norm"]]
+        # check if columns are integers or not
+        if all([isinstance(i, int) for i in list(utils.select_from_df(self.srfs_best_vertices, expression=f"type = norm").columns)]):
+            idx = hemi_vert
+        else:
+            idx = str(hemi_vert)
+
+        # plot SRFs for suppression/activation; indexed based on hemi-specific indexing
+        tc_sizes = [utils.select_from_df(self.srfs_best_vertices, expression=f"type = {ii}")[idx].values for ii in ["act","norm"]]
         sizes = np.unique(self.df_sr.reset_index().sizes.values)
         plotting.LazyPlot(
             tc_sizes,
@@ -2382,16 +2501,13 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
             # x_lim=x_lim,
             add_hline=0)
 
-        if hemi == "rh":
-            min_index+=self.surface.lh_surf_data[0].shape[0]
-
         # plot the actual stimuli to use
         for ix,(dt,vx) in enumerate(zip(
             ["fill","hole"],
             [stim_act_ix,stim_suppr_ix])):
                             
             # get parameters
-            rf = pd.DataFrame(self.SR_.params_df.iloc[min_index]).T
+            rf = pd.DataFrame(self.SR_.params_df.iloc[hemi_vert]).T
 
             # make stimulus
             rf_stims,_ = self.SR_.make_stimuli(
