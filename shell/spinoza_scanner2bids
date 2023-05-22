@@ -424,8 +424,16 @@ for subID in ${search}; do
               if [[ ${run} -eq 0 ]]; then
                 run=${count}
               fi     
+
+              # fetch task
+              task_id=`get_id ${slice} task`
+              if [[ ! -z ${task} ]]; then
+                task_flag="_task-${task_id}"
+              else
+                task_flag=""
+              fi                   
             
-              bids_slice=${bids_dir}/anat/${base}_acq-1slice_run-${run}_T1w.nii.gz
+              bids_slice=${bids_dir}/anat/${base}${task_flag}_acq-1slice_run-${run}_T1w.nii.gz
               if [[ ! -f ${bids_slice} ]]; then
                 if [[ -f ${slice} ]]; then
                   echo "  renaming to $(basename ${bids_slice})"
