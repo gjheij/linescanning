@@ -224,7 +224,10 @@ class ParseEyetrackerFile(SetAttributes):
                 if self.use_bids:
                     bids_comps = utils.split_bids_components(edf_file)
                     for el in ['sub', 'run']:
-                        setattr(self, el, bids_comps[el])
+                        if el in list(bids_comps.keys()):
+                            setattr(self, el, bids_comps[el])
+                        else:
+                            self.run = i+1
                 else:
                     self.run = i+1
 
@@ -252,7 +255,10 @@ class ParseEyetrackerFile(SetAttributes):
             if self.use_bids:
                 bids_comps = utils.split_bids_components(edf_file)
                 for el in ['sub', 'run', 'ses']:
-                    setattr(self, el, bids_comps[el])
+                    if el in list(bids_comps.keys()):
+                        setattr(self, el, bids_comps[el])
+                    else:
+                        self.run = i+1
             else:
                 self.run = i+1
                 self.ses = None
@@ -806,7 +812,10 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
                 if self.use_bids:
                     bids_comps = utils.split_bids_components(onset_file)
                     for el in ['sub', 'run']:
-                        setattr(self, el, bids_comps[el])
+                        if el in list(bids_comps.keys()):
+                            setattr(self, el, bids_comps[el])
+                        else:
+                            self.run = run+1                
                 else:
                     self.run = run+1
 
@@ -847,7 +856,6 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
                     self.df_accuracy.append(self.get_accuracy(index=False))
                 except:
                     pass
-
 
             # concatemate df
             self.df_onsets = pd.concat(self.df_onsets).set_index(['subject', 'run', 'event_type'])
@@ -918,7 +926,7 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
             self.onset_times = np.vstack([self.onset_times, self.response_times])
 
             # make a condition column
-            self.response_condition = self.response_df['response'].values[...,np.newaxis]
+            self.response_condition = self.response_df['event_type'].values[...,np.newaxis]
 
             # stack it onto existing condition array
             self.condition = np.vstack([self.condition, self.response_condition])
@@ -1356,7 +1364,10 @@ class ParsePhysioFile():
                 if self.use_bids:
                     bids_comps = utils.split_bids_components(func)
                     for el in ['sub', 'run']:
-                        setattr(self, el, bids_comps[el])
+                        if el in list(bids_comps.keys()):
+                            setattr(self, el, bids_comps[el])
+                        else:
+                            self.run = run+1  
                 else:
                     self.run = run+1
 
@@ -1664,7 +1675,10 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                 if self.use_bids:
                     bids_comps = utils.split_bids_components(func)
                     for el in ['sub', 'run', 'ses']:
-                        setattr(self, el, bids_comps[el])
+                        if el in list(bids_comps.keys()):
+                            setattr(self, el, bids_comps[el])
+                        else:
+                            self.run = run_id+1        
                 else:
                     self.run = run_id+1
                     self.ses = None
