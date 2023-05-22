@@ -11,3 +11,5 @@ statsmodels
 nipype
 pybids
 niworkflows
+mkl
+mkl-service
