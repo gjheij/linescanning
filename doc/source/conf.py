@@ -206,7 +206,9 @@ MOCK_MODULES = [
     'nideconv',
     'niworkflows',
     'niworkflows.reports',
-    'shapely']
+    'shapely',
+    'mkl',
+    'mkl-service']
                 
 for mod_name in MOCK_MODULES:
     sys.modules[mod_name] = mock.Mock()
