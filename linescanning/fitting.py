@@ -370,10 +370,12 @@ class NideconvFitter():
             oversample_design_matrix=self.osf,
             **kwargs)
     
+    def add_event(self, *args, **kwargs):
+        self.model.add_event(*args, **kwargs)
+
     def define_events(self):
         
-        if self.verbose:
-            print(f"Selected '{self.basis_sets}'-basis sets")
+        utils.verbose(f"Selected '{self.basis_sets}'-basis sets", self.verbose)
 
         # define events
         self.cond = self.used_onsets.reset_index().event_type.unique()
@@ -381,8 +383,7 @@ class NideconvFitter():
 
         # add events to model
         for event in self.cond:
-            if self.verbose:
-                print(f"Adding event '{event}' to model")
+            utils.verbose(f"Adding event '{event}' to model", self.verbose)
             
             self.model.add_event(
                 str(event), 
@@ -395,8 +396,7 @@ class NideconvFitter():
 
     def fit(self):
 
-        if self.verbose:
-            print(f"Fitting with '{self.fit_type}' minimization")
+        utils.verbose(f"Fitting with '{self.fit_type}' minimization", self.verbose)
 
         if self.fit_type.lower() == "ridge":
             # raise NotImplementedError("Ridge regression doesn't work with 2D-data yet, use 'ols' instead")
@@ -431,8 +431,7 @@ class NideconvFitter():
         else:
             raise ValueError(f"Unrecognized minimizer '{self.fit_type}'; must be 'ols' or 'ridge'")
         
-        if self.verbose:
-            print("Done")
+        utils.verbose("Done", self.verbose)
 
     def plot_average_per_event(
         self, 
