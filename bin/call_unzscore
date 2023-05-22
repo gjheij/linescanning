@@ -5,7 +5,6 @@ import pickle
 import sys
 import getopt
 import numpy as np
-from nilearn.signal import _standardize
 opj = os.path.join
 
 def main(argv):
@@ -52,6 +51,7 @@ Example:
     space       = "fsnative"
     hemi_list   = ['L', 'R']
     pre         = True
+    skip_run_id = False
 
     try:
         opts = getopt.getopt(argv,"qf:o:s:n:t:h:p:",["fprep=", "lh", "rh", "out=", "sub=", "ses=", "task=", "space=", "hemi=", "post", "pre", "help"])[0]
@@ -84,7 +84,7 @@ Example:
         elif opt in ('--post'):
             pre = False
 
-    if len(argv) < 4:
+    if len(argv) < 2:
         print("NOT ENOUGH ARGUMENTS SPECIFIED")
         print(main.__doc__)
         sys.exit(1)
@@ -121,6 +121,9 @@ Example:
 
             # load data
             funcs = utils.get_file_from_substring(search_hemi, ffunc_dir, exclude="json")
+            if isinstance(funcs, str):
+                skip_run_id = True
+                funcs = [funcs]
 
             for func in funcs:
 
@@ -131,7 +134,11 @@ Example:
 
                 for id in ['task', 'run', 'space', 'hemi']:
                     if id in list(comps.keys()):
-                        final_output = final_output+f"_{id}-{comps[id]}"
+                        if id == "run":
+                            if not skip_run_id:
+                                final_output = final_output+f"_{id}-{comps[id]}"
+                        else:
+                            final_output = final_output+f"_{id}-{comps[id]}"
                 
                 # read in file
                 obj = dataset.Dataset(
@@ -166,9 +173,13 @@ Example:
             if not os.path.exists(output_dir):
                 os.makedirs(output_dir, exist_ok=True)
 
-            # load data
+            # load data; check if we can load with 'run' flag, otherwise we only have a single run
             full_search = search_hemi + ['run', 'denoised_bold']
-            funcs = utils.get_file_from_substring(full_search, denoised_dir, exclude="raw")
+            try:
+                funcs = utils.get_file_from_substring(full_search, denoised_dir, exclude="raw")
+            except:
+                funcs = utils.get_file_from_substring(search_hemi+['denoised_bold'], denoised_dir, exclude="raw")
+
             if isinstance(funcs, str):
                 funcs = [funcs]
 
@@ -178,7 +189,11 @@ Example:
             for func in funcs:
 
                 # read in file
-                obj = dataset.Dataset(func, use_bids=True, filter_strategy='raw', standardization='raw')
+                obj = dataset.Dataset(
+                    func, 
+                    use_bids=True, 
+                    filter_strategy='raw', 
+                    standardization='raw')
 
                 # get raw data
                 raw = obj.fetch_fmri(dtype='raw')
