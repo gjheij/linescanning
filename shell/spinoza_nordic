@@ -43,6 +43,7 @@ Arguments:
                 identifiers in your filenames, please run serially. This flag is inherited from 
                 'master', so calling it there will pass on the flag here.
   --mag         use magnitude only
+  --no_tsnr     skip tSNR maps before/after NORDIC
   <bids folder> parent directory containing the sub-xxx folders for functional data. Generally, 
                 this should be DIR_DATA_HOME
 
@@ -66,7 +67,7 @@ job="bash"
 smp=1
 SGE=0
 mag_only=0
-tsnr_flag=""
+tsnr_flag="--tsnr"
 while getopts :-:s:n: argument
 do
   case ${argument} in
@@ -75,8 +76,8 @@ do
         sge)
           SGE=1
           ;;   
-        tsnr)
-          tsnr_flag="--tsnr"
+        no_tsnr)
+          tsnr_flag=""
           ;;  
         mag)
           mag_only=1
