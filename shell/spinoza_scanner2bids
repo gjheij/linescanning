@@ -792,9 +792,11 @@ for subID in ${search}; do
 
                 fm_ct=`expr ${fm_ct} + ${fc}`
               done
-              
+            elif [[ `expr ${#funcs[@]} / ${#fmaps[@]}` -eq 1 ]]; then
+              # FUNC == FMAP
+              :
             else
-              echo "WARNING: got ${#funcs[@]} BOLD files and ${#fmaps[@]} FMAP files. I can only deal with 1 FMAP for all, an FMAP for all BOLD files, or `expr ${#funcs[@]} / ${#fmaps[@]}` FMAP files (an FMAP for every 2 BOLD files)"
+              echo "WARNING: got ${#funcs[@]} BOLD files and ${#fmaps[@]} FMAP files. I can only deal with 1 FMAP for all BOLD, an FMAP per BOLD, or `expr ${#funcs[@]} / ${#fmaps[@]}` FMAP files (an FMAP for every X BOLD files)"
             fi
           fi
           
