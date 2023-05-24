@@ -1655,6 +1655,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
         self.psc_nilearn                = psc_nilearn
         self.ica                        = ica
         self.keep_comps                 = keep_comps
+        self.lsprep_dir                 = None
         self.__dict__.update(kwargs)
 
         # sampling rate and nyquist freq
@@ -2358,6 +2359,7 @@ The data was then low-pass filtered using a Savitsky-Golay filter [removes high 
             verbose=self.verbose,
             summary_plot=self.report,
             melodic_plot=self.report,
+            zoom_freq=True,
             ribbon=tuple(self.gm_range),
             save_as=save_as,
             save_ext=self.save_ext
