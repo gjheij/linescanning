@@ -30,6 +30,8 @@ class aCompCor(Segmentations):
         Data with the format (voxels,timepoints) on which we need to perfom aCompCor
     run: int, optional
         Run identifier, by default None. Can be useful for filenames of certain outputs
+    task: int, optional
+        Task identifier, by default None. Can be useful for filenames of certain outputs        
     subject: str, optional
         Full subject identifier (e.g., 'sub-001'), by default None
     wm_voxels: list, optional
@@ -93,6 +95,7 @@ class aCompCor(Segmentations):
         self, 
         data, 
         run=None,
+        task=None,
         subject=None, 
         wm_voxels=None,
         csf_voxels=None,
@@ -114,6 +117,7 @@ class aCompCor(Segmentations):
         self.data               = data
         self.subject            = subject
         self.run                = run
+        self.task               = task
         self.wm_voxels          = wm_voxels
         self.csf_voxels         = csf_voxels
         self.n_components       = n_components
@@ -135,6 +139,7 @@ class aCompCor(Segmentations):
             super().__init__(
                 self.subject,
                 run=self.run,
+                task=self.task,
                 reference_slice=self.reference_slice,
                 target_session=self.trg_session,
                 foldover=self.foldover,
@@ -143,8 +148,7 @@ class aCompCor(Segmentations):
                 trafo_file=self.trafo_list,
                 **kwargs)
 
-        if self.verbose:
-            print(f" Using {self.n_components} components for aCompCor (WM/CSF separately)")
+        utils.verbose(f" Using {self.n_components} components for aCompCor (WM/CSF separately)", self.verbose)
 
         self.acompcor_components    = []
         self.elbows                 = []
@@ -167,8 +171,7 @@ class aCompCor(Segmentations):
                     self.kn     = KneeLocator(self.xx, self.pca.explained_variance_, curve='convex', direction='decreasing')
                     self.elbow_ = self.kn.knee
                     
-                    if self.verbose:
-                        print(f" Found {self.elbow_} component(s) in '{tissue}'-voxels with total explained variance of {round(sum(self.pca.explained_variance_ratio_[:self.elbow_]), 2)}%")
+                    utils.verbose(f" Found {self.elbow_} component(s) in '{tissue}'-voxels with total explained variance of {round(sum(self.pca.explained_variance_ratio_[:self.elbow_]), 2)}%", self.verbose)
 
                     self.pca_desc = f"""
 Timecourses from these voxels were extracted and fed into a PCA. These components were used to clean the data from respiration/cardiac frequencies. """
@@ -177,16 +180,14 @@ Timecourses from these voxels were extracted and fed into a PCA. These component
                     self.elbow_ = None
                     self.tissue_pca[tissue] = False
                     self.pca_but_timecourses[tissue] = True
-                    if self.verbose:
-                        print(f" PCA for '{tissue}' was unsuccessful. Using all un-PCA'd timecourses ({len(self.tissue_voxels)})")
+                    utils.verbose(f" PCA for '{tissue}' was unsuccessful. Using all un-PCA'd timecourses ({len(self.tissue_voxels)})", self.verbose)
                     self.pca_desc = f"""
 PCA with {self.n_components} was unsuccessful, so '{tissue}' timecourses were used to clean the data from respiration/cardiac 
 frequencies. """
 
             else:
 
-                if self.verbose:
-                    print(f" PCA for '{tissue}' was unsuccessful because no voxels were found")
+                utils.verbose(f" PCA for '{tissue}' was unsuccessful because no voxels were found", self.verbose)
                 self.pca_desc = f"""
 No voxels for '{tissue}' were found, so PCA was skipped. """
 
@@ -225,14 +226,11 @@ No voxels for '{tissue}' were found, so PCA was skipped. """
         if self.select_component == None:
             self.confs = self.acompcor_components
         else:
-            if verbose:
-                print(f" Only regressing out component {select_component}")
+            utils.verbose(f" Only regressing out component {select_component}", self.verbose)
             self.confs = self.acompcor_components[:, self.select_component-1]
 
         if self.filter_confs != None:
-            if self.verbose:
-                print(f" DCT high-pass filter on components [removes low frequencies <{filter_confs} Hz]")
-
+            utils.verbose(f" DCT high-pass filter on components [removes low frequencies <{filter_confs} Hz]", self.verbose)
             if self.confs.ndim >= 2:
                 self.confs, _ = highpass_dct(self.confs.T, self.filter_confs, TR=self.TR)
                 self.confs = self.confs.T
@@ -379,10 +377,12 @@ direction) were assigned to this tissue type. This limited the possibility for p
             ax=inset)
 
         if self.save_as != None:
-            if self.trg_session == None:
-                self.base_name = self.subject
-            else:
-                self.base_name = f"{self.subject}_ses-{self.trg_session}"
+            self.base_name = self.subject
+            if isinstance(self.trg_session, (str,float,int)):
+                self.base_name += f"_ses-{self.trg_session}"
+
+            if isinstance(self.task, str):
+                self.base_name += f"_task-{self.task}"         
 
             fname = opj(self.save_as, f"{self.base_name}_run-{self.run}_desc-acompcor.{self.save_ext}")
             fig.savefig(fname, bbox_inches='tight', dpi=300)
@@ -629,6 +629,8 @@ class ICA():
         self,
         data:Union[pd.DataFrame,np.ndarray],
         subject:str=None,
+        ses:int=None,
+        task:str=None,
         n_components:int=10,
         filter_confs:float=0.02,
         keep_comps:Union[int,list,tuple]=[0,1],
@@ -644,13 +646,14 @@ class ICA():
         **kwargs):
         
         self.subject        = subject
+        self.ses            = ses
+        self.task           = task
         self.data           = data
         self.n_components   = n_components
         self.filter_confs   = filter_confs
         self.verbose        = verbose
         self.TR             = TR
         self.save_as        = save_as
-        self.session        = session
         self.run            = run
         self.summary_plot   = summary_plot
         self.melodic_plot   = melodic_plot
@@ -659,9 +662,7 @@ class ICA():
         self.keep_comps     = keep_comps
         self.__dict__.update(kwargs)
         
-        self.__desc__ = f"""
-Sklearn's implementation of 'FastICA' was used to decompose the signal into {self.n_components} components.
- """
+        self.__desc__ = f"""Sklearn's implementation of 'FastICA' was used to decompose the signal into {self.n_components} components."""
 
         # sort out gm_voxels format
         if isinstance(self.gm_voxels, tuple):
@@ -683,8 +684,7 @@ Sklearn's implementation of 'FastICA' was used to decompose the signal into {sel
         self.I_ = np.dot(self.S_, self.A_.T)
 
         if self.filter_confs != None:
-            if self.verbose:
-                print(f" DCT high-pass filter on components [removes low frequencies <{self.filter_confs} Hz]")
+            utils.verbose(f" DCT high-pass filter on components [removes low frequencies <{self.filter_confs} Hz]", self.verbose)
 
             if self.S_.ndim >= 2:
                 self.S_filt, _ = highpass_dct(self.S_.T, self.filter_confs, TR=self.TR)
@@ -708,8 +708,7 @@ Sklearn's implementation of 'FastICA' was used to decompose the signal into {sel
             if len(self.keep_comps) > self.S_.shape[-1]:
                 raise ValueError(f"Length of 'keep_comps' is larger ({len(self.keep_comps)}) than number of components ({self.S_.shape[-1]})")
 
-            if self.verbose:
-                print(f" Keeping components: {self.keep_comps}")
+            utils.verbose(f" Keeping components: {self.keep_comps}", self.verbose)
 
             if self.filter_confs != None:
                 use_data = self.S_filt.copy()
@@ -721,13 +720,9 @@ Sklearn's implementation of 'FastICA' was used to decompose the signal into {sel
             if self.filter_confs == None:
                 raise ValueError("Not sure what to do. Please specify either list of components to keep (e.g., 'keep_comps=[1,2]' or specify a high-pass cut off frequency (e.g., 'filter_confs=0.18')")
 
-            self.__desc__ += f"""
-Resulting components from the ICA were high-pass filtered using discrete cosine sets (DCT) with a cut off frequency of {self.filter_confs} Hz.
-"""
+            self.__desc__ += f"""Resulting components from the ICA were high-pass filtered using discrete cosine sets (DCT) with a cut off frequency of {self.filter_confs} Hz."""
             # this is pretty hard core: regress out all high-passed components
-            if self.verbose:
-                print(f" Regressing out all high-passed components [>{self.filter_confs} Hz]")
-                
+            utils.verbose(f" Regressing out all high-passed components [>{self.filter_confs} Hz]", self.verbose)
             self.confounds = self.S_filt.copy()
 
         # outputs (timepoints, voxels) array (RegressOut is also usable, but this is easier in linescanning.dataset.Dataset)
@@ -746,7 +741,7 @@ Resulting components from the ICA were high-pass filtered using discrete cosine 
 
         # initiate figure
         fig = plt.figure(figsize=(24, 6))
-        gs = fig.add_gridspec(1,3, width_ratios=[30,30,100])
+        gs = fig.add_gridspec(ncols=3, width_ratios=[30,30,100])
         ax1 = fig.add_subplot(gs[0])
 
         # collect power spectra
@@ -821,12 +816,15 @@ Resulting components from the ICA were high-pass filtered using discrete cosine 
             **kwargs)
 
         if self.save_as != None:
-            if self.session == None:
-                self.base_name = self.subject
-            else:
-                self.base_name = f"{self.subject}_ses-{self.session}"
+            self.base_name = self.subject
+            if isinstance(self.ses, (str,float,int)):
+                self.base_name += f"_ses-{self.ses}"
+
+            if isinstance(self.task, str):
+                self.base_name += f"_task-{self.task}" 
 
             fname = opj(self.save_as, f"{self.base_name}_run-{self.run}_desc-ica.{self.save_ext}")
+            utils.verbose(f" Writing {fname}", self.verbose)
             fig.savefig(
                 fname, 
                 bbox_inches="tight", 
@@ -872,8 +870,8 @@ Resulting components from the ICA were high-pass filtered using discrete cosine 
             plot_comps = self.n_components
             
         # initiate figure
-        fig = plt.figure(figsize=(24, plot_comps*6))
-        subfigs = fig.subfigures(nrows=plot_comps, hspace=0.4)    
+        fig = plt.figure(figsize=(24, plot_comps*6), constrained_layout=True)
+        subfigs = fig.subfigures(nrows=plot_comps, hspace=0.4, wspace=0)    
 
         # get plotting defaults
         self.defaults = plotting.Defaults()
@@ -884,7 +882,7 @@ Resulting components from the ICA were high-pass filtered using discrete cosine 
             if zoom_freq:
                 axs = subfigs[comp].subplots(ncols=4, gridspec_kw={'width_ratios': [0.3,1,0.3,0.2], "wspace": 0.3})
             else:
-                axs = subfigs[comp].subplots(ncols=3, gridspec_kw={'width_ratios': [0.3,1,0.3]})
+                axs = subfigs[comp].subplots(ncols=3, gridspec_kw={'width_ratios': [0.3,1,0.3], 'wspace': 0.2})
 
             # axis for spatial profile
             ax_spatial = axs[0]
@@ -960,17 +958,20 @@ Resulting components from the ICA were high-pass filtered using discrete cosine 
 
             subfigs[comp].suptitle(f"component {comp+1}", fontsize=self.defaults.font_size*1.4, y=1.02)
 
-        fig.suptitle("Independent component analysis (ICA)", fontsize=self.defaults.font_size*1.8, y=1.012)
+        fig.suptitle("Independent component analysis (ICA)", fontsize=self.defaults.font_size*1.8, y=1.02)
 
         plt.tight_layout()
 
         if self.save_as != None:
-            if self.session == None:
-                self.base_name = self.subject
-            else:
-                self.base_name = f"{self.subject}_ses-{self.session}"
+            self.base_name = self.subject
+            if isinstance(self.ses, (str,float,int)):
+                self.base_name += f"_ses-{self.ses}"
+
+            if isinstance(self.task, str):
+                self.base_name += f"_task-{self.task}" 
 
             fname = opj(self.save_as, f"{self.base_name}_run-{self.run}_desc-melodic.{self.save_ext}")
+            utils.verbose(f" Writing {fname}", self.verbose)
             fig.savefig(
                 fname, 
                 bbox_inches="tight", 

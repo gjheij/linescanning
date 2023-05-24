@@ -20,7 +20,9 @@ class Segmentations:
     subject: str
         Subject ID as used in `SUBJECTS_DIR` and used throughout the pipeline
     run: int, optional
-        run number you'd like to have the segmentations for            
+        run number you'd like to have the segmentations for
+    task: str, optional
+        task identifier
     derivatives: str, optional
         Path to derivatives folder of the project. Generally should be the path specified with `DIR_DATA_DERIV` in the bash environment (if using https://github.com/gjheij/linescanning).
     trafo_file: str, optional
@@ -84,6 +86,7 @@ class Segmentations:
         self, 
         subject, 
         run=None,
+        task=None,
         project_home=None, 
         trafo_file=None, 
         reference_slice=None, 
@@ -98,6 +101,7 @@ class Segmentations:
 
         self.subject            = subject
         self.run                = run
+        self.task               = task
         self.project_home       = project_home
         self.trafo_file         = trafo_file
         self.reference_slice    = reference_slice
@@ -131,10 +135,14 @@ class Segmentations:
         self.cortex_dir = opj(self.deriv_dir, 'pycortex', self.subject)
 
         # check run
-        if self.run != None:
-            self.pickle_file = opj(self.nighres_target, f'{subject}_ses-{self.target_session}_run-{self.run}_desc-segmentations.pkl')
-        else:
-            self.pickle_file = opj(self.nighres_target, f'{subject}_ses-{self.target_session}_desc-segmentations.pkl')
+        self.base_name = f'{subject}_ses-{self.target_session}'
+        if isinstance(self.task, str):
+            self.base_name += f"_task-{self.task}"
+
+        if isinstance(self.run, str):
+            self.base_name += f"_run-{self.run}"
+
+        self.pickle_file = opj(self.nighres_target, f'{self.base_name}_desc-segmentations.pkl')
 
         if not os.path.exists(self.pickle_file) or self.overwrite:
 
@@ -350,8 +358,8 @@ class Segmentations:
             use_df = subj_df.copy()
             
         subject_list = list(use_df.keys())
-        nr_subjects         = len(subject_list)
-        nr_segmentations    = len(include)
+        nr_subjects = len(subject_list)
+        nr_segmentations = len(include)
 
         # if one subject is given, plot segmentations along x-axis (each segmentation a column)
         if len(subject_list) == 1:
