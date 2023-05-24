@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+
+source call_bashhelper
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_winsorize
+
+This scripts makes the call to ImageMath Windorize a little easier, as you'll only have to provide
+the input image
+
+Usage:
+  call_winsorize <input> <output>
+
+Arguments:
+  <input>   input image to be resample
+  <output>  output name of resampled image
+
+Example:
+  call_winsorize input.nii.gz output.nii.gz
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+if [[ $# -lt 1 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+in_file=`fetch_filepath ${1}`
+if [[ -z ${2} ]]; then
+  out_file=${in_file}
+else
+  out_file=`fetch_filepath ${2}`
+fi
+
+dim=`fslval ${in_file} dim0`
+ImageMath ${dim} ${out_file} TruncateImageIntensity ${in_file} 0.01 0.99 256
