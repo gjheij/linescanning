@@ -2336,16 +2336,17 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
                     #----------------------------------------------------------------------------------------------------------------
                     # Write out files if all is OK
                     happy = input("Happy with the position? (y/n): ")
-                    if happy.lower() == 'y' or happy == 'yes':
+                    if happy.lower() in ['y','yes']:
                         utils.verbose(" Alrighty, continuing with these parameters", self.verbose)
 
-                        if not isinstance(vert, (list,np.ndarray)):
-                            self.write_dict = self.criteria
-                        else:
+                        if self.manual_vertices:
                             self.write_dict = {}
                             self.write_dict["CreatedOn"] = str(datetime.now().strftime("%d/%m/%Y %H:%M:%S"))
                             self.write_dict["Method"] = "Manual"
-                        
+                        else:
+                            self.write_dict = self.criteria
+                            self.write_dict["Method"] = "Criteria+Manual"
+
                         # write vertices to dictionary
                         self.write_dict["Vertices"] = {}
                         for ii,hh in enumerate(["lh","rh"]):
@@ -2382,10 +2383,9 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
             if os.path.exists(self.prf_file):
                 self.prf_data = prf.read_par_file(self.prf_file)
 
+                fbase = self.subject
                 if self.model != None:
-                    fbase = f'{self.subject}_model-{self.model}'
-                else:
-                    fbase = self.subject
+                    fbase += f'_{self.model}'
 
                 self.prf_bestvertex = opj(self.cx_dir, self.subject, f'{fbase}_desc-best_vertices.csv')
 
