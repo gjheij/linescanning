@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+source call_bashhelper
+
 function Usage {
   cat <<USAGE
 
@@ -10,7 +12,9 @@ This script warps session 1 anatomy as per output for pymp2rage to the first mul
 a given session
 
 It will look for the following files:
-  - ses-1 anat: $PYMP2RAGE/<subject>/ses-1
+  - ses-1 anat: derivatives/<anat_stage>/<subject>/ses-1  (uses 'find_hierarchical_anatomy' func-
+                tion if certain stages are not present. Will look in 'denoised' first, then 'pymp-
+                2rage', then 'anat' in DIR_DATA_HOME)
   - ses-X anat: $DIR_DATA_HOME/<subject>/ses-X/anat/*motion1*
 
 And output a transformation matrix as:
@@ -43,7 +47,10 @@ if [[ ! -d $CTX/${1} ]]; then
   call_ctximport -s ${1}
 fi
 
-ses1=`find ${DIR_DATA_DERIV}/pymp2rage/${1}/ses-1 -type f -name "${1}*" -and -name "*T1w.nii.gz" 2>/dev/null`
+# find anatomy directory hierarchically
+INPUT_DIR=`find_hierarchical_anatomy 3`
+
+ses1=`find ${INPUT_DIR}/${1}/ses-1 -type f -name "${1}*" -and -name "*T1w.nii.gz" 2>/dev/null`
 ses2=`find ${DIR_DATA_HOME}/${1}/ses-${2}/anat -type f -name "${1}*" -and -name "*motion1*" -and -name "*.nii.gz" 2>/dev/null`
 
 if [[ -z ${ses1} ]] || [[ -z ${ses2} ]]; then
