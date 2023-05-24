@@ -1138,7 +1138,7 @@ if [[ $? -eq 0 ]]; then
     ${job} spinoza_brainextraction ${SUBJECT} ${SESSION} ${DIR_DATA_DERIV}/ants ${DIR_DATA_DERIV}/skullstripped ${DIR_DATA_DERIV}/manual_masks FSL
   elif [[ ${DO_STUFF} == "cat12" ]]; then
     # find anatomy directory hierarchically
-    INPUT_DIR=`find_hierarchical_anatomy 2`
+    INPUT_DIR=`find_hierarchical_anatomy 3`
 
     ${job} spinoza_brainextraction ${SUBJECT} ${SESSION} ${OW} ${PROC} ${INPUT_DIR} ${DIR_DATA_DERIV}/cat12 ${DIR_DATA_DERIV}/manual_masks cat12
   fi
@@ -1205,7 +1205,7 @@ if [[ $? -eq 0 ]]; then
   echo "[${module}] Use nighres to get skull and dura mask"
   
   # find anatomy directory hierarchically
-  INPUT_DIR=`find_hierarchical_anatomy 3`
+  INPUT_DIR=`find_hierarchical_anatomy 4`
 
   ${job} spinoza_dura \
     ${SUBJECT} \
@@ -1244,7 +1244,7 @@ if [[ $? -eq 0 ]]; then
   # DATA = AVERAGE    > arg1 = DIR_DATA_DERIV/ants
 
   # find anatomy directory hierarchically
-  INPUT_DIR=`find_hierarchical_anatomy 3`
+  INPUT_DIR=`find_hierarchical_anatomy 4`
   
   ${job} spinoza_sagittalsinus ${SUBJECT} ${SESSION} ${OW} ${INPUT_DIR} ${DIR_DATA_DERIV}/manual_masks ${DRAW_SAG}
 
@@ -1275,7 +1275,7 @@ if [[ $? -eq 0 ]]; then
   echo "[${module}] Combine all masks and apply to image"
 
   # find anatomy directory hierarchically
-  INPUT_DIR=`find_hierarchical_anatomy 3`
+  INPUT_DIR=`find_hierarchical_anatomy 4`
 
   ${job} spinoza_masking \
     ${SUBJECT} \
@@ -1310,7 +1310,7 @@ if [[ $? -eq 0 ]]; then
   echo "[${module}] Run FreeSurfer outside of fMRIprep"
 
   # find anatomy directory hierarchically
-  INPUT_DIR=`find_hierarchical_anatomy 4`
+  INPUT_DIR=`find_hierarchical_anatomy 5`
 
   # check for expert file
   if [ ! -z ${KWARGS} ]; then
@@ -1385,7 +1385,7 @@ if [[ $? -eq 0 ]]; then
   fi
 
   # find anatomy directory hierarchically; look for masked_? otherwise default to home folder
-  INPUT_DIR=`find_hierarchical_anatomy 5`
+  INPUT_DIR=`find_hierarchical_anatomy 6`
 
   ${job} spinoza_fmriprep \
     ${WARP_ONLY} \
