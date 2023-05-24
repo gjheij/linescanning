@@ -35,21 +35,25 @@ Usage:
   spinoza_nordic [options] <bids folder>
 
 Arguments:
-  -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
-  -n <session>        session ID (e.g., 1, 2, or none
-  --sge               submit individual NORDIC processes to the cluster for parallellization. If 
-                      you do this, it's advised to have identifiable 'run-' flags in your filenames
-                      so that the template file is not overwritten; this can cause problems. If you
-                      do not have run identifiers in your filenames, please run serially. This flag
-                      is inherited from 'master', so calling it there will pass on the flag here.
-  --mag               use magnitude only
-  <bids folder>       parent directory containing the sub-xxx folders for functional data. Can be 
-                      e.g., DIR_DATA_HOME or DIR_DATA_HOME/derivatives/pymp2rage
+  -s <subject>  subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
+  -n <session>  session ID (e.g., 1, 2, or none
+  --sge         submit individual NORDIC processes to the cluster for parallellization. If you do 
+                this, it's advised to have identifiable 'run-' flags in your filenames so that the 
+                template file is not overwritten; this can cause problems. If you do not have run 
+                identifiers in your filenames, please run serially. This flag is inherited from 
+                'master', so calling it there will pass on the flag here.
+  --mag         use magnitude only
+  <bids folder> parent directory containing the sub-xxx folders for functional data. Generally, 
+                this should be DIR_DATA_HOME
 
 Example:
   spinoza_nordic DIR_DATA_HOME                          # run for all subjects
   spinoza_nordic -s 001 -n 1 DIR_DATA_HOME              # run for specific subject/session
   spinoza_nordic --sge DIR_DATA_HOME                    # submit to cluster
+
+Notes:
+- By default, tSNR maps from before/after NORDIC clipped to 100 will be produced and stored in the
+  no_nordic folder as '*desc-tSNRpre_bold.nii.gz' and '*desc-tSNRpost_bold.nii.gz'
 
 ---------------------------------------------------------------------------------------------------
 
@@ -164,7 +168,7 @@ for subID in ${search}; do
       func_files=(`find ${func_folder} -type f -name "*.nii.gz" 2>/dev/null`)
       for ff in ${func_files[@]}; do
         dim=`fslval ${ff} dim0`
-        if [[ ${dim} -le 4 ]]; then
+        if [[ ${dim} -gt 3 ]]; then
           cp ${ff} ${tmp_folder} 2>/dev/null
           
           json_f=$(dirname ${ff})/$(basename ${ff} .nii.gz).json
