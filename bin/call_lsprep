@@ -1,0 +1,286 @@
+#!/usr/bin/env python
+#$ -q short.q
+#$ -cwd
+#$ -j Y
+#$ -V
+
+import ast
+import os
+import sys, getopt
+from bids import BIDSLayout
+from linescanning import (
+    utils,
+    dataset
+)
+import yaml
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_lsprep
+
+Basic preprocessing of all line-scanning data into a single h5-file. We'll try to find everything
+we can, including onsets, eyetracking, and physiology data (though the latter doesn't do much) for
+line-scanning.
+
+Parameters
+----------
+  -s|--subject      subject ID (full, including prefix)
+  -n|--session      session ID
+  -r|--run          limit processing to a certain run ID; default is to do all runs
+  -b|--bids_dir     project root folder; defaults to DIR_DATA_HOME
+  -o|--output_dir   output directory; defaults to DIR_DATA_DERIV/lsprep
+  -c|--n_comps      number of components for ICA/PCA
+  --ses_trafo       transformation matrix from ses-1 to line-scanning session (defaults to 'ses{ses}
+                    _rec-motion1' in DIR_DATA_DERIV/pycortex/<subject>/transforms)
+  --filter_pca      cut off frequency for PCA components; default is 0.2Hz (~breathing frequency)
+  --tr              set repetition time (default is 0.105)
+  --window          window length for low-pass filtering. Default is 7 TRs
+  --poly_order      order of polynomial for low-pass filtering. Default is 3
+  --shift           sometimes we have to move the slice relative to the saturation slabs to ensure
+                    that we're sampling from our intended line. This flag allows you to shift the
+                    slice with that same factor so that the white matter/CSF voxels are selected
+                    appropriately. Default is 0 (no shift)
+
+Options
+----------
+  -v|--verbose      turn on verbose
+  --ow|--overwrite  overwrite existing outputs
+  --no_report       do not create report (in case you already have one)
+  --no_acompcor     do not perform aCompCor even if you have all files
+  --ica             denoise with ICA rather than aCompCor
+  --force_acompcor  force acompcor execution even if you do not have all files. E.g., you have mul-
+                    tiple functional runs but only 1 anatomical reference image. That same anato-
+                    mical image is then used for all functional runs
+  --no_button       do not add button responses to onset dataframe (default is to do so)
+  --lp              do low-pass filtering ontop of any other filtering
+
+
+Example
+----------
+  call_lsprep -s sub-001 -n 1 --verbose
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    subject         = None
+    ses             = None
+    bids_dir        = None
+    run_id          = None
+    output_dir      = None
+    verbose         = False
+    ses_trafo       = None
+    run_trafos      = None
+    n_comps         = 5
+    filter_pca      = 0.2
+    filter_strat    = "hp"
+    poly_order      = 3
+    window_length   = 7    
+    make_report     = True
+    do_acompcor     = True
+    do_ica          = False
+    t_r             = 0.105
+    shift           = 0
+    force_acompcor  = False
+    button_press    = True
+    overwrite       = False
+
+    # long options without argument: https://stackoverflow.com/a/54170513
+    try:
+        opts = getopt.getopt(argv,"qgvh:b:d:n:r:o:f:l:i:s:c:",["help", "subject=", "bids_dir=", "session=", "ses_trafo=", "output_dir=", "filter_pca=", "run=", "no_report", "verbose", "no_acompcor", "tr=", "overwrite", "ow", "shift=","lp", "no_button", "n_comps=", "window=", "poly_order=", "ica"])[0]
+    except getopt.GetoptError:
+        print("ERROR while handling arguments.. Did you specify an 'illegal' argument..?")
+        print(main.__doc__)
+        sys.exit(2)
+
+    for opt, arg in opts: 
+        if opt in ("-h", "--help"):
+            print(main.__doc__)
+            sys.exit()
+        elif opt in ("-s", "--subject"):
+            subject = arg   
+        elif opt in ("-n", "--session"):
+            ses = arg                         
+        elif opt in ("-b", "--bids_dir"):
+            bids_dir = arg
+        elif opt in ("-o", "--output_dir"):
+            output_dir = arg
+        elif opt in ("-r", "--run"):
+            run_id = arg
+        elif opt in ("-c", "--n_comps"):
+            n_comps = int(arg)
+        elif opt in ("--ses_trafo"):
+            ses_trafo = arg
+        elif opt in ("--lowpass"):
+            filter_strat = "lp"
+        elif opt in ("--filter_pca"):
+            filter_pca = float(arg)
+        elif opt in ("-v", "--verbose"):
+            verbose = True
+        elif opt in ("--no_report"):
+            make_report = False
+        elif opt in ("--no_acompcor"):
+            do_acompcor = False
+        elif opt in ("--ica"):
+            do_ica = True
+        elif opt in ("--force_acompcor"):
+            force_acompcor = True
+        elif opt in ("--no_button"):
+            button_press = False
+        elif opt in ("--tr"):
+            t_r = float(arg)
+        elif opt in ("--lp"):
+            filter_strat = "lp"
+        elif opt in ("--window"):
+            window_length = int(arg)
+        elif opt in ("--poly_order"):
+            poly_order = int(arg)
+        elif opt in ("--shift"):
+            shift = arg
+            if "," in shift:
+                shift = [float(i) for i in utils.string2list(shift)]
+            else:
+                shift = float(shift)
+        elif opt in ("--ow", "--overwrite"):
+            overwrite = True
+
+    if len(argv) == 0:
+        print(main.__doc__)
+        sys.exit()
+
+    #---------------------------------------------------------------------------------------
+    # get some defaults 
+    base_path = subject
+    base_name = subject
+    if isinstance(ses, (str,int,float)):
+        base_path = opj(base_path, f"ses-{ses}")
+        base_name += f"_ses-{ses}"
+
+    if not isinstance(bids_dir, str):
+      bids_dir = opj(os.environ.get("DIR_DATA_HOME"), base_path)
+
+    if not isinstance(output_dir, str):
+      output_dir = opj(
+        os.environ.get("DIR_DATA_DERIV"), 
+        "lsprep", 
+        base_path)
+      
+    # make output dir
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
+
+    # get layout
+    layout = BIDSLayout(bids_dir, validate=False)
+    anats = layout.get(datatype="anat", return_type="file")
+    funcs = layout.get(datatype="func", return_type="file")
+    run_trafos = layout.get(datatype="anat", extension=['txt'], return_type="file")
+
+    #---------------------------------------------------------------------------------------
+    # check if we should do single runs or all runs at once for the output name of aCompCor figure
+    if run_id != None and run_id != "all":
+        func_search = ["task-", "bold.mat", f"run-{run_id}"]
+        eye_search  = ["task-", ".edf", f"run-{run_id}"]
+        tsv_search  = ["task-", ".tsv", f"run-{run_id}"]
+        anat_search = ["acq-1slice", ".nii.gz", f"run-{run_id}"]
+    else:
+        func_search = ["task-", "bold.mat"]
+        eye_search  = ["task-", ".edf"]
+        tsv_search  = ["task-", ".tsv"]
+        anat_search = ["acq-1slice", ".nii.gz"]
+
+    func_files  = utils.get_file_from_substring(func_search, funcs, exclude="acq-3DEPI", return_msg=None)
+    eye_files   = utils.get_file_from_substring(eye_search, funcs, return_msg=None)
+    tsv_files   = utils.get_file_from_substring(tsv_search, funcs, return_msg=None)
+    ref_slices  = utils.get_file_from_substring(anat_search, anats, exclude="._", return_msg=None)
+
+    # check which inputs are available, set to None otherwise
+    collect_dict = {}
+    for tag,val in zip(
+        ["func", "anat", "eye", "tsv", "run_trafos"],
+        [func_files, ref_slices, eye_files, tsv_files, run_trafos]):
+
+        # set everything to None by default, fill in if applicable
+        collect_dict[tag] = None
+        if isinstance(val, str):
+            val = [val]
+
+        if isinstance(val, list):
+            if len(val) > 0:
+                collect_dict[tag] = val
+
+    # match lists to exlude 3DEPI stuff
+    for ii in ["eye","tsv"]:
+        if isinstance(collect_dict[ii], list):
+            collect_dict[ii] = utils.match_lists_on(collect_dict["func"], collect_dict[ii], matcher=["task","run"])
+    
+    # set acompcor to false if ica == True
+    if do_ica:
+        do_acompcor = False
+
+    if do_acompcor:
+        do_ica = False
+        # check length of lists for aCompCor; need anatomical reference slice(s) and corresponding transformation(s)
+        if len(collect_dict["func"]) != len(collect_dict["anat"]):
+            if not force_acompcor:
+                print(*collect_dict["anat"], sep="\n")
+                raise ValueError(f"number of func files ({len(collect_dict['func'])}) does not match number of anatomical files ({len(collect_dict['anat'])})")
+            else:
+                utils.verbose(f"unequal number of FUNC files and ANAT files, but --force_acompcor was triggered, using same slice for all FUNCs", verbose)
+                collect_dict['anat'] = [collect_dict['anat'][0] for ii in range(len(collect_dict['func']))]
+
+        if not isinstance(collect_dict['anat'], list):
+            if len(collect_dict['anat']) != 0:
+                if len(collect_dict['anat']) != len(collect_dict['run_trafos']):
+                    if not force_acompcor:
+                        raise ValueError(f"number of transformation files ({len(collect_dict['run_trafos'])}) does not match number of anatomical files ({len(collect_dict['anat'])})")
+                    else:
+                        if isinstance(collect_dict['run_trafos'], list):
+                            if len(collect_dict['run_trafos']) > 0:
+                                collect_dict['run_trafos'] = [collect_dict['run_trafos'][0] for ii in range(len(collect_dict['anat']))]
+                            else:
+                                raise ValueError(f"List of run-to-run transformations is empty")
+                        else:
+                            raise ValueError(f"Could not find run-to-run transformation files. Please create .txt-files and store them in {opj(bids_dir, 'anat')}")
+            else:
+                utils.verbose(f"Could not find anat files, settings acompcor to False", True)
+                do_acompcor = False
+
+        if not isinstance(ses_trafo, str):
+            trafo_search = f"from-ses1_to-ses{ses}_rec-motion1"
+            trafo_dir = opj(os.environ.get("DIR_DATA_DERIV"), 'pycortex', subject, 'transforms')
+            ses_trafo = utils.get_file_from_substring(trafo_search, trafo_dir, exclude=f"._{subject}")
+
+        if isinstance(ses_trafo, list):
+            raise ValueError(f"Found mulitple instances for 'ses{ses}_rec-motion1' in '{trafo_dir}': {ses_trafo}")
+
+    # check if we have tsv_files
+    if not isinstance(collect_dict["tsv"], list):
+        button_press = False
+    
+    # initialize object
+    obj_ = dataset.Dataset(
+        collect_dict["func"],
+        tsv_file=collect_dict["tsv"],
+        edf_file=collect_dict["eye"],
+        ref_slice=collect_dict["anat"],
+        acompcor=do_acompcor,
+        ses1_2_ls=ses_trafo,
+        run_2_run=collect_dict["run_trafos"],
+        TR=t_r,
+        button=button_press,
+        ica=do_ica,
+        filter_strategy=filter_strat,
+        filter_confs=filter_pca,
+        n_components=n_comps,
+        report=make_report,
+        poly_order=poly_order,
+        window_size=window_length,
+        verbose=verbose)
+
+    # save h5 if needed; filename will be derived from inputs
+    obj_.to_hdf(overwrite=overwrite)
+
+if __name__ == "__main__":
+    main(sys.argv[1:])    
