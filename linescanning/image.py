@@ -696,7 +696,7 @@ def clip_image(img, thr=None, val=None, return_type="image", out_file=None):
     else:
         raise ValueError(f"Unknown option {return_type} specified; please use 'arr', 'nib', or 'file'")
 
-def tsnr(img,file_name=None):
+def tsnr(img,file_name=None, clip=None):
 
     """tsnr
 
@@ -709,6 +709,8 @@ def tsnr(img,file_name=None):
         input data; can either be a numpy array, a Nifti-image, or a string pointing to a nifti-file.
     file_name: str, optional
         path to tSNR-map file. Set to None by default
+    clip: int, float, optional
+        lip the values to tSNR. Default is None
 
     Returns
     ----------
@@ -737,10 +739,18 @@ def tsnr(img,file_name=None):
     mean_d = np.mean(data,axis=-1)
     std_d = np.std(data,axis=-1)
     tsnr = mean_d/std_d
-    tsnr[np.where(np.isinf(tsnr))] = np.nan
+    tsnr[np.where(np.isinf(tsnr))] = 0
+
+    if isinstance(clip, (int,float)):
+        tsnr[tsnr>clip] = 0
+
+    # calculate mean
     mean_tsnr = np.nanmean(np.ravel(tsnr))
 
-    if file_name:
-        nb.Nifti1Image(tsnr,affine=affine, header=hdr).to_filename(file_name)
+    if isinstance(file_name, str):
+        nb.Nifti1Image(
+            tsnr,
+            affine=affine, 
+            header=hdr).to_filename(file_name)
 
     return mean_tsnr

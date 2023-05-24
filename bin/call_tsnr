@@ -9,7 +9,8 @@ def main(argv):
 ---------------------------------------------------------------------------------------------------
 call_tsnr
 
-Calculate the tSNR of an input image and save the tSNR map to a given output file name
+Calculate the tSNR of an input image and save the tSNR map to a given output file name. 
+Output will automatically be clipped at 100.
 
 Args:
     <input file>        string-like path to file to calculate tSNR from
@@ -33,14 +34,17 @@ Example:
 
     # check if we got output file
     if len(argv) > 1:
-        fname = argv[1]
+        tsnr_map = argv[1]
     else:
-        fname=None
+        tsnr_map = None
 
     if os.path.exists(in_file):
-        mean_tsnr = tsnr(in_file, file_name=fname)
+        mean_tsnr = tsnr(
+            in_file, 
+            file_name=tsnr_map,
+            clip=100)
 
-        print("tSNR of {} is {}".format(os.path.basename(in_file), round(mean_tsnr,2)))    
+        print(f"tSNR of {os.path.basename(in_file)} is {round(mean_tsnr,2)}", flush=True)
 
 if __name__ == "__main__":
     main(sys.argv[1:])
