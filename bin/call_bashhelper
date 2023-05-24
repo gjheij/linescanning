@@ -38,58 +38,95 @@ function recache_mpl_fonts {
 }
 
 function find_hierarchical_anatomy {
-  stage=${1}
 
-  INPUT_DIR=""
-  if [[ ${stage} -eq 1 ]]; then
-    INPUT_DIR=${DIR_DATA_HOME}
-  elif [[ ${stage} -eq 2 ]]; then
-    if [[ -d ${DIR_DATA_DERIV}/pymp2rage ]]; then
-      INPUT_DIR=${DIR_DATA_DERIV}/pymp2rage
-    else
-      INPUT_DIR=${DIR_DATA_HOME}
-    fi
-  elif [[ ${stage} -eq 2 ]]; then
-    if [[ -d ${DIR_DATA_DERIV}/denoised ]]; then
-      INPUT_DIR=${DIR_DATA_DERIV}/denoised
-    elif [[ -d ${DIR_DATA_DERIV}/pymp2rage ]]; then
-      INPUT_DIR=${DIR_DATA_DERIV}/pymp2rage
-    else
-      INPUT_DIR=${DIR_DATA_HOME}
-    fi
-  elif [[ ${stage} -eq 3 ]]; then
-    if [[ -d ${DIR_DATA_DERIV}/cat12 ]]; then
-      INPUT_DIR=${DIR_DATA_DERIV}/cat12    
-    elif [[ -d ${DIR_DATA_DERIV}/denoised ]]; then
-      INPUT_DIR=${DIR_DATA_DERIV}/denoised
-    elif [[ -d ${DIR_DATA_DERIV}/pymp2rage ]]; then
-      INPUT_DIR=${DIR_DATA_DERIV}/pymp2rage
-    else
-      INPUT_DIR=${DIR_DATA_HOME}
-    fi    
-  elif [[ ${stage} -eq 4 ]]; then
-    if [[ -d ${DIR_DATA_DERIV}/masked_${DATA,,} ]]; then
-      INPUT_DIR=${DIR_DATA_DERIV}/masked_${DATA,,}
-    elif [[ -d ${DIR_DATA_DERIV}/cat12 ]]; then
-      INPUT_DIR=${DIR_DATA_DERIV}/cat12    
-    elif [[ -d ${DIR_DATA_DERIV}/denoised ]]; then
-      INPUT_DIR=${DIR_DATA_DERIV}/denoised
-    elif [[ -d ${DIR_DATA_DERIV}/pymp2rage ]]; then
-      INPUT_DIR=${DIR_DATA_DERIV}/pymp2rage
-    else
-      INPUT_DIR=${DIR_DATA_HOME}
-    fi        
-  elif [[ ${stage} -eq 5 ]]; then
-    if [[ -d ${DIR_DATA_DERIV}/masked_${DATA,,} ]]; then
-      INPUT_DIR=${DIR_DATA_DERIV}/masked_${DATA,,}
-    else
-      INPUT_DIR=${DIR_DATA_HOME}
-    fi           
+  #---------------------------------------------------------------------------------------------------------
+  # Create help text
+  function Usage {
+      cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+find_hierarchical_anatomy
+
+Find the correct folder with anatomies depending on the processing steps that you've conduc-
+ted. The following codes represent certain stages of anatomical preprocessing:
+  1 = DIR_DATA_HOME; no preprocessing has done, take the T1w from the scanner
+  2 = DIR_DATA_DERIV/pymp2rage; combination with pym2rage; if not present, default to DIR_DATA_HOME
+  3 = DIR_DATA_DERIV/denoising; denoising with CAT12 (sanlm); if not present, look for pymp2rage, 
+      then DIR_DATA_HOME
+  4 = DIR_DATA_DERIV/cat12; segmentation with CAT12 (sanlm); if not present, look for denoised, py-
+      mp2rage, then DIR_DATA_HOME      
+  5 = DIR_DATA_DERIV/masked_${DATA,,}; anatomicals void of garbage such as sinus. If not present, 
+      look for "denoised" > "pymp2rage" > "DIR_DATA_HOME"
+  6 = Same as 5, but instead of looking for intermediate folders (denoised/pymp2rage), directly go 
+      to DIR_DATA_HOME
+
+Args:
+ <code> 1-6
+
+Usage:
+ find_hierarchical_anatomy 1
+ find_hierarchical_anatomy 5
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+}
+  if [[ $# -eq 0 ]]; then
+    Usage >&2
   else
-    echo "ERROR in find_hierarchical_anatomy: invalid stage code \"${stage}\""
-  fi
+    stage=${1}
 
-  echo $INPUT_DIR
+    INPUT_DIR=""
+    if [[ ${stage} -eq 1 ]]; then
+      INPUT_DIR=${DIR_DATA_HOME}
+    elif [[ ${stage} -eq 2 ]]; then
+      if [[ -d ${DIR_DATA_DERIV}/pymp2rage ]]; then
+        INPUT_DIR=${DIR_DATA_DERIV}/pymp2rage
+      else
+        INPUT_DIR=${DIR_DATA_HOME}
+      fi
+    elif [[ ${stage} -eq 3 ]]; then
+      if [[ -d ${DIR_DATA_DERIV}/denoised ]]; then
+        INPUT_DIR=${DIR_DATA_DERIV}/denoised
+      elif [[ -d ${DIR_DATA_DERIV}/pymp2rage ]]; then
+        INPUT_DIR=${DIR_DATA_DERIV}/pymp2rage
+      else
+        INPUT_DIR=${DIR_DATA_HOME}
+      fi
+    elif [[ ${stage} -eq 4 ]]; then
+      if [[ -d ${DIR_DATA_DERIV}/cat12 ]]; then
+        INPUT_DIR=${DIR_DATA_DERIV}/cat12    
+      elif [[ -d ${DIR_DATA_DERIV}/denoised ]]; then
+        INPUT_DIR=${DIR_DATA_DERIV}/denoised
+      elif [[ -d ${DIR_DATA_DERIV}/pymp2rage ]]; then
+        INPUT_DIR=${DIR_DATA_DERIV}/pymp2rage
+      else
+        INPUT_DIR=${DIR_DATA_HOME}
+      fi    
+    elif [[ ${stage} -eq 5 ]]; then
+      if [[ -d ${DIR_DATA_DERIV}/masked_${DATA,,} ]]; then
+        INPUT_DIR=${DIR_DATA_DERIV}/masked_${DATA,,}
+      elif [[ -d ${DIR_DATA_DERIV}/cat12 ]]; then
+        INPUT_DIR=${DIR_DATA_DERIV}/cat12    
+      elif [[ -d ${DIR_DATA_DERIV}/denoised ]]; then
+        INPUT_DIR=${DIR_DATA_DERIV}/denoised
+      elif [[ -d ${DIR_DATA_DERIV}/pymp2rage ]]; then
+        INPUT_DIR=${DIR_DATA_DERIV}/pymp2rage
+      else
+        INPUT_DIR=${DIR_DATA_HOME}
+      fi        
+    elif [[ ${stage} -eq 6 ]]; then
+      if [[ -d ${DIR_DATA_DERIV}/masked_${DATA,,} ]]; then
+        INPUT_DIR=${DIR_DATA_DERIV}/masked_${DATA,,}
+      else
+        INPUT_DIR=${DIR_DATA_HOME}
+      fi           
+    else
+      echo "ERROR in find_hierarchical_anatomy: invalid stage code \"${stage}\""
+    fi
+
+    echo $INPUT_DIR
+  fi
 }
 
 function search_character_substring {
@@ -242,7 +279,7 @@ USAGE
 
   if [[ ${do_stuff} -eq 1 ]]; then
     for ii in ${pathOutput}/*.nii.gz; do
-      if [[ $(basename ${ii}) == *"_bold.nii.gz"* ]] || [[ $(basename ${ii}) == *"_epi.nii.gz"* ]]; then
+      if [[ $(basename ${ii}) == *"_bold"* ]] || [[ $(basename ${ii}) == *"_epi"* ]]; then
         # cross reference with par files in pathInput
         for par in ${pathInput}/*; do
           ext=`fetch_extension ${par}`
@@ -658,50 +695,8 @@ function add_prefix {
   for f in *; do mv "$f" "$1$f"; done
 }
 
-function task_id {
-  func=${1}
-  if [[ ${func} != *"task-"* ]]; then
-    task=${TASK_SES1}
-  else
-    # need some operations to find the task ID
-    part_after_task=${func#*task-}
-    if [[ ! -z ${part_after_task} ]]; then
-      # use brute force underscore as delimiter an pray your sequences have been set correctly
-      task=$(echo ${part_after_task} | cut -d'_' -f1)
-    else
-      # could not derive task; assume its pRF
-      task=pRF
-    fi
-  fi
-
-  if [[ ${task,,} == "prf" ]]; then
-    task="pRF"
-  fi
-
-  echo ${task}
-}
-
-function run_id {
-  func=${1}
-  if [[ ${func} != *"run-"* ]]; then
-    run=0
-  else
-    # need some operations to find the task ID
-    part_after_task=${func#*run-}
-    if [[ ! -z ${part_after_task} ]]; then
-      # use brute force underscore as delimiter an pray your sequences have been set correctly
-      run=$(echo ${part_after_task} | cut -d'_' -f1)
-    else
-      # could not derive task; assume its pRF
-      run=0
-    fi
-  fi
-
-  echo ${run}
-}
-
 function get_id {
-  func=${1}
+  func=$(basename `readlink -f ${1}`)
   tag=${2}
   if [[ ${func} != *"${tag}"* ]]; then
     tag=""
@@ -717,9 +712,25 @@ function get_id {
     fi
   fi
 
+  # get rid of dots by assuming the tag-of-interest precedes dot (lazy solution)
+  if [[ ${tag} == *"."* ]]; then
+    tag=`echo ${tag} | cut -d"." -f1`
+  fi
+
   echo ${tag}
 }
 
+function task_id {
+  func=${1}
+  task=`get_id ${func} task`
+  echo $task
+}
+
+function run_id {
+  func=${1}
+  run=`get_id ${func} run`
+  echo $run
+}
 
 #start_ssh client
 function start_ssh {
