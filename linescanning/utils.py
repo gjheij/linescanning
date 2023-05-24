@@ -443,10 +443,16 @@ def match_lists_on(ref_list, search_list, matcher="run"):
     >>> 'sub-003_ses-3_acq-1slice_run-6_T1w.nii.gz']
     """
 
+    if isinstance(matcher, str):
+        matcher = [matcher]
+
     new_list = []
     for ii in ref_list:
         comps = split_bids_components(ii)
-        ff = get_file_from_substring(f"{matcher}-{comps[matcher]}", search_list, return_msg="None")
+
+        # loop through elements in 'matcher' list
+        search_for = [f"{ii}-{comps[ii]}" for ii in matcher]
+        ff = get_file_from_substring(search_for, search_list, return_msg="None")
 
         if ff != None:
             if ff == search_list:
