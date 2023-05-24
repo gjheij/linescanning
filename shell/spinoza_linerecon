@@ -198,6 +198,13 @@ for subID in ${search}; do
         # fetch task
         task=`task_id ${bold}`
 
+        # get task from corresponding PAR-file, which is more accurate than gtpackngo's export names
+        par_file=`find $(dirname ${bold}) -type f -name "*run-${run}*" -and -name "*task-${task}*" -and -name "*bold*" -and -iname "*.par" 2>/dev/null`
+        if [[ -f ${par_file} ]]; then
+          fileparts=`read_par ${par_file} "Protocol name"`
+          task=`task_id ${fileparts}`
+        fi
+
         # set output name
         outputbase=${bidsfunc}/${base}_task-${task}_run-${run}_bold
         if [[ ${OW} -eq 1 ]]; then
@@ -231,7 +238,7 @@ for subID in ${search}; do
           fi
           
           if [[ ${SGE} -eq 1 ]]; then
-            job="qsub -N rec${sub_id}_${run} -wd ${OUTPUT}/${base_path}"
+            job="qsub -N ${base}_task-${task}_run-${run}_desc-recon -wd ${OUTPUT}/${base_path}"
           else
             echo "Running recon for run-${run} (task-${task})"
             job="bash"

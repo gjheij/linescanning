@@ -104,7 +104,7 @@ source call_bashhelper
 
 #-----------------------------------------------------------------------------
 # Start loop
-newrecon=$(dirname ${RAW})/tmp${run_id}.m
+newrecon=$(dirname ${RAW})/$(echo $(basename ${OUT}) | sed 's/[ -]/_/g').m
 if [[ -f ${newrecon} ]]; then
   rm -r ${newrecon}
 fi
