@@ -22,6 +22,17 @@ opj = os.path.join
 pd.options.mode.chained_assignment = None # disable warning thrown by string2float
 warnings.filterwarnings("ignore")
 
+def filter_kwargs(ignore_kwargs, kwargs):
+
+    if isinstance(ignore_kwargs, str):
+        ignore_kwargs = [ignore_kwargs]
+
+    tmp_kwargs = {}
+    for ii in kwargs:
+        if ii not in ignore_kwargs:
+            tmp_kwargs[ii] = kwargs[ii]
+    return tmp_kwargs
+
 def check_input_is_list(obj, var=None, list_element=0, matcher="func_file"):
 
     if hasattr(obj, var):
@@ -43,10 +54,8 @@ class SetAttributes():
 
         # store ParseEyetracker attributes
         self.eye_attributes = [
-            "df_eye",
             "df_blinks",
             "df_space_func",
-            "df_space_eye",
             "df_space_eye",
             "df_saccades"
         ]
@@ -130,6 +139,7 @@ class ParseEyetrackerFile(SetAttributes):
         edf_file, 
         subject=1, 
         run=1, 
+        task=None,
         low_pass_pupil_f=6.0, 
         high_pass_pupil_f=0.01,
         func_file=None, 
@@ -139,7 +149,9 @@ class ParseEyetrackerFile(SetAttributes):
         nr_vols=None,
         h5_file=None,
         report=False,
-        save_as=None):
+        save_as=None,
+        invoked_from_func=False,
+        **kwargs):
 
         super().__init__()
 
@@ -150,6 +162,7 @@ class ParseEyetrackerFile(SetAttributes):
         self.func_file          = func_file
         self.sub                = subject
         self.run                = run
+        self.task               = task
         self.TR                 = TR
         self.low_pass_pupil_f   = low_pass_pupil_f
         self.high_pass_pupil_f  = high_pass_pupil_f
@@ -159,6 +172,8 @@ class ParseEyetrackerFile(SetAttributes):
         self.h5_file            = h5_file
         self.report             = report
         self.save_as            = save_as
+        self.invoked_from_func  = invoked_from_func
+        self.__dict__.update(kwargs)
 
         # add all files to h5-file
         if isinstance(self.edf_file, str) or isinstance(self.edf_file, list):
@@ -170,110 +185,69 @@ class ParseEyetrackerFile(SetAttributes):
             self.ho.close_hdf_file()
 
         # write boilerplate
-        if self.report:
-
-            # write report
-            self.config = str(Path(utils.__file__).parents[1]/'misc'/'default_eye.yml')
-            if not os.path.exists(self.config):
-                raise FileNotFoundError(f"Could not find 'default_eye.yml'-file in '{str(Path(utils.__file__).parents[1]/'misc')}'")
-            
+        if not self.invoked_from_func:
             if self.report:
-                self.report_obj = core.Report(
-                    os.path.dirname(self.eyeprep_dir),
-                    self.run_uuid,
-                    subject_id=str(self.sub),
-                    packagename="eyeprep",
-                    config=self.config)
+                if self.save_as == None:
+                    try:
+                        self.eyeprep_dir = opj(os.environ.get("DIR_DATA_DERIV"), 'eyeprep')
+                    except:
+                        raise ValueError(f"Please specify an output directory with 'save_as='")
+                else:
+                    self.eyeprep_dir = self.save_as
 
-                # generate report
-                self.report_obj.generate_report()
+                if self.ses != None:
+                    self.base = f'sub-{self.sub}_ses-{self.ses}'
+                    self.eyeprep_full = opj(self.eyeprep_dir, f'sub-{self.sub}', f'ses-{self.ses}')
+                else:
+                    self.eyeprep_full = opj(self.eyeprep_dir, f'sub-{self.sub}')
+                    self.base = f'sub-{self.sub}'
 
-                utils.verbose(f"Saving report to {str(self.report_obj.out_dir/self.report_obj.out_filename)}", self.verbose)            
+                # make figure directory
+                self.run_uuid = f"{strftime('%Y%m%d-%H%M%S')}_{uuid4()}"
+                self.eyeprep_figures = opj(self.eyeprep_dir, f'sub-{self.sub}', 'figures')
+                self.eyeprep_runid = opj(self.eyeprep_dir, f'sub-{self.sub}', 'log', self.run_uuid)
+                self.eyeprep_logs = opj(self.eyeprep_dir, 'logs')
+                for dir in self.eyeprep_full, self.eyeprep_figures, self.eyeprep_logs, self.eyeprep_runid:
+                    if not os.path.exists(dir):
+                        os.makedirs(dir, exist_ok=True)
+
+                self.citation_file = Path(opj(self.eyeprep_logs, "CITATION.md"))
+                self.citation_file.write_text(self.desc_eye)    
+
+                # write report
+                self.config = str(Path(utils.__file__).parents[1]/'misc'/'default_eye.yml')
+                if not os.path.exists(self.config):
+                    raise FileNotFoundError(f"Could not find 'default_eye.yml'-file in '{str(Path(utils.__file__).parents[1]/'misc')}'")
+                
+                if self.report:
+                    self.report_obj = core.Report(
+                        os.path.dirname(self.eyeprep_dir),
+                        self.run_uuid,
+                        subject_id=str(self.sub),
+                        packagename="eyeprep",
+                        config=self.config)
+
+                    # generate report
+                    self.report_obj.generate_report()
+
+                    utils.verbose(f"Saving report to {str(self.report_obj.out_dir/self.report_obj.out_filename)}", self.verbose)            
+        else:
+            self.eyeprep_figures = self.lsprep_figures
+
 
     def preprocess_edf_files(self):
 
         # deal with edf-files
         if isinstance(self.edf_file, str):
-            edfs = [self.edf_file]
+            self.edfs = [self.edf_file]
         elif isinstance(self.edf_file, list):
-            edfs = self.edf_file.copy()
+            self.edfs = self.edf_file.copy()
         else:
             raise ValueError(f"Input must be 'str' or 'list', not '{type(self.edf_file)}'")
 
-        # deal with edf-files
-        if self.func_file != None:
-            if isinstance(self.func_file, str):
-                self.func_file = [str(self.func_file)]
-            elif isinstance(self.func_file, list):
-                self.func_file = self.func_file.copy()
-            else:
-                raise ValueError(f"Input must be 'str' or 'list', not '{type(self.edf_file)}'")
-
-            self.nr_vols = self.vols(self.func_file)
-
-        if not isinstance(self.h5_file, str):
-            self.h5_file = opj(os.path.dirname(edfs[0]), f"eye.h5")       
-
-        self.ho = hedfpy.HDFEyeOperator(self.h5_file)
-        if not os.path.exists(self.h5_file):
-            for i, edf_file in enumerate(edfs):
-
-                if not os.path.exists(edf_file):
-                    raise FileNotFoundError(f"Could not read specified file: '{edf_file}'")
-
-                if self.use_bids:
-                    bids_comps = utils.split_bids_components(edf_file)
-                    for el in ['sub', 'run']:
-                        if el in list(bids_comps.keys()):
-                            setattr(self, el, bids_comps[el])
-                        else:
-                            self.run = i+1
-                else:
-                    self.run = i+1
-
-                alias = f"run_{self.run}"
-
-                self.ho.add_edf_file(edf_file)
-                self.ho.edf_message_data_to_hdf(alias=alias)
-                self.ho.edf_gaze_data_to_hdf(
-                    alias=alias,
-                    pupil_hp=self.high_pass_pupil_f,
-                    pupil_lp=self.low_pass_pupil_f)
-
-        else:
-            self.ho.open_hdf_file()
-
-        # set them for internal reference
-        for attr in self.eye_attributes:
-            setattr(self, attr, [])
-
-        for i, edf_file in enumerate(edfs):
-
-            if self.verbose:
-                print(f"Preprocessing {edf_file}")
-
-            if self.use_bids:
-                bids_comps = utils.split_bids_components(edf_file)
-                for el in ['sub', 'run', 'ses']:
-                    if el in list(bids_comps.keys()):
-                        setattr(self, el, bids_comps[el])
-                    else:
-                        self.run = i+1
-            else:
-                self.run = i+1
-                self.ses = None
-            
-            # check if we got multiple TRs for different edf-files
-            if self.TR != None:
-                use_TR = check_input_is_list(
-                    self, 
-                    "TR", 
-                    list_element=self.run,
-                    matcher="edf_file")
-            else:
-                use_TR = None
-
-            # write boilerplate
+        # write boilerplate
+        self.desc_eye = """some text for the preprocessing of eye-tracking data"""
+        if not self.invoked_from_func:
             if self.report:
                 if self.save_as == None:
                     try:
@@ -300,18 +274,122 @@ class ParseEyetrackerFile(SetAttributes):
                         os.makedirs(dir, exist_ok=True)
 
                 self.citation_file = Path(opj(self.eyeprep_logs, "CITATION.md"))
+                self.citation_file.write_text(self.desc_eye)    
+        else:
+            # remove task from filename
+            file_parts = self.base_name.split("_")
+            if any(["task" in i for i in file_parts]):
+                out_name = "_".join([i for i in file_parts if not "task" in i])
+            else:
+                out_name = self.base_name
 
-                self.desc_eye="""some text for the preprocessing of eye-tracking data"""
-                self.citation_file.write_text(self.desc_eye)                      
+            self.h5_file = opj(os.path.dirname(self.edfs[0]), f"{out_name}_desc-eye.h5")
+            self.eyeprep_figures = self.lsprep_figures
+
+        # deal with edf-files
+        if self.func_file != None:
+            if isinstance(self.func_file, str):
+                self.func_file = [str(self.func_file)]
+            elif isinstance(self.func_file, list):
+                self.func_file = self.func_file.copy()
+            else:
+                raise ValueError(f"Input must be 'str' or 'list', not '{type(self.edf_file)}'")
+
+        if not isinstance(self.h5_file, str):
+            self.h5_file = opj(os.path.dirname(self.edfs[0]), f"eye.h5")
+
+        self.ho = hedfpy.HDFEyeOperator(self.h5_file)
+        if not os.path.exists(self.h5_file):
+            for i, edf_file in enumerate(self.edfs):
+
+                if not os.path.exists(edf_file):
+                    raise FileNotFoundError(f"Could not read specified file: '{edf_file}'")
+
+                self.run = i+1
+                self.sub = 1
+                if self.use_bids:
+                    bids_comps = utils.split_bids_components(edf_file)
+                    for el in ['sub', 'run', 'task']:
+                        if el in list(bids_comps.keys()):
+                            setattr(self, el, bids_comps[el])
+
+                alias = f"run_{self.run}"
+                if isinstance(self.task, str):
+                    alias = f"task_{self.task}_run_{self.run}"
+
+                self.ho.add_edf_file(edf_file)
+                self.ho.edf_message_data_to_hdf(alias=alias)
+                self.ho.edf_gaze_data_to_hdf(
+                    alias=alias,
+                    pupil_hp=self.high_pass_pupil_f,
+                    pupil_lp=self.low_pass_pupil_f)
+
+        else:
+            self.ho.open_hdf_file()
+
+        # clean up hedfpy-files
+        for ext in [".pdf",".gaz",".msg",".gaz.gz",".asc"]:
+            utils.remove_files(os.path.dirname(self.h5_file), ext, ext=True)
+
+        # set them for internal reference
+        for attr in self.eye_attributes:
+            setattr(self, attr, [])
+
+        for i, edf_file in enumerate(self.edfs):
+
+            if self.verbose:
+                print(f"Preprocessing {edf_file}")
+
+            self.run = i+1
+            self.ses = None
+            self.task = None
+            if self.use_bids:
+                bids_comps = utils.split_bids_components(edf_file)
+                for el in ['sub', 'run', 'ses', 'task']:
+                    if el in list(bids_comps.keys()):
+                        setattr(self, el, bids_comps[el])
+
+            # set base name based on presence of bids tags
+            self.base_name = f"sub-{self.sub}"
+            if isinstance(self.ses, (str,float,int)):
+                self.base_name += f"_ses-{self.ses}"
+
+            if isinstance(self.task, str):
+                self.base_name += f"_task-{self.task}" 
+                            
+            # check if we got multiple TRs for different edf-files
+            if self.TR != None:
+                use_TR = check_input_is_list(
+                    self, 
+                    "TR", 
+                    list_element=self.run,
+                    matcher="edf_file")
+            else:
+                use_TR = None                  
 
             # full output from 'fetch_relevant_info' > use sub as differentiator if multiple files were given
-            self.data = self.fetch_relevant_info(TR=use_TR, nr_vols=self.nr_vols)
+            if isinstance(self.func_file, list):
+                nr_vols = self.vols(self.func_file[i])
 
-            # collect outputs
-            self.df_blinks.append(self.fetch_eyeblinks())
-            self.df_space_func.append(self.fetch_eye_func_time())
-            self.df_space_eye.append(self.fetch_eye_tracker_time())
-            self.df_saccades.append(self.fetch_saccades())
+            alias = f"run_{self.run}"
+            if isinstance(self.task, str):
+                alias = f"task_{self.task}_run_{self.run}"
+
+            fetch_data = True
+            try:
+                self.data = self.fetch_relevant_info(
+                    TR=use_TR, 
+                    nr_vols=nr_vols,
+                    alias=alias)
+            except:
+                fetch_data = False
+
+            # collect outputs if all went well
+            if fetch_data:
+                self.df_blinks.append(self.fetch_eyeblinks())
+                self.df_space_func.append(self.fetch_eye_func_time())
+                self.df_space_eye.append(self.fetch_eye_tracker_time())
+                self.df_saccades.append(self.fetch_saccades())
 
 
         self.df_blinks = pd.concat(self.df_blinks).set_index(['subject','run','event_type'])
@@ -349,12 +427,8 @@ class ParseEyetrackerFile(SetAttributes):
     def fetch_relevant_info(
         self,
         nr_vols=None,
+        alias=None,
         TR=None):
-
-        # set alias
-        alias = f'run_{self.run}'
-        if self.verbose:
-            print(" Alias:       ", alias)
 
         # load times per session:
         trial_times = self.ho.read_session_data(alias, 'trials')
@@ -550,17 +624,17 @@ class ParseEyetrackerFile(SetAttributes):
         if self.report:
 
             # make some plots
-            fname = opj(self.eyeprep_figures, f"{self.base}_run-{self.run}_desc")
+            fname = opj(self.eyeprep_figures, f"{self.base_name}_run-{self.run}_desc")
             self.plot_trace_and_heatmap(df_space_eye, fname=fname)
 
         return return_dict
 
     def plot_trace_and_heatmap(
-            self, 
-            df, 
-            fname=None, 
-            screen_size=(1920,1080),
-            scale="screen"):
+        self, 
+        df, 
+        fname=None, 
+        screen_size=(1920,1080),
+        scale="screen"):
 
         if not isinstance(df, pd.DataFrame):
             raise TypeError(f"Input must be a pd.Dataframe, not {type(df)}")
@@ -640,7 +714,7 @@ class ParseEyetrackerFile(SetAttributes):
             # plt.tight_layout()
 
         if isinstance(fname, str):
-            fig.savefig(f"{fname}-qa.svg", bbox_inches='tight', dpi=300)
+            fig.savefig(f"{fname}-eye_qa.svg", bbox_inches='tight', dpi=300)
 
 
     def vols(self, func_file):
@@ -705,42 +779,6 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
     >>> file = 'some/path/to/exptoolsfile.tsv'
     >>> parsed_file = ParseExpToolsFile(file, subject=1, run=1, button=True)
     >>> onsets = parsed_file.get_onset_df()
-
-    >>> # If you want to get all your subjects and runs in 1 nideconv compatible dataframe, you can do something like this:
-    >>> onsets = []
-    >>> run_subjects = ['001','002','003']
-    >>> for sub in run_subjects:
-    >>>     path_tsv_files = os.path.join(f'some/path/sub-{sub}')
-    >>>     f = os.listdir(path_tsv_files)
-    >>>     nr_runs = []; [nr_runs.append(os.path.join(path_tsv_files, r)) for r in f if "events.tsv" in r]                # make LSprep output directory
-                if self.report:
-                    if self.save_as == None:
-                        try:
-                            self.lsprep_dir = opj(os.environ.get("DIR_DATA_DERIV"), 'lsprep')
-                        except:
-                            raise ValueError(f"Please specify an output directory with 'save_as='")
-                    else:
-                        self.lsprep_dir = save_as
-
-                    if self.ses != None:
-                        self.lsprep_full = opj(self.lsprep_dir, f'sub-{self.sub}', f'ses-{self.ses}')
-                    else:
-                        self.lsprep_full = opj(self.lsprep_dir, f'sub-{self.sub}')
-                        
-                    # make figure directory
-                    self.run_uuid = f"{strftime('%Y%m%d-%H%M%S')}_{uuid4()}"
-                    self.lsprep_figures = opj(self.lsprep_dir, f'sub-{self.sub}', 'figures')
-                    self.lsprep_runid = opj(self.lsprep_dir, f'sub-{self.sub}', 'log', self.run_uuid)
-                    self.lsprep_logs = opj(self.lsprep_dir, 'logs')
-                    for dir in self.lsprep_full, self.lsprep_figures, self.lsprep_logs, self.lsprep_runid:
-                        if not os.path.exists(dir):
-                            os.makedirs(dir, exist_ok=True)
-    >>> 
-    >>>     for run in range(1,len(nr_runs)+1):
-    >>>         sub_idx = run_subjects.index(sub)+1
-    >>>         onsets.append(ParseExpToolsFile(df_onsets, subject=sub_idx, run=run).get_onset_df())
-    >>>         
-    >>> onsets = pd.concat(onsets).set_index(['subject', 'run', 'event_type'])
     """
 
     def __init__(
@@ -761,6 +799,7 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
         stim_duration=None,
         add_events=None,
         event_names=None,
+        invoked_from_func=False,
         **kwargs):
 
         self.tsv_file                       = tsv_file
@@ -779,7 +818,16 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
         self.RT_relative_to                 = RT_relative_to
         self.add_events                     = add_events
         self.event_names                    = event_names
-        self.__dict__.update(kwargs)
+        self.invoked_from_func              = invoked_from_func
+        
+        # filter kwargs
+        tmp_kwargs = filter_kwargs(
+            [
+                "ref_slice",
+                "filter_strat",
+            ], 
+            kwargs)
+        self.__dict__.update(tmp_kwargs)
 
         # set attributes
         SetAttributes.__init__(self)
@@ -793,7 +841,8 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
                 TR=self.TR, 
                 use_bids=self.use_bids, 
                 verbose=self.verbose,
-                **kwargs)
+                invoked_from_func=self.invoked_from_func,
+                **tmp_kwargs)
 
         if self.verbose:
             print("\nEXPTOOLS")
@@ -809,15 +858,14 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
 
             for run, onset_file in enumerate(self.tsv_file):
 
+                self.run = run+1
+                self.ses = None
+                self.task = None
                 if self.use_bids:
                     bids_comps = utils.split_bids_components(onset_file)
-                    for el in ['sub', 'run']:
+                    for el in ['sub', 'run', 'ses', 'task']:
                         if el in list(bids_comps.keys()):
                             setattr(self, el, bids_comps[el])
-                        else:
-                            self.run = run+1                
-                else:
-                    self.run = run+1
 
                 # check if we got different nr of vols to delete per run
                 delete_vols = check_input_is_list(
@@ -1361,15 +1409,14 @@ class ParsePhysioFile():
                 if self.verbose:
                     print(f"Preprocessing {func}")
 
+                self.run = run+1
+                self.ses = None
+                self.task = None
                 if self.use_bids:
                     bids_comps = utils.split_bids_components(func)
-                    for el in ['sub', 'run']:
+                    for el in ['sub', 'run', 'ses', 'task']:
                         if el in list(bids_comps.keys()):
                             setattr(self, el, bids_comps[el])
-                        else:
-                            self.run = run+1  
-                else:
-                    self.run = run+1
 
                 # check if deleted_first_timepoints is list or not
                 delete_first = check_input_is_list(
@@ -1469,7 +1516,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
     subject: int, optional
         subject number in the returned pandas DataFrame (should start with 1, ..., n)
     run: int, optional
-        run number you'd like to have the onset times forpsc_nilearn: b
+        run number you'd like to have the onset times for
     baseline: float, int, optional
         Duration of the baseline used to calculate the percent-signal change. This method is the default over `psc_nilearn`
     baseline_units: str, optional
@@ -1672,16 +1719,22 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                     else:
                         raise ValueError(f"Unknown input type '{type(func)}'. Must be string or numpy-array")
 
+                self.run = run_id+1
+                self.ses = None
+                self.task = None
                 if self.use_bids:
                     bids_comps = utils.split_bids_components(func)
-                    for el in ['sub', 'run', 'ses']:
+                    for el in ['sub', 'run', 'ses', 'task']:
                         if el in list(bids_comps.keys()):
                             setattr(self, el, bids_comps[el])
-                        else:
-                            self.run = run_id+1        
-                else:
-                    self.run = run_id+1
-                    self.ses = None
+
+                # set base name based on presence of bids tags
+                self.base_name = f"sub-{self.sub}"
+                if isinstance(self.ses, (str,float,int)):
+                    self.base_name += f"_ses-{self.ses}"
+
+                if isinstance(self.task, str):
+                    self.base_name += f"_task-{self.task}" 
                 
                 # make LSprep output directory
                 if self.report:
@@ -1693,17 +1746,12 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                     else:
                         self.lsprep_dir = save_as
 
-                    if self.ses != None:
-                        self.lsprep_full = opj(self.lsprep_dir, f'sub-{self.sub}', f'ses-{self.ses}')
-                    else:
-                        self.lsprep_full = opj(self.lsprep_dir, f'sub-{self.sub}')
-                        
                     # make figure directory
                     self.run_uuid = f"{strftime('%Y%m%d-%H%M%S')}_{uuid4()}"
                     self.lsprep_figures = opj(self.lsprep_dir, f'sub-{self.sub}', 'figures')
                     self.lsprep_runid = opj(self.lsprep_dir, f'sub-{self.sub}', 'log', self.run_uuid)
                     self.lsprep_logs = opj(self.lsprep_dir, 'logs')
-                    for dir in self.lsprep_full, self.lsprep_figures, self.lsprep_logs, self.lsprep_runid:
+                    for dir in self.lsprep_figures, self.lsprep_logs, self.lsprep_runid:
                         if not os.path.exists(dir):
                             os.makedirs(dir, exist_ok=True)
 
@@ -1743,13 +1791,13 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                 else:
                     ref_slice = None
 
-                if self.verbose:
-                    print(f" Filtering strategy: '{self.filter_strategy}'")
-                    print(f" Standardization strategy: '{self.standardization}'")
+                utils.verbose(f" Filtering strategy: '{self.filter_strategy}'", self.verbose)
+                utils.verbose(f" Standardization strategy: '{self.standardization}'", self.verbose)
 
                 self.preprocess_func_file(
                     func, 
                     run=self.run, 
+                    task=self.task,
                     deleted_first_timepoints=delete_first,
                     deleted_last_timepoints=delete_last,
                     acompcor=self.acompcor,
@@ -1886,36 +1934,45 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                 use_bids=self.use_bids,
                 button=self.button,
                 verbose=self.verbose,
+                report=self.report,
+                save_as=self.lsprep_dir,
+                invoked_from_func=True,
                 **kwargs)
+
+            if hasattr(self, "desc_eye"):
+                self.desc_func += self.desc_eye
 
         # write boilerplate
         if self.report:
-            self.citation_file = Path(opj(self.lsprep_logs, "CITATION.md"))
-            self.citation_file.write_text(self.desc_func)
+            self.make_report()
+    
+    def make_report(self):
+        self.citation_file = Path(opj(self.lsprep_logs, "CITATION.md"))
+        self.citation_file.write_text(self.desc_func)
 
-            # write report
-            self.config = str(Path(utils.__file__).parents[1]/'misc'/'default.yml')
-            if not os.path.exists(self.config):
-                raise FileNotFoundError(f"Could not find 'default.yml'-file in '{str(Path(utils.__file__).parents[1]/'misc')}'")
-            
-            if self.report:
-                self.report_obj = core.Report(
-                    os.path.dirname(self.lsprep_dir),
-                    self.run_uuid,
-                    subject_id=self.sub,
-                    packagename="lsprep",
-                    config=self.config)
+        # write report
+        self.config = str(Path(utils.__file__).parents[1]/'misc'/'default.yml')
+        if not os.path.exists(self.config):
+            raise FileNotFoundError(f"Could not find 'default.yml'-file in '{str(Path(utils.__file__).parents[1]/'misc')}'")
+        
+        if self.report:
+            self.report_obj = core.Report(
+                os.path.dirname(self.lsprep_dir),
+                self.run_uuid,
+                subject_id=self.sub,
+                packagename="lsprep",
+                config=self.config)
 
-                # generate report
-                self.report_obj.generate_report()
+            # generate report
+            self.report_obj.generate_report()
 
-                if self.verbose:
-                    print(f" Saving report to {str(self.report_obj.out_dir/self.report_obj.out_filename)}")
+            utils.verbose(f"Saving report to {str(self.report_obj.out_dir/self.report_obj.out_filename)}", self.verbose)
 
     def preprocess_func_file(
         self, 
         func_file, 
         run=1, 
+        task=None,
         deleted_first_timepoints=0, 
         deleted_last_timepoints=0,
         acompcor=False,
@@ -2130,24 +2187,14 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                 else:
                     self.trafos = self.ses1_2_ls            
 
-                # aCompCor implemented in `preproc` module
-                self.acomp = preproc.aCompCor(
-                    self.hp_zscore_df,
-                    subject=f"sub-{self.sub}",
-                    run=self.run,
-                    trg_session=self.target_session,
-                    reference_slice=reference_slice,
-                    trafo_list=self.trafos,
-                    n_components=self.n_components,
-                    filter_confs=self.filter_confs,
+                # run acompcor
+                self.run_acompcor(
+                    run=run,
+                    task=task,
+                    ses=self.target_session,
+                    ref_slice=reference_slice,
                     save_as=save_as,
-                    select_component=self.select_component, 
-                    summary_plot=self.report,
-                    TR=self.TR,
-                    foldover=self.foldover,
                     shift=shift,
-                    verbose=self.verbose,
-                    save_ext=self.save_ext,
                     **kwargs)
                 
                 self.clean_tag = "acompcor"
@@ -2160,28 +2207,7 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                 if acompcor:
                     raise TypeError("aCompCor cannot be used in conjunction with ICA. Please set 'acompcor=False'")
 
-                if self.verbose:
-                    print(f" Running FastICA with {self.n_components} components")
-
-                self.ica_obj = preproc.ICA(
-                    self.hp_zscore_df,
-                    subject=f"sub-{self.sub}",
-                    run=self.run,
-                    n_components=self.n_components,
-                    TR=self.TR,
-                    filter_confs=self.filter_confs,
-                    keep_comps=self.keep_comps,
-                    verbose=self.verbose,
-                    summary_plot=self.report,
-                    melodic_plot=self.report,
-                    ribbon=tuple(self.gm_range),
-                    save_as=save_as,
-                    save_ext=self.save_ext
-                )
-
-                # regress
-                self.ica_obj.regress()
-
+                self.run_ica(task=task, save_as=save_as)
                 self.clean_tag = "ica"
                 self.clean_data = self.ica_obj.ica_data
 
@@ -2242,8 +2268,7 @@ Output from {self.clean_tag} was then converted back to un-zscored data by multi
             if "lp" in self.filter_strategy:
 
                 self.desc_filt += f"""
-The data was then low-pass filtered using a Savitsky-Golay filter [removes high frequences] (window={self.window_size}, 
-order={self.poly_order}). """
+The data was then low-pass filtered using a Savitsky-Golay filter [removes high frequences] (window={self.window_size}, order={self.poly_order}). """
 
                 if acompcor or self.ica:
                     info = f" Using {self.clean_tag}-data for low-pass filtering"
@@ -2258,9 +2283,8 @@ order={self.poly_order}). """
                     data_for_filtering = getattr(self, f"data_{self.standardization}")
                     out_attr = f"lp_data_{self.standardization}"
 
-                if self.verbose:
-                    print(info)
-                    print(f" Savitsky-Golay low-pass filter [removes high frequences] (window={self.window_size}, order={self.poly_order})")
+                utils.verbose(info, self.verbose)
+                utils.verbose(f" Savitsky-Golay low-pass filter [removes high frequences] (window={self.window_size}, order={self.poly_order})", self.verbose)
 
                 tmp_filtered = preproc.lowpass_savgol(data_for_filtering, window_length=self.window_size, polyorder=self.poly_order)
 
@@ -2287,7 +2311,61 @@ order={self.poly_order}). """
 
         # final
         self.desc_func = self.func_pre_desc + self.desc_trim + self.desc_filt
-    
+
+    def run_acompcor(
+        self, 
+        run=None,
+        task=None,
+        ses=None,
+        ref_slice=None,
+        save_as=None,
+        shift=0,
+        **kwargs):
+
+        # aCompCor implemented in `preproc` module
+        self.acomp = preproc.aCompCor(
+            self.hp_zscore_df,
+            subject=f"sub-{self.sub}",
+            run=run,
+            task=task,
+            trg_session=ses,
+            reference_slice=ref_slice,
+            trafo_list=self.trafos,
+            n_components=self.n_components,
+            filter_confs=self.filter_confs,
+            save_as=save_as,
+            select_component=self.select_component, 
+            summary_plot=self.report,
+            TR=self.TR,
+            foldover=self.foldover,
+            shift=shift,
+            verbose=self.verbose,
+            save_ext=self.save_ext,
+            **kwargs)  
+              
+    def run_ica(self, task=None, save_as=None):
+        utils.verbose(f" Running FastICA with {self.n_components} components", self.verbose)
+        self.ica_obj = preproc.ICA(
+            self.hp_zscore_df,
+            subject=f"sub-{self.sub}",
+            ses=self.ses, 
+            run=self.run,
+            task=task,
+            n_components=self.n_components,
+            TR=self.TR,
+            filter_confs=self.filter_confs,
+            keep_comps=self.keep_comps,
+            verbose=self.verbose,
+            summary_plot=self.report,
+            melodic_plot=self.report,
+            ribbon=tuple(self.gm_range),
+            save_as=save_as,
+            save_ext=self.save_ext
+        )
+
+        # regress
+        self.ica_obj.regress()        
+
     def basic_qa(self, data, run=1, make_figure=False):
         
         # tsnr
@@ -2318,7 +2396,7 @@ order={self.poly_order}). """
             else:
                 info = f"before '{self.clean_tag}'"
 
-            print(f" tSNR [{info}]: {round(mean_tsnr_pre,2)}\t| variance: {round(mean_var_pre,2)}")
+            utils.verbose(f" tSNR [{info}]: {round(mean_tsnr_pre,2)}\t| variance: {round(mean_var_pre,2)}", self.verbose)
 
         if self.clean_tag == "acompcor" or self.clean_tag == "ica":
 
@@ -2346,8 +2424,7 @@ order={self.poly_order}). """
                 "color": colors
             }
 
-            if self.verbose:
-                print(f" tSNR [after '{self.clean_tag}']:  {round(mean_tsnr_post,2)}\t| variance: {round(mean_var_post,2)}")
+            utils.verbose(f" tSNR [after '{self.clean_tag}']:  {round(mean_tsnr_post,2)}\t| variance: {round(mean_var_post,2)}", self.verbose)
 
         if make_figure:
             # initiate figure
@@ -2407,7 +2484,7 @@ order={self.poly_order}). """
 
             plt.close(fig)
             if self.report:
-                fname = opj(self.lsprep_figures, f"sub-{self.sub}_ses-{self.ses}_run-{run}_desc-qa.{self.save_ext}")
+                fname = opj(self.lsprep_figures, f"{self.base_name}_run-{run}_desc-qa.{self.save_ext}")
                 fig.savefig(fname, bbox_inches='tight', dpi=300)
                 
     def select_voxels_across_runs(self):
@@ -2464,12 +2541,12 @@ order={self.poly_order}). """
                     add_hline=add_hline)
 
         if self.report:
-            fname = opj(self.lsprep_figures, f"sub-{self.sub}_ses-{self.ses}_desc-tissue_classification.{self.save_ext}")
+            fname = opj(self.lsprep_figures, f"{self.base_name}_desc-tissue_classification.{self.save_ext}")
             fig.savefig(fname, bbox_inches='tight', dpi=300)
 
     def get_data(self, filter_strategy=None, index=False, dtype="psc", acompcor=False, ica=False):
 
-        if dtype != "psc" and dtype != "zscore" and dtype != "raw":
+        if dtype not in ["psc","zscore","raw"]:
             raise ValueError(f"Requested data type '{dtype}' is not supported. Use 'psc', 'zscore', or 'raw'")
 
         return_data = None
@@ -2582,8 +2659,9 @@ class Dataset(ParseFuncFile,SetAttributes):
                 verbose=self.verbose, 
                 **kwargs)
 
-        if self.verbose:
-            print("\nDATASET: created")
+        utils.verbose("\nDATASET: created", self.verbose)
+        # if self.report:
+        #     self.to_hdf()
 
     def fetch_fmri(self, strip_index=False, dtype=None):
 
@@ -2678,45 +2756,6 @@ class Dataset(ParseFuncFile,SetAttributes):
         else:
             print("No eyetracking-data was provided")
 
-    def to_hdf(self, output_file=None, overwrite=False):
-
-        if output_file == None:
-            if hasattr(self, "lsprep_full"):
-                self.h5_file = opj(self.lsprep_full, "dataset.h5")
-            else:
-                raise ValueError("No output file specified")
-        else:
-            self.h5_file = output_file
-
-        if overwrite:
-            if os.path.exists(self.h5_file):
-                store = pd.HDFStore(self.h5_file)
-                store.close()
-                os.remove(self.h5_file)
-
-        if self.verbose:
-            print(f"Saving to {self.h5_file}")
-
-        for attr in self.all_attributes:
-            if hasattr(self, attr):
-                
-                if self.verbose:
-                    print(f" Storing attribute: {attr}")
-                    
-                add_df = getattr(self, attr)
-                if os.path.exists(self.h5_file):
-                    add_df.to_hdf(self.h5_file, key=attr, append=True, mode='r+', format='t')
-                else:
-                    store = pd.HDFStore(self.h5_file)
-                    store.close()
-                    add_df.to_hdf(self.h5_file, key=attr, mode='w', format='t')
-        
-        if self.verbose:
-            print("Done")
-
-        store = pd.HDFStore(self.h5_file)
-        store.close()
-
     def from_hdf(self, input_file=None):
 
         if not isinstance(input_file, str):
@@ -2730,17 +2769,31 @@ class Dataset(ParseFuncFile,SetAttributes):
         for key in hdf_keys:
             key = key.strip("/")
             
-            if self.verbose:
-                print(f" Setting attribute: {key}")
-
-            setattr(self, key, hdf_store.get(key))
+            try:
+                setattr(self, key, hdf_store.get(key))
+                utils.verbose(f" Set attribute: {key}", self.verbose)
+            except:
+                utils.verbose(f" Could not set attribute '{key}'", self.verbose)
 
         hdf_store.close()         
 
     def to_hdf(self, output_file=None, overwrite=False):
 
         if output_file == None:
-            raise ValueError("No output file specified")
+            if hasattr(self, "lsprep_dir"):
+                if not hasattr(self, "base_name"):
+                    out_name = f'sub-{self.sub}'
+                else:
+                    # remove task from filename
+                    file_parts = self.base_name.split("_")
+                    if any(["task" in i for i in file_parts]):
+                        out_name = "_".join([i for i in file_parts if not "task" in i])
+                    else:
+                        out_name = self.base_name
+                                    
+                self.h5_file = opj(self.lsprep_dir, f'sub-{self.sub}', f"{out_name}_desc-preproc_bold.h5")
+            else:
+                raise ValueError("No output file specified")
         else:
             self.h5_file = output_file
 
@@ -2754,17 +2807,16 @@ class Dataset(ParseFuncFile,SetAttributes):
         for attr in self.all_attributes:
             if hasattr(self, attr):
                 
-                if self.verbose:
-                    utils.verbose(f" Storing attribute: {attr}", self.verbose)
-                    
                 add_df = getattr(self, attr)
-                if os.path.exists(self.h5_file):
-                    add_df.to_hdf(self.h5_file, key=attr, append=True, mode='r+', format='t')
-                else:
-                    store = pd.HDFStore(self.h5_file)
-                    store.close()
-                    add_df.to_hdf(self.h5_file, key=attr, mode='w', format='t')
-        
+                # try regular storing
+                if isinstance(add_df, pd.DataFrame):
+                    try:
+                        add_df.to_hdf(self.h5_file, key=attr, append=True, mode='a', format='t')
+                        utils.verbose(f" Stored attribute: {attr}", self.verbose)
+                    except:
+                        # send error message
+                        utils.verbose(f" Could not store attribute '{attr}'", self.verbose)
+
         utils.verbose("Done", self.verbose)
 
         store = pd.HDFStore(self.h5_file)
