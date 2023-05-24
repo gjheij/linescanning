@@ -267,14 +267,6 @@ for subID in ${search}; do
         echo "**************************************** Processing ${sub_name} ***************************************"
         echo ${intro_txt}
 
-        if [[ ! -d ${bids_dir}/anat ]]; then
-          mkdir -p ${bids_dir}/anat
-        fi
-
-        if [[ ! -d ${bids_dir}/func ]]; then
-          mkdir -p ${bids_dir}/func
-        fi
-
         #-------------------------------------------------------------------------------------------------------------------------------
         # PARREC TO NIFTI
         if [[ -d ${output_dir} ]]; then
@@ -291,10 +283,15 @@ for subID in ${search}; do
 
         ## Low resolution anatomical scan
         if [[ ${DCM_FIX} -eq 0 ]]; then
+                  
           anat_lowres=`find "${input_dir}/planning/nifti" -type f \( -name "*real*" -and -name "*t10*" -and -name "*.nii.gz" \) 2>/dev/null`
           anat_t1map=`find "${input_dir}/planning/nifti" -type f \( -name "*real*" -and -name "*t29*" -and -name "*.nii.gz" \) 2>/dev/null`
           if [[ ! -f ${bids_dir}/anat/${base}_acq-MP2RAGE_T1w.nii.gz ]]; then
             if [[ -f ${anat_lowres} && -f ${anat_t1map} ]]; then
+
+              if [[ ! -d ${bids_dir}/anat ]]; then
+                mkdir -p ${bids_dir}/anat
+              fi
 
               min=`fslstats ${anat_lowres} -R | awk '{print $1}'`
               if [[ ${min} != "0.000000" ]]; then
@@ -312,7 +309,14 @@ for subID in ${search}; do
           fi
         fi
 
+        #---------------------------------------------------------------------------------------------------------
+        # anatomicals
         if [[ ${ADD_INV} -eq 1 ]] || [[ ${DCM_FIX} -eq 1 ]]; then
+          
+          if [[ ! -d ${bids_dir}/anat ]]; then
+            mkdir -p ${bids_dir}/anat
+          fi
+
           echo " Dealing with anatomical images.."
           inv_img=`find "${output_dir}" -type f \( -name "*T1w_*" -and -name "*_t10*" -or -name "*_t29*" -or -name "*_t30*" \) 2>/dev/null`
           IFS=$'\n' invs=($(sort <<<"${inv_img[*]}"))
@@ -374,6 +378,8 @@ for subID in ${search}; do
           done
         fi
 
+        #---------------------------------------------------------------------------------------------------------
+        # acq-motion files for line-scanning
         if [[ ${DCM_FIX} -eq 0 ]]; then
           ## Multi-slice files
           motion_img=`find "${output_dir}" -type f \( -name "*motion*" -and -name "*.nii.gz" \) 2>/dev/null`
@@ -402,8 +408,8 @@ for subID in ${search}; do
             fi
           done
 
-
-          ## Single-slice
+          #---------------------------------------------------------------------------------------------------------
+          # Single-slice
           slice_img=`find "${output_dir}" -type f \( -name "*1slice*" -and -not -name "*space*" -and -name "*anat*" -and -name "*.nii.gz" \) 2>/dev/null`
           
           # sort array (https://stackoverflow.com/questions/7442417/how-to-sort-an-array-in-bash)
@@ -414,8 +420,7 @@ for subID in ${search}; do
           count=0
           if [[ ! -z ${slice_img} ]]; then
             
-            echo " Found 1slice-files"
-
+            echo " Found \"acq-1slice\" files"
             for slice in ${slice_img[@]}; do
               ((count++))
 
@@ -427,13 +432,13 @@ for subID in ${search}; do
 
               # fetch task
               task_id=`get_id ${slice} task`
-              if [[ ! -z ${task} ]]; then
+              if [[ ! -z ${task_id} ]]; then
                 task_flag="_task-${task_id}"
               else
                 task_flag=""
               fi                   
             
-              bids_slice=${bids_dir}/anat/${base}${task_flag}_acq-1slice_run-${run}_T1w.nii.gz
+              bids_slice=${bids_dir}/anat/${base}${task_flag}_run-${run}_acq-1slice_T1w.nii.gz
               if [[ ! -f ${bids_slice} ]]; then
                 if [[ -f ${slice} ]]; then
                   echo "  renaming to $(basename ${bids_slice})"
@@ -449,7 +454,8 @@ for subID in ${search}; do
           else
             echo "  WARNING: no \"1slice\"-files were found in ${output_dir}"
           fi
-
+          
+          #---------------------------------------------------------------------------------------------------------
           ## bold files
           bold_files=`find "${input_dir}" -type f \( -name "*bold_*" -and -name "*.lab" \) 2>/dev/null`
 
@@ -460,7 +466,11 @@ for subID in ${search}; do
           count=0
           if [[ ! -z ${bold_files} ]]; then
 
-            echo " Found raw bold-files (*.lab)"
+            if [[ ! -d ${bids_dir}/func ]]; then
+              mkdir -p ${bids_dir}/func
+            fi
+
+            echo " Found line-scanning bold-files (*.lab)"
     
             # get foldover direction
             info_file=`find "${DIR_DATA_DERIV}/pycortex/${sub_name}" -type f \( -name "*desc-info*" -and -name "*.csv" \) 2>/dev/null`
@@ -472,11 +482,11 @@ for subID in ${search}; do
             fi
             echo "  foldover is set to: ${fold}"
 
-            # get foldover direction
+            # get shift from log.md file
             if [[ ! -z ${ses} ]]; then
               md=`find $(dirname ${input_dir}) -type f \( -name "*ses-${nr}*" -and -name "*.md" \) 2>/dev/null`
             else
-              md=`find $(dirname ${input_dir}) -type f \( -name "*ses-${nr}*" -and -name "*.md" \) 2>/dev/null`
+              md=`find $(dirname ${input_dir}) -type f \( -name "*.md" \) 2>/dev/null`
             fi
 
             # check for multiple files; take last one if more than one are found
@@ -493,23 +503,40 @@ for subID in ${search}; do
             echo "  shift is set to: ${shift}mm"
             
             # use run-1 as template
-            slice_img=`find "${bids_dir}/anat" -type f \( -name "${base}*" -and -name "*1slice*" -and -name "*run-1*" -and -name "*.nii.gz" \) 2>/dev/null`
+            slice_img=(`find "${bids_dir}/anat" -type f \( -name "${base}*" -and -name "*1slice*" -and -name "*run-1*" -and -name "*.nii.gz" \) 2>/dev/null`)
+            
+            # check if slice_img is a list
+            if [[ ! -f ${slice_img} ]]; then
+              ct=0; for ii in ${slice_img[@]}; do ((ct++)); done
+              if [[ ${ct} -gt 1 ]]; then
+                echo "  WARNING: found multiple files with [\"acq-1slice\" and \"run-1\"] in \"${bids_dir}/anat\", taking the first instance"              
+              fi
+              slice_img=${slice_img[0]}
+            fi
+
             for bold in ${bold_files[@]}; do
               ((count++))
 
+              # fetch run
+              run=`get_id ${bold} run`
+              if [[ ${run} -eq 0 ]]; then
+                run=${count}
+              fi
+
               # fetch task
-              task=`task_id ${bold}`
+              task=`get_id ${bold} task`
               if [[ ${task} == "prf" ]]; then
                 task="pRF"
               elif [[ ${task} == "sr" ]]; then
                 task="SR"
               fi
 
-              # fetch run
-              run=`run_id ${bold}`
-              if [[ ${run} -eq 0 ]]; then
-                run=${count}
-              fi   
+              # get task from corresponding PAR-file, which is more accurate than gtpackngo's export names
+              par_file=`find $(dirname ${bold}) -type f -name "*run-${run}*" -and -name "*task-${task}*" -and -name "*bold*" -and -iname "*.par" 2>/dev/null`
+              if [[ -f ${par_file} ]]; then
+                fileparts=`read_par ${par_file} "Protocol name"`
+                task=`get_id ${fileparts} task`
+              fi
 
               line_img=${bids_dir}/func/${base}_task-${task}_run-${run}_bold.nii.gz
               if [[ -f ${slice_img} ]]; then
@@ -544,10 +571,14 @@ for subID in ${search}; do
           fi
         fi
 
+        #---------------------------------------------------------------------------------------------------------
         # check for more whole-brainy stuff
         if [[ ${DCM_FIX} -eq 0 ]]; then
-          b_files=`find "${input_dir}" -type f \( -name "*acq-3DEPI*" -and -name "*bold.nii.gz" \) 2>/dev/null`
+          # deal with stuff added by sequence development editor..
+          sde=1
+          b_files=`find "${input_dir}" -type f \( -iname "*acq-3DEPI*" -and -name "*bold*" -and -name "*.nii.gz" -and -not -name "*_ph.nii.gz" \) 2>/dev/null`
         else
+          sde=0
           b_files=`find "${input_dir}" -type f \( -name "*bold.nii.gz" \) 2>/dev/null`
         fi
 
@@ -559,11 +590,11 @@ for subID in ${search}; do
         mb_warning=0
         pe_warning=0
         if [[ ! -z ${bold_files[@]} ]]; then
-          echo " Found BOLD file(s)"
 
+          echo " Found BOLD file(s)"
           for bold in ${bold_files[@]}; do
 
-            echo $bold
+            echo " $bold"
             # fetch run
             run=`run_id ${bold}`
             if [[ ${run} -eq 0 ]]; then
@@ -571,8 +602,14 @@ for subID in ${search}; do
             fi 
 
             func=${bold}
-            fmap=$(dirname ${bold})/$(basename ${bold} _bold.nii.gz)_epi.nii.gz
             phase=$(dirname ${bold})/$(basename ${bold} .nii.gz)_ph.nii.gz
+
+            # sort out sequence development editor suffix
+            if [[ ${sde} -eq 1 ]]; then
+              fmap=`echo ${bold} | sed "s,bold,epi,g"`
+            else
+              fmap=$(dirname ${bold})/$(basename ${bold} _bold.nii.gz)_epi.nii.gz
+            fi
             
             task=`task_id ${bold}`
             acq=`get_id ${bold} acq`
@@ -706,7 +743,7 @@ for subID in ${search}; do
 
                       if [[ ! -z ${ph_dir} ]]; then
                         pe_warning=1
-                        echo "  WARNING: assuming PE-direction for ${image^^}=\"${ph_dir}\", please check if this is correct or put \"export PE_DIR_${image^^}=value\" in setup file or use on of '--ap','--pa','--lr', or '--rl' flags"
+                        echo "  WARNING: assuming PE-direction for ${image^^}=\"${ph_dir}\", please check if this is correct or put \"export PE_DIR_BOLD=value\" in setup file or use on of '--ap','--pa','--lr', or '--rl' flags"
                         call_json ${json_bids} PhaseEncodingDirection ${ph_dir}
                       fi 
                     fi
@@ -722,14 +759,23 @@ for subID in ${search}; do
           done
 
           # check nr fmaps & funcs to fix IntendedFor
-          func_files=`find ${bids_dir}/func -type f -name "*_bold.nii.gz"`; funcs=($(sort <<<"${func_files[*]}"))
+          func_files=`find ${bids_dir}/func -type f -name "*_bold.nii.gz"`; tmp_funcs=($(sort <<<"${func_files[*]}"))
           fmap_files=`find ${bids_dir}/fmap -type f -name "*_epi.json"`; fmaps=($(sort <<<"${fmap_files[*]}"))
+
+          # filter out line-scanning BOLD files by checking dimensions (should be >3)
+          funcs=()
+          for ff in ${tmp_funcs[@]}; do
+            dims=`fslval ${ff} dim0`
+            if [[ ${dims} -gt 3 ]]; then
+              funcs+=(${ff})
+            fi
+          done
 
           if [[ ${#funcs} -ne ${#fmaps} ]]; then
             # add all funcs to IntendedFor
             if [[ ${#fmaps[@]} -eq 1 && ${#funcs[@]} -gt 1 ]]; then
               # we have 1 FMAP for all bolds
-              echo "Received an FMAP file for all BOLD files; fixing IntendedFor"
+              echo "Received one FMAP file for all BOLD files; fixing IntendedFor"
               func_list=""; ct=0; for f in ${funcs[@]}; do ((ct++)); if [[ ${ct} -eq ${#funcs[@]} ]]; then add_="${f}"; else add_="${f},"; fi; func_list+=${add_}; done
               call_json ${fmaps[0]} IntendedFor "${func_list}"
             elif [[ `expr ${#funcs[@]} / ${#fmaps[@]}` -eq 2 ]]; then
@@ -751,13 +797,80 @@ for subID in ${search}; do
               echo "WARNING: got ${#funcs[@]} BOLD files and ${#fmaps[@]} FMAP files. I can only deal with 1 FMAP for all, an FMAP for all BOLD files, or `expr ${#funcs[@]} / ${#fmaps[@]}` FMAP files (an FMAP for every 2 BOLD files)"
             fi
           fi
+          
+          #---------------------------------------------------------------------------------------------------------
+          # check for event files
+          tsv_files=(`find "${input_dir}" -type f \( -name "*.tsv*" \) 2>/dev/null`)
+          if [[ ! -z ${tsv_files} ]]; then
             
-          # check for physio files
-          phys=`find "${input_dir}" -type f \( -name "SCANPHYS*" -and -name "*bold_*.log" \) 2>/dev/null`
+            if [[ ! -d ${bids_dir}/func ]]; then
+              mkdir -p ${bids_dir}/func
+            fi
+            echo " Found event file(s)"    
 
-          # sort array
-          IFS=$'\n' phys=($(sort <<<"${phys[*]}"))
-          unset IFS
+            count=0
+            for file in ${tsv_files[@]}; do
+              
+              # add counter in case file does not contain run-X id
+              ((count++))
+
+              # fetch task
+              task=`get_id ${file} task`
+
+              # fetch run
+              run=`get_id ${file} run`
+              if [[ ${run} -eq 0 ]]; then
+                run=${count}
+              fi              
+
+              bids_tsv=${bids_dir}/func/${base}_task-${task}_run-${run}_events.tsv
+              if [[ ! -f ${bids_edf} ]]; then
+                echo "  renaming tsv-file to `basename ${bids_tsv}`"
+                cp ${file} ${bids_tsv}
+              fi
+            done
+          fi
+
+          #---------------------------------------------------------------------------------------------------------
+          # check for eyetracker files
+          edf_files=(`find "${input_dir}" -type f \( -name "*.edf*" \) 2>/dev/null`)
+          if [[ ! -z ${edf_files} ]]; then
+
+            if [[ ! -d ${bids_dir}/func ]]; then
+              mkdir -p ${bids_dir}/func
+            fi
+
+            echo " Found eyetracker file(s)"    
+
+            count=0
+            for file in ${edf_files[@]}; do
+              
+              # add counter in case file does not contain run-X id
+              ((count++))
+
+              # fetch task
+              task=`get_id ${file} task`
+              if [[ ${task} == "prf" ]]; then
+                task="pRF"
+              fi
+
+              # fetch run
+              run=`get_id ${file} run`
+              if [[ ${run} -eq 0 ]]; then
+                run=${count}
+              fi
+
+              bids_edf=${bids_dir}/func/${base}_task-${task}_run-${run}_eye.edf
+              if [[ ! -f ${bids_edf} ]]; then
+                echo "  renaming edf-file to `basename ${bids_edf}`"
+                cp ${file} ${bids_edf}
+              fi              
+            done
+          fi          
+
+          #---------------------------------------------------------------------------------------------------------
+          # check for physio files
+          phys=(`find "${input_dir}" -type f \( -name "SCANPHYS*" -and -name "*bold_*.log" \) 2>/dev/null`)
           if [[ ! -z ${phys} ]]; then
 
             echo " Found physio file(s)"
@@ -772,18 +885,16 @@ for subID in ${search}; do
               ((count++))
 
               # fetch task
-              task=`task_id ${file}`
+              task=`get_id ${file} task`
               if [[ ${task} == "prf" ]]; then
                 task="pRF"
-              else
-                task=${task^^}
               fi
 
               # fetch run
-              run=`run_id ${file}`
+              run=`get_id ${file} run`
               if [[ ${run} -eq 0 ]]; then
                 run=${count}
-              fi              
+              fi           
 
               bids_phys=${bids_dir}/physio/${base}_task-${task}_run-${run}_physio.log
               if [[ ! -f ${bids_phys} ]]; then
