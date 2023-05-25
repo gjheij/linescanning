@@ -151,6 +151,7 @@ class ParseEyetrackerFile(SetAttributes):
         report=False,
         save_as=None,
         invoked_from_func=False,
+        overwrite=False,
         **kwargs):
 
         super().__init__()
@@ -173,47 +174,45 @@ class ParseEyetrackerFile(SetAttributes):
         self.report             = report
         self.save_as            = save_as
         self.invoked_from_func  = invoked_from_func
+        self.overwrite          = overwrite
         self.__dict__.update(kwargs)
 
-        # add all files to h5-file
-        if isinstance(self.edf_file, str) or isinstance(self.edf_file, list):
             
-            if self.verbose:
-                print("\nEYETRACKER")
+        # add all files to h5-file
+        if isinstance(self.edf_file, (str,list)):
+            
+            # print message
+            utils.verbose("\nEYETRACKER", self.verbose)
 
+            # check report stuff
+            self.eyeprep_dir = None
+            if not self.invoked_from_func:
+                if self.report:
+                    if self.save_as == None:
+                        try:
+                            self.eyeprep_dir = opj(os.environ.get("DIR_DATA_DERIV"), 'eyeprep')
+                        except:
+                            raise ValueError(f"Please specify an output directory with 'save_as='")
+                    else:
+                        self.eyeprep_dir = opj(self.save_as, "eyeprep")
+
+                    self.eyeprep_logs = opj(self.eyeprep_dir, 'logs')
+                    if not os.path.exists(self.eyeprep_logs):
+                        os.makedirs(self.eyeprep_logs)
+
+            # preprocess and fetch dataframes
             self.preprocess_edf_files()
             self.ho.close_hdf_file()
 
         # write boilerplate
         if not self.invoked_from_func:
             if self.report:
-                if self.save_as == None:
-                    try:
-                        self.eyeprep_dir = opj(os.environ.get("DIR_DATA_DERIV"), 'eyeprep')
-                    except:
-                        raise ValueError(f"Please specify an output directory with 'save_as='")
-                else:
-                    self.eyeprep_dir = self.save_as
-
-                if self.ses != None:
-                    self.base = f'sub-{self.sub}_ses-{self.ses}'
-                    self.eyeprep_full = opj(self.eyeprep_dir, f'sub-{self.sub}', f'ses-{self.ses}')
-                else:
-                    self.eyeprep_full = opj(self.eyeprep_dir, f'sub-{self.sub}')
-                    self.base = f'sub-{self.sub}'
-
+                    
                 # make figure directory
                 self.run_uuid = f"{strftime('%Y%m%d-%H%M%S')}_{uuid4()}"
-                self.eyeprep_figures = opj(self.eyeprep_dir, f'sub-{self.sub}', 'figures')
-                self.eyeprep_runid = opj(self.eyeprep_dir, f'sub-{self.sub}', 'log', self.run_uuid)
-                self.eyeprep_logs = opj(self.eyeprep_dir, 'logs')
-                for dir in self.eyeprep_full, self.eyeprep_figures, self.eyeprep_logs, self.eyeprep_runid:
-                    if not os.path.exists(dir):
-                        os.makedirs(dir, exist_ok=True)
 
                 self.citation_file = Path(opj(self.eyeprep_logs, "CITATION.md"))
-                self.citation_file.write_text(self.desc_eye)    
-
+                self.citation_file.write_text(self.desc_eye)
                 # write report
                 self.config = str(Path(utils.__file__).parents[1]/'misc'/'default_eye.yml')
                 if not os.path.exists(self.config):
@@ -230,52 +229,23 @@ class ParseEyetrackerFile(SetAttributes):
                     # generate report
                     self.report_obj.generate_report()
 
-                    utils.verbose(f"Saving report to {str(self.report_obj.out_dir/self.report_obj.out_filename)}", self.verbose)            
-        else:
-            self.eyeprep_figures = self.lsprep_figures
-
+                    utils.verbose(f"Saving report to {str(self.report_obj.out_dir/self.report_obj.out_filename)}", self.verbose)
 
     def preprocess_edf_files(self):
 
         # deal with edf-files
         if isinstance(self.edf_file, str):
-            self.edfs = [self.edf_file]
+            self.edfs = [os.path.abspath(self.edf_file)]
         elif isinstance(self.edf_file, list):
             self.edfs = self.edf_file.copy()
         else:
             raise ValueError(f"Input must be 'str' or 'list', not '{type(self.edf_file)}'")
 
         # write boilerplate
-        self.desc_eye = """some text for the preprocessing of eye-tracking data"""
-        if not self.invoked_from_func:
-            if self.report:
-                if self.save_as == None:
-                    try:
-                        self.eyeprep_dir = opj(os.environ.get("DIR_DATA_DERIV"), 'eyeprep')
-                    except:
-                        raise ValueError(f"Please specify an output directory with 'save_as='")
-                else:
-                    self.eyeprep_dir = self.save_as
-
-                if self.ses != None:
-                    self.base = f'sub-{self.sub}_ses-{self.ses}'
-                    self.eyeprep_full = opj(self.eyeprep_dir, f'sub-{self.sub}', f'ses-{self.ses}')
-                else:
-                    self.eyeprep_full = opj(self.eyeprep_dir, f'sub-{self.sub}')
-                    self.base = f'sub-{self.sub}'
-                    
-                # make figure directory
-                self.run_uuid = f"{strftime('%Y%m%d-%H%M%S')}_{uuid4()}"
-                self.eyeprep_figures = opj(self.eyeprep_dir, f'sub-{self.sub}', 'figures')
-                self.eyeprep_runid = opj(self.eyeprep_dir, f'sub-{self.sub}', 'log', self.run_uuid)
-                self.eyeprep_logs = opj(self.eyeprep_dir, 'logs')
-                for dir in self.eyeprep_full, self.eyeprep_figures, self.eyeprep_logs, self.eyeprep_runid:
-                    if not os.path.exists(dir):
-                        os.makedirs(dir, exist_ok=True)
-
-                self.citation_file = Path(opj(self.eyeprep_logs, "CITATION.md"))
-                self.citation_file.write_text(self.desc_eye)    
-        else:
+        self.desc_eye = f"""For each of the eyetracking file(s) found, the following preprocessing was performed: First, eye blinks were removed and interpolated over, after which data was band-pass filtered with a butterworth filter with a 
+frequency range of {self.high_pass_pupil_f}-{self.low_pass_pupil_f}Hz. """
+        if self.invoked_from_func:
+            
             # remove task from filename
             file_parts = self.base_name.split("_")
             if any(["task" in i for i in file_parts]):
@@ -285,7 +255,7 @@ class ParseEyetrackerFile(SetAttributes):
 
             self.h5_file = opj(os.path.dirname(self.edfs[0]), f"{out_name}_desc-eye.h5")
             self.eyeprep_figures = self.lsprep_figures
-
+        
         # deal with edf-files
         if self.func_file != None:
             if isinstance(self.func_file, str):
@@ -295,8 +265,16 @@ class ParseEyetrackerFile(SetAttributes):
             else:
                 raise ValueError(f"Input must be 'str' or 'list', not '{type(self.edf_file)}'")
 
+        # check if there's an instance of h5_file
         if not isinstance(self.h5_file, str):
             self.h5_file = opj(os.path.dirname(self.edfs[0]), f"eye.h5")
+
+        # check if we should overwrite
+        if self.overwrite:
+            if os.path.exists(self.h5_file):
+                store = pd.HDFStore(self.h5_file)
+                store.close()
+                os.remove(self.h5_file)
 
         self.ho = hedfpy.HDFEyeOperator(self.h5_file)
         if not os.path.exists(self.h5_file):
@@ -312,7 +290,8 @@ class ParseEyetrackerFile(SetAttributes):
                     for el in ['sub', 'run', 'task']:
                         if el in list(bids_comps.keys()):
                             setattr(self, el, bids_comps[el])
-
+                        
+                # set alias
                 alias = f"run_{self.run}"
                 if isinstance(self.task, str):
                     alias = f"task_{self.task}_run_{self.run}"
@@ -368,6 +347,7 @@ class ParseEyetrackerFile(SetAttributes):
                 use_TR = None                  
 
             # full output from 'fetch_relevant_info' > use sub as differentiator if multiple files were given
+            nr_vols = None
             if isinstance(self.func_file, list):
                 nr_vols = self.vols(self.func_file[i])
 
@@ -375,6 +355,13 @@ class ParseEyetrackerFile(SetAttributes):
             if isinstance(self.task, str):
                 alias = f"task_{self.task}_run_{self.run}"
 
+            # set eyeprep folder
+            if not self.invoked_from_func:
+                if self.report:
+                    self.eyeprep_figures = opj(self.eyeprep_dir, f'sub-{self.sub}', 'figures')
+                    if not os.path.exists(self.eyeprep_figures):
+                        os.makedirs(self.eyeprep_figures)
+                    
             fetch_data = True
             try:
                 self.data = self.fetch_relevant_info(
@@ -391,10 +378,12 @@ class ParseEyetrackerFile(SetAttributes):
                 self.df_space_eye.append(self.fetch_eye_tracker_time())
                 self.df_saccades.append(self.fetch_saccades())
 
-
-        self.df_blinks = pd.concat(self.df_blinks).set_index(['subject','run','event_type'])
-        self.df_space_eye = pd.concat(self.df_space_eye).set_index(['subject','run','eye','t'])
-        self.df_saccades = pd.concat(self.df_saccades).set_index(['subject','run','event_type'])
+        # concatenate available dataframes
+        for ii,ll in zip(
+            ["df_blinks","df_space_eye","df_saccades"],
+            [['subject','run','event_type'],['subject','run','eye','t'],['subject','run','event_type']]):
+            if len(getattr(self, ii)) > 0:
+                setattr(self, ii, pd.concat(getattr(self, ii)).set_index(ll))
 
         if len(self.df_space_func) > 0:
             # check if all elements are dataframes
