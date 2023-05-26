@@ -241,6 +241,20 @@ class ParseEyetrackerFile(SetAttributes):
         else:
             raise ValueError(f"Input must be 'str' or 'list', not '{type(self.edf_file)}'")
 
+        # check if we should index task
+        self.index_task = False
+        self.blink_index = ['subject','run','event_type']
+        self.eye_index = ['subject','run','eye','t']
+        self.sac_index = ['subject','run','event_type']
+        if self.use_bids:
+            self.task_ids = utils.get_ids(self.edf_file, bids="task")
+
+            # insert task id in indexer
+            if len(self.task_ids) > 1:
+                self.index_task = True
+                for idx in ["blink_index","eye_index","sac_index"]:
+                    getattr(self, idx).insert(1, "task")
+                
         # write boilerplate
         self.desc_eye = f"""For each of the eyetracking file(s) found, the following preprocessing was performed: First, eye blinks were removed and interpolated over, after which data was band-pass filtered with a butterworth filter with a 
 frequency range of {self.high_pass_pupil_f}-{self.low_pass_pupil_f}Hz. """
@@ -366,6 +380,7 @@ frequency range of {self.high_pass_pupil_f}-{self.low_pass_pupil_f}Hz. """
             try:
                 self.data = self.fetch_relevant_info(
                     TR=use_TR, 
+                    task=self.task,
                     nr_vols=nr_vols,
                     alias=alias)
             except:
@@ -381,14 +396,14 @@ frequency range of {self.high_pass_pupil_f}-{self.low_pass_pupil_f}Hz. """
         # concatenate available dataframes
         for ii,ll in zip(
             ["df_blinks","df_space_eye","df_saccades"],
-            [['subject','run','event_type'],['subject','run','eye','t'],['subject','run','event_type']]):
+            [self.blink_index,self.eye_index,self.sac_index]):
             if len(getattr(self, ii)) > 0:
                 setattr(self, ii, pd.concat(getattr(self, ii)).set_index(ll))
 
         if len(self.df_space_func) > 0:
             # check if all elements are dataframes
             if all(isinstance(x, pd.DataFrame) for x in self.df_space_func):
-                self.df_space_func = pd.concat(self.df_space_func).set_index(['subject','run','eye','t'])
+                self.df_space_func = pd.concat(self.df_space_func).set_index(self.eye_index)
 
     def fetch_blinks_run(self, run=1, return_type='df'):
         blink_df = utils.select_from_df(
@@ -415,6 +430,7 @@ frequency range of {self.high_pass_pupil_f}-{self.low_pass_pupil_f}Hz. """
 
     def fetch_relevant_info(
         self,
+        task=None,
         nr_vols=None,
         alias=None,
         TR=None):
@@ -443,18 +459,16 @@ frequency range of {self.high_pass_pupil_f}-{self.low_pass_pupil_f}Hz. """
         self.time_period = [self.session_start_EL_time,self.session_stop_EL_time]
 
         eye = self.ho.eye_during_period(self.time_period, alias)
-        if self.verbose:
-            print(" Eye:         ", eye)
-            print(" Sample rate: ", self.sample_rate)
-            print(" Start time:  ", self.time_period[0])
-            print(" Stop time:   ", self.time_period[1])
+        utils.verbose(f" Eye:         {eye}", self.verbose)
+        utils.verbose(f" Sample rate: {self.sample_rate}", self.verbose)
+        utils.verbose(f" Start time:  {self.time_period[0]}", self.verbose)
+        utils.verbose(f" Stop time:   {self.time_period[1]}", self.verbose)
 
         # set some stuff required for successful plotting with seconds on the x-axis
         n_samples = int(self.time_period[1]-self.time_period[0])
         duration_sec = n_samples*(1/self.sample_rate)
 
-        if self.verbose:
-            print(" Duration:     {}s [{} samples]".format(duration_sec, n_samples))
+        utils.verbose(f" Duration:    {duration_sec}s [{n_samples} samples]", self.verbose)
 
         # Fetch a bunch of data
         extract = [
@@ -465,8 +479,7 @@ frequency range of {self.high_pass_pupil_f}-{self.low_pass_pupil_f}Hz. """
             "gaze_x",
             "gaze_y"]           
         
-        if self.verbose:
-            print(f" Fetching:     {extract}")
+        utils.verbose(f" Fetching:    {extract}", self.verbose)
 
         tf = []
         tf_rs = []
@@ -549,9 +562,7 @@ frequency range of {self.high_pass_pupil_f}-{self.low_pass_pupil_f}Hz. """
         # add start time to it
         start_exp_time = trial_times.iloc[0, :][-1]
 
-        if self.verbose:
-            print(" Start time exp = ", round(start_exp_time, 2))
-
+        utils.verbose(f" Start time:  {round(start_exp_time, 2)}s", self.verbose)
         # get onset time of blinks, cluster blinks that occur within 350 ms
         bb = self.ho.blinks_during_period(self.time_period, alias=alias)
 
@@ -565,15 +576,13 @@ frequency range of {self.high_pass_pupil_f}-{self.low_pass_pupil_f}Hz. """
         # ref: https://www.sciencedirect.com/science/article/abs/pii/S0014483599906607
         blink_rate = len(onsets)/duration_sec
 
-        if self.verbose:
-            print(f" Found {len(onsets)} blinks [{round(blink_rate, 2)} blinks per second]")
+        utils.verbose(f" Nr blinks:   {len(onsets)} [{round(blink_rate, 2)} blinks per second]", self.verbose)
 
         # extract saccades
         df_saccades = self.ho.detect_saccades_during_period(time_period=self.time_period, alias=alias)
         
         if len(df_saccades) > 0:
-            if self.verbose:
-                print(f" Found {len(df_saccades)} saccades")
+            utils.verbose(f" Nr saccades: {len(df_saccades)} saccades", self.verbose)
 
             # convert saccade onset to seconds relative to start of run
             df_saccades["onset"] = df_saccades["expanded_start_time"]/self.sample_rate
@@ -582,25 +591,36 @@ frequency range of {self.high_pass_pupil_f}-{self.low_pass_pupil_f}Hz. """
             for tt,mm in zip(["subject","run","event_type"],[self.sub,self.run,"saccade"]):
                 df_saccades[tt] = mm
 
+            # set task index
+            df_saccades = self.set_task_index(df_saccades, task=task)                
+
         # build dataframe with relevant information
         self.tmp_df = df_space_eye.copy()
         df_space_eye = pd.DataFrame(df_space_eye)
 
         # index
         df_space_eye['subject'], df_space_eye['run'] = self.sub, self.run
+        
+        # set task index
+        df_space_eye = self.set_task_index(df_space_eye, task=task)
 
         # index
         if isinstance(df_space_func, pd.DataFrame):
             df_space_func['subject'], df_space_func['run'] = self.sub, self.run
+            
+            # set task index
+            df_space_func = self.set_task_index(df_space_func, task=task)
 
         # index
         df_blink_events = pd.DataFrame(onsets, columns=['onset'])
 
         for tt,mm in zip(['subject','run','event_type'],[self.sub,self.run,"blink"]):
             df_blink_events[tt] = mm
+        
+        # set task index
+        df_blink_events = self.set_task_index(df_blink_events, task=task)
 
-        if self.verbose:
-            print("Done")
+        utils.verbose("Done", self.verbose)
 
         return_dict = {
             "space_eye": df_space_eye,
@@ -617,6 +637,14 @@ frequency range of {self.high_pass_pupil_f}-{self.low_pass_pupil_f}Hz. """
             self.plot_trace_and_heatmap(df_space_eye, fname=fname)
 
         return return_dict
+
+    def set_task_index(self, df, task=None):
+        # index task if required
+        if self.index_task:
+            if isinstance(task, str):
+                df["task"] = task
+
+        return df
 
     def plot_trace_and_heatmap(
         self, 
@@ -841,6 +869,17 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
 
         if isinstance(self.tsv_file, list):
             
+            self.onset_index = ['subject', 'run', 'event_type']
+            self._index = ['subject', 'run']
+            if self.use_bids:
+                self.task_ids = utils.get_ids(self.tsv_file, bids="task")
+
+                # insert task id in indexer
+                if len(self.task_ids) > 1:
+                    self.index_task = True
+                    for idx in ["onset_index","_index"]:
+                        getattr(self, idx).insert(1, "task")
+
             # set them for internal reference
             for attr in self.exp_attributes:
                 setattr(self, attr, [])
@@ -875,6 +914,7 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
                 self.preprocess_exptools_file(
                     onset_file,
                     run=self.run,
+                    task=self.task,
                     delete_vols=delete_vols,
                     phase_onset=self.phase_onset,
                     duration=duration)
@@ -895,17 +935,17 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
                     pass
 
             # concatemate df
-            self.df_onsets = pd.concat(self.df_onsets).set_index(['subject', 'run', 'event_type'])
+            self.df_onsets = pd.concat(self.df_onsets).set_index(self.onset_index)
 
             # rts
             try:
-                self.df_rts = pd.concat(self.df_rts).set_index(['subject', 'run'])
+                self.df_rts = pd.concat(self.df_rts).set_index(self._index)
             except:
                 pass
 
             # accuracy
             try:
-                self.df_accuracy = pd.concat(self.df_accuracy).set_index(['subject', 'run'])
+                self.df_accuracy = pd.concat(self.df_accuracy).set_index(self._index)
             except:
                 pass
 
@@ -925,7 +965,14 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
     def events_single_run(self, run=1):
         return self.events_per_run[run]
 
-    def preprocess_exptools_file(self, tsv_file, run=1, delete_vols=0, phase_onset=1, duration=None):
+    def preprocess_exptools_file(
+        self, 
+        tsv_file, 
+        task=None,
+        run=1, 
+        delete_vols=0, 
+        phase_onset=1, 
+        duration=None):
 
         if self.verbose:
             print(f"Preprocessing {tsv_file}")
@@ -1021,7 +1068,12 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
         else:
             columns = ['onset', 'event_type', 'duration']
             
-        self.onset_df = self.index_onset(self.onset, columns=columns, subject=self.sub, run=run)
+        self.onset_df = self.index_onset(
+            self.onset, 
+            task=task,
+            columns=columns, 
+            subject=self.sub, 
+            run=run)
 
         # check if we should do reaction times
         if self.RTs:
@@ -1135,9 +1187,14 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
             # parse into dataframe
             self.rts_df = self.index_rts(self.rts, columns=["RTs"], subject=self.sub, run=run)
 
-
-    @staticmethod
-    def index_onset(array, columns=None, subject=1, run=1, TR=0.105, set_index=False):
+    def index_onset(
+        self,
+        array, 
+        columns=None, 
+        subject=1, 
+        run=1, 
+        task=None,
+        set_index=False):
         
         if columns == None:
             df = pd.DataFrame(array)
@@ -1149,6 +1206,12 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
         df['event_type']    = df['event_type'].astype(str)
         df['onset']         = df['onset'].astype(float)
 
+        if self.index_task:
+            if isinstance(task, str):
+                df["task"] = task
+            else:
+                df["task"] = "task"
+
         # check if we got duration
         try:
             df['duration'] = df['duration'].astype(float)  
@@ -1156,7 +1219,7 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
             pass
 
         if set_index:
-            return df.set_index(['subject', 'run', 'event_type'])
+            return df.set_index(self.onset_index)
         else:
             return df        
 
@@ -1670,15 +1733,25 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
         if self.verbose:
             print("\nFUNCTIONAL")
 
-        if isinstance(self.func_file, str) or isinstance(self.func_file, np.ndarray):
+        if isinstance(self.func_file, (str, np.ndarray)):
             self.func_file = [self.func_file]
                 
+        # check if we should index task
+        self.index_task = False
+        self.index_list = ["subject","run","t"]
+        if self.use_bids:
+            self.task_ids = utils.get_ids(self.func_file, bids="task")
+
+            if len(self.task_ids) > 1:
+                self.index_task = True
+                self.index_list = ["subject","task","run","t"]
+        
         # start boilerplate
         self.func_pre_desc = """
 Functional data preprocessing
 
-For each of the {num_bold} BOLD run(s) found per subject (across all tasks and sessions), the following preprocessing was performed.
-""".format(num_bold=len(self.func_file))
+# For each of the {num_bold} BOLD run(s) found per subject (across all tasks and sessions), the following preprocessing was performed.
+# """.format(num_bold=len(self.func_file))
 
         if isinstance(self.func_file, list):
 
@@ -1868,7 +1941,7 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
 
             if self.retroicor:
                 try:
-                    self.df_func_retroicor = pd.concat(self.df_retro).set_index(['subject', 'run', 't'])
+                    self.df_func_retroicor = pd.concat(self.df_retro).set_index(self.index_list)
                     self.df_physio_r2 = pd.concat(self.df_r2)
                 except:
                     raise ValueError("RETROICOR did not complete successfully..")
@@ -1880,7 +1953,7 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                     print("WARNING: aCompCor did not execute properly. All runs have 'None'")
                 else:
                     try:
-                        self.df_func_acomp = pd.concat(self.df_acomp).set_index(['subject', 'run', 't'])
+                        self.df_func_acomp = pd.concat(self.df_acomp).set_index(self.index_list)
                     except:
                         self.df_func_acomp = pd.concat(self.df_acomp)
 
@@ -1907,7 +1980,7 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                     print("WARNING: ICA did not execute properly. All runs have 'None'")
                 else:
                     try:
-                        self.df_func_ica = pd.concat(self.df_ica).set_index(['subject', 'run', 't'])
+                        self.df_func_ica = pd.concat(self.df_ica).set_index(self.index_list)
                     except:
                         self.df_func_ica = pd.concat(self.df_ica)                    
 
@@ -2062,6 +2135,7 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
             self.data_raw, 
             columns=self.vox_cols, 
             subject=self.sub, 
+            task=task,
             run=run, 
             TR=self.TR,
             set_index=True)
@@ -2077,6 +2151,7 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
             self.data_psc,
             columns=self.vox_cols, 
             subject=self.sub,
+            task=task,
             run=run, 
             TR=self.TR, 
             set_index=True)
@@ -2087,6 +2162,7 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
             self.data_zscore,
             columns=self.vox_cols, 
             subject=self.sub, 
+            task=task,
             run=run, 
             TR=self.TR,
             set_index=True)
@@ -2106,6 +2182,7 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                 self.hp_raw,
                 columns=self.vox_cols, 
                 subject=self.sub, 
+                task=task,
                 run=run, 
                 TR=self.TR,
                 set_index=True)
@@ -2122,6 +2199,7 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                 columns=self.vox_cols, 
                 subject=self.sub,
                 run=run, 
+                task=task,
                 TR=self.TR, 
                 set_index=True)
 
@@ -2133,6 +2211,7 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                 subject=self.sub, 
                 run=run, 
                 TR=self.TR,
+                task=task,
                 set_index=True)
 
             # save SD and Mean so we can go from zscore back to original
@@ -2206,6 +2285,7 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                     self.clean_data,
                     columns=self.vox_cols, 
                     subject=self.sub, 
+                    task=task,
                     run=run, 
                     TR=self.TR,
                     set_index=True)
@@ -2220,6 +2300,7 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                     self.tmp_raw,
                     columns=self.vox_cols, 
                     subject=self.sub, 
+                    task=task,
                     run=run, 
                     TR=self.TR,
                     set_index=True)
@@ -2239,6 +2320,7 @@ For each of the {num_bold} BOLD run(s) found per subject (across all tasks and s
                     self.hp_tmp_psc,
                     columns=self.vox_cols, 
                     subject=self.sub, 
+                    task=task,
                     run=run, 
                     TR=self.TR,
                     set_index=True)            
@@ -2282,6 +2364,7 @@ The data was then low-pass filtered using a Savitsky-Golay filter [removes high 
                     tmp_filtered,
                     columns=self.vox_cols,
                     subject=self.sub,
+                    task=task,
                     run=run,
                     TR=self.TR,
                     set_index=True)
@@ -2572,20 +2655,33 @@ The data was then low-pass filtered using a Savitsky-Golay filter [removes high 
             else:
                 return return_data
 
-    @staticmethod
-    def index_func(array, columns=None, subject=1, run=1, TR=0.105, set_index=False):
+    def index_func(
+        self,
+        array, 
+        columns=None, 
+        subject=1, 
+        run=1, 
+        task=None,
+        TR=0.105, 
+        set_index=False):
     
         if columns == None:
             df = pd.DataFrame(array.T)
         else:
             df = pd.DataFrame(array.T, columns=columns)
-            
+        
         df['subject']   = subject
         df['run']       = run
         df['t']         = list(TR*np.arange(df.shape[0]))
 
+        if self.index_task:
+            if isinstance(task, str):
+                df["task"] = task
+            else:
+                df["task"] = "task"
+
         if set_index:
-            return df.set_index(['subject', 'run', 't'])
+            return df.set_index(self.index_list)
         else:
             return df
 
@@ -2651,22 +2747,20 @@ class Dataset(ParseFuncFile,SetAttributes):
                 **kwargs)
 
         utils.verbose("\nDATASET: created", self.verbose)
-        # if self.report:
-        #     self.to_hdf()
 
     def fetch_fmri(self, strip_index=False, dtype=None):
 
         if dtype == None:
-            if self.acompcor:
-                dtype = "acompcor"
-            else:
+            if hasattr(self, "acompcor"):
+                if self.acompcor:
+                    dtype = "acompcor"
+            elif hasattr(self, "ica"):
                 if self.ica:
                     dtype = "ica"
-                else:
-                    if hasattr(self, "standardization"):
-                        dtype = self.standardization
-                    else:
-                        dtype = "psc"
+            elif hasattr(self, "standardization"):
+                    dtype = self.standardization
+            else:
+                dtype = "psc"
         
         if dtype == "psc":
             attr = 'df_func_psc'
@@ -2696,12 +2790,19 @@ class Dataset(ParseFuncFile,SetAttributes):
         else:
             print(f"Could not find '{attr}' attribute")
             
-    def fetch_onsets(self, strip_index=False):
+    def fetch_onsets(self, strip_index=False, button=True):
         if hasattr(self, 'df_onsets'):
             if strip_index:
-                return self.df_onsets.reset_index().drop(labels=list(self.df_onsets.index.names), axis=1)
+                df =  self.df_onsets.reset_index().drop(labels=list(self.df_onsets.index.names), axis=1)
             else:
-                return self.df_onsets
+                df = self.df_onsets
+
+            # filter out button
+            if not button:
+                df = utils.select_from_df(df, expression="event_type != response")
+
+            return df
+
         else:
             print("No event-data was provided")
 
