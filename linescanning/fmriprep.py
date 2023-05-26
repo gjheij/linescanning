@@ -58,14 +58,15 @@ class init_single_subject_wf():
         self.layout = BIDSLayout(self.bids_dir, validate=False)
 
         if isinstance(self.bids_filters, str):
-            if len(self.bids_filters) != 0:
+            if os.path.exists(self.bids_filters):
                 with open(self.bids_filters) as f:
                     self.bids_filters = json.load(f)
 
         self.name = "single_subject_%s_wf" % self.subject_id
-        self.subject_data = collect_data(self.layout,
-                                         self.subject_id,
-                                         bids_filters=self.bids_filters)[0]
+        self.subject_data = collect_data(
+            self.layout,
+            self.subject_id,
+            bids_filters=self.bids_filters)[0]
 
         self.workflow = Workflow(name=self.name)
         
@@ -104,6 +105,7 @@ class init_single_subject_wf():
                 layout=self.layout,
                 non_standard=self.non_standard,
                 omp_nthreads=self.omp_nthreads)
+            
             if func_preproc_wf is None:
                 continue
 
@@ -154,10 +156,11 @@ class init_single_subject_wf():
                     wf_inputs.in_data = [str(s.path) for s in estimator.sources]
                     wf_inputs.metadata = [s.metadata for s in estimator.sources]
 
-                    # 21.0.x hack to change the number of volumes used
-                    # The default of 50 takes excessively long
-                    flatten = self.fmap_wf.get_node(f"wf_{estimator.bids_id}.flatten")
-                    flatten.inputs.max_trs = self.max_topup_vols
+                    # # 21.0.x hack to change the number of volumes used
+                    # # The default of 50 takes excessively long
+                    # flatten = self.fmap_wf.get_node(f"wf_{estimator.bids_id}.flatten")
+                    # print(flatten)
+                    # flatten.inputs.max_trs = self.max_topup_vols
                 else:
                     raise NotImplementedError(
                         "Sophisticated PEPOLAR schemes are unsupported."
