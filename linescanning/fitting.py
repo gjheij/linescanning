@@ -447,8 +447,8 @@ class NideconvFitter():
         fwhm: bool=False, 
         fwhm_lines: bool=False, 
         fwhm_labels: list=None, 
-        inset_ttp: list=[0.75, 0.65, 0.3, 0.3],
-        inset_fwhm: list=[0.75, 0.65, 0.3, 0.3],
+        inset_ttp: list=[0.75, 0.65, 0.3],
+        inset_fwhm: list=[0.75, 0.65, 0.3],
         reduction_factor: float=1.3,
         **kwargs):
 
@@ -483,9 +483,9 @@ class NideconvFitter():
         fwhm_labels: list, optional
             Which labels to use for the inset axis; this can be different than your event names (e.g., if you want to round numbers), by default None
         inset_ttp: list, optional
-            Where to put your TTP-axis, by default [0.75, 0.65, 0.3, 0.3]
+            Where to put your TTP-axis, by default [0.75, 0.65, 0.3]. Height will be scaled by the number of events
         inset_fwhm: list, optional
-            Where to put your FWHM-axis, by default [0.75, 0.65, 0.3, 0.3]
+            Where to put your FWHM-axis, by default [0.75, 0.65, 0.3, 0.3]. Width will be scaled by the number of events
         reduction_factor: float, optional
             Reduction factor of the font size in the inset axis, by default 1.3
 
@@ -615,19 +615,18 @@ class NideconvFitter():
 
         if ttp:
 
-            # add insets with time-to-peak
-            if len(inset_ttp) != 4:
-                raise ValueError(f"'inset_ttp' must be of length 4, not '{len(inset_ttp)}'")
-
-            left, bottom, width, height = inset_ttp
-            ax2 = axs.inset_axes([left, bottom, width, height])
-
             # make bar plot, use same color-coding
-            if isinstance(ttp_labels, list) or isinstance(ttp_labels, np.ndarray):
+            if isinstance(ttp_labels, (list,np.ndarray)):
                 ttp_labels = ttp_labels
             else:
                 ttp_labels = events  
 
+            # scale height by nr of events
+            if len(inset_ttp) < 4:
+                inset_ttp.append(len(ttp_labels)*0.05)
+
+            left, bottom, width, height = inset_ttp
+            ax2 = axs.inset_axes([left, bottom, width, height])
             self.plot_ttp(
                 axs=ax2, 
                 hrf_axs=axs, 
@@ -641,19 +640,18 @@ class NideconvFitter():
 
         if fwhm:
 
-            # add insets with time-to-peak
-            if len(inset_fwhm) != 4:
-                raise ValueError(f"'inset_fwhm' must be of length 4, not '{len(inset_fwhm)}'")
-
-            left, bottom, width, height = inset_fwhm
-            ax2 = axs.inset_axes([left, bottom, width, height])          
-
             # make bar plot, use same color-coding
-            if isinstance(fwhm_labels, list) or isinstance(fwhm_labels, np.ndarray):
+            if isinstance(fwhm_labels, (list,np.ndarray)):
                 fwhm_labels = fwhm_labels
             else:
                 fwhm_labels = events
 
+            # scale height by nr of events
+            if len(inset_fwhm) < 4:
+                inset_fwhm.insert(2, len(fwhm_labels)*0.05)
+                
+            left, bottom, width, height = inset_fwhm
+            ax2 = axs.inset_axes([left, bottom, width, height])
             self.plot_fwhm(
                 self.event_avg, 
                 axs=ax2, 
@@ -711,7 +709,7 @@ class NideconvFitter():
                     color=colors[ix], 
                     linewidth=0.5)
         
-        plotting.LazyBar(
+        self.ttp_plot = plotting.LazyBar(
             data=self.df_peaks,
             x="event_type",
             y="idxmax",
@@ -766,13 +764,15 @@ class NideconvFitter():
                     color=colors[ix], 
                     linewidth=0.5)
 
-        y_fwhm = [i.fwhm for i in fwhm_objs]
-        plotting.LazyBar(
-            x=fwhm_labels,
-            y=y_fwhm,
+        self.y_fwhm = [i.fwhm for i in fwhm_objs]
+        self.fwhm_labels = fwhm_labels
+        self.fwhm_plot = plotting.LazyBar(
+            x=self.fwhm_labels,
+            y=self.y_fwhm,
             palette=colors,
             sns_ori=fwhm_ori,
             axs=axs,
+            error=None,
             **dict(
                 kwargs,
                 font_size=self.font_size,

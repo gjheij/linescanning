@@ -540,7 +540,10 @@ class LazyPlot(Defaults):
                     else:
                         x = self.xx.copy()
 
-                if self.labels:
+                if isinstance(self.labels, (list,np.ndarray)):
+                    if isinstance(self.labels, np.ndarray):
+                        self.labels = list(self.labels)
+
                     lbl = self.labels[idx]
                 else:
                     lbl = None
@@ -1192,6 +1195,11 @@ class LazyBar():
                             else:
                                 self.sem = self.data.groupby(self.x).std()[self.y].values
         
+        # set to None if we have too little data for error
+        if isinstance(self.sem, np.ndarray):
+            if np.any(np.isnan(self.sem)):
+                self.sem = None
+
         self.ff = sns.barplot(
             data=self.data,
             x=xx, 
