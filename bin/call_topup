@@ -1,10 +1,20 @@
-#!/usr/bin/env bash
+#!/usr/bin/env python
+#$ -j Y
+#$ -cwd
+#$ -V
 
-#---------------------------------------------------------------------------------------------------------
-# Create help text
-function Usage {
-    cat <<USAGE
+import mkl
+mkl.set_num_threads=1
 
+import os
+import sys
+import getopt
+from linescanning import fmriprep
+opj = os.path.join
+
+def main(argv):
+
+    """
 ---------------------------------------------------------------------------------------------------
 call_topup
 
@@ -20,69 +30,96 @@ fail. Therefore, I just need motion-corrected, topup data for a very select part
 
 Parameters
 ----------
-    -s  subject ID
-    -i  subject-directory containing the files that need to be run through Topup. Defaults to DIR_
-        DATA_HOME as per spinoza_setup
-    -o  output directory containing the topup'ed data. Easiest is to give the fMRIPrep folder, it
-        will be formatted accordingly automatically. Defaults to <input_dir>/derivatives/fmriprep
-    -w  working directory where fMRIPrep's intermediate files are stored; default is some folder 
-        in /tmp
-    -b  bids filter file (maps to --bids-filter-file from fMRIPrep); allows you to select parti-
-        cular files
+  -s|--sub      subject ID
+  -n|--ses      session ID; will be used to construct a bids-filter dictionary. We'll first check
+                if a filter file is specified with (--filter). If not, and session has been speci-
+                fied, func/fmap fields will be filtered with `session`
+  -a|--acq      acq ID; will be used to construct a bids-filter dictionary            
+  -i|--in       subject-directory containing the files that need to be run through Topup. Defaults 
+                to DIR_DATA_HOME as per spinoza_setup
+  -o|--out      output directory containing the topup'ed data. Easiest is to give the fMRIPrep fol-
+                der, it will be formatted accordingly automatically. Defaults to <input_dir>/deriva-
+                tives/fmriprep
+  -w|--work     working directory where fMRIPrep's intermediate files are stored; default is some 
+                folder in /tmp
+  -b|--filters  bids filter file (maps to --bids-filter-file from fMRIPrep); allows you to select 
+                particular files
                         
 Example
 ----------
+>>> call_topup -s 001 --filters misc/fmriprep_config1.json
 >>> call_topup -s 001 -i DIR_DATA_HOME -o DIR_DATA_DERIV/fmriprep -w DIR_DATA_SOURCE/sub-001/ses-2
 >>> call_topup -s 001 -i DIR_DATA_HOME -o DIR_DATA_DERIV/fmriprep -b misc/fmriprep_config1.json
 
 ---------------------------------------------------------------------------------------------------
-USAGE
-    exit 1
-}
+"""
 
-# default input directory
-inputdir=${DIR_DATA_HOME}
-while getopts :-:hs:i:o:w:b: argument
-do
-case ${argument} in
-    s)  subject=${OPTARG}
-          ;;
-    i)  inputdir=${OPTARG}
-          ;;
-    o)  outputdir=${OPTARG}
-          ;;
-    w)  workdir=${OPTARG}
-          ;;
-    b)  bids_filters=${OPTARG}
-          ;; 
-  esac
-done
+    subject = None
+    session = None
+    acquisition = None
+    inputdir = os.environ.get("DIR_DATA_HOME")
+    outputdir = opj(inputdir, "fmriprep")
+    workdir = None
+    bids_filters = None
 
-if [[ $# -lt 4 ]] ; then
-  Usage >&2
-  exit 1
-fi
+    try:
+        opts = getopt.getopt(argv,"h:s:n:i:o:w:b:a:",["help", "sub=", "ses=", "acq=", "in=", "out=", "work=", "filters="])[0]
+    except getopt.GetoptError:
+        print("ERROR while reading arguments; did you specify an illegal argument?")
+        print(main.__doc__)
+        sys.exit(2)
+    
+    for opt, arg in opts:
+        if opt in ('-h', '--help'):
+            print(main.__doc__)
+            sys.exit()
+        elif opt in ("-s", "--sub"):
+            subject = arg
+        elif opt in ("-n", "--ses"):
+            session = int(arg)
+        elif opt in ("-a", "--acq"):
+            acquisition = arg
+        elif opt in ("-i", "--in"):
+            inputdir = arg
+        elif opt in ("-o", "--out"):
+            outputdir = arg
+        elif opt in ("-w", "--work"):
+            workdir = arg
+        elif opt in ("-b", "--filters"):
+            bids_filters = arg
 
-# fix output directory 
-if [ -z ${outputdir} ]; then
-  outputdir=${inputdir}/derivatives/fmriprep
-  if [ ! -d $(dirname ${outputdir}) ]; then
-    mkdir -p $(dirname ${outputdir})
-  fi
-fi
+    if len(argv) < 1:
+        print(main.__doc__)
+        sys.exit()
+    
+    if not isinstance(bids_filters, str):
+        bids_filters = {
+            "bold": {
+                "datatype": "func",
+                "suffix": "bold"
+            },
+            "fmap": {
+                "datatype": "fmap",
+                "suffix": "epi"
+            }
+        }
 
-# for some reason, fMRIPrep workflow crashes when ran from cmd-line, but not from python. 
-# so here we just send a block of code to python
-PYTHON_CODE=$(cat <<END
-from linescanning import fmriprep
-wf = fmriprep.init_single_subject_wf("${subject}", 
-                                     bids_dir="${inputdir}", 
-                                     fmriprep_dir="${outputdir}", 
-                                     bids_filters="${bids_filters}", 
-                                     workdir="${workdir}")
-wf.run()                                     
-END
-)
+        if isinstance(session, int):
+            for el in ["bold","fmap"]:
+                bids_filters[el]["session"] = str(session)
 
-# run the code
-res="$(python -c "$PYTHON_CODE")"
+        if isinstance(acquisition, str):
+            for el in ["bold","fmap"]:
+                bids_filters[el]["acquisition"] = str(acquisition)
+
+    wf = fmriprep.init_single_subject_wf(
+        subject, 
+        bids_dir=inputdir,
+        fmriprep_dir=outputdir,
+        bids_filters=bids_filters,
+        workdir=workdir)
+    
+    wf.run()
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
