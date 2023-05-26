@@ -1016,6 +1016,22 @@ def split_bids_components(fname):
     else:
         raise ValueError(f"Could not find any element of {ids} in {fname}")
 
+def get_ids(func_list, bids="task"):
+
+    ids = []
+    if isinstance(func_list, list):
+        for ff in func_list:
+            bids_comps = split_bids_components(ff)
+            if bids in list(bids_comps.keys()):
+                ids.append(bids_comps[bids])
+        
+    if len(ids) > 0:
+        ids = list(np.unique(np.array(ids)))
+
+        return ids
+    else:
+        return []
+        
 def subjects_in_list(input):
 
     subj = []
