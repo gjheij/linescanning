@@ -1,4 +1,4 @@
-from linescanning.plotting import LazyPlot, Defaults
+from linescanning.plotting import LazyPlot, Defaults, conform_ax_to_obj
 from nilearn.glm.first_level import first_level
 from nilearn.glm.first_level import hemodynamic_models 
 from nilearn import plotting
@@ -133,13 +133,14 @@ class GenericGLM():
         regressors=None, 
         make_figure=False, 
         xkcd=False, 
-        plot_event=[1, 2], 
+        plot_event=None, 
         plot_vox=None, 
         verbose=False, 
         nilearn=False, 
         derivative=False, 
         dispersion=False, 
         add_intercept=True,
+        fit=True,
         cmap='inferno'):
         
         # instantiate 
@@ -162,6 +163,7 @@ class GenericGLM():
         self.derivative         = derivative
         self.add_intercept      = add_intercept
         self.cmap               = cmap
+        self.run_fit            = fit
 
         if isinstance(data, np.ndarray):
             self.data = data.copy()
@@ -170,6 +172,17 @@ class GenericGLM():
         else:
             raise ValueError("Data must be 'np.ndarray' or 'pandas.DataFrame'")
         
+        # define HRF
+        if verbose:
+            print(f"Defining HRF with option '{hrf_pars}'")
+        
+        self.hrf = define_hrf(
+            hrf_pars=hrf_pars,
+            osf=self.osf,
+            TR=self.TR,
+            dispersion=self.dispersion,
+            derivative=self.derivative)
+
         # make the stimulus vectors
         if verbose:
             print("Creating stimulus vector(s)")
@@ -182,17 +195,6 @@ class GenericGLM():
             TR=self.TR,
             block_length=self.block_length,
             amplitude=self.amplitude)
-
-        # define HRF
-        if verbose:
-            print("Defining HRF")
-        
-        self.hrf = define_hrf(
-            hrf_pars=hrf_pars,
-            osf=osf,
-            TR=TR,
-            dispersion=self.dispersion,
-            derivative=self.derivative)
         
         # convolve stimulus vectors
         if verbose:
@@ -201,13 +203,17 @@ class GenericGLM():
         self.stims_convolved = convolve_hrf(
             self.hrf, 
             self.stims, 
-            TR=TR,
+            TR=self.TR,
+            osf=self.osf,
             make_figure=self.make_figure, 
-            xkcd=self.xkcd)
+            xkcd=self.xkcd,
+            line_width=2,
+            add_hline=0)
 
         if self.osf > 1:
             if verbose:
                 print("Resample convolved stimulus vectors")
+
             self.stims_convolved_resampled = resample_stim_vector(self.stims_convolved, self.data.shape[0])
         else:
             self.stims_convolved_resampled = self.stims_convolved.copy()
@@ -218,15 +224,22 @@ class GenericGLM():
         if verbose:
             print("Creating design matrix")
 
-        self.design = first_level_matrix(self.stims_convolved_resampled, regressors=self.regressors, add_intercept=self.add_intercept)
+        self.design = first_level_matrix(
+            self.stims_convolved_resampled, 
+            regressors=self.regressors, 
+            add_intercept=self.add_intercept)
 
         if self.make_figure:
             self.plot_design_matrix()
         
         # Fit all
-        if verbose:
-            print("Running fit")
+        if self.run_fit:
+            if verbose:
+                print("Running fit")
+            
+            self.fit()
         
+    def fit(self):
         if self.nilearn_method:
             # we're going to hack Nilearn's FirstLevelModel to be compatible with our line-data. First, we specify the model as usual
             self.fmri_glm = first_level.FirstLevelModel(
@@ -282,6 +295,9 @@ class GenericGLM():
             self.tstats = np.array(self.tstats)
             
         else:
+            if not isinstance(self.plot_event, (str,list)):
+                self.plot_event = self.condition_names
+
             self.results = fit_first_level(
                 self.design, 
                 self.data, 
@@ -289,10 +305,16 @@ class GenericGLM():
                 xkcd=self.xkcd, 
                 plot_vox=self.plot_vox, 
                 plot_event=self.plot_event, 
-                cmap=self.cmap)
+                cmap=self.cmap,
+                verbose=self.verbose)
 
     def plot_contrast_matrix(self, save_as=None):
         if self.nilearn_method:
+            cols = list(self.design.columns)
+            fig,axs = plt.subplots(figsize=(len(cols),10))
+            plotting.plot_contrast_matrix(self.contrast_matrix, design_matrix=self.design, ax=axs)
+            conform_ax_to_obj(axs)
+
             fig,axs = plt.subplots(figsize=(10,10))
             plotting.plot_contrast_matrix(self.contrast_matrix, design_matrix=self.design, ax=axs)
 
@@ -302,8 +324,10 @@ class GenericGLM():
             raise NotImplementedError("Can't use this function without nilearn-fitting. Set 'nilearn=True'")
 
     def plot_design_matrix(self, save_as=None):
-        fig,axs = plt.subplots(figsize=(10,10))
+        cols = list(self.design.columns)
+        fig,axs = plt.subplots(figsize=(len(cols),10))
         plotting.plot_design_matrix(self.design, ax=axs)
+        conform_ax_to_obj(axs)
 
         if save_as:
             fig.savefig(save_as)
@@ -332,7 +356,39 @@ def glover_hrf(osf=1, TR=0.105, dispersion=False, derivative=False, time_length=
 
     return hrf_kernel
 
-def make_stimulus_vector(onset_df, scan_length=None, TR=0.105, osf=None, type='event', block_length=None, amplitude=None):
+def spm_hrf(osf=1, TR=0.105, dispersion=False, derivative=False, time_length=25):
+
+    # osf factor is different in `hemodynamic_models`
+    # osf /= 10
+
+    # set kernel
+    hrf_kernel = []
+    hrf = hemodynamic_models.spm_hrf(TR, oversampling=osf, time_length=time_length)
+    hrf /= hrf.max()
+
+    hrf_kernel.append(hrf)
+
+    if derivative:
+        tderiv_hrf = hemodynamic_models.spm_time_derivative(tr=TR, oversampling=osf, time_length=time_length)
+        tderiv_hrf /= tderiv_hrf.max()
+        hrf_kernel.append(tderiv_hrf)
+
+    if dispersion:
+        tdisp_hrf = hemodynamic_models.spm_dispersion_derivative(TR, oversampling=osf, time_length=time_length)
+        tdisp_hrf /= tdisp_hrf.max()
+        hrf_kernel.append(tdisp_hrf)
+
+    return hrf_kernel
+
+def make_stimulus_vector(
+    onset_df, 
+    scan_length=None, 
+    TR=0.105, 
+    osf=None, 
+    type='event', 
+    block_length=None, 
+    amplitude=None):
+
     """make_stimulus_vector
 
     Creates a stimulus vector for each of the conditions found in `onset_df`. You can account for onset times being in decimal using the oversampling factor `osf`. This would return an upsampled stimulus vector which should be convolved with an equally upsampled HRF. This can be ensured by using the same `osf` in :func:`linescanning.glm.double_gamma`.
@@ -418,12 +474,12 @@ def make_stimulus_vector(onset_df, scan_length=None, TR=0.105, osf=None, type='e
         else:
             ampl = 1
 
-        Y = np.zeros(int((scan_length*TR)*osf))
+        Y = np.zeros(int((scan_length*osf)))
         if type == "event":
             for rr, ii in enumerate(onset_df['onset']):
                 if onset_df['event_type'][rr] == condition:
                     try:
-                        Y[int(ii*osf)] = ampl
+                        Y[int((ii*osf)/TR)] = ampl
                     except:
                         warnings.warn(f"Warning: could not include event {rr} with t = {ii}. Probably experiment continued after functional acquisition")
                         
@@ -431,8 +487,10 @@ def make_stimulus_vector(onset_df, scan_length=None, TR=0.105, osf=None, type='e
 
             for rr, ii in enumerate(onset_df['onset']):
                 if onset_df['event_type'][rr] == condition:
-                    Y[int(ii*osf):int((ii+block_length)*osf)] = ampl
+                    Y[int((ii*osf)/TR):int(((ii+block_length)*osf)/TR)] = ampl
 
+        else:
+            raise ValueError(f"Event must be 'event' or 'block', not '{type}'")
         stim_vectors[condition] = Y
 
     return stim_vectors
@@ -451,25 +509,37 @@ def define_hrf(
                 TR=TR, 
                 dispersion=dispersion, 
                 derivative=derivative)
+            
+        elif hrf_pars == "spm":
+            hrf = spm_hrf(
+                osf=osf, 
+                TR=TR, 
+                dispersion=dispersion, 
+                derivative=derivative)
+
+        else:
+            raise ValueError(f"Invalid option '{hrf_pars}' specified. Must be either 'spm' or 'glover', a list of 3 parameters, a numpy array describing the HRF, or None (for standard double gamma)")
+        
     elif isinstance(hrf_pars, np.ndarray):
         hrf = [hrf_pars]
     elif isinstance(hrf_pars, list):
+
         hrf = np.array(
             [
                 np.ones_like(hrf_pars[1])*hrf_pars[0] *
                 hemodynamic_models.spm_hrf(
                     tr=TR,
-                    oversampling=1,
+                    oversampling=osf, 
                     time_length=40)[...,np.newaxis],
                 hrf_pars[1] *
                 hemodynamic_models.spm_time_derivative(
                     tr=TR,
-                    oversampling=1,
+                    oversampling=osf, 
                     time_length=40)[...,np.newaxis],
                 hrf_pars[2] *
                 hemodynamic_models.spm_dispersion_derivative(
                     tr=TR,
-                    oversampling=1,
+                    oversampling=osf, 
                     time_length=40)[...,np.newaxis]]).sum(
             axis=0)
 
@@ -486,8 +556,11 @@ def convolve_hrf(
     hrf, 
     stim_v, 
     TR=1,
+    osf=1,
     make_figure=False, 
-    xkcd=False):
+    xkcd=False,
+    *args,
+    **kwargs):
 
     """convolve_hrf
 
@@ -503,8 +576,6 @@ def convolve_hrf(
         repetition time of acquisition        
     make_figure: bool, optional
         Create overview figure of HRF, stimulus vector, and convolved stimulus vector, by default False
-    osf: [type], optional
-        Oversampling factor used to account for decimal onset times, by default None
     scan_length: int
         number of volumes in `data` (= `scan_length` in :func:`linescanning.glm.make_stimulus_vector`)        
     xkcd: bool, optional
@@ -531,10 +602,13 @@ def convolve_hrf(
     >>> convolved_stim_vector_left = convolve_hrf(hrf_custom, stims) # no figure
     """
 
-    def plot(stim_v, hrf, convolved, xkcd=False):
+    def plot(stim_v, hrf, convolved, osf=1, xkcd=False, **kwargs):
 
         fig = plt.figure(figsize=(20,6))
         gs = fig.add_gridspec(2, 2, width_ratios=[20, 10], hspace=0.7)
+
+        if isinstance(hrf, np.ndarray):
+            hrf = [hrf]
 
         ax0 = fig.add_subplot(gs[0,0])
         LazyPlot(
@@ -542,11 +616,13 @@ def convolve_hrf(
             color="#B1BDBD", 
             axs=ax0,
             title="Events",
-            y_lim=[-.5, 1.5], 
-            x_label='Time (*osf)',
-            y_label='Activity (A.U.)', 
+            y_lim=[-.5, 1], 
+            x_label='scan volumes (* osf)',
+            y_label='magnitude (a.u.)', 
             xkcd=xkcd,
-            font_size=16)
+            font_size=16,
+            *args,
+            **kwargs)
         
         # check if we got derivatives; if so, select first element (= standard HRF)
         if isinstance(convolved, list):
@@ -560,26 +636,27 @@ def convolve_hrf(
             convolved,
             axs=ax1,
             title="Convolved stimulus-vector",
-            x_label='Time (*osf)',
-            y_label='Activity (A.U.)',
-            xkcd=xkcd,
-            font_size=16)
-
+            x_label='scan volumes (* osf)',
+            y_label='magnitude (a.u.)', 
+            *args,
+            **kwargs)
+        
         ax2 = fig.add_subplot(gs[:, 1])
+        time_axis = list(((np.arange(0,hrf[0].shape[0]))/osf)*TR)
         LazyPlot(
             hrf,
-            xx=list(np.arange(0,hrf.shape[0])*TR),
+            xx=time_axis,
             axs=ax2,
             title="HRF", 
             x_label='Time (s)',
-            xkcd=xkcd,
-            font_size=16)
+            *args,
+            **kwargs)
 
     # check hrf input
-    if isinstance(hrf, list):
-        hrfs = hrf.copy()
-    elif isinstance(hrf, np.ndarray):
+    if isinstance(hrf, np.ndarray):
         hrfs = [hrf]
+    elif isinstance(hrf, list):
+        hrfs = hrf.copy()
     else:
         raise ValueError(f"Unknown input type '{type(hrf)}' for HRF. Must be list or array")
 
@@ -592,7 +669,7 @@ def convolve_hrf(
                 convolved_stim_vector[:, ix] = np.convolve(stim_v, rf, 'full')[:stim_v.shape[0]]
 
         if make_figure:
-            plot(stim_v, hrfs[0], convolved_stim_vector, xkcd=xkcd)
+            plot(stim_v, hrfs, convolved_stim_vector, xkcd=xkcd)
             plt.show()
 
     elif isinstance(stim_v, dict):
@@ -609,10 +686,21 @@ def convolve_hrf(
                 if make_figure:
                     if xkcd:
                         with plt.xkcd():
-                            plot(stim_v[event], hrfs[0], convolved_stim_vector[event])
+                            plot(
+                                stim_v[event], 
+                                hrfs, 
+                                convolved_stim_vector[event], 
+                                osf=osf,
+                                *args, 
+                                **kwargs)
                     else:
-                        plot(stim_v[event], hrfs[0], convolved_stim_vector[event])
-                    plt.show()
+                        plot(
+                            stim_v[event], 
+                            hrfs, 
+                            convolved_stim_vector[event], 
+                            osf=osf,
+                            *args,
+                            **kwargs)
     else:
         raise ValueError("Data must be 'np.ndarray' or 'dict'")
 
@@ -719,7 +807,18 @@ def first_level_matrix(stims_dict, regressors=None, add_intercept=True, names=No
         return X_matrix
 
 
-def fit_first_level(stim_vector, data, make_figure=False, copes=None, xkcd=False, plot_vox=None, plot_event=1, verbose=False, cmap='inferno', **kwargs):
+def fit_first_level(
+    stim_vector, 
+    data, 
+    make_figure=False, 
+    copes=None, 
+    xkcd=False, 
+    plot_vox=None, 
+    plot_event=1, 
+    verbose=False, 
+    cmap='inferno', 
+    **kwargs):
+
     """fit_first_level
 
     First level models are, in essence, linear regression models run at the level of a single session or single subject. The model is applied on a voxel-wise basis, either on the whole brain or within a region of interest. The  timecourse of each voxel is regressed against a predicted BOLD response created by convolving the haemodynamic response function (HRF) with a set of predictors defined within the design matrix (source: https://nilearn.github.io/glm/first_level_model.html)
@@ -756,6 +855,9 @@ def fit_first_level(stim_vector, data, make_figure=False, copes=None, xkcd=False
     >>> betas_left,x_conv_left = fit_first_level(convolved_stim_vector_left_ds, data, make_figure=True, xkcd=True, plot_events=[1,2]) # plots first two events
     """
 
+    if isinstance(data, (pd.DataFrame, pd.Series)):
+        data = data.values
+
     # add intercept if input is simple numpy array. 
     if isinstance(stim_vector, np.ndarray):
         if stim_vector.ndim == 1:
@@ -780,7 +882,7 @@ def fit_first_level(stim_vector, data, make_figure=False, copes=None, xkcd=False
             data = data[:, np.newaxis]
 
         if stim_vector.shape[0] != data.shape[0]:
-            stim_vector = stim_vector[:data.shape[0], :]
+            raise ValueError(f"Unequal shapes between design {stim_vector.shape} and data {data.shape}. Make sure first elements have the same shape")
 
     X_conv = X_matrix.values.copy()
 
@@ -812,8 +914,8 @@ def fit_first_level(stim_vector, data, make_figure=False, copes=None, xkcd=False
         betas_conv = betas_conv[...,np.newaxis]
     
     if verbose:
-        print(f"max tstat (vox {best_vox}) = {round(tstat[-1,best_vox],2)}")
-        print(f"max beta (vox {best_vox}) = {round(betas_conv[-1,best_vox],2)}")
+        print(f"max tstat (vox {best_vox}) = {tstat[-1,best_vox]}")
+        print(f"max beta (vox {best_vox}) = {betas_conv[-1,best_vox]}")
 
     if make_figure:
 
@@ -821,11 +923,16 @@ def fit_first_level(stim_vector, data, make_figure=False, copes=None, xkcd=False
         colors = ["#cccccc"]
         linewidth = [0.5]
 
-        # you can specify to plot multiple events!
-        if isinstance(plot_event, int):
+        col_names = X_matrix.columns.to_list()
 
-            # always include intercept
-            beta_idx = [0,plot_event]
+        # you can specify to plot multiple events!
+        if isinstance(plot_event, str):
+
+            # get intercept, and all associated betas (to include derivatives)
+            beta_idx = [0] + [ix for ix,ii in enumerate(col_names) if plot_event in ii]
+
+            # # always include intercept
+            # beta_idx = [0,plot_event]
 
             # get betas for all voxels
             betas = betas_conv[beta_idx]
@@ -845,9 +952,10 @@ def fit_first_level(stim_vector, data, make_figure=False, copes=None, xkcd=False
 
             signals = [data[:, best_vox]]
             labels = ['True signal']
-            for ii in plot_event:
+            for ev in plot_event:
+
                 # always include intercept
-                beta_idx = [0,ii]
+                beta_idx = [0] + [ix for ix,ii in enumerate(col_names) if ev in ii]
 
                 # get betas for all voxels
                 betas = betas_conv[beta_idx]
@@ -857,7 +965,7 @@ def fit_first_level(stim_vector, data, make_figure=False, copes=None, xkcd=False
                 preds = event@betas
 
                 signals.append(preds[:,best_vox])
-                labels.append(f'Event {ii}')
+                labels.append(f"Event '{ev}'")
                 markers.append(None)
                 linewidth.append(2)
 
