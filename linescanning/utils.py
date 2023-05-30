@@ -1021,9 +1021,10 @@ def get_ids(func_list, bids="task"):
     ids = []
     if isinstance(func_list, list):
         for ff in func_list:
-            bids_comps = split_bids_components(ff)
-            if bids in list(bids_comps.keys()):
-                ids.append(bids_comps[bids])
+            if isinstance(ff, str):
+                bids_comps = split_bids_components(ff)
+                if bids in list(bids_comps.keys()):
+                    ids.append(bids_comps[bids])
         
     if len(ids) > 0:
         ids = list(np.unique(np.array(ids)))

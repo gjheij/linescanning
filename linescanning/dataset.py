@@ -1786,10 +1786,11 @@ Functional data preprocessing
                 self.ses = None
                 self.task = None
                 if self.use_bids:
-                    bids_comps = utils.split_bids_components(func)
-                    for el in ['sub', 'run', 'ses', 'task']:
-                        if el in list(bids_comps.keys()):
-                            setattr(self, el, bids_comps[el])
+                    if isinstance(func, str):
+                        bids_comps = utils.split_bids_components(func)
+                        for el in ['sub', 'run', 'ses', 'task']:
+                            if el in list(bids_comps.keys()):
+                                setattr(self, el, bids_comps[el])
 
                 # set base name based on presence of bids tags
                 self.base_name = f"sub-{self.sub}"
