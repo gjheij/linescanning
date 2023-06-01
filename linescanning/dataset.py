@@ -871,6 +871,7 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
             
             self.onset_index = ['subject', 'run', 'event_type']
             self._index = ['subject', 'run']
+            self.index_task = False
             if self.use_bids:
                 self.task_ids = utils.get_ids(self.tsv_file, bids="task")
 
@@ -1003,6 +1004,9 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
             # get dataframe with responses
             self.response_df = self.data.loc[(self.data['event_type'] == "response") & (self.data['response'] != 'space')]
 
+            # filter out button responses before first trigger
+            self.response_df = utils.select_from_df(self.response_df, expression=f"onset > {self.start_time}")
+            
             # get the onset times
             self.response_times = self.response_df['onset'].values[...,np.newaxis]
 
@@ -1280,7 +1284,13 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
         else:
             return self.accuracy_df             
 
-    def onsets_to_fsl(self, fmt='3-column', amplitude=1, output_base=None):
+    def onsets_to_fsl(
+        self, 
+        fmt='3-column', 
+        amplitude=1, 
+        output_dir=None,
+        output_base=None):
+
         """onsets_to_fsl
 
         This function creates a text file with a single column containing the onset times of a given condition. Such a file can be used for SPM or FSL modeling, but it should be noted that the onset times have been corrected for the deleted volumes at the beginning. So make sure your inputting the correct functional data in these cases.
@@ -1307,47 +1317,112 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
 
         onsets = self.df_onsets.copy()
         subj_list = self.get_subjects(onsets)
+
         for sub in subj_list:
+
+            # fetch subject specific onsets
             df = utils.select_from_df(onsets, expression=f"subject = {sub}")
 
-            n_runs = self.get_runs(df)
+            # check if we got task in dataframe
+            indices = list(onsets.index.names)
+            tasks = []
+            separate_task = False
+            if self.use_bids:
+                if "task" in indices:
+                    tasks = utils.get_ids(self.tsv_file)
+                    separate_task = True
 
-            for run in n_runs:
-                onsets_per_run = utils.select_from_df(df, expression=f"run = {run}")
-                events_per_run = self.get_events(onsets_per_run)
+            # we got task in dataframe
+            if separate_task:
+                for task in tasks:
+                    
+                    # get task-specific onsets
+                    task_df = utils.select_from_df(df, expression=f"task = {task}")
 
-                for ix, ev in enumerate(events_per_run):
+                    # get runs within task
+                    n_runs = self.get_runs(task_df)
+                    for run in n_runs:
+                        onsets_per_run = utils.select_from_df(task_df, expression=f"run = {run}")
+                        events_per_run = self.get_events(onsets_per_run)
 
-                    onsets_per_event = utils.select_from_df(onsets_per_run, expression=f"event_type = {events_per_run[ix]}")
-                    if output_base == None:
-                        if isinstance(self.tsv_file, list):
-                            outdir = os.path.dirname(self.tsv_file[0])
-                        elif isinstance(self.tsv_file, str):
-                            outdir = os.path.dirname(self.tsv_file)
+                        for ix, ev in enumerate(events_per_run):
+
+                            onsets_per_event = utils.select_from_df(onsets_per_run, expression=f"event_type = {events_per_run[ix]}")
+                            if output_base == None:
+                                if not isinstance(output_dir, str):
+                                    if isinstance(self.tsv_file, list):
+                                        outdir = os.path.dirname(self.tsv_file[0])
+                                    elif isinstance(self.tsv_file, str):
+                                        outdir = os.path.dirname(self.tsv_file)
+                                    else:
+                                        outdir = os.getcwd()
+                                else:
+                                    outdir = output_dir
+
+                                # create output directory
+                                if not os.path.exists(outdir):
+                                    os.makedirs(outdir, exist_ok=True)
+
+                                fname = opj(outdir, f"task-{task}_run-{run}_ev-{ev}.txt")
+                            else:
+                                fname = f"{output_base}_task-{task}_run-{run}_ev-{ev}.txt"
+
+                            # fetch the onsets
+                            event_onsets = onsets_per_event['onset'].values[..., np.newaxis]
+                            if fmt == "3-column":
+
+                                # check if we got duration
+                                if 'duration' in list(onsets_per_event.columns):
+                                    duration_arr = onsets_per_event['duration'].values[..., np.newaxis]
+                                else:
+                                    duration_arr = np.ones_like(onsets_per_event)
+
+                                amplitude_arr = np.full_like(event_onsets, amplitude)
+                                three_col = np.hstack((event_onsets, duration_arr, amplitude_arr))
+
+                                print(f"Writing {fname}; {three_col.shape}")
+                                np.savetxt(fname, three_col, delimiter='\t', fmt='%1.3f')
+                            else:
+                                np.savetxt(fname, event_onsets, delimiter='\t', fmt='%1.3f')
+
+            else:
+                n_runs = self.get_runs(df)
+                for run in n_runs:
+                    onsets_per_run = utils.select_from_df(df, expression=f"run = {run}")
+                    events_per_run = self.get_events(onsets_per_run)
+
+                    for ix, ev in enumerate(events_per_run):
+
+                        onsets_per_event = utils.select_from_df(onsets_per_run, expression=f"event_type = {events_per_run[ix]}")
+                        if output_base == None:
+                            if isinstance(self.tsv_file, list):
+                                outdir = os.path.dirname(self.tsv_file[0])
+                            elif isinstance(self.tsv_file, str):
+                                outdir = os.path.dirname(self.tsv_file)
+                            else:
+                                outdir = os.getcwd()
+
+                            fname = opj(outdir, f"run-{run}_ev-{ev}.txt")
                         else:
-                            outdir = os.getcwd()
+                            fname = f"{output_base}_run-{run}_ev-{ev}.txt"
 
-                        fname = opj(outdir, f"{ev}_run-{run}.txt")
-                    else:
-                        fname = f"{output_base}{ix+1}_run-{run}.txt"
+                        # fetch the onsets
+                        event_onsets = onsets_per_event['onset'].values[..., np.newaxis]
+                        if fmt == "3-column":
 
-                    # fetch the onsets
-                    event_onsets = onsets_per_event['onset'].values[..., np.newaxis]
-                    if fmt == "3-column":
+                            # check if we got duration
+                            if 'duration' in list(onsets_per_event.columns):
+                                duration_arr = onsets_per_event['duration'].values[..., np.newaxis]
+                            else:
+                                duration_arr = np.ones_like(onsets_per_event)
 
-                        # check if we got duration
-                        if 'duration' in list(onsets_per_event.columns):
-                            duration_arr = onsets_per_event['duration'].values[..., np.newaxis]
+                            amplitude_arr = np.full_like(event_onsets, amplitude)
+                            three_col = np.hstack((event_onsets, duration_arr, amplitude_arr))
+
+                            print(f"Writing {fname}; {three_col.shape}")
+                            np.savetxt(fname, three_col, delimiter='\t', fmt='%1.3f')
                         else:
-                            duration_arr = np.ones_like(onsets_per_event)
-
-                        amplitude_arr = np.full_like(event_onsets, amplitude)
-                        three_col = np.hstack((event_onsets, duration_arr, amplitude_arr))
-
-                        print(f"Writing {fname}; {three_col.shape}")
-                        np.savetxt(fname, three_col, delimiter='\t', fmt='%1.3f')
-                    else:
-                        np.savetxt(fname, event_onsets, delimiter='\t', fmt='%1.3f')
+                            np.savetxt(fname, event_onsets, delimiter='\t', fmt='%1.3f')
 
     @staticmethod
     def get_subjects(df):
@@ -2759,7 +2834,7 @@ class Dataset(ParseFuncFile,SetAttributes):
                 if self.ica:
                     dtype = "ica"
             elif hasattr(self, "standardization"):
-                    dtype = self.standardization
+                dtype = self.standardization
             else:
                 dtype = "psc"
         
