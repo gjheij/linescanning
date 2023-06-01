@@ -813,13 +813,17 @@ if [[ $? -eq 0 ]]; then
 fi
 
 #---------------------------------------------------------------------------------------------------
-# STEP 02a: Convert raw files to nifti
+# Deprecation message
+module=02
 
-if [[ ${module} == "02" ]]; then
+if [[ ${FLAG_executeModule} == ${module} ]]; then
   echo "DEPRECATION WARNING: module 02 has been split in 02a (spinoza_scanner2bids) & 02b (spinoza_mriqc)"
   exit 1
 fi
 
+
+#---------------------------------------------------------------------------------------------------
+# STEP 02a: Convert raw files to nifti
 module=02a
 
 # Check whether the module should be executed
