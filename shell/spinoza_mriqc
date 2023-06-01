@@ -181,6 +181,7 @@ for subID in ${search}; do
   ${job} \
     -s ${sub_id} \
     ${ses_flag} \
+    -j ${n_cpus} \
     -b ${FPREP_BINDING} \
     -i ${MRIQC_SIMG} \
     -r ${INPUT} \

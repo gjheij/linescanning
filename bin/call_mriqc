@@ -50,6 +50,7 @@ USAGE
 #-----------------------------------------------------------------------------
 # Deal with arguments
 mod_flag=""
+n_cpus=1
 while getopts :-:ts:n:r:d:i:b:w:j: arg
 do
   case ${arg} in
@@ -83,7 +84,7 @@ do
           ;;
     w)  WORK=${OPTARG}
           ;;  
-    j)  n_cpu=${OPTARG}
+    j)  n_cpus=${OPTARG}
           ;;                      
   esac
 done
@@ -190,7 +191,7 @@ fi
   ${ses_flag} \
   ${mod_flag} \
 	--participant-label ${subj_ID} \
-	--nprocs ${n_cpu} \
+	--nprocs ${n_cpus} \
   --omp-nthreads 1 \
 	-w ${work} \
 	--verbose-reports \
