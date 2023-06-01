@@ -50,7 +50,6 @@ USAGE
 
 # Check for subject & session flags
 OW=0
-job="bash"
 cpu=""
 task_flag=""
 raw_flag=""
@@ -112,9 +111,8 @@ fi
 
 if [[ ${SGE} -eq 1 ]]; then
   if [[ -z ${cpu} ]]; then
-    cpu=5
+    cpu=1
   fi
-  job="qsub -q ${SGE_QUEUE_LONG} -wd ${DIR_LOGS} -pe smp ${cpu}"
 
   if [ ! -d ${DIR_LOGS} ]; then
     mkdir -p ${DIR_LOGS}
@@ -194,8 +192,10 @@ for subID in ${search}; do
         echo "**************************************** Processing ${sub_name} ***************************************"
 
         # append sub
-        if [[ ${job} != "bash" ]]; then
-          job="${job} -N ${base}_desc-pybest"
+        if [[ ${SGE} -eq 1 ]]; then
+          job="qsub -q ${SGE_QUEUE_LONG} -wd ${DIR_LOGS} -pe smp ${cpu} -N ${base}_desc-pybest"
+        else
+          job="bash"
         fi
 
         # full path is needed for qsub
