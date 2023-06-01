@@ -37,11 +37,13 @@ Usage:
 Arguments:
   -s <subject>  subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
   -n <session>  session ID (e.g., 1, 2, or none
+  -r <run>        run ID (e.g., 1). Can also be comma-separated list: 1,3,4
   --sge         submit individual NORDIC processes to the cluster for parallellization. If you do 
                 this, it's advised to have identifiable 'run-' flags in your filenames so that the 
                 template file is not overwritten; this can cause problems. If you do not have run 
                 identifiers in your filenames, please run serially. This flag is inherited from 
                 'master', so calling it there will pass on the flag here.
+  -o|--ow       overwrite existing files even if "Nordic"-field is populated in json file
   --mag         use magnitude only
   --no_tsnr     skip tSNR maps before/after NORDIC
   <bids folder> parent directory containing the sub-xxx folders for functional data. Generally, 
@@ -68,7 +70,7 @@ smp=1
 SGE=0
 mag_only=0
 tsnr_flag="--tsnr"
-while getopts :-:s:n: argument
+while getopts :-:os:n:r: argument
 do
   case ${argument} in
     -)
@@ -81,7 +83,10 @@ do
           ;;  
         mag)
           mag_only=1
-          ;;                                                                                     
+          ;;    
+        ow)
+          OW=1
+          ;;                                                                                               
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}"
@@ -93,6 +98,10 @@ do
           ;;
     n)  ses=${OPTARG}
           ;;     
+    o)  OW=1
+          ;;
+    r)  runs=${OPTARG}
+          ;;          
   esac
 done
 
@@ -113,6 +122,11 @@ else
   unset IFS
 fi
 
+if [[ ! -z ${runs} ]]; then
+  # read specified subjects into array
+  IFS=', ' read -r -a n_runs <<< "${runs}"
+  unset IFS
+fi
 
 #-----------------------------------------------------------------------------
 # Start clock
@@ -185,7 +199,19 @@ for subID in ${search}; do
   fi
 
   # check BOLD files
-  IMGS=`find "${tmp_folder}" -type f \( -name "*bold.nii.gz" \) 2>/dev/null`
+  if [[ -z ${runs} ]]; then
+    IMGS=`find "${tmp_folder}" -type f \( -name "*bold.nii.gz" \) 2>/dev/null`
+  else
+    if [[ ${#n_runs[@]} -gt 1 ]]; then
+      IMGS=()
+      for r in ${n_runs[@]}; do
+        run_f=`find "${tmp_folder}" -type f \( -name "*run-${r}*" -and -name "*bold.nii.gz" \) 2>/dev/null`
+        IMGS+=(${run_f})
+      done
+    else
+      IMGS=`find "${tmp_folder}" -type f \( -name "*run-${n_runs}*" -and -name "*bold.nii.gz" \) 2>/dev/null`
+    fi
+  fi
   IFS=$'\n' mag_imgs=($(sort <<<"${IMGS[*]}"))
   unset IFS
 
@@ -216,6 +242,11 @@ for subID in ${search}; do
           fi
         fi
       fi
+
+      # overrule outcome above if --ow if specified
+      if [[ ${OW} -eq 1 ]]; then
+        do_nordic=1
+      fi
       
       # run nordic
       if [[ ${do_nordic} -eq 1 ]]; then
@@ -243,7 +274,7 @@ for subID in ${search}; do
 
         # decide on job execution
         if [[ ${SGE} -eq 1 ]]; then
-          job_name=$(basename ${mag_img} .nii.gz)
+          job_name=$(basename ${mag_img} _bold.nii.gz)_desc-nordic
           job="qsub -q ${SGE_QUEUE_LONG} -wd ${DIR_LOGS} -pe smp ${smp} -N ${job_name}"
           if [ ! -d ${DIR_LOGS} ]; then
             mkdir -p ${DIR_LOGS}
@@ -272,7 +303,7 @@ for subID in ${search}; do
           echo "ERROR in `basename ${0}`: mismatch between \"$(basename ${ph_img} ${ph_tag}.nii.gz)\" & \"$(basename ${mag_img} .nii.gz)\""
         fi
       else
-        echo "Found NORDIC tag; ${mag_img} already NORDIC'ed"
+        echo "Found NORDIC tag; ${mag_img} already NORDIC'ed (use --ow to overwrite)"
       fi
     fi
   done

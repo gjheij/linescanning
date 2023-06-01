@@ -31,6 +31,15 @@ Arguments:
   --no_boldref    don't create new boldref images (mean over time) after fMRIprep has finished.
   --warp_only     skips fMRIPrep, but creates new boldref images (if '--no_boldref' is not specified) 
                   and copies the bold-to-T1w warps to the subject's output folder
+  --remove_wf     remove full single_subject workflow folder. Use \"--remove_surf_wf\"to specifically 
+                  remove the surface reconstruction folder when you have new FreeSurfer output that 
+                  fMRIPrep needs to use, or "--ow" to remove all folders within single_subj workflow
+                  with "run-"
+  --remove_surf_wf Remove surface reconstruction workflow folder; refreshes the surfaces used for re-
+                  gistration and transformation
+  --ow            only removes folders within single_subj workflow with "run-". If specific runs are 
+                  requested with '-r', only these folders will be removed
+  --func          same as '-t func'
   -s <subject>    subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
   -n <session>    session ID (e.g., 1, 2, or none); used to check for T1w-image. fMRIprep will do all
                   sessions it finds in the project root regardless of this argument. Use the bids fil-
@@ -38,9 +47,9 @@ Arguments:
   -c <config>     configuration file as specified in /misc/fmriprep_config?.json
   -f <func dir>   directory containing functional data; used after running FreeSurfer outside of
                   fMRIprep <optional>
-  -r <level>      remove surface_recon_wf '-r surf' to project functional data to new surface; used 
-                  after repeatedly enhancing the anatomical segmentation before injecting the functio-
-                  nal data. Use '-r all' if the entire workflow folder needs to be removed <optional>
+  -r <runs>       (re-)run specific runs by removing existing single_subject_<subj_id>_wf/func_preproc
+                  _ses_1_*_run_<run_id>_*_wf folders. This should re-use the existing files for other 
+                  runs, but re-run completely the requested runs
   -t <task>       By default, the pipeline is setup to run fMRIPrep with '--anat-only'. You can in-
                   ject functional data with the '-t' flag; if you want ALL your tasks to be included,
                   use '-t func'. If you have a specific task that needs to be processed (in case ano-
@@ -80,7 +89,10 @@ warp_only=""
 run_local=0
 kwargs_file=""
 boldref_flag=""
-while getopts :-:ls:r:n:f:m:c:k: argument
+remove_wf=0
+remove_surf_wf=0
+OW=0
+while getopts :-:ols:r:n:f:m:c:k: argument
 do
 case ${argument} in
     -)
@@ -96,7 +108,19 @@ case ${argument} in
           ;;   
         no_boldref)
           boldref_flag="--no_boldref"
-          ;;                                
+          ;;   
+        remove_wf)
+          remove_wf=1
+          ;;                
+        remove_surf_wf)
+          remove_surf_wf=1
+          ;;            
+        func)
+          remove_surf_wf=1
+          ;;      
+        ow)
+          OW=1
+          ;;                                                      
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}" >&2
@@ -113,10 +137,12 @@ case ${argument} in
           ;;
     c)  conf=${OPTARG}
           ;;
-    r)  remove_wf=${OPTARG}
-          ;;  
     k)  kwargs_file="-k ${OPTARG}"
-          ;;            
+          ;;       
+    r)  runs=${OPTARG}
+          ;;              
+    o)  OW=1
+          ;;                
   esac
 done
 
@@ -143,6 +169,12 @@ if [[ -z ${mode} ]]; then
   MODE="anat"
 else
   MODE=${mode}
+fi
+
+if [[ ! -z ${runs} ]]; then
+  # read specified subjects into array
+  IFS=', ' read -r -a n_runs <<< "${runs}"
+  unset IFS
 fi
 
 #-----------------------------------------------------------------------------
@@ -183,7 +215,7 @@ for subID in ${search}; do
   # define input
   input_dir=${INPUT}/${base_path}
   if [[ ${MODE} == "anat" ]]; then
-    anat=`find "${input_dir}/anat" -type f \( -name "*T1w*" -and -name "*acq-${DATA^^}*" -and -name "*.nii.gz" \) 2>/dev/null`
+    anat=`find -L "${input_dir}/anat" -type f \( -name "*T1w*" -and -name "*acq-${DATA^^}*" -and -name "*.nii.gz" \) 2>/dev/null`
     if [[ -z ${anat} ]]; then
       echo " ${sub_name}; missing anatomical data"
       continue
@@ -193,30 +225,31 @@ for subID in ${search}; do
     func_txt="Including functional data"
     if [[ ! -z ${func_dir} ]]; then
       # separate directory with functional data
-      func=`find "${func_dir}/${base_path}/func" -type f \( -name "*bold.nii.gz" \) 2>/dev/null`
+      func=`find -L "${func_dir}/${base_path}/func" -type f \( -name "*bold.nii.gz" \) 2>/dev/null`
       INPUT=${func_dir}
 
       # check if there's a T1w in the 'anat' folder; even though you've already ran it, fMRIprep requires T1w-files
-      anat=`find "${func_dir}/${base_path}/anat" -type f \( -name "*T1w.nii.gz" \) 2>/dev/null`
+      anat=`find -L "${func_dir}/${base_path}/anat" -type f \( -name "*T1w.nii.gz" \) 2>/dev/null`
       if [[ -z ${anat} ]]; then
-        diff_anat=`find "${input_dir}/anat" -type f \( -name "*T1w.nii.gz" \) 2>/dev/null`
-        if [ ! -z ${diff_anat} ]; then
-          cp ${diff_anat} ${func_dir}/${base_path}/anat
-        else
-          # last option: look in pymp2rage-folder
-          diff_anat=`find "${DIR_DATA_DERIV}/pymp2rage/${base_path}" -type f \( -name "*T1w.nii.gz" \) 2>/dev/null`
-          if [ ! -z ${diff_anat} ]; then
-            cp ${diff_anat} ${func_dir}/${base_path}/anat
-          else
-            echo "ERROR in `basename ${0}`: Could not find T1w-file in \"${input_dir}/anat\" and \"${DIR_DATA_DERIV}/pymp2rage/${base_path}\". Please copy your FreeSurfer input to \"${func_dir}/${base_path}/anat\" as a T1w-file needs to be present. If you've already ran the anatomical workflows, the file will be ignored. Nevertheless, it's needs to be present for fMRIprep to initiate"
-            exit 1
+        anat_dir=`find_hierarchical_anatomy 6`
+        diff_anat=`find -L "${anat_dir}/${base_path}" -type f \( -name "*T1w.nii.gz" \) 2>/dev/null`
+        if [[ ! -z ${diff_anat} ]]; then
+          if [[ ! -d ${func_dir}/${base_path}/anat ]]; then
+            mkdir -p ${func_dir}/${base_path}/anat
           fi
-        fi
-      fi
+
+          # copy file
+          cp ${diff_anat} ${func_dir}/${base_path}/anat
+
+        else
+          echo "ERROR in `basename ${0}`: Could not find T1w-file in \"${anat_dir}\". Please copy your FreeSurfer input to \"${func_dir}/${base_path}/anat\" as a T1w-file needs to be present. If you've already ran the anatomical workflows, the file will be ignored. Nevertheless, it's needs to be present for fMRIprep to initiate"
+          exit 1
+        fi    
+      fi  
     else
       # same directory for functional and anatomical data
-      func=`find "${input_dir}/func" -type f \( -name "*bold.nii.gz" \) 2>/dev/null`
-      anat=`find "${input_dir}/anat" -type f \( -name "*T1w*" -and -name "*acq-${DATA^^}*" -and -name "*.nii.gz" \) 2>/dev/null`
+      func=`find -L "${input_dir}/func" -type f \( -name "*bold.nii.gz" \) 2>/dev/null`
+      anat=`find -L "${input_dir}/anat" -type f \( -name "*T1w*" -and -name "*acq-${DATA^^}*" -and -name "*.nii.gz" \) 2>/dev/null`
     fi
 
     if [[ -z ${func} ]]; then
@@ -236,28 +269,87 @@ for subID in ${search}; do
   fi
 
   # check if we need to delete stuff
-  if [[ ! -z ${remove_wf} ]]; then
-    if [[ ${remove_wf} == "all" ]]; then
-      txt="Removing single_subject_${subID}_wf"
-      rm_dir=${workdir}/fmriprep*wf/single_subject_${subID}_wf
-    elif [[ ${remove_wf} == "surf" ]]; then
-      txt="Removing surface_recon_wf"
-      rm_dir=${workdir}/fmriprep*wf/single_subject_${subID}_wf/anat_preproc_wf/surface_recon_wf
+  wf_folder=`find ${workdir} -maxdepth 1 -type d -name "fmriprep*" -and -name "*wf" 2>/dev/null`
+  if [[ ${remove_surf_wf} -eq 1 ]]; then
+    echo "Removing \"${wf_folder}/single_subject_${sub_id}_wf/anat_preproc_wf/surface_recon_wf\""
+    rm -r ${wf_folder}/single_subject_${sub_id}_wf/anat_preproc_wf/surface_recon_wf 2>/dev/null
+  else
+    if [[ ${remove_wf} -eq 1 ]]; then
+      echo "Removing \"single_subject_${sub_id}_wf\" in \"${wf_folder}\""
+      rm -r ${wf_folder}/single_subject_${sub_id}_wf 2>/dev/null
     else
-      echo "ERROR in `basename ${0}`: invalid option \"${remove_wf}\". Must be \"surf\" or \"all\""
-      exit 1
-    fi
-
-    if [ -d ${rm_dir} ]; then
-      echo ${txt}
-      rm -r ${rm_dir}
+      if [[ ${OW} -eq 1 ]]; then
+        # check for run-specific flag
+        if [[ ! -z ${runs} ]]; then
+          for r in ${runs[@]}; do
+            echo "Removing workflow folders with \"run-${r}\" in \"${wf_folder}/single_subject_${sub_id}_wf\""
+            rm -r ${wf_folder}/single_subject_${sub_id}_wf/*run_${r}* 2>/dev/null
+          done
+        else
+          echo "Removing workflow folders with \"run-*\" in \"${wf_folder}/single_subject_${sub_id}_wf\""
+          rm -r ${wf_folder}/single_subject_${sub_id}_wf/*run_* 2>/dev/null
+        fi
+      fi
     fi
   fi
 
   # check configuration file
   if [[ -z ${conf} ]]; then
     confFile=""
+
+    # select run-specific files
+    if [[ ! -z ${runs} ]]; then
+      run_="["
+      r_ct=0
+      for r in ${n_runs[@]}; do
+        if [[ ${r_ct} -lt ${n_runs} ]]; then
+          run_+="${r},"
+        else
+          run_+="${r}]"
+        fi
+        ((r_ct++))
+      done
+
+      confFile=${workdir}/run_conf.json
+      if [ -f ${confFile} ]; then 
+        rm ${confFile} 2>/dev/null
+      fi
+
+      (
+        echo "{"
+        echo "    \"bold\": {"
+        echo "        \"run\": ${run_}"
+        echo "    },"
+        echo "    \"fmap\": {"
+        echo "        \"run\": ${run_}"
+        echo "    }"
+        echo "}" 
+      ) >> ${confFile}
+      echo "Using run-specific config file (runs = [${n_runs[@]}]): ${confFile}"
+      confFile="-x ${confFile}"
+
+    fi
   else
+    if [[ ! -z ${runs} ]]; then
+      echo "WARNING: specific runs were requested, but you also specified a configuration file. Because I'm lazy and it's quite tedious to merge these, please use the configuration file to select runs."
+
+      while true; do
+        read -p "Do you want to proceed? (yes/no) " yn
+
+        case $yn in 
+          y|yes ) 
+            break
+            ;;
+          n|no ) 
+            echo exiting...
+            exit
+            ;;
+          * ) 
+            echo "invalid response (use \"yes\"/\"y\" or \"no\"/\"n\")";
+            ;;
+        esac      
+      done
+    fi
     echo "Using config file: ${conf}"
     confFile="-x ${conf}"
   fi
