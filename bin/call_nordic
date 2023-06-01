@@ -167,9 +167,13 @@ fi
 # Reset extension
 
 if [[ ${ext_nordic} == "gz" ]]; then
-  gzip ${fn_nordic}.nii 2>/dev/null
   echo "Compressing NORDIC'ed output"
+  gzip ${fn_nordic}.nii 2>/dev/null
   nord_file=${fn_nordic}${nii_ext}
+
+  if [ -f ${fn_nordic}.nii ]; then
+    rm ${fn_nordic}.nii 2>/dev/null
+  fi
 else
   nord_file=${fn_nordic}${nii_ext}
 fi
