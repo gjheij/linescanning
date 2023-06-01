@@ -1,0 +1,874 @@
+#!/usr/bin/env bash
+#$ -cwd
+#$ -j Y
+#$ -V
+
+#---------------------------------------------------------------------------------------------------------
+# source helper functions
+source ${SETUP_FILE}
+source call_bashhelper
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<EOF
+
+---------------------------------------------------------------------------------------------------
+call_bids
+
+convert raw data from the scanner to nifti format. Depending on which session we're analyzing, we'll
+use either call_dcm2niix (session 1 - which is FromScannerToBIDS from M. Aqil) which can deal
+nicely with the anatomical and functional stuff or call_dcm2niix, which is more specific for the
+line scanning stuff.
+
+Arguments:
+  -i <input dir>      directory containing the PAR-files
+  -o <output dir>     directory to store intermediate nifti files (defaults to <input dir>/nifti)
+  -b <bids dir>       output directory for BIDSified data (generally DIR_DATA_HOME/<subject>/<session>)
+  -n <base name>      output base name for BIDS files (e.g., sub-01_ses-1)                
+
+Options:
+  --ow                overwrite existing files
+  --lines             flag to tell we're dealing with a line-scanning session. By default 'regular',
+                      which means standard whole-brain acquisitions.
+  --inv               add individual inversion files from anatomies in 'anat' folder
+  --dcm_fix           Extremely large par/rec's cannot be converted with 'dcm2niix'. Normal fMRI 
+                      sessions are converted using 'call_pydcm2niix', but this flag points it to 'call
+                      _dcm2niix', the same that is used for line-scanning sessions. It pipes the output 
+                      from dcm2niix to a log file to monitor 'Catastrophic errors'. It then tries to 
+                      convert these with 'parrec2nii', which comes with the python pacakge 'nibabel'.
+  --take-avg-tr       Take the average over all TRs from the par file, rather than the first in the
+                      sequence of TRs
+  --ap|--pa|--lr|--rl Specifies the phase-encoding direction for the BOLD run. The phase-encoding 
+                      for the FMAP will be automatically inverted. This flag can be specified to be
+                      a bit more flexible than using the PE_DIR_BOLD-variable in the setup file
+  --no_lpi            do not reorient files to LPI. If you want to use NORDIC or use fMRIprep's out-
+                      puts on more raw data, I'd advise you to reorient to LPI and to NOT use this 
+                      flag. This flag is mainly here because it can take some time with big files
+                      which slows down debugging.
+
+Example:
+  call_bids
+    DIR_DATA_SOURCE/sub-02/ses-1          # input with par/rec files
+    DIR_DATA_SOURCE/sub-002/ses-1/nifti   # output for tmp nifti files
+    DIR_DATA_HOME/sub-02/ses-1            # BIDS output
+    sub-02_ses-1                          # BIDS base name
+
+  call_bids
+    --dcm_fix                             # deal with laaaarge par/rec files
+    DIR_DATA_SOURCE/sub-02/ses-1          # input with par/rec files
+    DIR_DATA_SOURCE/sub-002/ses-1/nifti   # output for tmp nifti files
+    DIR_DATA_HOME/sub-02/ses-1            # BIDS output
+    sub-02_ses-1                          # BIDS base name
+
+---------------------------------------------------------------------------------------------------------
+
+EOF
+    exit 1
+}
+
+#---------------------------------------------------------------------------------------------------------
+# Deal with arguments
+
+# Check for subject & session flags
+SES_TYPE="regular"
+ADD_INV=0
+DCM_FIX=0
+reorient=1
+prot_flag=""
+pe_dir=""
+OW=0
+while getopts :-:i:o:b:n:r: argument
+do
+  case ${argument} in
+    -)
+      case "${OPTARG}" in
+        lines)
+          SES_TYPE="lines"
+          ;;
+        inv)
+          ADD_INV=1
+          ;;       
+        dcm_fix)
+          DCM_FIX=1
+          SES_TYPE="lines"
+          ;;  
+        take-avg-tr)
+          prot_flag="--take-avg-tr"
+          ;;         
+        ap)
+          pe_dir="AP"
+          ;;          
+        pa)
+          pe_dir="PA"
+          ;;         
+        lr)
+          pe_dir="LR"
+          ;;         
+        rl)
+          pe_dir="RL"
+          ;;        
+        no_lpi)
+          reorient=0
+          ;;    
+        ow)
+          OW=1
+          ;;                                                                                                
+        *)
+          if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
+            echo "Unknown option --${OPTARG}, did you mean \"--lines\"?"
+            exit 1
+          fi
+          ;;  
+      esac;;    
+    i)  input_dir=${OPTARG}
+          ;;
+    o)  tmp_dir=${OPTARG}
+          ;;
+    b)  bids_dir=${OPTARG}
+          ;;
+    n)  base=${OPTARG}
+          ;;    
+    r)  runs=${OPTARG}
+          ;;             
+  esac
+done
+
+if [[ $# -lt 4 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+# sort out runs
+if [[ ! -z ${runs} ]]; then
+  # read specified subjects into array
+  IFS=', ' read -r -a n_runs <<< "${runs}"
+  unset IFS
+fi
+
+# default tmp dir
+if [[ -z ${tmp_dir} ]]; then
+  tmp_dir=${input_dir}/nifti
+fi
+
+#-------------------------------------------------------------------------------------------------------------------------------
+# PARREC TO NIFTI
+if [[ -d ${tmp_dir} ]]; then
+  echo "Directory exists, skipping conversion (use \"--full\" to overwrite this folder too)."
+else
+  echo "Converting files to nifti-format"
+  call_dcm2niix ${prot_flag} -i ${input_dir} -o ${tmp_dir}
+fi
+
+echo "BIDSifying data .."
+
+#-------------------------------------------------------------------------------------------------------------------------------
+# NIFTI TO BIDS
+
+## Low resolution anatomical scan
+if [[ ${DCM_FIX} -eq 0 ]]; then
+          
+  anat_lowres=`find -L "${input_dir}/planning/nifti" -type f \( -name "*real*" -and -name "*t10*" -and -name "*.nii.gz" \) 2>/dev/null`
+  anat_t1map=`find -L "${input_dir}/planning/nifti" -type f \( -name "*real*" -and -name "*t29*" -and -name "*.nii.gz" \) 2>/dev/null`
+  if [[ ! -f ${bids_dir}/anat/${base}_acq-MP2RAGE_T1w.nii.gz ]]; then
+    if [[ -f ${anat_lowres} && -f ${anat_t1map} ]]; then
+
+      if [[ ! -d ${bids_dir}/anat ]]; then
+        mkdir -p ${bids_dir}/anat
+      fi
+
+      min=`fslstats ${anat_lowres} -R | awk '{print $1}'`
+      if [[ ${min} != "0.000000" ]]; then
+        echo " Rescaling lowres MP2RAGE-file"
+        call_maskmp2rage ${anat_lowres} ${anat_t1map} ${anat_lowres}
+      fi
+
+      echo " Relocating lowres MP2RAGE-file as ${base}_acq-MP2RAGE_T1w.nii.gz"
+      cp ${anat_lowres} ${bids_dir}/anat/${base}_acq-MP2RAGE_T1w.nii.gz
+      cp $(dirname ${anat_lowres})/$(basename ${anat_lowres} .nii.gz).json ${bids_dir}/anat/${base}_acq-MP2RAGE_T1w.json
+    fi
+
+  else
+    echo " low resolution MP2RAGE exists"
+  fi
+fi
+
+#---------------------------------------------------------------------------------------------------------
+# anatomicals
+if [[ ${ADD_INV} -eq 1 || ${DCM_FIX} -eq 1 ]]; then
+  
+  if [[ ! -d ${bids_dir}/anat ]]; then
+    mkdir -p ${bids_dir}/anat
+  fi
+
+  echo " Dealing with anatomical images.."
+  inv_img=`find -L "${tmp_dir}" -type f \( -name "*T1w_*" -and -name "*_t10*" -or -name "*_t29*" -or -name "*_t30*" \) 2>/dev/null`
+  IFS=$'\n' invs=($(sort <<<"${inv_img[*]}"))
+  unset IFS
+
+  for ff in ${invs[@]}; do
+    if [[ ${ff} == *"_ph_"* ]]; then
+      rec_tag="part-phase"
+    else
+      rec_tag="part-mag"
+    fi
+
+    if [[ ${ff} == *"t10"* ]]; then
+      inv_tag="inv-1"
+    else
+      inv_tag="inv-2"
+    fi
+
+    ext=`fetch_extension ${ff}`
+    if [[ ${ext} == "gz" ]]; then
+      ext="nii.gz"
+    fi
+
+    out_fn=${bids_dir}/anat/${base}_acq-${DATA}_${inv_tag}_${rec_tag}.${ext}
+    if [[ ! -f ${out_fn} || ${OW} -eq 1 ]]; then
+      cp ${ff} ${out_fn}
+
+      if [[ ${ext} == *"nii.gz"* ]]; then
+        if [[ ${reorient} -eq 1 ]]; then
+          call_reorient -i ${out_fn}
+        fi
+      fi
+    fi
+
+  done
+
+  # find T2s or FLAIR
+  for qq in "T2w" "FLAIR"; do
+    img=`find -L "${tmp_dir}" -type f \( -name "*${qq}.nii.gz" \) 2>/dev/null`
+    if [ ! -z ${img} ]; then
+      acq=`get_id ${img} acq`
+      if [[ ! -z ${acq} ]]; then
+        acq_tag="_acq-${acq}"
+      else
+        acq_tag=""
+      fi
+      out_fn=${bids_dir}/anat/${base}${acq_tag}_${qq}.nii.gz
+      cp ${img} ${out_fn} 2>/dev/null
+
+      if [[ ${reorient} -eq 1 ]]; then
+        call_reorient -i ${out_fn}
+      fi
+
+      json_fn=$(dirname ${img})/$(basename ${img} .nii.gz).json
+      if [ -f ${json_fn} ]; then
+        cp ${json_fn} $(dirname ${out_fn})/$(basename ${out_fn} .nii.gz).json
+      fi
+    fi
+  done
+fi
+
+#---------------------------------------------------------------------------------------------------------
+# acq-motion files for line-scanning
+if [[ ${DCM_FIX} -eq 0 ]]; then
+
+  if [[ ! -d ${bids_dir}/anat ]]; then
+    mkdir -p ${bids_dir}/anat
+  fi
+
+  ## Multi-slice files
+  motion_img=`find -L "${tmp_dir}" -type f \( -name "*motion*" -and -name "*.nii.gz" \) 2>/dev/null`
+  IFS=$'\n' motion_img=($(sort <<<"${motion_img[*]}"))
+  unset IFS    
+
+  echo " Relocating multi-slice file (${#motion_img[@]})"
+  for i in ${motion_img[@]}; do
+    
+    run=`get_id ${i} motion`
+    if [[ -z ${run} ]]; then
+      run=${i}
+    fi
+
+    fname=${bids_dir}/anat/${base}_acq-MP2RAGE_rec-motion${run}.nii.gz
+    if [[ ! -f ${fname} || ${OW} -eq 1 ]]; then
+      if [[ -f ${motion_img} ]]; then
+        echo "  renaming to $(basename ${fname})"
+        cp ${motion_img} ${fname}
+        cp $(dirname ${motion_img})/$(basename ${motion_img} .nii.gz).json $(dirname ${fname})/$(basename ${fname} .nii.gz).json
+      else
+        echo "  WARNING: apparently found ${n_motion} motion file(s), but cannot find file with \"motion${run}\" and \"*.nii.gz\""
+      fi
+    else
+      echo "  ${base}_acq-9slice_run-${run}_T1w.nii.gz exists"
+    fi
+  done
+
+  #---------------------------------------------------------------------------------------------------------
+  # Single-slice
+  slice_img=`find -L "${tmp_dir}" -type f \( -name "*1slice*" -and -not -name "*space*" -and -name "*anat*" -and -name "*.nii.gz" \) 2>/dev/null`
+  
+  # sort array (https://stackoverflow.com/questions/7442417/how-to-sort-an-array-in-bash)
+  IFS=$'\n' slice_img=($(sort <<<"${slice_img[*]}"))
+  unset IFS   
+
+  # add counter in case run-X does not occur in file     
+  count=0
+  if [[ ! -z ${slice_img} ]]; then
+    
+    echo " Found \"acq-1slice\" files"
+    for slice in ${slice_img[@]}; do
+      ((count++))
+
+      # fetch run
+      run=`run_id ${slice}`
+      if [[ ${run} -eq 0 ]]; then
+        run=${count}
+      fi     
+
+      # fetch task
+      task_id=`get_id ${slice} task`
+      if [[ ! -z ${task_id} ]]; then
+        task_flag="_task-${task_id}"
+      else
+        task_flag=""
+      fi                   
+    
+      bids_slice=${bids_dir}/anat/${base}${task_flag}_run-${run}_acq-1slice_T1w.nii.gz
+      if [[ ! -f ${bids_slice} || ${OW} -eq 1 ]]; then
+        if [[ -f ${slice} ]]; then
+          echo "  renaming to $(basename ${bids_slice})"
+          cp ${slice} ${bids_slice}
+          cp $(dirname ${slice})/$(basename ${slice} .nii.gz).json $(dirname ${bids_slice})/$(basename ${bids_slice} .nii.gz).json
+        fi
+      else
+        echo "  $(basename ${bids_slice}) exists"
+      fi
+
+    done
+  
+  else
+    echo "  WARNING: no \"1slice\"-files were found in ${tmp_dir}"
+  fi
+  
+  #---------------------------------------------------------------------------------------------------------
+  ## bold files
+  bold_files=`find -L "${input_dir}" -type f \( -name "*bold_*" -and -name "*.lab" \) 2>/dev/null`
+
+  # sort array (https://stackoverflow.com/questions/7442417/how-to-sort-an-array-in-bash)
+  IFS=$'\n' bold_files=($(sort <<<"${bold_files[*]}"))
+  unset IFS    
+
+  count=0
+  if [[ ! -z ${bold_files} ]]; then
+
+    if [[ ! -d ${bids_dir}/func ]]; then
+      mkdir -p ${bids_dir}/func
+    fi
+
+    echo " Found line-scanning bold-files (*.lab)"
+
+    # get foldover direction
+    info_file=`find -L "${DIR_DATA_DERIV}/pycortex/${sub_name}" -type f \( -name "*desc-info*" -and -name "*.csv" \) 2>/dev/null`
+    if [[ -f ${info_file} ]]; then
+      fold=`grep -A0 "foldover" ${info_file} | cut -d',' -f3`
+    else
+      # default to FH foldover
+      fold="FH"
+    fi
+    echo "  foldover is set to: ${fold}"
+
+    # get shift from log.md file
+    if [[ ! -z ${ses} ]]; then
+      md=`find -L $(dirname ${input_dir}) -type f \( -name "*ses-${nr}*" -and -name "*.md" \) 2>/dev/null`
+    else
+      md=`find -L $(dirname ${input_dir}) -type f \( -name "*.md" \) 2>/dev/null`
+    fi
+
+    # check for multiple files; take last one if more than one are found
+    cnt=0
+    for ii in ${md[@]}; do ((cnt++)); done
+    if [[ ${cnt} -gt 1 ]]; then
+      md=${md[cnt]}
+    fi
+
+    shift=0
+    if [[ -f ${md} ]]; then
+      shift=`grep -A0 "shift:" ${md} | cut -d":" -f2`
+    fi
+    echo "  shift is set to: ${shift}mm"
+    
+    # use run-1 as template
+    slice_img=(`find -L "${bids_dir}/anat" -type f \( -name "${base}*" -and -name "*1slice*" -and -name "*run-1*" -and -name "*.nii.gz" \) 2>/dev/null`)
+    
+    # check if slice_img is a list
+    if [[ ! -f ${slice_img} || ${OW} -eq 1 ]]; then
+      ct=0; for ii in ${slice_img[@]}; do ((ct++)); done
+      if [[ ${ct} -gt 1 ]]; then
+        echo "  WARNING: found multiple files with [\"acq-1slice\" and \"run-1\"] in \"${bids_dir}/anat\", taking the first instance"              
+      fi
+      slice_img=${slice_img[0]}
+    fi
+
+    for bold in ${bold_files[@]}; do
+      ((count++))
+
+      # fetch run
+      run=`get_id ${bold} run`
+      if [[ ${run} -eq 0 ]]; then
+        run=${count}
+      fi
+
+      # fetch task
+      task=`get_id ${bold} task`
+      if [[ -z ${task} ]]; then
+        task=${TASK_SES1[0]}
+      elif [[ ${task} == "prf" ]]; then
+        task="pRF"
+      elif [[ ${task} == "sr" ]]; then
+        task="SR"
+      fi
+
+      # get task from corresponding PAR-file, which is more accurate than gtpackngo's export names
+      par_file=`find -L $(dirname ${bold}) -type f -name "*run-${run}*" -and -name "*task-${task}*" -and -name "*bold*" -and -iname "*.par" 2>/dev/null`
+      if [[ -f ${par_file} ]]; then
+        fileparts=`read_par ${par_file} "Protocol name"`
+        task=`get_id ${fileparts} task`
+      fi
+
+      line_img=${bids_dir}/func/${base}_task-${task}_run-${run}_bold.nii.gz
+      if [[ -f ${slice_img} ]]; then
+        if [[ ! -f ${line_img} || ${OW} -eq 1 ]]; then
+          call_createline \
+            -i ${slice_img} \
+            -o ${line_img} \
+            --width 16 \
+            --${fold,,} \
+            --shift ${shift}
+
+          if [[ $? != 0 ]]; then
+            echo
+            echo "---------------------------------------------------------------------------------------------------"
+            echo "ERROR in `basename ${0}`: call_createline exited with non-zero status"
+            exit 1
+          fi
+
+          echo "  wrote `basename ${line_img}`"
+        else
+          echo "  `basename ${line_img}` exists"
+        fi
+      else
+        echo "  WARNING: could not find file with [\"acq-1slice\" and \"run-1\"] in \"${bids_dir}/anat\""
+      fi
+
+    done
+  
+  else
+    echo "  WARNING: no \"bold*.lab\"-files were found in ${input_dir}"
+  fi
+fi
+
+#---------------------------------------------------------------------------------------------------------
+# check for more whole-brainy stuff
+if [[ ${DCM_FIX} -eq 0 ]]; then
+  # deal with stuff added by sequence development editor..
+  sde=1
+
+  if [[ ! -z ${runs} ]]; then
+    b_files=()
+    for r in ${n_runs[@]}; do
+      run_f=`find -L "${input_dir}" -type f \( -name "*run-${r}*" -and -iname "*acq-3DEPI*" -and -name "*bold*" -and -name "*.nii.gz" -and -not -name "*_ph.nii.gz" \) 2>/dev/null`
+      b_files+=(${run_f})
+    done
+  else
+    b_files=`find -L "${input_dir}" -type f \( -iname "*acq-3DEPI*" -and -name "*bold*" -and -name "*.nii.gz" -and -not -name "*_ph.nii.gz" \) 2>/dev/null`
+  fi
+
+else
+  sde=0
+  if [[ ! -z ${runs} ]]; then
+    b_files=()
+    for r in ${n_runs[@]}; do
+      run_f=`find -L "${input_dir}" -type f \( -name "*run-${r}*" -and -name "*bold.nii.gz" \) 2>/dev/null`
+      b_files+=(${run_f})
+    done
+  else  
+    b_files=`find -L "${input_dir}" -type f \( -name "*bold.nii.gz" \) 2>/dev/null`
+  fi
+fi
+
+# sort array (https://stackoverflow.com/questions/7442417/how-to-sort-an-array-in-bash)
+IFS=$'\n' bold_files=($(sort <<<"${b_files[*]}"))
+unset IFS
+
+count=0
+mb_warning=0
+pe_warning=0
+warning=0
+if [[ ! -z ${bold_files[@]} ]]; then
+
+  echo " Found ${#bold_files[@]} BOLD file(s)"
+  for bold in ${bold_files[@]}; do
+
+    echo " $bold"
+    
+    # fetch run
+    run=`run_id ${bold}`
+    if [[ ${run} -eq 0 ]]; then
+      run=${count}
+    fi 
+
+    func=${bold}
+    phase=$(dirname ${bold})/$(basename ${bold} .nii.gz)_ph.nii.gz
+
+    # sort out sequence development editor suffix
+    if [[ ${sde} -eq 1 ]]; then
+      fmap=`echo ${bold} | sed "s,bold,epi,g"`
+    else
+      fmap=$(dirname ${bold})/$(basename ${bold} _bold.nii.gz)_epi.nii.gz
+    fi
+    
+    task=`task_id ${bold}`
+    if [[ -z ${task} ]]; then
+      task=${TASK_SES1[0]}
+
+      if [[ ! -z ${task} ]]; then
+        task="stim"
+      fi
+    fi
+
+    acq=`get_id ${bold} acq`
+
+    desc=""
+    if [[ ${bold} == *"desc"* ]]; then
+      desc=`get_id ${bold} desc`
+    fi
+
+    # rename 'bold', 'epi', and 'phase'
+    for ext in "_bold.nii.gz" "_epi.nii.gz" "_bold_ph.nii.gz"; do
+
+      if [[ ${ext} == "_bold.nii.gz" ]]; then
+        orig=${func}
+        image="func"
+      elif [[ ${ext} == "_epi.nii.gz" ]]; then
+        orig=${fmap}
+        image="fmap"
+      elif [[ ${ext} == "_bold_ph.nii.gz" ]]; then
+        orig=${phase}
+        image="phase"
+      fi
+
+      # check if we got acquisition; if we also got desc, add it to acq, as fMRIprep doesn't like the desc- field
+      if [[ ! -z ${acq} ]]; then
+        add_acq="_acq-${acq}"
+        if [[ ! -z ${desc} ]]; then
+          add_acq+="${desc}"
+        fi
+      else
+        add_acq=""
+        if [[ ! -z ${desc} ]]; then
+          add_acq="_acq-${desc}"
+        fi
+      fi              
+
+      # compile filename
+      ff=${bids_dir}/${image}/${base}_task-${task}_run-${run}${add_acq}${ext}
+      if [[ ! -f ${ff} || ${OW} -eq 1 ]]; then
+        if [[ ! -d ${ff} ]]; then
+          mkdir -p $(dirname ${ff})
+        fi
+
+        txt=""
+        if [[ ${reorient} -eq 1 ]]; then
+          txt=" and reorienting to LPI"
+        fi
+
+        if [[ -f ${orig} ]]; then
+          echo "  renaming ${image}-file to `basename ${ff}`${txt}"
+          cp ${orig} ${ff}
+
+          # also reorient to LPI because dcm2niix does AIL, parrec2nii does RPI woohoo.. Fun.
+          if [[ ${reorient} -eq 1 ]]; then
+            call_reorient -i ${ff}
+          fi
+
+          json_file=$(dirname ${orig})/$(basename ${orig} .nii.gz).json
+          if [ -f ${json_file} ]; then
+            json_bids=$(dirname ${ff})/$(basename ${ff} .nii.gz).json
+            cp ${json_file} ${json_bids}
+
+            # check if json file has IntendedFor
+            intended_for=`cat ${json_bids} | grep "IntendedFor"`
+            if [[ -z ${intended_for} ]]; then
+              if [[ ${image} == "fmap" ]]; then
+
+                base_path=""
+                if [[ $(basename ${json_bids}) == *"ses"* ]]; then
+                  ses_nr=$(basename ${json_bids} | cut -d"_" -f2)
+                  base_path+="${ses_nr}"
+                fi
+
+                # add IntendedFor
+                call_json ${json_bids} IntendedFor ${base_path}/func/$(basename ${json_bids} _epi.json)_bold.nii.gz
+              fi
+            fi
+
+            # add other information that call_parrec2nii would've added by reading the ParFile key that should've been added by call_dcm2niix
+            par_f=`read_json ${json_bids} ParFile`
+            if [[ ! -z ${par_f} ]]; then
+              echo "  Storing information from `basename ${par_f}` in json file"
+              pars_for_json --merge ${par_f} ${json_bids}
+
+              # check if we can add slicetimings
+              if [[ ${image} != "phase" ]]; then
+                scan_mode=`read_par ${par_f} "Scan mode"`
+
+                if [[ ${scan_mode} != "3D" ]]; then
+                  mb_factor=`read_json ${json_bids} MultiBandAccelerationFactor`
+                  if [[ -z ${mb_factor} ]]; then
+                    mb_factor=3
+                    mb_warning=1
+                    warning=1
+                    echo "  WARNING: defaulting to multiband factor 3 for slice-timings, please check if this is correct or put \"export MB_FACTOR=value\" in setup file!"
+                  fi
+
+                  tr=`read_json ${json_bids} RepetitionTime`
+                  n_slices=`read_par ${par_f} "Max. number of slices/locations"`
+                  call_slicetiming ${json_bids} ${tr} ${n_slices} ${mb_factor}
+
+                  if [[ $? -ne 0 ]]; then
+                    echo "ERROR in `basename ${0}`: call_slicetiming exited with non-zero code"
+                    exit 1
+                  fi
+                fi
+              fi
+            fi
+
+            # overwrite PhaseEncoding if --ap|--pa|--lr|--rl flag
+            if [[ ! -z ${pe_dir} ]]; then
+              echo "  NOTE: PhaseEncodingDirection was manually specified with \"${pe_dir}\" for BOLD; inverting for FMAP"
+              if [[ ${image} == "fmap" ]]; then
+                ph_dir=`fprep_pe ${pe_dir} 1`
+              elif [[ ${image} == "func" ]]; then
+                ph_dir=`fprep_pe ${pe_dir}`
+              fi
+
+              call_json ${json_bids} PhaseEncodingDirection ${ph_dir}
+            fi
+
+            # check PhaseEncodingDirection
+            phase_enc_dir=`cat ${json_bids} | grep "PhaseEncodingDirection"`
+            if [[ -z ${phase_enc_dir} ]]; then
+              if [[ ${image} == "fmap" ]]; then
+                ph_dir="j"  
+              elif [[ ${image} == "func" ]]; then
+                ph_dir="j-"
+              else
+                ph_dir=""
+              fi
+
+              if [[ ! -z ${ph_dir} ]]; then
+                pe_warning=1
+                warning=1
+                echo "  WARNING: assuming PE-direction for ${image^^}=\"${ph_dir}\", please check if this is correct or put \"export PE_DIR_BOLD=value\" in setup file or use on of '--ap','--pa','--lr', or '--rl' flags"
+                call_json ${json_bids} PhaseEncodingDirection ${ph_dir}
+              fi 
+            fi
+                            
+          fi
+        fi
+      else
+        echo "  $(basename ${ff}) exists"
+      fi
+
+    done
+
+  done
+
+  # check nr fmaps & funcs to fix IntendedFor
+  func_files=`find -L ${bids_dir}/func -type f -name "*_bold.nii.gz"`; tmp_funcs=($(sort <<<"${func_files[*]}"))
+  fmap_files=`find -L ${bids_dir}/fmap -type f -name "*_epi.json"`; fmaps=($(sort <<<"${fmap_files[*]}"))
+
+  # filter out line-scanning BOLD files by checking dimensions (should be >3)
+  funcs=()
+  for ff in ${tmp_funcs[@]}; do
+    dims=`fslval ${ff} dim0`
+    if [[ ${dims} -gt 3 ]]; then
+      funcs+=(${ff})
+    fi
+  done
+
+  if [[ ${#funcs} -ne ${#fmaps} ]]; then
+    # add all funcs to IntendedFor
+    if [[ ${#fmaps[@]} -eq 1 && ${#funcs[@]} -gt 1 ]]; then
+      # we have 1 FMAP for all bolds
+      echo "Received one FMAP file for all BOLD files; fixing IntendedFor"
+      func_list=""; ct=0; for f in ${funcs[@]}; do ((ct++)); if [[ ${ct} -eq ${#funcs[@]} ]]; then add_="${f}"; else add_="${f},"; fi; func_list+=${add_}; done
+      call_json ${fmaps[0]} IntendedFor "${func_list}"
+    elif [[ `expr ${#funcs[@]} / ${#fmaps[@]}` -eq 2 ]]; then
+      # we have twice the nr of BOLDs vs FMAPs
+      echo "Received an FMAP file for every 2 BOLD files; fixing IntendedFor"
+      
+      # loop through fieldmaps, get accompaning fc-elements from funcs
+      fm_ct=0
+      fc=`expr ${#funcs[@]} / ${#fmaps[@]}`
+      for ii in ${fmaps[@]}; do
+        tmp=(${funcs[@]:fm_ct:fm_ct+${fc}})
+        tmp_list=""; ct=0; for f in ${tmp[@]}; do ((ct++)); if [[ ${ct} -eq ${#tmp[@]} ]]; then add_="${f}"; else add_="${f},"; fi; tmp_list+=${add_}; done
+        call_json ${ii} IntendedFor "${tmp_list}"
+
+        fm_ct=`expr ${fm_ct} + ${fc}`
+      done
+    elif [[ `expr ${#funcs[@]} / ${#fmaps[@]}` -eq 1 ]]; then
+      # FUNC == FMAP
+      echo "Each BOLD has its own FMAP; trusting the process went OK!"
+    else
+      echo "WARNING: got ${#funcs[@]} BOLD files and ${#fmaps[@]} FMAP files. I can only deal with 1 FMAP for all BOLD, an FMAP per BOLD, or `expr ${#funcs[@]} / ${#fmaps[@]}` FMAP files (an FMAP for every X BOLD files)"
+    fi
+  fi
+  
+  #---------------------------------------------------------------------------------------------------------
+  # check for event files
+  if [[ -z ${runs} ]]; then
+    tsv_files=(`find -L "${input_dir}" -type f \( -name "*.tsv*" \) 2>/dev/null`)
+  else
+    if [[ ${#n_runs[@]} -gt 1 ]]; then
+      tsv_files=()
+      for r in ${n_runs[@]}; do
+        run_f=`find -L "${input_dir}" -type f \( -name "*run-${r}*" -and -name "*.tsv" \) 2>/dev/null`
+        tsv_files+=(${run_f})
+      done
+    else
+      tsv_files=`find -L "${input_dir}" -type f \( -name "*run-${n_runs}*" -and -name "*.tsv" \) 2>/dev/null`
+    fi
+  fi
+
+  if [[ ! -z ${tsv_files} ]]; then
+    
+    if [[ ! -d ${bids_dir}/func ]]; then
+      mkdir -p ${bids_dir}/func
+    fi
+    echo "Found ${#tsv_files[@]} event file(s)"    
+
+    count=0
+    for file in ${tsv_files[@]}; do
+      
+      # add counter in case file does not contain run-X id
+      ((count++))
+
+      # fetch task
+      task=`get_id ${file} task`
+
+      # fetch run
+      run=`get_id ${file} run`
+      if [[ -z ${run} ]]; then
+        run=${count}
+      fi              
+
+      bids_tsv=${bids_dir}/func/${base}_task-${task}_run-${run}_events.tsv
+      if [[ ! -f ${bids_tsv} || ${OW} -eq 1 ]]; then
+        echo " renaming tsv-file to `basename ${bids_tsv}`"
+        cp ${file} ${bids_tsv}
+      fi
+    done
+  fi
+
+  #---------------------------------------------------------------------------------------------------------
+  # check for eyetracker files
+  if [[ -z ${runs} ]]; then
+    edf_files=(`find -L "${input_dir}" -type f \( -name "*.edf*" \) 2>/dev/null`)
+  else
+    if [[ ${#n_runs[@]} -gt 1 ]]; then
+      edf_files=()
+      for r in ${n_runs[@]}; do
+        run_f=`find -L "${input_dir}" -type f \( -name "*run-${r}*" -and -name "*.edf" \) 2>/dev/null`
+        edf_files+=(${run_f})
+      done
+    else
+      edf_files=`find -L "${input_dir}" -type f \( -name "*.edf*" \) 2>/dev/null`
+    fi
+  fi
+
+  
+  if [[ ! -z ${edf_files} ]]; then
+
+    if [[ ! -d ${bids_dir}/func ]]; then
+      mkdir -p ${bids_dir}/func
+    fi
+
+    echo "Found ${#edf_files[@]} eyetracker file(s)"    
+
+    count=0
+    for file in ${edf_files[@]}; do
+      
+      # add counter in case file does not contain run-X id
+      ((count++))
+
+      # fetch task
+      task=`get_id ${file} task`
+      if [[ ${task} == "prf" ]]; then
+        task="pRF"
+      fi
+
+      # fetch run
+      run=`get_id ${file} run`
+      if [[ ${run} -eq 0 ]]; then
+        run=${count}
+      fi
+
+      bids_edf=${bids_dir}/func/${base}_task-${task}_run-${run}_eye.edf
+      if [[ ! -f ${bids_edf} || ${OW} -eq 1 ]]; then
+        echo " renaming edf-file to `basename ${bids_edf}`"
+        cp ${file} ${bids_edf}
+      fi              
+    done
+  fi          
+
+  #---------------------------------------------------------------------------------------------------------
+  # check for physio files
+  phys=(`find -L "${input_dir}" -type f \( -name "SCANPHYS*" -and -name "*bold_*.log" \) 2>/dev/null`)
+  if [[ ! -z ${phys} ]]; then
+
+    echo "Found physio file(s)"
+    if [[ ! -d ${bids_dir}/physio ]]; then
+      mkdir -p ${bids_dir}/physio
+    fi            
+
+    count=0
+    for file in ${phys[@]}; do
+      
+      # add counter in case file does not contain run-X id
+      ((count++))
+
+      # fetch task
+      task=`get_id ${file} task`
+      if [[ ${task} == "prf" ]]; then
+        task="pRF"
+      fi
+
+      # fetch run
+      run=`get_id ${file} run`
+      if [[ ${run} -eq 0 ]]; then
+        run=${count}
+      fi           
+
+      bids_phys=${bids_dir}/physio/${base}_task-${task}_run-${run}_physio.log
+      if [[ ! -f ${bids_phys} ]]; then
+        echo " renaming physio-file to `basename ${bids_phys}`"
+        cp ${file} ${bids_phys}
+      fi              
+    done
+  fi
+fi
+echo "Done"
+
+if [[ ${warning} -eq 1 ]]; then
+  echo
+  echo "---------------------------------------------------------------------------------------------------"
+  echo "WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING"
+  echo ""
+  if [[ ${pe_warning} -eq 1 ]]; then
+    echo "I assumed the PhaseEncoding direction in the FMAP/FUNC-folder; please make sure this is correct!"
+  fi
+
+  if [[ ${mb_warning} -eq 1 ]]; then
+    echo "I might have assumed information about the acceleration factor to get the slice timings.."
+  fi
+
+  echo "Please check that this is correct!"
+  echo "---------------------------------------------------------------------------------------------------"
+fi
+
