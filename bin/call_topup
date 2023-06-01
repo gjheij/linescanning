@@ -10,6 +10,7 @@ import os
 import sys
 import getopt
 from linescanning import fmriprep
+import shutil
 opj = os.path.join
 
 def main(argv):
@@ -44,6 +45,7 @@ Parameters
                 folder in /tmp
   -b|--filters  bids filter file (maps to --bids-filter-file from fMRIPrep); allows you to select 
                 particular files
+  -o|--ow       overwrite intermediate files
                         
 Example
 ----------
@@ -58,12 +60,13 @@ Example
     session = None
     acquisition = None
     inputdir = os.environ.get("DIR_DATA_HOME")
-    outputdir = opj(inputdir, "fmriprep")
+    outputdir = opj(os.environ.get("DIR_DATA_DERIV"), "fmriprep")
     workdir = None
     bids_filters = None
+    overwrite = False
 
     try:
-        opts = getopt.getopt(argv,"h:s:n:i:o:w:b:a:",["help", "sub=", "ses=", "acq=", "in=", "out=", "work=", "filters="])[0]
+        opts = getopt.getopt(argv,"ohs:n:i:o:w:b:a:",["help", "sub=", "ses=", "acq=", "in=", "out=", "work=", "filters=", "ow"])[0]
     except getopt.GetoptError:
         print("ERROR while reading arguments; did you specify an illegal argument?")
         print(main.__doc__)
@@ -87,6 +90,8 @@ Example
             workdir = arg
         elif opt in ("-b", "--filters"):
             bids_filters = arg
+        elif opt in ("-o", "--ow"):
+            overwrite = True
 
     if len(argv) < 1:
         print(main.__doc__)
@@ -119,6 +124,12 @@ Example
         bids_filters=bids_filters,
         workdir=workdir)
     
+    if overwrite:
+        fname = opj(workdir, wf.name)
+        if os.path.exists(fname):
+            print(f"deleting {fname}")
+            shutil.rmtree(fname)
+
     wf.run()
 
 if __name__ == "__main__":
