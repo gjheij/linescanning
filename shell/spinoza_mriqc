@@ -26,6 +26,7 @@ Arguments:
   -s <subject>    subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
   -n <session>    session ID (e.g., 1, 2, or none); If set, only data from this session will be 
                   used
+  -j <cpus>       number of cores to use (default is 1)
   -q <queue>      submit jobs to a specific queue. Defaults to SGE_QUEUE_LONG in spinoza_setup
   <project dir>   directory containing the anatomical data. Can also be the regular project root
                   folder if you want fMRIprep do the surface reconstruction
@@ -52,6 +53,7 @@ run_local=0
 local_flag=""
 remove_wf=0
 mod_flag=""
+n_cpus=1
 while getopts :-:ls:r:n:f:m:c:k:q: argument
 do
   case ${argument} in
@@ -81,7 +83,9 @@ do
     n)  ses=${OPTARG}
           ;;
     q)  SGE_QUEUE=${OPTARG}
-          ;;            
+          ;;      
+    j)  n_cpus=${OPTARG}
+          ;;                            
   esac
 done
 
@@ -167,7 +171,7 @@ for subID in ${search}; do
       else
         QUEUE=${SGE_QUEUE_LONG}
       fi
-      job="qsub -q ${QUEUE} -pe smp 1 -N ${sub_name}_desc-mriqc -o ${workdir} ${DIR_SCRIPTS}/bin/call_mriqc"
+      job="qsub -q ${QUEUE} -pe smp ${n_cpus} -N ${sub_name}_desc-mriqc -o ${workdir} ${DIR_SCRIPTS}/bin/call_mriqc"
     fi 
   else
     job="call_mriqc"

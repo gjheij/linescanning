@@ -46,6 +46,7 @@ Args:
                         'wm'  = you made white matter edits   > runs -autorecon2-wm
                         'pial'= you made pial edits           > runs -autorecon-pial
                         'aseg'= edits to aseg.presurf.mgz     > runs -autorecon2-noaseg
+  -j <cpus>           number of cores to use (default is 1)
   -o <other editing>  Here you can specify the gcut-option to remove latched on pial surface
   -x <expert opts>    expert option file that maps to '-expert'. 
   -q <queue>          submit jobs to a specific queue. Defaults to SGE_QUEUE_LONG in spinoza_setup
@@ -129,7 +130,8 @@ XOPTS_=""
 EXPERT_FILE=""
 reuse_t2=1
 allowed_edits=("cp" "wm" "pial" "aseg")
-while getopts :-:hs:t:p:r:e:o:f:c:x:q: arg
+n_cpus=1
+while getopts :-:hs:t:p:r:e:o:f:c:x:q:j: arg
 do
   case ${arg} in
     -)
@@ -184,7 +186,9 @@ do
     x)  EXPERT_FILE=${OPTARG}
           ;;    
     q)  SGE_QUEUE="-q ${OPTARG}"
-          ;;                              
+          ;;  
+    j)  n_cpus=${OPTARG}
+          ;;                                      
   esac
 done
 
@@ -252,9 +256,9 @@ CMD(){
   echo "Using FreeSurfer from: `which freesurfer`"
 
   if [[ ${SGE} == "SGE" ]]; then
-    echo "Submitting job to cluster"
+    echo "Submitting job to cluster with ${n_cpus} core(s)"
     parallel_flag="-parallel"
-    mp_flag="-openmp 12"
+    mp_flag="-openmp ${n_cpus}"
     submit=1
   else
     parallel_flag=""

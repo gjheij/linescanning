@@ -24,6 +24,7 @@ Flagged arguments:
   -n <session>        session ID (e.g., 1, 2, or n)
   -e <start>          start stage (maps to '-r' from 'call_freesurfer'). Must be one of 'pial', 
                       'cp', or 'wm' if <freesurfer stage> != 'all'
+  -j <cpus>           number of cores to use (default is 1)
   -o|--ow             overwrite existing files
   -x <file>           use expert file
   -q <queue>          submit jobs to a specific queue. Defaults to SGE_QUEUE_LONG in spinoza_setup
@@ -96,7 +97,8 @@ force_flag=""
 use_t2_flag=""
 allowed_edits=("cp" "wm" "pial" "aseg")
 SGE_QUEUE=""
-while getopts :-:os:n:x:e:q: argument
+n_cpus=1
+while getopts :-:os:n:x:e:q:j: argument
 do
   case ${argument} in
     -)
@@ -150,7 +152,9 @@ do
     e)  start_flag="-e ${OPTARG}"
           ;;     
     q)  SGE_QUEUE="-q ${OPTARG}"
-          ;;                            
+          ;;       
+    j)  n_cpus=${OPTARG}
+          ;;                               
   esac
 done
 
@@ -320,6 +324,7 @@ for subID in ${search}; do
         -s ${sub_name} \
         -t ${input_t1w} \
         -r ${STAGE} \
+        -j ${n_cpus} \
         ${SGE_QUEUE} \
         ${start_flag} \
         ${T2_flag} \

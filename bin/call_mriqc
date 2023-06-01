@@ -29,6 +29,7 @@ Arguments:
                   enter "001")
 -n <ses number>   session ID (without 'ses-'); if not specified, all sessions will be checked for
                   usable data
+-j <cpus>         number of cores to use (default is 1)
 -r <root>         project root directory from which to run fmriprep. Default is DIR_DATA_HOME
 -d <derivatives>  derivatives directory. Default is DIR_DATA_DERIV
 -i <simg>         singularity image that can be specified if -c flag is set to SGE
@@ -49,7 +50,7 @@ USAGE
 #-----------------------------------------------------------------------------
 # Deal with arguments
 mod_flag=""
-while getopts :-:ts:n:r:d:i:b:w: arg
+while getopts :-:ts:n:r:d:i:b:w:j: arg
 do
   case ${arg} in
     -)
@@ -81,7 +82,9 @@ do
     b)  BIND=${OPTARG}
           ;;
     w)  WORK=${OPTARG}
-          ;;          
+          ;;  
+    j)  n_cpu=${OPTARG}
+          ;;                      
   esac
 done
 
@@ -140,9 +143,6 @@ if [[ ! -d ${work} ]]; then
   mkdir -p ${work}
 fi
 
-#Run fmriprep
-n_procs=10
-
 #-----------------------------------------------------------------------------
 # Set default container if none specified
 if [[ -z ${IMG} ]]; then
@@ -190,7 +190,8 @@ fi
   ${ses_flag} \
   ${mod_flag} \
 	--participant-label ${subj_ID} \
-	--n_procs ${n_procs} \
+	--n_procs ${n_cpu} \
+  --omp-nthreads 1 \
 	-w ${work} \
 	--verbose-reports \
 	--mem_gb 64 \

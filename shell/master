@@ -428,7 +428,11 @@ Arguments:
                         dard path that 'spinoza_fitprfs' will be looking for
                       - spinoza_denoising: input directory for pybest. By default 'fmriprep', but 
                         can be something else
-  -j <n_jobs>       number of jobs to parallellize pRF-fitting over; default is 5
+  -j <n_jobs>       number of jobs to use when submitting to SoGE. Used in:
+                      - spinoza_mriqc
+                      - spinoza_freesurfer
+                      - spinoza_fmriprep
+                      - spinoza_fitprfs
   -k <file>         specify a file with additional arguments, similar to FreeSurfer's expert options.
                     See linescanning/misc/fprep_options for an example. Please make sure you have a 
                     final empty white space at the end of the file, otherwise the parser gets confu-
@@ -877,6 +881,7 @@ if [[ $? -eq 0 ]]; then
     ${mod_flag} \
     ${run_local} \
     ${SGE_QUEUE} \
+    ${jobs_flag} \
     ${DIR_DATA_HOME} ${DIR_DATA_DERIV}/mriqc
 
   echo "[${module}] DONE" && echo
@@ -1368,6 +1373,7 @@ if [[ $? -eq 0 ]]; then
     ${FORCE_FLAG} \
     ${use_t2_flag} \
     ${SGE_QUEUE} \    
+    ${jobs_flag} \
     ${INPUT_DIR} ${FS_stage} ${DIR_DATA_HOME}
 
   if [[ $? -ne 0 ]]; then
