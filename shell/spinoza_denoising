@@ -28,6 +28,7 @@ Arguments:
                       in the spinoza_setup-file
   -c <n_cpus>         number of CPUs to use (default = 5 on SoGE; 1 for local)
   -o|--ow             overwrite existing files
+  -q <queue>          submit jobs to a specific queue. Defaults to SGE_QUEUE_LONG in spinoza_setup
   --sge               submit job to cluster (called with 'master -m <module> --sge')
   --no_raw            do NOT unzscore the output from pybest (default is to do so)
   --fsaverage         overwrite PYBEST_SPACE-variable and use FSAverage for pybest (defaults to fs-
@@ -64,7 +65,7 @@ if [[ -z ${PYBEST_N_COMPS} ]]; then
   PYBEST_N_COMPS=10
 fi
 
-while getopts :-:os:n:t::c argument
+while getopts :-:os:n:t:q:c argument
 do
   case ${argument} in
     -)
@@ -101,6 +102,8 @@ do
           ;;
     t)  task_flag="-t ${OPTARG}" 
           ;;
+    q)  SGE_QUEUE=${OPTARG}
+          ;;             
   esac
 done
 
@@ -193,7 +196,12 @@ for subID in ${search}; do
 
         # append sub
         if [[ ${SGE} -eq 1 ]]; then
-          job="qsub -q ${SGE_QUEUE_LONG} -wd ${DIR_LOGS} -pe smp ${cpu} -N ${base}_desc-pybest"
+          if [[ ! -z ${SGE_QUEUE} ]]; then
+            QUEUE=${SGE_QUEUE}
+          else
+            QUEUE=${SGE_QUEUE_LONG}
+          fi            
+          job="qsub -q ${QUEUE} -wd ${DIR_LOGS} -pe smp ${cpu} -N ${base}_desc-pybest"
         else
           job="bash"
         fi

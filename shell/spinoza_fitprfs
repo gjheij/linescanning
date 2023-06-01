@@ -52,6 +52,7 @@ Options:
                   list of different minimizers for each stage, e.g., trust-constr for Gaussian model, 
                   and L-BGFS for extended model. The format should be '-x "tc,bgfs"'
   -j <n_jobs>     number of jobs to parallellize over; default is 10
+  -q <queue>      submit jobs to a specific queue. Defaults to SGE_QUEUE_LONG in spinoza_setup
   --bgfs          use L-BGFS minimization for both the Gaussian as well as the extended model. Use 
                   the '-x'flag if you want different minimizers for both stages   
   --fsaverage     overwrite PYBEST_SPACE-variable and use FSAverage for fitting (see your setup file)
@@ -137,7 +138,7 @@ model="gauss"
 n_jobs=5
 kwargs_file=""
 use_space=${PYBEST_SPACE}
-while getopts :-:los:n:m:t:x:c:v:j:k: argument
+while getopts :-:los:n:m:t:x:c:v:j:k:q: argument
 do
   case ${argument} in
     -)
@@ -194,7 +195,8 @@ do
           fit_flag="--no_fit"
           ;;      
         save_grid)
-          save_grid="--save_grid"
+          save_grid="--save_    q)  SGE_QUEUE=${OPTARG}
+          ;; grid"
           ;;            
         v1)
           lbl_flag="--v1"
@@ -242,7 +244,9 @@ do
     v)  cut_vols="--cut_vols ${OPTARG[@]}"
           ;;        
     k)  kwargs_file="--kwargs ${OPTARG}"
-          ;;            
+          ;;       
+    q)  SGE_QUEUE=${OPTARG}
+          ;;                
   esac
 done
 
@@ -512,7 +516,12 @@ for subID in ${search}; do
             job="python"
           else
             if [[ ${run_locally} -eq 0 ]]; then
-              job="qsub -q ${SGE_QUEUE_LONG} -pe smp ${n_jobs} -wd ${prf_dir} -N ${base}_task-${task}_model-${model}"
+              if [[ ! -z ${SGE_QUEUE} ]]; then
+                QUEUE=${SGE_QUEUE}
+              else
+                QUEUE=${SGE_QUEUE_LONG}
+              fi                
+              job="qsub -q ${SGE_QUEUE} -pe smp ${n_jobs} -wd ${prf_dir} -N ${base}_task-${task}_model-${model}"
             elif [[ ${run_locally} -eq 1 ]]; then
               job="python"
             else
