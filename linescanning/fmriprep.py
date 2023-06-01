@@ -165,6 +165,8 @@ class init_single_subject_wf():
                     raise NotImplementedError(
                         "Sophisticated PEPOLAR schemes are unsupported."
                     )
+                
+            print(wf_inputs.in_data)
 
     def run(self):
 
