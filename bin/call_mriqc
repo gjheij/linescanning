@@ -190,7 +190,7 @@ fi
   ${ses_flag} \
   ${mod_flag} \
 	--participant-label ${subj_ID} \
-	--n_procs ${n_cpu} \
+	--nprocs ${n_cpu} \
   --omp-nthreads 1 \
 	-w ${work} \
 	--verbose-reports \
