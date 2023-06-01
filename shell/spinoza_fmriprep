@@ -44,7 +44,8 @@ Arguments:
   -n <session>    session ID (e.g., 1, 2, or none); used to check for T1w-image. fMRIprep will do all
                   sessions it finds in the project root regardless of this argument. Use the bids fil-
                   ter file ('-k' flag) if you want fMRIPrep to to specific sessions/tasks/acquisitions.
-  -c <config>     configuration file as specified in /misc/fmriprep_config?.json
+  -j <cpus>       number of cores to use (default is 1)
+  -u <config>     configuration file as specified in /misc/fmriprep_config?.json
   -f <func dir>   directory containing functional data; used after running FreeSurfer outside of
                   fMRIprep <optional>
   -r <runs>       (re-)run specific runs by removing existing single_subject_<subj_id>_wf/func_preproc
@@ -59,6 +60,7 @@ Arguments:
                   final empty white space at the end of the file, otherwise the parser gets confu-
                   sed. For VSCode: https://stackoverflow.com/a/44704969. If you run with master, the 
                   '-u' flag maps onto this
+  -q <queue>      submit jobs to a specific queue. Defaults to SGE_QUEUE_LONG in spinoza_setup
   <anat dir>      directory containing the anatomical data. Can also be the regular project root
                   folder if you want fMRIprep do the surface reconstruction
   <derivatives>   output folder for fMRIprep; generally this will be <project>/derivatives
@@ -92,7 +94,8 @@ boldref_flag=""
 remove_wf=0
 remove_surf_wf=0
 OW=0
-while getopts :-:ols:r:n:f:m:c:k: argument
+n_cpu=1
+while getopts :-:ols:r:n:f:m:j:k:q:u: argument
 do
 case ${argument} in
     -)
@@ -135,12 +138,16 @@ case ${argument} in
           ;;
     m)  mode=${OPTARG}
           ;;
-    c)  conf=${OPTARG}
+    u)  conf=${OPTARG}
           ;;
+    j)  n_cpu=${OPTARG}
+          ;;          
     k)  kwargs_file="-k ${OPTARG}"
           ;;       
     r)  runs=${OPTARG}
-          ;;              
+          ;;      
+    q)  SGE_QUEUE=${OPTARG}
+          ;;                   
     o)  OW=1
           ;;                
   esac
@@ -369,7 +376,12 @@ for subID in ${search}; do
     if [[ ${run_local} -eq 1 ]]; then
       job="call_fmriprep"
     else
-      job="qsub -q ${SGE_QUEUE_LONG} -pe smp 1 -N ${sub_name}_desc-fmriprep -o ${workdir} ${DIR_SCRIPTS}/bin/call_fmriprep"
+      if [[ ! -z ${SGE_QUEUE} ]]; then
+        QUEUE=${SGE_QUEUE}
+      else
+        QUEUE=${SGE_QUEUE_LONG}
+      fi
+      job="qsub -q ${QUEUE} -pe smp ${n_cpu} -N ${sub_name}_desc-fmriprep -o ${workdir} ${DIR_SCRIPTS}/bin/call_fmriprep"
     fi 
   else
     job="call_fmriprep"
@@ -383,6 +395,7 @@ for subID in ${search}; do
     -r ${INPUT} \
     -d ${OUTPUT} \
     -w ${workdir} \
+    -c ${n_cpu} \
     ${confFile} \
     ${task_id} \
     ${bbr_flag} \

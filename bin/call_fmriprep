@@ -33,6 +33,7 @@ Arguments:
   -d <derivatives>  derivatives directory. Default is DIR_DATA_DERIV
   -i <simg>         singularity image that can be specified if -c flag is set to SGE
   -b <binding>      binding point that can be specified if -c flag is set to SGE
+  -c <n_threads>    set number of threads to use. Default = 15
   -w <work>         working directory to store intermediate files. Default is PATH_HOME/programs/
                     packages/fmriprep
   -l <license>      path to freesurfer license. Make sure license is after the path specified with the
@@ -121,6 +122,8 @@ do
           ;;
     k)  KWARGS_FILE=${OPTARG}
           ;;
+    c)  n_threads=${OPTARG}
+          ;;     
   esac
 done
 
@@ -296,7 +299,11 @@ if [[ ${mode} != "anat" ]]; then
 fi
 
 # set nthreads
-nthreads=15
+if [[ -z ${n_threads} ]]; then
+  nthreads=15
+else
+  nthreads=${n_threads}
+fi
 nthread_flag="--nthreads ${nthreads}"
 
 # output directory structure has changed after v21: https://github.com/nipreps/fmriprep/releases/tag/21.0.0
@@ -339,6 +346,7 @@ ${run_cmd} \
 """
 
   # execute
+  echo ${cmd}
   ${cmd}
   
   if [[ $? != 0 ]]; then
