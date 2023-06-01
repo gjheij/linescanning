@@ -1,0 +1,81 @@
+#!/usr/bin/env python
+#$ -j Y
+#$ -cwd
+#$ -V
+
+import mkl
+mkl.set_num_threads=1
+
+import os
+import sys
+import getopt
+from linescanning import (
+    utils,
+    dataset)
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_onsets2fsl
+
+This script converts tsv-files from ExpTools2 to 3-column event-files that are compatible with FSL.
+Just give a path, and all tsv-files found will be convertedor a very select part of the dataset. 
+
+Parameters
+----------        
+  -i|--in     subject-directory containing the files that need to be run through Topup. Defaults 
+              to DIR_DATA_HOME as per spinoza_setup
+  -o|--out    output directory containing the topup'ed data. Easiest is to give the fMRIPrep fol-
+              der, it will be formatted accordingly automatically. Defaults to dirname(input_dir)/
+              events
+  --verbose   turn on verbose
+
+Example
+----------
+>>> call_onsets2fsl --in $DIR_DATA_HOME/sub-001
+
+---------------------------------------------------------------------------------------------------
+"""
+
+    inputdir = None
+    outputdir = None
+    verbose = False
+
+    try:
+        opts = getopt.getopt(argv,"hi:o:",["help", "in=", "out=", "verbose"])[0]
+    except getopt.GetoptError:
+        print("ERROR while reading arguments; did you specify an illegal argument?")
+        print(main.__doc__)
+        sys.exit(2)
+    
+    for opt, arg in opts:
+        if opt in ('-h', '--help'):
+            print(main.__doc__)
+            sys.exit()
+        elif opt in ("-i", "--in"):
+            inputdir = arg
+        elif opt in ("-o", "--out"):
+            outputdir = arg
+        elif opt in ("--verbose"):
+            verbose = True
+        
+    if len(argv) < 1:
+        print(main.__doc__)
+        sys.exit()
+
+    if not isinstance(outputdir, str):
+        outputdir = opj(os.path.dirname(inputdir), "events")
+
+    # find all tsv-files
+    tsv_files = utils.FindFiles(inputdir, extension="tsv").files
+
+    # plop in object
+    exp_ = dataset.ParseExpToolsFile(tsv_files, use_bids=True, verbose=verbose)
+
+    # save as 3 column format
+    exp_.onsets_to_fsl(output_dir=outputdir)
+    
+if __name__ == "__main__":
+    main(sys.argv[1:])
