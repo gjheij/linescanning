@@ -48,6 +48,7 @@ Args:
                         'aseg'= edits to aseg.presurf.mgz     > runs -autorecon2-noaseg
   -o <other editing>  Here you can specify the gcut-option to remove latched on pial surface
   -x <expert opts>    expert option file that maps to '-expert'. 
+  -q <queue>          submit jobs to a specific queue. Defaults to SGE_QUEUE_LONG in spinoza_setup
   --freeview          Open FreeView automatically (default is NO!)
   --force_exec        Force execution even though directory exists already
   --sge               Submit the script to a cluster using a template script
@@ -128,7 +129,7 @@ XOPTS_=""
 EXPERT_FILE=""
 reuse_t2=1
 allowed_edits=("cp" "wm" "pial" "aseg")
-while getopts :-:hs:t:p:r:e:o:f:c:x: arg
+while getopts :-:hs:t:p:r:e:o:f:c:x:q: arg
 do
   case ${arg} in
     -)
@@ -181,7 +182,9 @@ do
     o)  option=${OPTARG}
           ;;
     x)  EXPERT_FILE=${OPTARG}
-          ;;                      
+          ;;    
+    q)  SGE_QUEUE="-q ${OPTARG}"
+          ;;                              
   esac
 done
 
@@ -278,7 +281,12 @@ CMD(){
 
   # If you have ran FreeSurfer in fMRIprep, fsaverage will miss a few labels that
   # FreeSurfer v7 has.
-
+  if [[ ! -z ${SGE_QUEUE} ]]; then
+    QUEUE=${SGE_QUEUE}
+  else
+    QUEUE=${SGE_QUEUE_LONG}
+  fi    
+  
   # echo "${SUBJECTS_DIR}"
   (
   echo "#!/bin/bash"
@@ -287,7 +295,7 @@ CMD(){
   echo "#$ -wd ${SUBJECTS_DIR}"
   echo "#$ -o $(dirname ${fs_script})/$(basename ${fs_script} .sh).log"
   echo "#$ -j Y"
-  echo "#$ -q ${SGE_QUEUE_LONG}"
+  echo "#$ -q ${QUEUE}"
   echo "#$ -V"
   echo ""
   echo "export SUBJECTS_DIR=${SUBJECTS_DIR}"

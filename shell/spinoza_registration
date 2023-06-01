@@ -37,6 +37,7 @@ Arguments:
   -c|--sge            submit job to cluster (SGE); given that we have to rename files after regi-
                       stration, we'll wait for the job to finish if submitted. This can still help
                       with memory issues (e.g., if your local machine does not have enough RAM).
+  -q <queue>          submit jobs to a specific queue. Defaults to SGE_QUEUE_LONG in spinoza_setup
   <anat folder>       folder containing images for registration. If DATA == "AVERAGE", we'll look
                       for T1w-images containing 'acq-MP2RAGE_' and 'acq-MP2RAGEME_', create a warp
                       file, and apply this file to MP2RAGEME-files with ('T1w' 'T1map' 'R2starmap
@@ -74,7 +75,7 @@ OW=
 reg_type=""
 verb_flag=""
 # Check for subject flag
-while getopts :-:ocs:n: argument
+while getopts :-:ocs:n:q: argument
 do
   case ${argument} in
     -)
@@ -109,6 +110,8 @@ do
           ;;
     o)  OW=1
           ;;
+    q)  SGE_QUEUE=${OPTARG}
+          ;;             
   esac
 done
 
@@ -245,7 +248,12 @@ for subID in ${search}; do
 
         # decide how to execute 
         if [[ ${SGE} -eq 1 ]]; then
-          job="qsub -q ${SGE_QUEUE_LONG} -wd ${DIR_LOGS} -N reg_${sub_id} ${DIR_SCRIPTS}/bin/call_antsregistration"
+          if [[ ! -z ${SGE_QUEUE} ]]; then
+            QUEUE=${SGE_QUEUE}
+          else
+            QUEUE=${SGE_QUEUE_LONG}
+          fi           
+          job="qsub -q ${QUEUE} -wd ${DIR_LOGS} -N reg_${sub_id} ${DIR_SCRIPTS}/bin/call_antsregistration"
         else
           job="call_antsregistration"
         fi

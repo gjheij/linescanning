@@ -23,6 +23,7 @@ Input options:
   -n <session>        session ID (e.g., 1, 2, or none)
   <project root>      directory to output BIDSified data to
   <sourcedata>        directory containing to be converted data
+  -q <queue>          submit jobs to a specific queue. Defaults to SGE_QUEUE_LONG in spinoza_setup
   -o|--ow             Overwrite existing output
   --full              Overwrite existing output + created nifti folder
   --lines             flag to tell we're dealing with a line-scanning session. By default 'regular',
@@ -89,7 +90,7 @@ PROT_FLAG=""
 PE_FLAG=""
 SGE_FLAG=0
 DEBUG_MODE=0
-while getopts :-:os:n:r: argument
+while getopts :-:os:n:r:q: argument
 do
   case ${argument} in
     -)
@@ -153,6 +154,8 @@ do
           ;;    
     r)  RUNS="-r ${OPTARG}"                                 
           ;;
+    q)  SGE_QUEUE=${OPTARG}
+          ;;           
   esac
 done
 
@@ -276,7 +279,12 @@ for subID in ${search}; do
 
 
         if [[ ${SGE_FLAG} -eq 1 ]]; then
-          job="qsub -q ${SGE_QUEUE_LONG} -wd ${DIR_LOGS} -pe smp 1 -N ${base}_desc-dcm2bids"
+          if [[ ! -z ${SGE_QUEUE} ]]; then
+            QUEUE=${SGE_QUEUE}
+          else
+            QUEUE=${SGE_QUEUE_LONG}
+          fi        
+          job="qsub -q ${QUEUE} -wd ${DIR_LOGS} -pe smp 1 -N ${base}_desc-dcm2bids"
         else
           job="bash"
           echo

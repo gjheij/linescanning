@@ -38,6 +38,7 @@ Arguments:
   -s <subject>  subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
   -n <session>  session ID (e.g., 1, 2, or none
   -r <run>        run ID (e.g., 1). Can also be comma-separated list: 1,3,4
+  -q <queue>      submit jobs to a specific queue. Defaults to SGE_QUEUE_LONG in spinoza_setup
   --sge         submit individual NORDIC processes to the cluster for parallellization. If you do 
                 this, it's advised to have identifiable 'run-' flags in your filenames so that the 
                 template file is not overwritten; this can cause problems. If you do not have run 
@@ -70,7 +71,7 @@ smp=1
 SGE=0
 mag_only=0
 tsnr_flag="--tsnr"
-while getopts :-:os:n:r: argument
+while getopts :-:os:n:r:q: argument
 do
   case ${argument} in
     -)
@@ -101,7 +102,9 @@ do
     o)  OW=1
           ;;
     r)  runs=${OPTARG}
-          ;;          
+          ;;      
+    q)  SGE_QUEUE=${OPTARG}
+          ;;                 
   esac
 done
 
@@ -274,8 +277,14 @@ for subID in ${search}; do
 
         # decide on job execution
         if [[ ${SGE} -eq 1 ]]; then
+          if [[ ! -z ${SGE_QUEUE} ]]; then
+            QUEUE=${SGE_QUEUE}
+          else
+            QUEUE=${SGE_QUEUE_LONG}
+          fi    
+
           job_name=$(basename ${mag_img} _bold.nii.gz)_desc-nordic
-          job="qsub -q ${SGE_QUEUE_LONG} -wd ${DIR_LOGS} -pe smp ${smp} -N ${job_name}"
+          job="qsub -q ${QUEUE} -wd ${DIR_LOGS} -pe smp ${smp} -N ${job_name}"
           if [ ! -d ${DIR_LOGS} ]; then
             mkdir -p ${DIR_LOGS}
           fi
@@ -286,7 +295,7 @@ for subID in ${search}; do
           echo " -phase:  ${ph_img}"
           echo " -type:   ${tt}"        
         fi
-
+        
         # run if basenames of phase and magnitude match
         if [[ $(basename ${ph_img} ${ph_tag}.nii.gz) == $(basename ${mag_img} .nii.gz) ]]; then
           out=${func_folder}/$(basename ${mag_img})

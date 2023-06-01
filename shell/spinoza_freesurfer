@@ -26,6 +26,7 @@ Flagged arguments:
                       'cp', or 'wm' if <freesurfer stage> != 'all'
   -o|--ow             overwrite existing files
   -x <file>           use expert file
+  -q <queue>          submit jobs to a specific queue. Defaults to SGE_QUEUE_LONG in spinoza_setup
   --force_exec        Force execution even though directory exists already
   --local             Force local processing even though cluster is available
   --no_highres        Turn of highres mode by setting '-highres' flag empty
@@ -94,7 +95,8 @@ expert_flag=""
 force_flag=""
 use_t2_flag=""
 allowed_edits=("cp" "wm" "pial" "aseg")
-while getopts :-:os:n:x:e: argument
+SGE_QUEUE=""
+while getopts :-:os:n:x:e:q: argument
 do
   case ${argument} in
     -)
@@ -146,7 +148,9 @@ do
     x)  EXPERT_FILE=${OPTARG}
           ;;  
     e)  start_flag="-e ${OPTARG}"
-          ;;                     
+          ;;     
+    q)  SGE_QUEUE="-q ${OPTARG}"
+          ;;                            
   esac
 done
 
@@ -316,6 +320,7 @@ for subID in ${search}; do
         -s ${sub_name} \
         -t ${input_t1w} \
         -r ${STAGE} \
+        ${SGE_QUEUE} \
         ${start_flag} \
         ${T2_flag} \
         ${highres_flag} \
