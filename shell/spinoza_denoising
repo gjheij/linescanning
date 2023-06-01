@@ -26,7 +26,7 @@ Arguments:
   -n <session>        session ID (e.g., 1, 2, or none)
   -t <task ID>        limit pybest processing to a specific task. Default is all tasks in TASK_SES1
                       in the spinoza_setup-file
-  -c <n_cpus>         number of CPUs to use (default = 5 on SoGE; 1 for local)
+  -j <n_cpus>         number of CPUs to use (default = 5 on SoGE; 1 for local)
   -o|--ow             overwrite existing files
   -q <queue>          submit jobs to a specific queue. Defaults to SGE_QUEUE_LONG in spinoza_setup
   --sge               submit job to cluster (called with 'master -m <module> --sge')
@@ -65,7 +65,7 @@ if [[ -z ${PYBEST_N_COMPS} ]]; then
   PYBEST_N_COMPS=10
 fi
 
-while getopts :-:os:n:t:q:c argument
+while getopts :-:os:n:t:q:j: argument
 do
   case ${argument} in
     -)
@@ -98,7 +98,7 @@ do
           ;;
     o)  OW=1
           ;;         
-    c)  cpu=${OPTARG}
+    j)  cpu=${OPTARG}
           ;;
     t)  task_flag="-t ${OPTARG}" 
           ;;

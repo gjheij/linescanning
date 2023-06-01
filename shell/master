@@ -1493,7 +1493,8 @@ if [[ $? -eq 0 ]]; then
     ${OW} \
     ${TASK_ID} \
     ${space_flag} \
-    ${SGE_QUEUE} \    
+    ${SGE_QUEUE} \
+    ${jobs_flag} \
     ${INPUT_DIR} ${DIR_DATA_DERIV}/pybest
 
   if [[ $? -ne 0 ]]; then
@@ -1579,7 +1580,7 @@ if [[ $? -eq 0 ]]; then
     ${jobs_flag} \
     ${kwargs_file} \
     ${space_flag} \
-    ${SGE_QUEUE} \    
+    ${SGE_QUEUE} \
     ${PRF_INPUT} ${DIR_DATA_DERIV}/prf ${PNG_DIR}
 
   if [[ $? -ne 0 ]]; then
