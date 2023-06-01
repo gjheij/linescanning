@@ -65,7 +65,10 @@ do
           ;;   
         func_only)
           mod_flag="--func_only"
-          ;;                                      
+          ;;        
+        remove_wf)
+          remove_wf=1
+          ;;                                          
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}" >&2
@@ -75,8 +78,6 @@ do
     s)  sub=${OPTARG}
           ;;
     n)  ses=${OPTARG}
-          ;;
-    r)  remove_wf=${OPTARG}
           ;;
   esac
 done
@@ -129,9 +130,11 @@ for subID in ${search}; do
     nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
     base_path=${sub_name}/ses-${nr}
     base=${sub_name}_ses-${nr}
+    ses_flag="-n ${ses}"
   else
     base_path=${sub_name}
     base=${sub_name}
+    ses_flag=""
   fi
 
   echo
@@ -144,7 +147,7 @@ for subID in ${search}; do
   fi
 
   # check if we need to delete stuff
-  if [[ ! -z ${remove_wf} ]]; then
+  if [[ ${remove_wf} -eq 1 ]]; then
     rm_dir=`find "${workdir}/mriqc_wf" -type f \( -name "*${sub_name}*" \) 2>/dev/null`
     if [[ ! -z ${rm_dir} ]]; then
       rm -r ${rm_dir}
@@ -165,6 +168,7 @@ for subID in ${search}; do
   # execute the command
   ${job} \
     -s ${sub_id} \
+    ${ses_flag} \
     -b ${FPREP_BINDING} \
     -i ${MRIQC_SIMG} \
     -r ${INPUT} \
