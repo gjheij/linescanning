@@ -18,7 +18,7 @@ Args:
               an identity matrix for instance.
   <-o out>    output directory
   <-p prefix> use custom prefix rather than <subject>
-  <-t>        set repetition time in .gii-files
+  <--tr>      set repetition time in .gii-files
   <subject>   subject ID as used in the FreeSurfer directory
   <in_file>   path to the input file that needs to be projected to the surface
   <suffix>    suffix for the output. The output file will be an .gii file in both the subject-
@@ -45,10 +45,23 @@ if [[ $# -lt 3 ]] ; then
   exit 1
 fi
 
+set_tr=0
 # Check for subject & session flags
-while getopts tr:o:p: argument
+while getopts :-:tr:o:p: argument
 do
   case ${argument} in
+    -)
+      case "${OPTARG}" in
+        tr)
+          set_tr=1
+          ;;
+        *)
+          if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
+            echo "Unknown option --${OPTARG}, did you mean \"--lines\"?"
+            exit 1
+          fi
+          ;;  
+      esac;;    
     r)  reg_file=${OPTARG}
           ;;
     o)  out_dir=${OPTARG}
@@ -82,15 +95,13 @@ else
   PREF=${prefix}
 fi
 
-if [[ "${@}" == *"-t"* ]]; then
-  set_tr=1
+if [[ ${set_tr} -eq 1 ]]; then
   TR_float_sec=`fslval ${INPUT} pixdim4`
 
   # convert to integer in milliseconds to be consistent with fMRIprep
   TR_int_ms="$(printf '%d' `echo "${TR_float_sec} * 1000" | bc` 2>/dev/null)"
   echo "Setting TR to ${TR_int_ms}"
 else
-  set_tr=0
   TR_int_ms=""
 fi
 
