@@ -413,9 +413,12 @@ it's default settings are and what you'd need to do to get it running for you.
 Have fun!
 
 Arguments:
-  -c                list of values used for clipping of design matrix. Format must be [<top>,<bot-
-                    tom>,<left>,<right>]. Negative values will be set to zero within 'linescanning.
-                    prf.get_prfdesign'
+  -c <arg>          used for:
+                      - spinoza_fitprfs: list of values used for clipping of design matrix. Format 
+                        must be [<top>,<bottom>,<left>,<right>]. Negative values will be set to 
+                        zero within 'linescanning.prf.get_prfdesign'
+                      - spinoza_denoising: number of components to use for PCA. Overwrites the 
+                        PYBEST_N_COMPS-variable in the setup file
   -e <echos|stage>  used for:
                       - spinoza_linerecon: specify the amount of echoes of the acquisition
                       - spinoza_freesurfer: maps to '-e' from call_freesurfer; sets the stage as of
@@ -1485,12 +1488,18 @@ if [[ $? -eq 0 ]]; then
     INPUT_DIR=${images}
   fi
 
+  # set PCA components
+  if [[ ! -z ${C_FLAG} ]]; then
+    PCA_COMPS="-c ${C_FLAG}"
+  fi  
+
   ${job} spinoza_denoising \
     ${raw_flag} \
     ${SUBJECT} \
     ${SESSION} \
     ${SGE} \
     ${OW} \
+    ${PCA_COMPS} \
     ${TASK_ID} \
     ${space_flag} \
     ${SGE_QUEUE} \

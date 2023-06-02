@@ -26,8 +26,10 @@ Arguments:
   -n <session>        session ID (e.g., 1, 2, or none)
   -t <task ID>        limit pybest processing to a specific task. Default is all tasks in TASK_SES1
                       in the spinoza_setup-file
-  -j <n_cpus>         number of CPUs to use (default = 5 on SoGE; 1 for local)
-  -o|--ow             overwrite existing files
+  -j <n_cpus>         number of CPUs to use (default = 1)
+  -c <n_comps>        overwrite the PYBEST_N_COMPS-variable deciding the number of components for 
+                      the PCA (default = 10)
+  -o|--ow             overwrite existing files. Note that this deletes the full ses-<> folder!
   -q <queue>          submit jobs to a specific queue. Defaults to SGE_QUEUE_LONG in spinoza_setup
   --sge               submit job to cluster (called with 'master -m <module> --sge')
   --no_raw            do NOT unzscore the output from pybest (default is to do so)
@@ -51,7 +53,7 @@ USAGE
 
 # Check for subject & session flags
 OW=0
-cpu=""
+n_cpus=""
 task_flag=""
 raw_flag=""
 SGE=0
@@ -61,11 +63,7 @@ if [[ -z ${PYBEST_SPACE} ]]; then
   PYBEST_SPACE="fsnative"
 fi
 
-if [[ -z ${PYBEST_N_COMPS} ]]; then
-  PYBEST_N_COMPS=10
-fi
-
-while getopts :-:os:n:t:q:j: argument
+while getopts :-:os:n:t:q:j:c: argument
 do
   case ${argument} in
     -)
@@ -98,12 +96,14 @@ do
           ;;
     o)  OW=1
           ;;         
-    j)  cpu=${OPTARG}
+    j)  n_cpus=${OPTARG}
           ;;
     t)  task_flag="-t ${OPTARG}" 
           ;;
     q)  SGE_QUEUE=${OPTARG}
-          ;;             
+          ;;       
+    c)  PYBEST_N_COMPS=${OPTARG}
+          ;;                 
   esac
 done
 
@@ -112,17 +112,22 @@ if [[ $# -lt 2 ]] ; then
   exit 1
 fi
 
+# set default nr of components
+if [[ -z ${PYBEST_N_COMPS} ]]; then
+  PYBEST_N_COMPS=10
+fi
+
 if [[ ${SGE} -eq 1 ]]; then
-  if [[ -z ${cpu} ]]; then
-    cpu=1
+  if [[ -z ${n_cpus} ]]; then
+    n_cpus=1
   fi
 
   if [ ! -d ${DIR_LOGS} ]; then
     mkdir -p ${DIR_LOGS}
   fi
 else
-  if [[ -z ${cpu} ]]; then
-    cpu=1
+  if [[ -z ${n_cpus} ]]; then
+    n_cpus=1
   fi
 fi
 
@@ -191,8 +196,6 @@ for subID in ${search}; do
 
       if [[ ! -d ${DENOISE}/${base_path}/denoising ]]; then
 
-        echo
-        echo "**************************************** Processing ${sub_name} ***************************************"
 
         # append sub
         if [[ ${SGE} -eq 1 ]]; then
@@ -201,8 +204,10 @@ for subID in ${search}; do
           else
             QUEUE=${SGE_QUEUE_LONG}
           fi            
-          job="qsub -q ${QUEUE} -wd ${DIR_LOGS} -pe smp ${cpu} -N ${base}_desc-pybest"
+          job="qsub -q ${QUEUE} -wd ${DIR_LOGS} -pe smp ${n_cpus} -N ${base}_desc-pybest"
         else
+          echo
+          echo "**************************************** Processing ${sub_name} ***************************************"
           job="bash"
         fi
 
@@ -213,7 +218,7 @@ for subID in ${search}; do
           -o ${DENOISE} \
           -r ${PYBEST_SPACE} \
           -f ${FPREP} \
-          -c ${cpu} \
+          -c ${n_cpus} \
           -p ${PYBEST_N_COMPS} \
           ${task_flag} \
           ${raw_flag}
@@ -226,7 +231,7 @@ for subID in ${search}; do
         fi        
 
       else
-        echo "${sub_name}: data already denoised"
+        echo "${sub_name}: data already denoised (use --ow to overwrite)"
       fi
 
     else
