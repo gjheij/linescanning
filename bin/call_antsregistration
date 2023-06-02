@@ -31,6 +31,8 @@ Flagged arguments:
                 affine>SyN). The same metric is used for all stages. By default, 'Cross-correlation'
                 is used for SyN-diffeomorphic registration (the final stage). The rigid-body and af-
                 fine stages before the SyN-registration can be altered.
+  --ofsl        also output the matrix in FSL-compatible format (not available for SyN)
+  --itk         open ITK-Snap to verify how registration went
   -x <mask>     Image masks to limit voxels considered by the metric
   -i <initial>  the initial moving transform(s) which get immediately incorporated into the compo-
                 site transform
@@ -85,6 +87,7 @@ Example:
   call_antsregistration -i initial.txt ref.nii.gz mov.nii.gz out_ rigid
   call_antsregistration -v ref.nii.gz mov.nii.gz out_ syn
   call_antsregistration -x mask.nii.gz --lws ref.nii.gz mov.nii.gz out_ syn
+  call_antsregistration --fsl ref.nii.gz mov.nii.gz out_
 
 ---------------------------------------------------------------------------------------------------
 
@@ -109,6 +112,8 @@ converg=""
 shrink=""
 smooth=""
 gradient_step=0.1
+fsl_fmt=0
+open_itk=0
 while getopts :-:vi:t:x:n:s:c:r:g: argument
 do
   case ${argument} in
@@ -196,6 +201,12 @@ do
         no_winsor)
           winsorize=0
           ;;
+        ofsl)
+          fsl_fmt=1
+          ;;   
+        itk)
+          open_itk=1
+          ;;                    
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}"
@@ -525,11 +536,33 @@ fi
 # rename
 if [[ -f ${OUT}0GenericAffine.mat ]]; then
   mv ${OUT}0GenericAffine.mat ${OUT}genaff.mat
+
+  # conver to FSL
+  if [[ ${fsl_fmt} -eq 1 ]]; then
+    cmd="call_ras2fsl ${FIXED} ${MOVING} ${OUT}genaff.mat ${OUT}fsl.mat"
+  fi
 fi
 
 # this file is created if --collapse-output-transforms is set to 0 and you did rigid-body registration; safest bet is to keep --collapse-output-transforms to 1 so you always get the same output 
 if [[ -f ${OUT}0Rigid.mat ]]; then
   mv ${OUT}0Rigid.mat ${OUT}rigid.mat
+  
+  # convert to FSL
+  if [[ ${fsl_fmt} -eq 1 ]]; then
+    cmd="call_ras2fsl ${FIXED} ${MOVING} ${OUT}rigid.mat ${OUT}fsl.mat"
+  fi
+fi
+
+# run ras2fsl
+if [[ ${fsl_fmt} -eq 1 ]]; then
+  if [[ ${VERB} -eq 1 ]]; then
+    echo "ras2fsl call:"
+    echo "---------------------------------------------------------------------------------------------------"
+    echo ${cmd}
+    echo
+  fi
+
+  ${cmd}
 fi
 
 # remove temporary file
@@ -539,4 +572,10 @@ fi
 
 if [[ ${extract_fixed} -eq 1 ]]; then
   rm ${FIXED} 2>/dev/null
+fi
+
+# open ITK-Snap for verification
+if [[ ${open_itk} -eq 1 ]]; then
+  echo "Opening ITK-Snap. Load \"${OUT}genaff.mat\""
+  itksnap -g ${FIXED} -o ${MOVING}
 fi

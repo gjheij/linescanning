@@ -34,6 +34,7 @@ Arguments:
                       != 'mni' and no registration method is specified
   --syn               use SyN-diffeomorphic registration. Default if <registration type> == 'mni'
                       and no registration method is specified
+  --ofsl              also output the matrix in FSL-compatible format (not available for SyN)
   -c|--sge            submit job to cluster (SGE); given that we have to rename files after regi-
                       stration, we'll wait for the job to finish if submitted. This can still help
                       with memory issues (e.g., if your local machine does not have enough RAM).
@@ -74,6 +75,9 @@ SGE=0
 OW=
 reg_type=""
 verb_flag=""
+FSL_FMT=0
+verb=0
+fsl_flag=""
 # Check for subject flag
 while getopts :-:ocs:n:q: argument
 do
@@ -94,7 +98,12 @@ do
           ;;    
         verbose)
           verb_flag="--verbose"
-          ;;                  
+          verb=1
+          ;;    
+        ofsl)
+          FSL_FMT=1
+          fsl_flag="--ofsl"
+          ;;                            
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}"
@@ -194,14 +203,14 @@ for subID in ${search}; do
     txt="Registering ${ACQ[1],,}-T1w to ${ACQ[0],,}"
     suffix=MP2RAGE
     ext="from-${ACQ[1]^^}_to-${ACQ[0]^^}"
-    fixed=`find "${input_dir}" -type f \( -iname "*${ACQ[0]^^}_*" -and -name "*T1w.nii.gz" -and -not -name "*space-*" \) 2>/dev/null`
+    fixed=`find -L "${input_dir}" -type f \( -iname "*${ACQ[0]^^}_*" -and -name "*T1w.nii.gz" -and -not -name "*space-*" \) 2>/dev/null`
 
     dd=("FLAIR")
     # https://stackoverflow.com/a/15394738
     if [[ " ${dd[*]} " =~ " ${ACQ[1]^^} " ]]; then
-      moving=`find "${input_dir}" -type f \( -iname "*_${ACQ[1]^^}.nii.gz" -and -not -name "*space-*" \) 2>/dev/null`
+      moving=`find -L "${input_dir}" -type f \( -iname "*_${ACQ[1]^^}.nii.gz" -and -not -name "*space-*" \) 2>/dev/null`
     else
-      moving=`find "${input_dir}" -type f \( -iname "*${ACQ[1]^^}_*" -and -name "*.nii.gz" -and -not -name "*space-*" \) 2>/dev/null`    
+      moving=`find -L "${input_dir}" -type f \( -iname "*${ACQ[1]^^}_*" -and -name "*.nii.gz" -and -not -name "*space-*" \) 2>/dev/null`    
     fi
     write_output=1
 
@@ -209,7 +218,7 @@ for subID in ${search}; do
     txt="Registering ${ACQ[0]^^}-T1w to MNI152 template"
     suffix=MNI152NLin6Asym
     fixed=${FSLDIR}/data/standard/MNI152_T1_1mm.nii.gz
-    moving=`find "${input_dir}" -type f \( -iname "*acq-${DATA}_*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
+    moving=`find -L "${input_dir}" -type f \( -iname "*acq-${DATA}_*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
     ext="from-${suffix}_to-T1w"
     output=$(dirname ${moving})/$(basename ${moving} _T1w.nii.gz)_space-${suffix}_T1w.nii.gz
     write_output=0
@@ -222,6 +231,7 @@ for subID in ${search}; do
   outWarp=${output_dir}/${base}_${ext}_mode-image_warp.nii.gz
   outInvWarp=${output_dir}/${base}_${ext}_mode-image_invwarp.nii.gz
   outGenAff=${output_dir}/${base}_${ext}_mode-image_xfm.mat
+  outFSLAff=${output_dir}/${base}_${ext}_mode-image_fsl.mat
   cmd_file=${output_dir}/${base}_${ext}_mode-image_cmd.txt
 
   if [[ ! -d ${output_dir} ]]; then
@@ -259,7 +269,18 @@ for subID in ${search}; do
         fi
 
         echo "Registering $(basename ${moving}) to $(basename ${fixed}) [${reg_type}]"
-        ${job} ${verb_flag} ${reg_type} ${fixed} ${moving} ${output_dir}/${base}_${ext}
+        cmd="${job} ${fsl_flag} ${verb_flag} ${reg_type} ${fixed} ${moving} ${output_dir}/${base}_${ext}"
+
+        if [[ ${verb} -eq 1 ]]; then
+          echo
+          echo "call_antsregistration:"
+          echo "---------------------------------------------------------------------------------------------------"
+          echo ${cmd}
+          echo
+        fi
+
+        # run
+        ${cmd}
 
         if [[ $? -ne 0 ]]; then
           echo "ERROR in `basename ${0}`: call_antsregistration exited with non-zero status"
@@ -297,8 +318,18 @@ for subID in ${search}; do
         fi      
       fi
 
+      # check if we got fsl output
+      if [[ -f ${output_dir}/${base}_${ext}fsl.mat ]]; then
+        mv ${output_dir}/${base}_${ext}fsl.mat ${outFSLAff} 2>/dev/null
+      fi
+
     else
       echo "Warp and matrix files are present. Skipping antsRegistration."
+    fi
+
+    if [[ ${verb} -eq 1 ]]; then
+      echo "Verify with ITK-Snap by loading \"${outGenAff}\""
+      echo "\"itksnap -g ${fixed} -o ${moving}\""
     fi
 
     if [[ ${write_output} -eq 1 ]]; then
