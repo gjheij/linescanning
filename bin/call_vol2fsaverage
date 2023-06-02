@@ -11,13 +11,29 @@ call_vol2fsaverage
 This script projects a volume in subject space to the surface from FSAverage. Assumes that the vo-
 lume is in FS-space (can be achieved with spinoza_line2surface). It first projects the volume to
 the surface of the subject with mri_vol2surf, and then to the surface of FSAverage with mri_surf2-
-surf. It will do the projection for both hemispheres automatically.
+surf. It will do the projection for both hemispheres automatically. 
+
+If you have a file that is not in the volumetric space of FSNative, you can supply transformation
+files to do this before sampling it to the surface. Some flags from call_antsapplytransforms are
+therefore inherited, such as '-i' (for inverting matrices) and the interpolation methods (default
+is 'Linear' [--lin]). Use '--gen' for masks and 'mul' for files lookup-table files (label files)
 
 Args:
   <-r file>   registration file; sometimes useful if you're warping partial FOVs and want to use
               an identity matrix for instance.
   <-o out>    output directory
   <-p prefix> use custom prefix rather than <subject>
+  <-t trafo>  (list of) transformation file(s) to apply to get the data in FSNative space before
+              sampling them to the surface. Should a format that is compatible with call_ants-
+              applytransforms (comma-separated in order of application)
+  -i <invert> invert given warp files (0=no|1=yes; leave empty for 'no'). If you have multiple
+              warp files, specify a space-separated list between quotes as inversion tag; if not
+              everything will be set to 'do not invert'  
+  --<interp>    interpolation type: 'lin' (linear), 'nn' (NearestNeighbor), mul (MultiLabel), gau 
+                (Gaussian), bspl<order>, cws (CosineWindowedSinc), wws (WelchWindowedSinc), hws 
+                (HammingWindowedSinc), lws (LanczosWindowedSinc), gen (GenericLabel); default = 'nn'
+                For instance, to use 'Linear' interpolation, use '--lin', for 'GenericLabel', use
+                '--gen'                                                  
   <--tr>      set repetition time in .gii-files
   <subject>   subject ID as used in the FreeSurfer directory
   <in_file>   path to the input file that needs to be projected to the surface
@@ -26,14 +42,14 @@ Args:
               <fsnative|fsaverage>_<suffix>.gii is default
 
 Usage:
-  call_vol2fsaverage <-r register.dat> <-o output dir> <-p prefix> <subject> <in_file> <out_name>
+  call_vol2fsaverage [options] <subject> <in_file> <out_name>
 
 Example:
   call_vol2fsaverage sub-001 t1map.nii.gz T1map
   call_vol2fsaverage -r ident.dat sub-001 bold.nii.gz bold.func
   call_vol2fsaverage -o /some/directory -r ident.dat sub-001 bold.nii.gz bold.func
   call_vol2fsaverage -p sub-999_ses-1_task-pRF -r ident.dat sub-001 bold.nii.gz run-1_bold.func
-
+  call_vol2fsaverage -t from-T1w_to-bold.mat -i 0 sub-001 bold.nii.gz bold.func
 ---------------------------------------------------------------------------------------------------
 
 USAGE
@@ -46,8 +62,10 @@ if [[ $# -lt 3 ]] ; then
 fi
 
 set_tr=0
+INT="Linear"
+VERB=0
 # Check for subject & session flags
-while getopts :-:tr:o:p: argument
+while getopts :-:r:o:p:t:i: argument
 do
   case ${argument} in
     -)
@@ -55,6 +73,43 @@ do
         tr)
           set_tr=1
           ;;
+        lin)
+          INT="Linear"
+          ;;
+        nn)
+          INT="NearestNeighbor"
+          ;;
+        mul)
+          INT="MultiLabel"
+          ;;         
+        gau)
+          INT="Gaussian"
+          ;;               
+        bspl*)
+          INT="BSpline[$(basename ${OPTARG} | cut -c 5)]"
+          ;;       
+        cws)
+          INT="CosineWindowedSinc"
+          ;;
+        wws)
+          INT="WelchWindowedSinc"
+          ;;
+        hws)
+          INT="HammingWindowedSinc"
+          ;;
+        lws)
+          INT="LanczosWindowedSinc"
+          ;;    
+        gen)
+          INT="GenericLabel"
+          ;;
+        mul)
+          INT="MultiLabel"
+          ;; 
+        verbose)
+          VERBOSE="--verbose"
+          VERB=1
+          ;;                  
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}, did you mean \"--lines\"?"
@@ -68,6 +123,10 @@ do
           ;;
     p)  prefix=${OPTARG}
           ;;
+    t)  trafos=${OPTARG}
+          ;;        
+    i)  invert="-i ${OPTARG}"
+          ;;            
   esac
 done
 
@@ -103,6 +162,34 @@ if [[ ${set_tr} -eq 1 ]]; then
   echo "Setting TR to ${TR_int_ms}"
 else
   TR_int_ms=""
+fi
+
+#-----------------------------------------------------------------------------
+# check if we got transformation files to apply to INPUT
+if [[ ! -z ${trafos} ]]; then
+  fixed=${SUBJECTS_DIR}/${SUBJECT}/mri/orig.mgz
+  moving=${INPUT}
+  out=${fsnative_dir}/${PREF}_space-fsnative_${SUFFIX}.nii.gz
+
+  cmd="call_antsapplytransforms ${VERBOSE} ${invert} ${fixed} ${moving} ${out} ${trafos}"
+  if [[ ${VERB} -eq 1 ]]; then
+    echo ${cmd}
+  fi
+
+  # run
+  ${cmd}
+
+  if [[ $? -ne 0 ]]; then
+    echo "ERROR in `basename ${0}`: call_antsapplytransforms exited with non-zero status"
+    exit 1
+  fi
+  
+  # set output from call_antsapplytransforms to new input for surface sampling
+  INPUT=${out}
+
+  if [ ${VERB} -eq 1 ]; then
+    echo
+  fi 
 fi
 
 #-----------------------------------------------------------------------------
@@ -162,6 +249,10 @@ for space in 'fsnative' 'fsaverage'; do
   if [[ $? -ne 0 ]]; then
     echo "ERROR in `basename ${0}`: call_stackgiftis exited with non-zero status"
     exit 1
+  fi
+
+  if [ ${VERB} -eq 1 ]; then
+    echo "Wrote ${both_hemis}"
   fi
 
   # add TR to metadata of gifti
