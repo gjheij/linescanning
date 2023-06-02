@@ -14,24 +14,19 @@ of warps from.
 
 Args:
   -v|--verbose  Turn on verbose
-  --<interp>    Flag to use a given metric. Available options are: 'cc' (cross-correlation), 'mi',
-                (mutual information) [default], 'mattes', 'ms' (mean squares), 'demons', 'gc' (glo-
-                bal correlation), 'icp' (euclidian), 'pse' (point-set expectation), 'jhct' (jensen-
-                havrda-charvet-tsallis), 'igdm'
-                For instance, to use 'Mutual Information', use '--mi', for 'Bspline' 5th order, use 
-                '--bspl5'.
-                For now it's not possible to set the metrics for different stages separately. The 
-                same metric is used for all stages. By default, 'Cross-correlation' is used for 
-                SyN-diffeomorphic registration (the final stage). The rigid-body and affine stages
-                before the SyN-registration can be altered.
+  --<interp>    interpolation type: 'lin' (linear), 'nn' (NearestNeighbor), mul (MultiLabel), gau 
+                (Gaussian), bspl<order>, cws (CosineWindowedSinc), wws (WelchWindowedSinc), hws 
+                (HammingWindowedSinc), lws (LanczosWindowedSinc), gen (GenericLabel); default = 'nn'
+                For instance, to use 'Linear' interpolation, use '--lin', for 'GenericLabel', use
+                '--gen'
   -i <invert>   invert given warp files (0=no|1=yes; leave empty for 'no'). If you have multiple
-                warp files, specify a space-separated list between quotes as inversion tag; if not
-                everything will be set to 'do not invert'
+                warp files, specify a comma-separated list between quotes as inversion tag (e.g., 
+                '-i 0,1'); if not everything will be set to 'do not invert'
   <ref>         space to warp file to
   <moving>      file to warp
   <output>      moving-in-ref output name
-  <warp files>  all warp files in order of application; if multiple warp files, they should be
-                surrounded by double brackets
+  <warp files>  all warp files in order of application; specify a comma-separated list if multiple
+                files need to be considerd (e.g., 'file1.mat,file2.mat')
 
 Usage:
   call_antsapplytransforms -i <invert 0=no|1=yes> --<interp> <ref> <moving> <output> <warp files>
@@ -39,7 +34,7 @@ Usage:
 Example:
   call_antsapplytransforms ref.nii.gz mov.nii.gz out.nii.gz genaff.mat
   call_antsapplytransforms -i 1 --lin ref.nii.gz mov.nii.gz out.nii.gz genaff.mat
-  call_antsapplytransforms -i "0 1" ref.nii.gz mov.nii.gz out.nii.gz "genaff1.mat genaff2.mat"
+  call_antsapplytransforms -i 0,1 ref.nii.gz mov.nii.gz out.nii.gz genaff1.mat,genaff2.mat
 
 ---------------------------------------------------------------------------------------------------
 
@@ -117,6 +112,7 @@ fi
 REF=${@:$OPTIND:1}
 MOV=${@:$OPTIND+1:1}
 OUT=${@:$OPTIND+2:1}
+TRAFOS=${@:$OPTIND+3:1}
 
 if [[ -z ${invert} ]]; then
   INV=0
@@ -124,8 +120,9 @@ else
   INV=${invert}
 fi
 
-IFS=' ' read -ra LIST <<< ${INV[@]}
-WARP=`echo "${@: $#}"`
+IFS=', ' read -ra LIST <<< ${INV[@]}
+IFS=', ' read -r -a WARP <<< "${TRAFOS}"
+unset IFS
 
 ARRAY=()
 if [[ ${WARP} == "identity" ]] || [[ ${WARP} == "ident" ]] || [[ ${WARP} == "identty" ]]; then
@@ -146,12 +143,12 @@ REF_ext=`fetch_extension ${REF}`
 MOV_ext=`fetch_extension ${MOV}`
 
 if [[ ${REF_ext} == "mgz" ]]; then
-  call_mriconvert ${REF}
+  call_mriconvert ${REF} && echo
   REF=$(dirname ${REF})/$(basename ${REF} .mgz).nii.gz
 fi
 
 if [[ ${MOV_ext} == "mgz" ]]; then
-  call_mriconvert ${MOV}
+  call_mriconvert ${MOV} && echo
   MOV=$(dirname ${MOV})/$(basename ${MOV} .mgz).nii.gz
 fi
 
@@ -159,6 +156,7 @@ cmd="antsApplyTransforms -d 3 --float 1 ${VERBOSE} -n ${INT} -e 3 -r ${REF} -i $
 
 if [ ${VERB} -eq 1 ]; then
   echo ${cmd}
+  echo
 fi 
 
 exec ${cmd}
