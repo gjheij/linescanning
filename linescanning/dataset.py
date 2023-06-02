@@ -1288,6 +1288,7 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
         self, 
         fmt='3-column', 
         amplitude=1, 
+        duration=None,
         output_dir=None,
         output_base=None):
 
@@ -1297,22 +1298,21 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
 
         Parameters
         ----------
-        subject: int
-            subject number you'd like to have the onset times for
-        run: int
-            run number you'd like to have the onset times for
-        condition: str
-            name of the condition you'd like to have the onset times for as specified in the data frame
-        fname: str
-            path to output name for text file
+        fmt: str
+            format for the onset file (default = 3-column format)
+        amplitude: int, float
+            amplitude for stimulus vector
+        duration: int, float
+            duration of the event; overwrite possible 'duration' column in onsets
+        output_dir: str
+            path to output name for text file(s)
+        output_base: str
+            basename for output file(s); should include full path. '<_task-{task}>_run-{run}_ev-{ev}.txt' will be appended
 
         Returns
         ----------
         str
-            if `fname` was specified, a new file will be created and `fname` will be returned as string pointing to that file
-
-        list
-            if `fname` was *None*, the list of onset times will be returned
+            for each subject, task, and run, a text file for all events present in the onset dataframe (if only 1 task was present, this will be omitted)
         """
 
         onsets = self.df_onsets.copy()
@@ -1375,7 +1375,10 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
                                 if 'duration' in list(onsets_per_event.columns):
                                     duration_arr = onsets_per_event['duration'].values[..., np.newaxis]
                                 else:
-                                    duration_arr = np.ones_like(onsets_per_event)
+                                    if not isinstance(duration, (int,float)):
+                                        duration_arr = np.full_like(onsets_per_event, duration)
+                                    else:
+                                        duration_arr = np.ones_like(onsets_per_event)
 
                                 amplitude_arr = np.full_like(event_onsets, amplitude)
                                 three_col = np.hstack((event_onsets, duration_arr, amplitude_arr))
@@ -1395,14 +1398,17 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
 
                         onsets_per_event = utils.select_from_df(onsets_per_run, expression=f"event_type = {events_per_run[ix]}")
                         if output_base == None:
-                            if isinstance(self.tsv_file, list):
-                                outdir = os.path.dirname(self.tsv_file[0])
-                            elif isinstance(self.tsv_file, str):
-                                outdir = os.path.dirname(self.tsv_file)
+                            if not isinstance(output_dir, str):
+                                if isinstance(self.tsv_file, list):
+                                    outdir = os.path.dirname(self.tsv_file[0])
+                                elif isinstance(self.tsv_file, str):
+                                    outdir = os.path.dirname(self.tsv_file)
+                                else:
+                                    outdir = os.getcwd()
                             else:
-                                outdir = os.getcwd()
+                                outdir = output_dir
 
-                            fname = opj(outdir, f"run-{run}_ev-{ev}.txt")
+                            fname = opj(outdir, f"ev-{ev}_run-{run}.txt")
                         else:
                             fname = f"{output_base}_run-{run}_ev-{ev}.txt"
 
@@ -1414,7 +1420,10 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
                             if 'duration' in list(onsets_per_event.columns):
                                 duration_arr = onsets_per_event['duration'].values[..., np.newaxis]
                             else:
-                                duration_arr = np.ones_like(onsets_per_event)
+                                if not isinstance(duration, (int,float)):
+                                    duration_arr = np.full_like(onsets_per_event, duration)
+                                else:
+                                    duration_arr = np.ones_like(onsets_per_event)
 
                             amplitude_arr = np.full_like(event_onsets, amplitude)
                             three_col = np.hstack((event_onsets, duration_arr, amplitude_arr))

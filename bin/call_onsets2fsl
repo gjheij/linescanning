@@ -42,6 +42,7 @@ Example
     inputdir = None
     outputdir = None
     verbose = False
+    duration = None
 
     try:
         opts = getopt.getopt(argv,"hi:o:",["help", "in=", "out=", "verbose"])[0]
@@ -58,6 +59,8 @@ Example
             inputdir = arg
         elif opt in ("-o", "--out"):
             outputdir = arg
+        elif opt in ("-d", "--dur"):
+            duration = arg
         elif opt in ("--verbose"):
             verbose = True
         
@@ -69,13 +72,19 @@ Example
         outputdir = opj(os.path.dirname(inputdir), "events")
 
     # find all tsv-files
-    tsv_files = utils.FindFiles(inputdir, extension="tsv").files
+    tsv_files = utils.FindFiles(inputdir, extension="tsv", exclude="._").files
 
     # plop in object
-    exp_ = dataset.ParseExpToolsFile(tsv_files, use_bids=True, verbose=verbose)
+    exp_ = dataset.ParseExpToolsFile(
+        tsv_files, 
+        use_bids=True, 
+        stim_duration="stim",
+        verbose=verbose)
 
     # save as 3 column format
-    exp_.onsets_to_fsl(output_dir=outputdir)
+    exp_.onsets_to_fsl(
+        output_dir=outputdir,
+        duration=duration)
     
 if __name__ == "__main__":
     main(sys.argv[1:])
