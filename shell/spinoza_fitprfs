@@ -521,7 +521,7 @@ for subID in ${search}; do
               else
                 QUEUE=${SGE_QUEUE_LONG}
               fi                
-              job="qsub -q ${SGE_QUEUE} -pe smp ${n_jobs} -wd ${prf_dir} -N ${base}_task-${task}_model-${model}"
+              job="qsub -q ${QUEUE} -pe smp ${n_jobs} -wd ${prf_dir} -N ${base}_task-${task}_model-${model}"
             elif [[ ${run_locally} -eq 1 ]]; then
               job="python"
             else
