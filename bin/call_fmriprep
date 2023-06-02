@@ -36,18 +36,26 @@ Arguments:
   -c <n_threads>    set number of threads to use. Default = 15
   -w <work>         working directory to store intermediate files. Default is PATH_HOME/programs/
                     packages/fmriprep
-  -l <license>      path to freesurfer license. Make sure license is after the path specified with the
-                    -b flag (binding point) if SGE is specified!
+  -l <license>      path to freesurfer license. Make sure license is after the path specified with 
+                    the -b flag (binding point) if SGE is specified!
   -x <config>       specify config file to guide fMRIprep
   -t <task ID>      limit the preprocessing to a certain task; instead of this flag you can also 
                     use a configuration file to make the criteria more explicit
   -k <kwargs>       use a file containing additional arguments for fMRIprep. Make sure file has
                     has trailing new line. For VSCode: https://stackoverflow.com/a/44704969
+  -a <keep runs>    if you're running fMRIprep with MNI152* as output space, you're creating massive
+                    files; oftentimes, you're mostly interested in the registration matrices, so by
+                    default I'll remove the output nifti's so that the folder is not clogged. With 
+                    this argument you can specify which runs to keep. Again, if not specified, all
+                    nifti-files with space-MNI152*.nii.gz will be removed. The transformation matri-
+                    ces will be left alone. Use '-a all' to keep all runs (not recommended..)                    
   --warp_only       skip fMRIPrep, but re-do the 'boldref'-images and copy the bold-to-T1w warps
   --no_boldref      don't create new boldref images (mean over time) after fMRIprep has finished.
   --sge             run fMRIPrep with singularity-configuration. Default singularity image should 
                     be specified in the setup file (if can with 'spinoza_fmriprep'). Otherwise,
                     use the '-i' flag to point to a singularity image.
+  --clean           remove the single-subject workflow folder completely. This saves storage, but comes
+                    at the price that it re-runs EVERYTHING if you restart the process.
 
 Example:
   call_fmriprep -s 001 (simplest form, runs the entire pipeline)
@@ -78,7 +86,8 @@ work=${PATH_HOME}/fmriprep/${PROJECT}
 pref="sub-"
 KWARGS_FILE=""
 BOLDREF=1
-while getopts :-:us:m:r:d:c:i:b:w:l:x:t:k: arg
+clean_wd=0
+while getopts :-:us:m:r:d:c:i:b:w:l:x:t:k:a: arg
 do
   case ${arg} in
     -)
@@ -93,7 +102,10 @@ do
           ;;  
         no_boldref)
           BOLDREF=0
-          ;;                          
+          ;;
+        clean)
+          clean_wd=1
+          ;;            
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}" >&2
@@ -123,13 +135,21 @@ do
     k)  KWARGS_FILE=${OPTARG}
           ;;
     c)  n_threads=${OPTARG}
-          ;;     
+          ;; 
+    a)  keep_runs=${OPTARG}
+          ;;               
   esac
 done
 
 if [[ $# -lt 1 ]] ; then
   Usage >&2
   exit 1
+fi
+
+if [[ ! -z ${keep_runs} ]]; then
+  # read specified subjects into array
+  IFS=', ' read -r -a keep_runs <<< "${keep_runs}"
+  unset IFS
 fi
 
 #-----------------------------------------------------------------------------
@@ -417,3 +437,47 @@ for tt in "fwd" "inv"; do
     done
   fi
 done
+
+# remove large MNI152*-files
+if [[ ! -z ${keep_runs} ]]; then
+  if [[ ${keep_runs} != "all" ]]; then
+    
+    # find files
+    fprep_=${fprep_dir}/${base_dir}/func
+    mni_files=(`find -L ${fprep_} -type f \( -name "*MNI152*" -and -name "*_desc-preproc_bold.nii.gz" \) 2>/dev/null`)
+
+    # loop
+    if [[ ! -z ${mni_files} ]]; then
+      for mni in ${mni_files[@]}; do
+        # find run_id and compare against keep_runs
+        run_id=`get_id ${mni} run`
+
+        # remove if run_id not in keep_runs
+        if [[ ! " ${keep_runs[*]} " =~ " ${run_id} " ]]; then
+          echo "removing ${mni} to save storage.."
+          rm -r ${mni} 2>/dev/nulls
+        fi
+      done
+    fi
+  else
+    echo "Keeping all runs containing MNI152.. Check if this is OK with your storage usage"
+  fi
+fi
+
+# check if we should clean working directory
+if [[ ${clean_wd} -eq 1 ]]; then  
+  wf_folder=`find ${work} -maxdepth 1 -type d -name "fmriprep*" -and -name "*wf" 2>/dev/null`
+
+  if [[ ! -z ${wf_folder} ]]; then
+    subj_wf=${wf_folder}/single_subject_${subj_ID}_wf
+
+    if [[ -d ${subj_wf} ]]; then
+      echo "Removing \"${subj_wf}\""
+      rm -r ${subj_wf} 2>/dev/null
+    else
+      echo "Could not find/remove \"${subj_wf}\""
+    fi
+  else
+    echo "Could not find directory containing \"fmriprep\" and \"wf\" in \"${work}\""
+  fi
+fi

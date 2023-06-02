@@ -39,6 +39,8 @@ Arguments:
                   gistration and transformation
   --ow            only removes folders within single_subj workflow with "run-". If specific runs are 
                   requested with '-r', only these folders will be removed
+  --clean         remove the single-subject workflow folder completely. This saves storage, but comes
+                  at the price that it re-runs EVERYTHING if you restart the process.
   --func          same as '-t func'
   -s <subject>    subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
   -n <session>    session ID (e.g., 1, 2, or none); used to check for T1w-image. fMRIprep will do all
@@ -61,6 +63,12 @@ Arguments:
                   sed. For VSCode: https://stackoverflow.com/a/44704969. If you run with master, the 
                   '-u' flag maps onto this
   -q <queue>      submit jobs to a specific queue. Defaults to SGE_QUEUE_LONG in spinoza_setup
+  -a <keep runs>  if you're running fMRIprep with MNI152* as output space, you're creating massive
+                  files; oftentimes, you're mostly interested in the registration matrices, so by
+                  default I'll remove the output nifti's so that the folder is not clogged. With 
+                  this argument you can specify which runs to keep. Again, if not specified, all
+                  nifti-files with space-MNI152*.nii.gz will be removed. The transformation matri-
+                  ces will be left alone. Use '-a all' to keep all runs (not recommended..)
   <anat dir>      directory containing the anatomical data. Can also be the regular project root
                   folder if you want fMRIprep do the surface reconstruction
   <derivatives>   output folder for fMRIprep; generally this will be <project>/derivatives
@@ -95,7 +103,8 @@ remove_wf=0
 remove_surf_wf=0
 OW=0
 n_cpu=1
-while getopts :-:ols:r:n:f:m:j:k:q:u: argument
+clean_wd=""
+while getopts :-:ols:r:n:f:m:j:k:q:u:a: argument
 do
 case ${argument} in
     -)
@@ -123,7 +132,10 @@ case ${argument} in
           ;;      
         ow)
           OW=1
-          ;;                                                      
+          ;;       
+        clean)
+          clean_wd="--clean"
+          ;;                                                           
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}" >&2
@@ -149,7 +161,9 @@ case ${argument} in
     q)  SGE_QUEUE=${OPTARG}
           ;;                   
     o)  OW=1
-          ;;                
+          ;;
+    a)  keep_runs="-a ${OPTARG}"
+          ;;          
   esac
 done
 
@@ -265,9 +279,6 @@ for subID in ${search}; do
     fi
   fi
 
-  echo
-  echo "**************************************** Processing ${sub_name} ***************************************"
-  echo ${func_txt}
   workdir=${PATH_HOME}/fmriprep/${PROJECT}
 
   # check existence working directory and other general settings
@@ -385,6 +396,9 @@ for subID in ${search}; do
     fi 
   else
     job="call_fmriprep"
+    echo
+    echo "**************************************** Processing ${sub_name} ***************************************"
+    echo ${func_txt}    
   fi
 
   # execute the command
@@ -396,12 +410,14 @@ for subID in ${search}; do
     -d ${OUTPUT} \
     -w ${workdir} \
     -c ${n_cpu} \
+    ${keep_runs} \
     ${confFile} \
     ${task_id} \
     ${bbr_flag} \
     ${warp_only} \
     ${kwargs_file} \
-    ${boldref_flag}
+    ${boldref_flag} \
+    ${clean_wd}
 
   if [[ $? != 0 ]]; then
     echo "ERROR in `basename ${0}`: call_fmriprep did not execute cleanly"
