@@ -145,9 +145,9 @@ for subID in ${search}; do
   # loop through available datatype (see spinoza_setup)
   for a in ${ACQ[@]}; do
 
-    t1w=`find "${output_dir}" -maxdepth 1 -type f \( -name "*acq-${a^^}_*" -and -name "*T1w.nii.gz" -and -not -name "*space-*" \) 2>/dev/null`
-    t1map=`find "${output_dir}" -maxdepth 1 -type f \( -name "*acq-${a^^}_*" -and -name "*T1map.nii.gz" -and -not -name "*space-*" \) 2>/dev/null`    
-    NoF=`find "${input_dir}" -type f \( -iname "*acq-${a}*" -and -not -name "*T1w*" -and -name "*.nii.gz" \) | wc -l 2>/dev/null`
+    t1w=`find -L "${output_dir}" -maxdepth 1 -type f \( -name "*acq-${a^^}_*" -and -name "*T1w.nii.gz" -and -not -name "*space-*" \) 2>/dev/null`
+    t1map=`find -L "${output_dir}" -maxdepth 1 -type f \( -name "*acq-${a^^}_*" -and -name "*T1map.nii.gz" -and -not -name "*space-*" \) 2>/dev/null`    
+    NoF=`find -L "${input_dir}" -type f \( -iname "*acq-${a}*" -and -not -name "*T1w*" -and -name "*.nii.gz" \) | wc -l 2>/dev/null`
     
     # set output name based on acquisition strategy
     output_base=${base}_acq-${a^^}
@@ -179,13 +179,13 @@ for subID in ${search}; do
   done
 
   # copy T2w-file to pymp2rage folder for later convenience
-  t2=`find "${input_dir}" -type f \( -name "*T2w.nii.gz" \) 2>/dev/null`
+  t2=`find -L\ "${input_dir}" -type f \( -name "*T2w.nii.gz" \) 2>/dev/null`
   if [ ! -z ${t2} ]; then
     cp ${t2} ${output_dir} 2>/dev/null
   fi
 
   # copy FLAIR-file to pymp2rage folder for later convenience
-  flair=`find "${input_dir}" -type f \( -name "*FLAIR.nii.gz" \) 2>/dev/null`
+  flair=`find -L\ "${input_dir}" -type f \( -name "*FLAIR.nii.gz" \) 2>/dev/null`
   if [ ! -z ${flair} ]; then
     cp ${flair} ${output_dir} 2>/dev/null
   fi  
