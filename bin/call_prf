@@ -68,6 +68,8 @@ Arguments:
     --cut_vols <volumes>            Number of volumes to remove at the beginning of the timeseries. 
                                     Default is 0, but sometimes it's good to get rid of the initial
                                     transient
+    --tr                            manually set repetition time (TR). Default = 1.5. Can be read
+                                    from gifti files (if input = fMRIprep).
 
 Options:                                  
     --bgfs          use L-BGFS minimization for both the Gaussian as well as the extended model. Use 
@@ -155,9 +157,10 @@ Example:
     n_jobs      = 5
     kwargs_file = None
     merge_sessions = False
+    tr          = 1.5
 
     try:
-        opts = getopt.getopt(argv,"ghs:n:t:o:i:p:m:x:u:c:v:j:",["help", "sub=", "model=", "ses=", "task=", "out=", "in=", "png=", "kwargs=", "grid", "space=", "hrf", "n_pix=", "clip=", "verbose", "file_ending=", "zscore", "overwrite", "constr=", "tc", "bgfs", "no_fit", "raw", "cut_vols=", "v1", "v2", "save_grid", "merge_ses", "n_jobs=", "gauss", "dog", "css", "norm", "abc", "abd"])[0]
+        opts = getopt.getopt(argv,"ghs:n:t:o:i:p:m:x:u:c:v:j:",["help", "sub=", "model=", "ses=", "task=", "out=", "in=", "png=", "kwargs=", "grid", "space=", "hrf", "n_pix=", "clip=", "verbose", "file_ending=", "zscore", "overwrite", "constr=", "tc", "bgfs", "no_fit", "raw", "cut_vols=", "v1", "v2", "save_grid", "merge_ses", "n_jobs=", "gauss", "dog", "css", "norm", "abc", "abd", "tr="])[0]
     except getopt.GetoptError:
         print("ERROR while reading arguments; did you specify an illegal argument?")
         print(main.__doc__)
@@ -243,7 +246,9 @@ Example:
                 print("WARNING: '--no_grid' was specified (meaning 'do not save out gridsearch parameters', though '-g' or '--grid' was specified (meaning do gridsearch only). Overruling '--no_grid'")
                 save_grid = True         
         elif opt in ("--save_grid"):
-            save_grid = True                    
+            save_grid = True   
+        elif opt in ("--tr"):
+            tr = float(arg)                                
 
     if len(argv) < 2:
         print(main.__doc__)
@@ -498,13 +503,16 @@ Example:
     
     if do_fit:
 
-        # assume TR (read from gifti if possible)
-        if giftis:
-            tr = dataset.ParseGiftiFile(pair[0]).TR_sec
-            utils.verbose(f"Setting TR to {tr}", verbose)
+        if not isinstance(tr, (int,float)):
+            # assume TR (read from gifti if possible)
+            if giftis:
+                tr = dataset.ParseGiftiFile(pair[0]).TR_sec
+                utils.verbose(f"Setting TR to {tr}", verbose)
+            else:
+                utils.verbose("Could not find func-file, setting TR to 1.5; CHECK THIS!", verbose)
+                tr = 1.5
         else:
-            utils.verbose("Could not find func-file, setting TR to 1.5; CHECK THIS!", verbose)
-            tr = 1.5        
+            utils.verbose(f"Using manually specified TR of {tr}", verbose)
 
         # plop everything if pRFmodelFitting object
         if grid_only:

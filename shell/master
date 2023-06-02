@@ -375,6 +375,7 @@ do
     r)  ROI=${OPTARG}
         FS_stage=${OPTARG}
         RUNS="-r ${OPTARG}"
+        SET_TR="-r ${OPTARG}"
           ;;       
     e)  n_echoes=${OPTARG}
         START_STAGE=${OPTARG}
@@ -481,6 +482,7 @@ Arguments:
                       - spinoza_bestvertex: set label file (default is 'V1.exvivo_thresh'
                       - spinoza_extractregions: ROI to extract (default is 'cerebrum')
                       - spinoza_freesurfer: which stage to use (maps to '-r' from call_freesurfer)
+                      - spinoza_fitprfs: set repetition time
   -s <subject>      Subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
   -t <type|task>    used for;
                       - spinoza_fmriprep: to run either the 'anat' workflow only, or also include func
@@ -1617,6 +1619,7 @@ if [[ $? -eq 0 ]]; then
     ${kwargs_file} \
     ${space_flag} \
     ${SGE_QUEUE} \
+    ${SET_TR} \
     ${PRF_INPUT} ${DIR_DATA_DERIV}/prf ${PNG_DIR}
 
   if [[ $? -ne 0 ]]; then

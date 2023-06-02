@@ -53,6 +53,8 @@ Options:
                   and L-BGFS for extended model. The format should be '-x "tc,bgfs"'
   -j <n_jobs>     number of jobs to parallellize over; default is 10
   -q <queue>      submit jobs to a specific queue. Defaults to SGE_QUEUE_LONG in spinoza_setup
+  -r <TR>         set repetition time (TR) manually. Defaults to 1.5 if input != gifti's. Otherwise
+                  we'll read it from gifti-files with 'dataset.ParseGiftiFile'
   --bgfs          use L-BGFS minimization for both the Gaussian as well as the extended model. Use 
                   the '-x'flag if you want different minimizers for both stages   
   --fsaverage     overwrite PYBEST_SPACE-variable and use FSAverage for fitting (see your setup file)
@@ -137,8 +139,9 @@ jobs_flag=""
 model="gauss"
 n_jobs=5
 kwargs_file=""
+tr_flag=""
 use_space=${PYBEST_SPACE}
-while getopts :-:los:n:m:t:x:c:v:j:k:q: argument
+while getopts :-:los:n:m:t:x:c:v:j:k:q:r: argument
 do
   case ${argument} in
     -)
@@ -246,7 +249,9 @@ do
     k)  kwargs_file="--kwargs ${OPTARG}"
           ;;       
     q)  SGE_QUEUE=${OPTARG}
-          ;;                
+          ;;  
+    r)  tr_flag="--tr ${OPTARG}"
+          ;;                          
   esac
 done
 
@@ -542,6 +547,7 @@ for subID in ${search}; do
             -u ${use_space} \
             --${use_model} \
             --n_jobs ${n_jobs} \
+            ${tr_flag} \
             ${kwargs_file} \
             ${save_grid} \
             ${lbl_flag} \
