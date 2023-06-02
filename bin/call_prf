@@ -434,6 +434,7 @@ Example:
             for ii in run_ids], 
             axis=0)
 
+    exclude = None
     if space == "fsnative":
 
         # vertices per hemi
@@ -481,9 +482,6 @@ Example:
             surf = opj(os.environ.get('SUBJECTS_DIR'), "fsaverage", 'surf', f'{i}.white')
             verts = nb.freesurfer.io.read_geometry(surf)[0].shape[0]
             n_verts.append(verts)
-
-    else:
-        exclude = None
 
     # cut volumes at the beginning of the timeseries. Also subtract number of volumes from baseline
     utils.verbose(f"Cutting {cut_vols} from beginning of timeseries", verbose)
