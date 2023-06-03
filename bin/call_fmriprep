@@ -455,7 +455,7 @@ if [[ ! -z ${keep_runs} ]]; then
         # remove if run_id not in keep_runs
         if [[ ! " ${keep_runs[*]} " =~ " ${run_id} " ]]; then
           echo "removing ${mni} to save storage.."
-          rm -r ${mni} 2>/dev/nulls
+          rm -r ${mni} 2>/dev/null
         fi
       done
     fi
