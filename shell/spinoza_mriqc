@@ -23,6 +23,7 @@ Arguments:
   --local         don't submit to SGE, run locally
   --anat_only     only include anatomical images in the process (default is everything it can find)
   --func_only     only include functional images in the process (default is everything it can find)  
+  --fd            only get FD-timecourse file without initializing MRIqc
   -s <subject>    subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
   -n <session>    session ID (e.g., 1, 2, or none); If set, only data from this session will be 
                   used
@@ -54,6 +55,7 @@ local_flag=""
 remove_wf=0
 mod_flag=""
 n_cpus=1
+fd_flag=""
 while getopts :-:ls:r:n:f:m:c:k:q:j: argument
 do
   case ${argument} in
@@ -71,7 +73,10 @@ do
           ;;        
         remove_wf)
           remove_wf=1
-          ;;                                          
+          ;;    
+        fd)
+          fd_flag="--fd"
+          ;;                                                
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}" >&2
@@ -187,7 +192,8 @@ for subID in ${search}; do
     -r ${INPUT} \
     -d ${OUTPUT} \
     -w ${workdir}  \
-    ${mod_flag}
+    ${mod_flag} \
+    ${fd_flag}
 
   if [[ $? != 0 ]]; then
     echo "ERROR in `basename ${0}`: call_mriqc did not execute cleanly"

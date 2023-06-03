@@ -8,6 +8,7 @@
 #Edits by Andrew Jahn, University of Michigan, 07.22.2020
 
 call_loadsetup
+source call_bashhelper
 
 #---------------------------------------------------------------------------------------------------------
 # Create help text
@@ -51,6 +52,7 @@ USAGE
 # Deal with arguments
 mod_flag=""
 n_cpus=1
+fd_only=0
 while getopts :-:ts:n:r:d:i:b:w:j: arg
 do
   case ${arg} in
@@ -61,7 +63,10 @@ do
           ;;   
         func_only)
           mod_flag="--modalities bold"
-          ;;                    
+          ;;     
+        fd)
+          fd_only=1
+          ;;                              
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             Usage >&2
@@ -152,68 +157,148 @@ else
 	mriqc_container=${IMG}
 fi
 
-# Define command line
-if [[ -f ${mriqc_container} ]]; then
+#-----------------------------------------------------------------------------
+# check if fd_only flag is not set
+if [[ ${fd_only} -eq 0 ]]; then
 
-  #-----------------------------------------------------------------------------
-  # Set default binding point if none specified
-  if [[ -z ${BIND} ]]; then
-    binding=${FPREP_BINDING}
+  # Define command line
+  if [[ -f ${mriqc_container} ]]; then
+
+    #-----------------------------------------------------------------------------
+    # Set default binding point if none specified
+    if [[ -z ${BIND} ]]; then
+      binding=${FPREP_BINDING}
+    else
+      binding=${BIND}
+    fi
+
+    if [[ ! -f ${mriqc_container} ]]; then
+      echo "Could not find singularity image \"${mriqc_container}\" for fmriprep.."
+      exit 1
+    fi 
+
+    # check if project root is within binding point
+    if [[ ${project} != *"${binding}"* ]]; then
+      echo
+      echo "---------------------------------------------------------------------------------------------------"
+      echo "ERROR in `basename ${0}`; your project root \"${project}\" cannot be accessed due to your binding point (\"${binding}\"). Please make sure the file on somewhere along the binding-path"
+      exit 1
+    fi
+
+    # define SGE command
+    run_cmd="singularity run --cleanenv -B ${binding}:${binding} ${mriqc_container}"
+    
   else
-    binding=${BIND}
+    run_cmd="mriqc"
   fi
 
-  if [[ ! -f ${mriqc_container} ]]; then
-    echo "Could not find singularity image \"${mriqc_container}\" for fmriprep.."
-    exit 1
-  fi 
+  # --cleanenv required to prevent interference from FSL v6 present on the spinoza server
+    cmd="""${run_cmd} \
+    ${project} \
+    ${derivatives} \
+    participant \
+    ${ses_flag} \
+    ${mod_flag} \
+    --participant-label ${subj_ID} \
+    --nprocs ${n_cpus} \
+    --omp-nthreads 1 \
+    -w ${work} \
+    --verbose-reports \
+    --mem_gb 64 \
+    --no-sub"""
 
-  # check if project root is within binding point
-  if [[ ${project} != *"${binding}"* ]]; then
+  # execute
+  echo $cmd
+  ${cmd}
+
+  if [[ $? -ne 0 ]]; then
     echo
     echo "---------------------------------------------------------------------------------------------------"
-    echo "ERROR in `basename ${0}`; your project root \"${project}\" cannot be accessed due to your binding point (\"${binding}\"). Please make sure the file on somewhere along the binding-path"
+    echo "ERROR in `basename ${0}`: mriqc exited with non-zero status"
     exit 1
   fi
 
-  # define SGE command
-  run_cmd="singularity run --cleanenv -B ${binding}:${binding} ${mriqc_container}"
-  
-else
-  run_cmd="mriqc"
+  # move html files to appropriate directory.
+  html_files=(`find ${derivatives} -type f -name "sub-${subj_ID}*" -and -name "*.html" 2>/dev/null`)
+  if [[ ! -z ${html_files} ]]; then
+    mv ${html_files} ${derivatives}/sub-${subj_ID} 2>/dev/null
+  else
+    echo "ERROR in `basename ${0}`: could not find html-files. This is suspicious.."
+    exit 1
+  fi
+
 fi
 
-# --cleanenv required to prevent interference from FSL v6 present on the spinoza server
-  cmd="""${run_cmd} \
-  ${project} \
-  ${derivatives} \
-	participant \
-  ${ses_flag} \
-  ${mod_flag} \
-	--participant-label ${subj_ID} \
-	--nprocs ${n_cpus} \
-  --omp-nthreads 1 \
-	-w ${work} \
-	--verbose-reports \
-	--mem_gb 64 \
-	--no-sub"""
+#-----------------------------------------------------------------------------
+# loop through moved html files to fetch fd file
+work=/data1/projects/dumoulinlab/Projects/packages/mriqc/SM-pRF
+html_files=(`find ${derivatives}/sub-${subj_ID} -type f -name "sub-${subj_ID}*" -and -name "*.html" 2>/dev/null`)
 
-# execute
-echo $cmd
-${cmd}
-
-if [[ $? -ne 0 ]]; then
-  echo
-  echo "---------------------------------------------------------------------------------------------------"
-  echo "ERROR in `basename ${0}`: mriqc exited with non-zero status"
-  exit 1
-fi
-
-# move html files to appropriate directory.
-html_files=`find ${derivatives} -type f -name "sub-${subj_ID}*" -and -name "*.html" 2>/dev/null`
 if [[ ! -z ${html_files} ]]; then
-  mv ${html_files} ${derivatives}/sub-${subj_ID} 2>/dev/null
-else
-  echo "ERROR in `basename ${0}`: could not find html-files. This is suspicious.."
-  exit 1
+
+  # find directory where these FD files should live
+  func_wf=`find ${work} -maxdepth 3 -type d -name "fMRI_HMC" 2>/dev/null`
+  if [ ! -z ${func_wf} ]; then
+
+    # find # fdvars timecourse for Marco
+    echo "Finding FD-timecourse files as per Marco's request:)"
+    for ht in ${html_files[@]}; do
+
+      # decompose html into bids components
+      search_for=""
+      ct=0
+      base_path="sub-${subj_ID}"
+      for ii in "sub" "ses" "task" "run" "acq" "rec" "desc"; do
+
+        el=`get_id $(basename ${ht}) ${ii}`
+        if [ ! -z ${el} ]; then
+          if [[ ${ct} -eq 0 ]]; then
+            search_for+="\"${ii}-${el}\""
+          else
+            search_for+=", \"${ii}-${el}\""
+          fi
+          ((ct++))  
+
+          if [[ ${ii} == "ses" ]]; then
+            base_path+="/${ii}-${el}"
+          fi
+        fi
+      done
+
+      if [[ ! -z ${search_for} ]]; then
+        
+        # find the workflow folder
+        ht_wf=`python -c "from linescanning import utils; ll = utils.get_file_from_substring([${search_for}], \"${func_wf}\"); print(ll)"`
+        if [[ ! -z ${ht_wf} ]]; then
+          
+          # check if there's a file
+          fd_file=`find ${ht_wf} -type f -name "fd_power*" -and -name "*.txt" 2>/dev/null`
+          if [[ -f ${fd_file} ]]; then
+
+            # decide outname and store in 'func' of corresponding session
+            out_name=${derivatives}/${base_path}/func/$(basename ${ht} _bold.html)_desc-fd_bold.txt
+
+            # this should exist, but still.. sue me
+            if [[ ! -d $(dirname ${out_name}) ]]; then
+              mkdir -p $(dirname ${out_name})
+            fi
+
+            cp ${fd_file} ${out_name} 2>/dev/null
+            echo " wrote ${out_name}"
+
+          else
+            echo "Could not find file with \"fd_power\" and \"*.txt\" in ${ht_wf}?"
+          fi
+        else
+          echo "Could not find workflow directory with [${search_for}]"
+        fi
+      else
+        echo "Could not read BIDS components from \"$(basename ${ht})\""
+      fi
+
+    done
+    echo "Done"
+  else
+    echo "Could not find \"funcMRIQC\" folder in \"${work}\""
+  fi
 fi
