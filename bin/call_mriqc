@@ -28,6 +28,7 @@ Arguments:
 --func_only       Only include functional images in the process (default is everything it can find)
 -s <sub number>   number of subject's directory from which you can omit "sub-" (e.g., for "sub-001",
                   enter "001")
+--fd              only get FD(VARS)-timecourse file(s) without initializing MRIqc
 -n <ses number>   session ID (without 'ses-'); if not specified, all sessions will be checked for
                   usable data
 -j <cpus>         number of cores to use (default is 1)
@@ -232,7 +233,7 @@ fi
 #-----------------------------------------------------------------------------
 # loop through moved html files to fetch fd file
 work=/data1/projects/dumoulinlab/Projects/packages/mriqc/SM-pRF
-html_files=(`find ${derivatives}/sub-${subj_ID} -type f -name "sub-${subj_ID}*" -and -name "*.html" 2>/dev/null`)
+html_files=(`find ${derivatives}/sub-${subj_ID} -type f -name "sub-${subj_ID}*" -and -name "*.html" -and -not -name "*T1w.html" 2>/dev/null`)
 
 if [[ ! -z ${html_files} ]]; then
 
@@ -241,7 +242,7 @@ if [[ ! -z ${html_files} ]]; then
   if [ ! -z ${func_wf} ]; then
 
     # find # fdvars timecourse for Marco
-    echo "Finding FD-timecourse files as per Marco's request:)"
+    echo "Finding FD-timecourse files as per Marco's request part I :)"
     for ht in ${html_files[@]}; do
 
       # decompose html into bids components
@@ -301,4 +302,70 @@ if [[ ! -z ${html_files} ]]; then
   else
     echo "Could not find \"funcMRIQC\" folder in \"${work}\""
   fi
+
+  # find directory where FDVARS files should live
+  func_wf=`find ${work}/mriqc_wf/funcMRIQC -maxdepth 1 -type d -name "ComputeIQMs" 2>/dev/null`
+  if [ ! -z ${func_wf} ]; then
+
+    # find # fdvars timecourse for Marco
+    echo "Finding FDVARS-timecourse files as per Marco's request part II :)"
+    for ht in ${html_files[@]}; do
+    
+      # decompose html into bids components
+      search_for=""
+      ct=0
+      base_path="sub-${subj_ID}"
+      for ii in "sub" "ses" "task" "run" "acq" "rec" "desc"; do
+
+        el=`get_id $(basename ${ht}) ${ii}`
+        if [ ! -z ${el} ]; then
+          if [[ ${ct} -eq 0 ]]; then
+            search_for+="\"${ii}-${el}\""
+          else
+            search_for+=", \"${ii}-${el}\""
+          fi
+          ((ct++))  
+
+          if [[ ${ii} == "ses" ]]; then
+            base_path+="/${ii}-${el}"
+          fi
+        fi
+      done
+
+      if [[ ! -z ${search_for} ]]; then
+        
+        # find the workflow folder
+        ht_wf=`python -c "from linescanning import utils; ll = utils.get_file_from_substring([${search_for}], \"${func_wf}\"); print(ll)"`
+        if [[ ! -z ${ht_wf} ]]; then
+          
+          # check if there's a file
+          fd_file=`find ${ht_wf} -type f -name "*volreg_dvars.tsv" 2>/dev/null`
+          if [[ -f ${fd_file} ]]; then
+
+            # decide outname and store in 'func' of corresponding session
+            out_name=${derivatives}/${base_path}/func/$(basename ${ht} _bold.html)_desc-dvars_bold.tsv
+
+            # this should exist, but still.. sue me
+            if [[ ! -d $(dirname ${out_name}) ]]; then
+              mkdir -p $(dirname ${out_name})
+            fi
+
+            cp ${fd_file} ${out_name} 2>/dev/null
+            echo " wrote ${out_name}"
+
+          else
+            echo "Could not find file with \"*volreg_dvars.tsv\" in ${ht_wf}?"
+          fi
+        else
+          echo "Could not find workflow directory with [${search_for}]"
+        fi
+      else
+        echo "Could not read BIDS components from \"$(basename ${ht})\""
+      fi
+
+    done
+    echo "Done"
+  else
+    echo "Could not find \"ComputeIQMs\" folder in \"${work}\""
+  fi  
 fi
