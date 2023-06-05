@@ -233,7 +233,7 @@ fi
 #-----------------------------------------------------------------------------
 # loop through moved html files to fetch fd file
 work=/data1/projects/dumoulinlab/Projects/packages/mriqc/SM-pRF
-html_files=(`find ${derivatives}/sub-${subj_ID} -type f -name "sub-${subj_ID}*" -and -name "*.html" -and -not -name "*T1w.html" 2>/dev/null`)
+html_files=(`find ${derivatives}/sub-${subj_ID} -type f -name "sub-${subj_ID}*" -and -name "*.html" -and -not -name "*T1w.html" -and -not -name "*T2w.html" 2>/dev/null`)
 
 if [[ ! -z ${html_files} ]]; then
 
