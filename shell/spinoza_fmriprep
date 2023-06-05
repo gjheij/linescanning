@@ -104,6 +104,7 @@ remove_surf_wf=0
 OW=0
 n_cpu=1
 clean_wd=""
+fsl_flag=""
 while getopts :-:ols:r:n:f:m:j:k:q:u:a: argument
 do
 case ${argument} in
@@ -135,7 +136,10 @@ case ${argument} in
           ;;       
         clean)
           clean_wd="--clean"
-          ;;                                                           
+          ;;          
+        fetch_fsl)
+          fsl_flag="--fetch_fsl"
+          ;;                                                                
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}" >&2
@@ -417,7 +421,8 @@ for subID in ${search}; do
     ${warp_only} \
     ${kwargs_file} \
     ${boldref_flag} \
-    ${clean_wd}
+    ${clean_wd} \
+    ${fsl_flag}
 
   if [[ $? != 0 ]]; then
     echo "ERROR in `basename ${0}`: call_fmriprep did not execute cleanly"

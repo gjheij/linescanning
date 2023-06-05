@@ -56,6 +56,7 @@ Arguments:
                     use the '-i' flag to point to a singularity image.
   --clean           remove the single-subject workflow folder completely. This saves storage, but comes
                     at the price that it re-runs EVERYTHING if you restart the process.
+  --fetch_fsl       retrieve the MNI-transformed nifti-files (which are cleaned by default)
 
 Example:
   call_fmriprep -s 001 (simplest form, runs the entire pipeline)
@@ -87,6 +88,7 @@ pref="sub-"
 KWARGS_FILE=""
 BOLDREF=1
 clean_wd=0
+fetch_fsl=0
 while getopts :-:us:m:r:d:c:i:b:w:l:x:t:k:a: arg
 do
   case ${arg} in
@@ -106,6 +108,9 @@ do
         clean)
           clean_wd=1
           ;;            
+        fetch_fsl)
+          fetch_fsl=1
+          ;;           
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}" >&2
@@ -327,18 +332,20 @@ fi
 nthread_flag="--nthreads ${nthreads}"
 
 # output directory structure has changed after v21: https://github.com/nipreps/fmriprep/releases/tag/21.0.0
-echo "Checking fMRIPrep's version.."
-VERSION=`${run_cmd} --version | cut -d" " -f2 | cut -d"." -f1`
-if [[ `echo "${VERSION//[!0-9]/}"` -lt "21" ]]; then
-  output_dir=${derivatives}
-  add_fprep=1
-else
-  output_dir=${derivatives}/fmriprep
-  add_fprep=0
+if [[ ${fetch_fsl} -ne 1 ]]; then
+  echo "Checking fMRIPrep's version.."
+  VERSION=`${run_cmd} --version | cut -d" " -f2 | cut -d"." -f1`
+  if [[ `echo "${VERSION//[!0-9]/}"` -lt "21" ]]; then
+    output_dir=${derivatives}
+    add_fprep=1
+  else
+    output_dir=${derivatives}/fmriprep
+    add_fprep=0
+  fi
 fi
 
 # run cmd if warp_only=0
-if [[ ${WARP_ONLY} -eq 0 ]]; then
+if [[ ${WARP_ONLY} -eq 0 && ${fetch_fsl} -eq 0 ]]; then
 
   # execute the fMRIPrep command
   cmd="""
@@ -377,45 +384,114 @@ ${run_cmd} \
   fi    
 
 else
-  echo "Skipping fMRIPrep, continuing to \"boldref\" and \"bold-to-T1w\" files"
+  echo "Skipping fMRIPrep.."
 fi
 
 #-----------------------------------------------------------------------------
 # fMRIPrep's boldref seems to be messy lately (snow-like noise pattern instead of an image)
-if [[ ${BOLDREF} -eq 1 ]]; then
-  bold_files=`find ${derivatives}/fmriprep/*${subj_ID}/ -type f -name "*preproc_bold.nii.gz" 2>/dev/null`
-  IFS=$'\n' bold_files=($(sort <<<"${bold_files[*]}"))
-  unset IFS
-
-  if [ ! -z ${bold_files} ]; then
-    echo "Overwriting fMRIPrep's \"boldref\"-files"
-    for bold in ${bold_files[@]}; do
-      boldref=$(dirname ${bold})/$(basename ${bold} _desc-preproc_bold.nii.gz)_boldref.nii.gz
-      fslmaths ${bold} -Tmean ${boldref}
-    done
-  fi
-fi
-
-#-----------------------------------------------------------------------------
-# copy the bold-to-T1w warps from the fmriprep_wf
 if [ ! -z ${SUBJECT_PREFIX} ]; then
   pref=${SUBJECT_PREFIX}
 fi
 
-# see https://github.com/nipreps/fmriprep/issues/2189#issuecomment-646620788
-for tt in "fwd" "inv"; do
-  xfms=(`find ${work}/fmriprep*wf/single_subject_${subj_ID}_wf/func_preproc*/bold_reg_wf/bbreg_wf/concat_xfm -type f -name "out_${tt}.tfm" 2>/dev/null`)
-  if [[ ! -z ${xfms} ]]; then
+if [[ ${fetch_fsl} -eq 0 ]]; then
+  if [[ ${BOLDREF} -eq 1 ]]; then
+    bold_files=`find ${derivatives}/fmriprep/*${subj_ID}/ -type f -name "*preproc_bold.nii.gz" 2>/dev/null`
+    IFS=$'\n' bold_files=($(sort <<<"${bold_files[*]}"))
+    unset IFS
 
-    if [[ ${tt} == "fwd" ]]; then
-      m="bold_to-T1w"
-    else
-      m="T1w_to-bold"
+    if [ ! -z ${bold_files} ]; then
+      echo "Overwriting fMRIPrep's \"boldref\"-files"
+      for bold in ${bold_files[@]}; do
+        boldref=$(dirname ${bold})/$(basename ${bold} _desc-preproc_bold.nii.gz)_boldref.nii.gz
+        fslmaths ${bold} -Tmean ${boldref}
+      done
     fi
+  fi
 
-    echo "Copying \"${m}\" tfm-files"
-    for xfm in ${xfms[@]}; do
-      wf_name=`python -c "from linescanning.utils import disassemble_fmriprep_wf; print(disassemble_fmriprep_wf('${xfm}', '${subj_ID}', prefix='${pref}'))"`
+  #-----------------------------------------------------------------------------
+  # copy the bold-to-T1w warps from the fmriprep_wf
+
+  # see https://github.com/nipreps/fmriprep/issues/2189#issuecomment-646620788
+  for tt in "fwd" "inv"; do
+    xfms=(`find ${work}/fmriprep*wf/single_subject_${subj_ID}_wf/func_preproc*/bold_reg_wf/bbreg_wf/concat_xfm -type f -name "out_${tt}.tfm" 2>/dev/null`)
+    if [[ ! -z ${xfms} ]]; then
+
+      if [[ ${tt} == "fwd" ]]; then
+        m="bold_to-T1w"
+      else
+        m="T1w_to-bold"
+      fi
+
+      echo "Copying \"${m}\" tfm-files"
+      for xfm in ${xfms[@]}; do
+        wf_name=`python -c "from linescanning.utils import disassemble_fmriprep_wf; print(disassemble_fmriprep_wf('${xfm}', '${subj_ID}', prefix='${pref}'))"`
+        
+        # check ses-flag
+        if [[ ${wf_name} == *"ses-"* ]]; then
+          ses_id=`echo ${wf_name} | cut -d'_' -f2`
+          base_dir=${pref}${subj_ID}/${ses_id}
+        else
+          base_dir=${pref}${subj_ID}
+        fi
+
+        out_xfm=${derivatives}/fmriprep/${base_dir}/func/${wf_name}_from-${m}_mode-image_xfm.txt
+        cp ${xfm} ${out_xfm}
+
+      done
+    fi
+  done
+
+  # remove large MNI152*-files
+  if [[ ! -z ${keep_runs} ]]; then
+    if [[ ${keep_runs} != "all" ]]; then
+      
+      # find files
+      fprep_=${derivatives}/fmriprep/${base_dir}/func
+      mni_files=(`find -L ${fprep_} -type f \( -name "*MNI152*" -and -name "*_desc-preproc_bold.nii.gz" \) 2>/dev/null`)
+
+      # loop
+      if [[ ! -z ${mni_files} ]]; then
+        for mni in ${mni_files[@]}; do
+          # find run_id and compare against keep_runs
+          run_id=`get_id ${mni} run`
+
+          # remove if run_id not in keep_runs
+          if [[ ! " ${keep_runs[*]} " =~ " ${run_id} " ]]; then
+            echo "removing ${mni} to save storage.."
+            rm -r ${mni} 2>/dev/null
+          fi
+        done
+      fi
+    else
+      echo "Keeping all runs containing MNI152.. Check if this is OK with your storage usage"
+    fi
+  fi
+
+  # check if we should clean working directory
+  if [[ ${clean_wd} -eq 1 ]]; then  
+    wf_folder=`find ${work} -maxdepth 1 -type d -name "fmriprep*" -and -name "*wf" 2>/dev/null`
+
+    if [[ ! -z ${wf_folder} ]]; then
+      subj_wf=${wf_folder}/single_subject_${subj_ID}_wf
+
+      if [[ -d ${subj_wf} ]]; then
+        echo "Removing \"${subj_wf}\""
+        rm -r ${subj_wf} 2>/dev/null
+      else
+        echo "Could not find/remove \"${subj_wf}\""
+      fi
+    else
+      echo "Could not find directory containing \"fmriprep\" and \"wf\" in \"${work}\""
+    fi
+  fi
+fi
+
+if [[ ${fetch_fsl} -eq 1 ]]; then
+  mni_files=(`find ${work}/fmriprep*wf/single_subject_${subj_ID}_wf/func_preproc*/bold_std_trans_wf/*MNI152NLin6Asym*/merge -type f -name "*_merged.nii.gz" 2>/dev/null`)
+  if [[ ! -z ${mni_files} ]]; then
+    echo "Copying \"MNI152NLin6Asym\"-transformed files"
+    for mni in ${mni_files[@]}; do
+      wf_name=`python -c "from linescanning.utils import disassemble_fmriprep_wf; print(disassemble_fmriprep_wf('${mni}', '${subj_ID}', prefix='${pref}'))"`
       
       # check ses-flag
       if [[ ${wf_name} == *"ses-"* ]]; then
@@ -425,59 +501,15 @@ for tt in "fwd" "inv"; do
         base_dir=${pref}${subj_ID}
       fi
 
-      if [[ ${add_fprep} -eq 1 ]]; then
-        fprep_dir=${output_dir}/fmriprep
-      else
-        fprep_dir=${output_dir}
+      out_mni=${derivatives}/fmriprep/${base_dir}/func/${wf_name}_space-MNI152NLin6Asym_res-1_desc-preproc_bold.nii.gz
+      if [[ ! -f ${out_mni} ]]; then
+        echo " writing ${out_mni}"
+        cp ${mni} ${out_mni}
       fi
 
-      out_xfm=${fprep_dir}/${base_dir}/func/${wf_name}_from-${m}_mode-image_xfm.txt
-      cp ${xfm} ${out_xfm}
-
-    done
-  fi
-done
-
-# remove large MNI152*-files
-if [[ ! -z ${keep_runs} ]]; then
-  if [[ ${keep_runs} != "all" ]]; then
-    
-    # find files
-    fprep_=${fprep_dir}/${base_dir}/func
-    mni_files=(`find -L ${fprep_} -type f \( -name "*MNI152*" -and -name "*_desc-preproc_bold.nii.gz" \) 2>/dev/null`)
-
-    # loop
-    if [[ ! -z ${mni_files} ]]; then
-      for mni in ${mni_files[@]}; do
-        # find run_id and compare against keep_runs
-        run_id=`get_id ${mni} run`
-
-        # remove if run_id not in keep_runs
-        if [[ ! " ${keep_runs[*]} " =~ " ${run_id} " ]]; then
-          echo "removing ${mni} to save storage.."
-          rm -r ${mni} 2>/dev/null
-        fi
-      done
-    fi
+    done   
+    echo "Done" 
   else
-    echo "Keeping all runs containing MNI152.. Check if this is OK with your storage usage"
-  fi
-fi
-
-# check if we should clean working directory
-if [[ ${clean_wd} -eq 1 ]]; then  
-  wf_folder=`find ${work} -maxdepth 1 -type d -name "fmriprep*" -and -name "*wf" 2>/dev/null`
-
-  if [[ ! -z ${wf_folder} ]]; then
-    subj_wf=${wf_folder}/single_subject_${subj_ID}_wf
-
-    if [[ -d ${subj_wf} ]]; then
-      echo "Removing \"${subj_wf}\""
-      rm -r ${subj_wf} 2>/dev/null
-    else
-      echo "Could not find/remove \"${subj_wf}\""
-    fi
-  else
-    echo "Could not find directory containing \"fmriprep\" and \"wf\" in \"${work}\""
+    echo "Could not find directory \"${work}/fmriprep*wf/single_subject_${subj_ID}_wf/func_preproc*/bold_std_trans_wf/*MNI152NLin6Asym*/merge\""
   fi
 fi
