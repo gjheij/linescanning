@@ -149,8 +149,7 @@ for subID in ${search}; do
     ses_flag=""
   fi
 
-  echo
-  echo "**************************************** Processing ${sub_name} ***************************************"
+  # set working directory
   workdir=${PATH_HOME}/mriqc/${PROJECT}
 
   # check existence working directory and other general settings
@@ -170,6 +169,8 @@ for subID in ${search}; do
   if [[ ${PLACE} == "SGE" ]]; then
     if [[ ${run_local} -eq 1 ]]; then
       job="call_mriqc"
+      echo
+      echo "**************************************** Processing ${sub_name} ***************************************"      
     else
       if [[ ! -z ${SGE_QUEUE} ]]; then
         QUEUE=${SGE_QUEUE}
@@ -180,6 +181,8 @@ for subID in ${search}; do
     fi 
   else
     job="call_mriqc"
+    echo
+    echo "**************************************** Processing ${sub_name} ***************************************"    
   fi
 
   # execute the command
