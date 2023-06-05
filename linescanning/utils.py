@@ -505,6 +505,9 @@ def get_file_from_substring(filt, path, return_msg='error', exclude=None):
     if isinstance(filt, str):
         filt = [filt]
 
+    if isinstance(exclude, str):
+        exclude = [exclude]
+
     if isinstance(filt, list):
         # list and sort all files in the directory
         if isinstance(path, str):
@@ -532,8 +535,8 @@ def get_file_from_substring(filt, path, return_msg='error', exclude=None):
                 return fname
             else:
                 f = opj(path, fname)
-                if exclude != None:
-                    if exclude not in f:
+                if isinstance(exclude, list):
+                    if not any(x in f for x in exclude):
                         return opj(path, fname)
                     else:
                         if return_msg == "error":
@@ -551,8 +554,12 @@ def get_file_from_substring(filt, path, return_msg='error', exclude=None):
                     match_list.append(fname)         
                 else:
                     match_list.append(opj(path, fname))
-            if exclude != None:
-                exl_list = [f for f in match_list if exclude not in f]
+
+            if isinstance(exclude, list):
+                exl_list = []
+                for f in match_list:
+                    if not any(x in f for x in exclude):
+                        exl_list.append(f)
                 
                 # return the string if there's only 1 element
                 if len(exl_list) == 1:
@@ -1264,28 +1271,51 @@ def resample2d(array:np.ndarray, new_size:int, kind='linear'):
 
 class FindFiles():
 
-    def __init__(self, directory, extension, exclude=None):
+    def __init__(self, directory, extension, exclude=None, maxdepth=None, filters=None):
 
         self.directory = directory
         self.extension = extension
         self.exclude = exclude
+        self.maxdepth = maxdepth
+        self.filters = filters
         self.files = []
 
-        for filename in self.find_files(self.directory, f'*{self.extension}'):
-            self.files.append(filename)
+        for filename in self.find_files(self.directory, f'*{self.extension}', maxdepth=self.maxdepth):
+            if not filename.startswith('._'):
+                self.files.append(filename)
 
         self.files.sort()
 
-        if isinstance(self.exclude, str):
-            self.files = get_file_from_substring([], self.files, exclude=self.exclude)
+        if isinstance(self.exclude, (str,list)) or isinstance(self.filters, (list, str)):
+            if isinstance(self.filters, str):
+                self.filters =  [self.filters]
+            elif isinstance(self.filters, list):
+                pass
+            else:
+                self.filters = []
+
+            self.files = get_file_from_substring(self.filters, self.files, exclude=self.exclude)
 
     @staticmethod
-    def find_files(directory, pattern):
+    def find_files(directory, pattern, maxdepth=None):
+        
+        start = None
+        if isinstance(maxdepth, int):
+            start = 0
+
         for root, dirs, files in os.walk(directory):
+
             for basename in files:
                 if fnmatch.fnmatch(basename, pattern):
                     filename = os.path.join(root, basename)
                     yield filename
+
+            if isinstance(maxdepth, int):
+                if start > maxdepth:
+                    break 
+
+            if isinstance(start, int):
+                start += 1 
 
 def round_decimals_down(number:float, decimals:int=2):
     """
