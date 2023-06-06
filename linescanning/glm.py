@@ -889,8 +889,12 @@ def fit_first_level(
     if copes == None:
         C = np.identity(X_conv.shape[1])
 
+        # C = np.array([[1,0,0],[0,1,0],[0,0,1]])
+        # print(C.shape)
+
     # np.linalg.pinv(X) = np.inv(X.T @ X) @ X
-    betas_conv  = np.linalg.inv(X_conv.T @ X_conv) @ X_conv.T @ data
+    betas_conv, sse, rank, s = np.linalg.lstsq(X_conv, data, rcond=-1)
+    # betas_conv  = np.linalg.inv(X_conv.T @ X_conv) @ X_conv.T @ data
 
     # calculate some other relevant parameters
     cope        = C @ betas_conv
