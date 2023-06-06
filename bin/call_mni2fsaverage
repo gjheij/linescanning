@@ -1,0 +1,174 @@
+#!/bin/bash
+#$ -S /bin/bash
+#$ -cwd
+#$ -j Y
+#$ -V
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_mni2fsaverage
+
+Projects data in MNI152NLin6Asym (FSL-template) space directly to FSAverage space with a single in-
+terpolation step using the method described here:
+https://github.com/ThomasYeoLab/CBIG/tree/master/stable_projects/registration/Wu2017_RegistrationFusion
+
+Args:
+  -o <out>    output directory
+  -p <prefix> decides 'prefix' in <prefix>_hemi-<L|R>_space-fsaverage_<suffix>
+  -s <suffix> decides 'suffix' in <prefix>_hemi-<L|R>_space-fsaverage_<suffix>
+  <-i interp> interpolation method (linear or nearest neighbour). Default is linear
+  input_file  file that needs to be transformed
+
+Usage:
+  call_mni2fsaverage [options] <input_file> 
+
+Example:
+  call_mni2fsaverage zstats1.nii.gz _desc-zstats1
+  call_mni2fsaverage -o PWD -p sub-01_ses-1_task-pRF zstats1.nii.gz _desc-zstats1
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+#-----------------------------------------------------------------------------
+# Get bash helper functions
+source call_bashhelper
+
+#-----------------------------------------------------------------------------
+# Deal with arguments
+interp="linear"
+VERB=0
+open_fv=0
+while getopts :-:r:o:p:t:i:s: argument
+do
+  case ${argument} in
+    -)
+      case "${OPTARG}" in
+        tr)
+          set_tr=1
+          ;;
+        help)
+          HELP=1
+          ;;          
+        freeview)
+          open_fv=1
+          ;;           
+        verbose)
+          VERBOSE="--verbose"
+          VERB=1
+          ;;                  
+        *)
+          if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
+            echo "Unknown option --${OPTARG}"
+            exit 1
+          fi
+          ;;  
+      esac;;
+    o)  out_dir=${OPTARG}
+          ;;
+    p)  prefix=${OPTARG}
+          ;;
+    s)  suffix=${OPTARG}
+          ;;          
+    t)  trafos=${OPTARG}
+          ;;        
+    i)  interp=${OPTARG}
+          ;;            
+  esac
+done
+
+# error msg
+if [[ $# -lt 1 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+# positional args
+INPUT=`readlink -f ${@:$OPTIND:1}`
+
+# set output directory
+if [[ -z ${out_dir} ]]; then
+  output_dir=${SUBJECTS_DIR}/fsaverage/volumes
+else
+  output_dir=${out_dir}
+fi
+
+if [[ ! -d ${output_dir} ]]; then
+  mkdir -p ${output_dir}
+fi
+
+# set output name for ANTs-RF
+if [[ -z ${suffix} ]]; then
+  suffix=desc-$(basename ${INPUT} .nii.gz)
+fi
+
+# make the script
+new_script=$(dirname ${INPUT})/$(basename ${INPUT} .nii.gz).m
+if [[ -f ${new_script} ]]; then
+  rm -r ${new_script}
+fi
+
+cmd="make_antsrf_script ${INPUT} ${interp} ${output_dir} ${suffix} ${new_script}"
+# call_matlab = in call_bashhelper
+if [ ${VERB} -eq 1 ]; then
+  echo "creating script with:"
+  echo $cmd
+fi
+eval $cmd
+
+# call_matlab = in call_bashhelper
+if [ ${VERB} -eq 1 ]; then
+  echo "Initializing matlab.."
+fi
+
+call_matlab ${new_script}
+
+if [[ $? -ne 0 ]]; then
+  echo "ERROR: matlab exited with non-zero status"
+  exit 1
+fi
+
+# stack output
+if [ ${VERB} -eq 1 ]; then
+  echo "Stacking gifti's into numpy-array"
+fi
+
+# stacking giftis into numpy array so we can load them in with Pycortex
+lh=${output_dir}/lh.${suffix}.nii.gz
+rh=${output_dir}/lh.${suffix}.nii.gz
+
+# prefix for final output numpy file
+if [[ -z ${prefix} ]]; then
+  out_name=space-fsaverage_hemi-LR_${suffix}.npy
+else
+  out_name="${prefix}_space-fsaverage_hemi-LR_${suffix}.npy"
+fi
+
+both_hemis=${output_dir}/${out_name}
+call_stackgifti ${lh} ${rh} ${both_hemis}
+
+if [[ $? -ne 0 ]]; then
+  echo "ERROR in `basename ${0}`: call_stackgiftis exited with non-zero status"
+  exit 1
+fi
+
+if [ ${VERB} -eq 1 ]; then
+  echo "Wrote ${both_hemis}"
+fi
+
+if [[ ${open_fv} -eq 1 ]]; then
+  # Visualise lh results
+  fs_dir="${SUBJECTS_DIR}/fsaverage/surf"
+  cmd="freeview -f ${fs_dir}/lh.inflated:overlay=${lh} ${fs_dir}/rh.inflated:overlay=${rh} -viewport '3d'"
+
+  if [[ ${VERB} -eq 1 ]]; then
+    echo $cmd
+  fi
+  eval $cmd
+fi

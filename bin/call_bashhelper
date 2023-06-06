@@ -889,6 +889,9 @@ function call_matlab {
 
     MATLAB_SCRIPT=`fetch_filepath ${1}`
     ${MATLAB_CMD} "addpath('$(dirname ${MATLAB_SCRIPT})'); $(basename ${MATLAB_SCRIPT} .m)" | tail -n +${skip_lines} # suppress intro text
+    if [[ $? -ne 0 ]]; then
+      exit 1
+    fi
   fi  
 }
 
@@ -1048,6 +1051,90 @@ function make_nordic_script {
 
 }
 
+#-----------------------------------------------------------------------------
+# ANTs RF SCRIPT (MNI>FSAverage)
+function make_antsrf_script {
+  function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+make_antsrf_script
+
+Follow workflow https://mumfordbrainstats.tumblr.com/post/166054797696/feat-registration-workaround
+To use fMRIprep output in FEAT. Uses the mean of the functional run as 'standard', rather than the
+MNI152-image.
+
+Args:
+  <input>        input file that needs to be warped
+  <interp>       interpolation method (linear or nearest, default is linear)
+  <output dir>   output directory (defaults to SUBJECTS_DIR/fsaverage/surf)
+  <basename>     output basename (defaults to 'mni2fsaverage')
+  <script>       name for the script
+
+Example:
+  make_antsrf_script zstats1.nii.gz "linear" some/dir desc-zstats1 sub-01_ses-1_desc-antsrf.m
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+}
+
+  in_file=`readlink -f ${1}`
+  interp=${2}
+  output_dir=${3}
+  base_name=${4}
+  script_name=${5}
+  
+  if [[ ${HELP} -eq 1 || $# -lt 5 ]]; then
+    Usage >&2
+  else
+
+    # set default output directory
+    if [[ -z ${output_dir} ]]; then
+      output_dir=${FS}/fsaverage/surf
+    fi
+
+    # create it if it doesn't exit
+    if [[ ! -d ${output_dir} ]]; then
+      mkdir -p ${output_dir}
+    fi
+
+    # set default basename
+    if [[ -z ${base_name} ]]; then
+      base_name="mni2fsaverage"
+    fi
+
+    # set default basename
+    if [[ -z ${script_name} ]]; then
+      script_name=$(dirname ${in_file})/$(basename ${in_file} .nii.gz).m
+    fi
+
+    # output files
+    lh_output=${output_dir}/lh.${base_name}.nii.gz
+    rh_output=${output_dir}/rh.${base_name}.nii.gz
+
+    (
+    echo "%-----------------------------------------------------------------------------"
+    echo "% Created on `date`. Projecting $(basename ${in_file}) to FSAverage"
+    echo ""
+    echo "clear;"
+    echo "addpath(genpath('${DIR_SCRIPTS}/misc'));"
+    echo "lh_map = '${DIR_SCRIPTS}/misc/CBIG_lh.avgMapping_allSub_RF_ANTs_MNI152_orig_to_fsaverage.mat';"
+    echo "rh_map = '${DIR_SCRIPTS}/misc/CBIG_rh.avgMapping_allSub_RF_ANTs_MNI152_orig_to_fsaverage.mat';"
+    echo "input = MRIread('${in_file}');"
+    echo "[lh_proj_data, rh_proj_data] = CBIG_RF_projectMNI2fsaverage('${in_file}', '${interp}', lh_map, rh_map);"
+    echo ""
+    echo "input.vol = permute(lh_proj_data, [4 2 3 1]);"
+    echo "MRIwrite(input, '${lh_output}');"
+    echo "input.vol = permute(rh_proj_data, [4 2 3 1]);"
+    echo "MRIwrite(input, '${rh_output}');"
+    echo ""
+    echo "exit;"
+    ) >> ${script_name}
+
+  fi
+
+}
 
 #-----------------------------------------------------------------------------
 # Define function to create SPM-compatible script with
