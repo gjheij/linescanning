@@ -6,6 +6,7 @@
 import mkl
 mkl.set_num_threads=1
 
+import ast
 import os
 import sys
 import getopt
@@ -42,10 +43,15 @@ Example
     inputdir = None
     outputdir = None
     verbose = False
-    duration = None
+    duration = "stim"
+    add_button = False
+    maxdepth = None
+    exclude = None
+    add_search = None
+    button_duration = 1
 
     try:
-        opts = getopt.getopt(argv,"hi:o:",["help", "in=", "out=", "verbose"])[0]
+        opts = getopt.getopt(argv,"hi:o:",["help", "in=", "out=", "verbose", "button", "maxdepth=", "exclude=", "filters=", "duration=", "button_duration="])[0]
     except getopt.GetoptError:
         print("ERROR while reading arguments; did you specify an illegal argument?")
         print(main.__doc__)
@@ -59,27 +65,53 @@ Example
             inputdir = arg
         elif opt in ("-o", "--out"):
             outputdir = arg
-        elif opt in ("-d", "--dur"):
-            duration = arg
+        elif opt in ("-d", "--duration"):
+            duration = float(arg)
         elif opt in ("--verbose"):
             verbose = True
+        elif opt in ("--button"):
+            add_button = True
+        elif opt in ("--maxdepth"):
+            maxdepth = int(arg)
+        elif opt in ("--exclude"):
+            exclude = arg
+        elif opt in ("--filters"):
+            add_search = arg            
+        elif opt in ("--button_duration"):
+            button_duration = float(arg)  
         
     if len(argv) < 1:
         print(main.__doc__)
         sys.exit()
 
+    # set default output directory
     if not isinstance(outputdir, str):
-        outputdir = opj(os.path.dirname(inputdir), "events")
+        outputdir = opj(inputdir, "events")
+
+    # make directory
+    if not os.path.exists(outputdir):
+        os.makedirs(outputdir)
+    
+    # parse out comma's
+    if isinstance(add_search, str):
+        if "," in add_search:
+            add_search = add_search.split(",")
+    
+    if isinstance(exclude, str):
+        if "," in exclude:
+            exclude = exclude.split(",")
 
     # find all tsv-files
-    tsv_files = utils.FindFiles(inputdir, extension="tsv", exclude="._").files
+    tsv_files = utils.FindFiles(inputdir, extension="tsv", exclude=exclude, filters=add_search).files
 
     # plop in object
     exp_ = dataset.ParseExpToolsFile(
         tsv_files, 
         use_bids=True, 
-        stim_duration="stim",
-        verbose=verbose)
+        stim_duration=duration,
+        verbose=verbose,
+        button=add_button,
+        button_duration=button_duration)
 
     # save as 3 column format
     exp_.onsets_to_fsl(
