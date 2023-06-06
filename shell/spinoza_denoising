@@ -181,21 +181,13 @@ for subID in ${search}; do
       base=${sub_name}
     fi
 
-    if [[ ${OW} -eq 1 ]]; then
-      # overwrite mode enabled
-      if [[ -d ${DENOISE}/${base_path} ]]; then
-        rm -r ${DENOISE}/${base_path}
-      fi
-    fi
-
     if [[ ! -d ${DENOISE} ]]; then
       mkdir -p ${DENOISE}
     fi
 
     if [[ -d ${FPREP}/${base_path}/func ]]; then
 
-      if [[ ! -d ${DENOISE}/${base_path}/denoising ]]; then
-
+      if [[ ! -d ${DENOISE}/${base_path}/denoising || ${OW} -eq 1 ]]; then
 
         # append sub
         if [[ ${SGE} -eq 1 ]]; then
