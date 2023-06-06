@@ -817,6 +817,7 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
         add_events=None,
         event_names=None,
         invoked_from_func=False,
+        button_duration=1,
         **kwargs):
 
         self.tsv_file                       = tsv_file
@@ -836,6 +837,7 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
         self.add_events                     = add_events
         self.event_names                    = event_names
         self.invoked_from_func              = invoked_from_func
+        self.button_duration                = button_duration
         
         # filter kwargs
         tmp_kwargs = filter_kwargs(
@@ -987,7 +989,7 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
         self.onset_times    = self.trimmed['onset'].values[...,np.newaxis]
 
         skip_duration = False
-        if isinstance(duration, float) or isinstance(duration, int):
+        if isinstance(duration, (float,int)):
             self.durations = np.full_like(self.onset_times, float(duration))
         elif duration == None:
             skip_duration = True
@@ -1018,6 +1020,11 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
 
             # stack it onto existing condition array
             self.condition = np.vstack([self.condition, self.response_condition])
+
+            # set response duration to 1
+            if not skip_duration:
+                self.resp_durations = np.full_like(self.response_times, self.button_duration)
+                self.durations = np.concatenate([self.durations, self.resp_durations], axis=0)
         
         # check if we should include other events
         if isinstance(self.add_events, str):
