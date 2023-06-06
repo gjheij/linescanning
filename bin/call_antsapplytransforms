@@ -114,15 +114,21 @@ MOV=${@:$OPTIND+1:1}
 OUT=${@:$OPTIND+2:1}
 TRAFOS=${@:$OPTIND+3:1}
 
-if [[ -z ${invert} ]]; then
-  INV=0
-else
-  INV=${invert}
-fi
-
-IFS=', ' read -ra LIST <<< ${INV[@]}
+# read transformations into array
 IFS=', ' read -r -a WARP <<< "${TRAFOS}"
 unset IFS
+
+# match invert flags
+if [[ ! -z ${INV} ]]; then
+  IFS=', ' read -ra LIST <<< ${invert[@]}
+  unset IFS
+else
+  LIST=()
+  ct=0
+  for i in ${WARP[@]}; do
+    LIST+=(0)
+  done
+fi
 
 ARRAY=()
 if [[ ${WARP} == "identity" ]] || [[ ${WARP} == "ident" ]] || [[ ${WARP} == "identty" ]]; then
