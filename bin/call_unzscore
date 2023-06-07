@@ -5,6 +5,7 @@ import pickle
 import sys
 import getopt
 import numpy as np
+import glob
 opj = os.path.join
 
 def main(argv):
@@ -92,12 +93,10 @@ Example:
     # initiate search parameters
     base_dir = f'sub-{subject}'
     search_for = [f'sub-{subject}']
-    out_string = f'sub-{subject}'
 
     if session != None:
-        search_for += [f'ses-{session}']
-        base_dir = opj(base_dir, f'ses-{session}')
-        out_string += f"_ses-{session}"
+        if session != "all":
+            search_for += [f'ses-{session}']
 
     if task != None:
         search_for += [f'task-{task}']
@@ -113,11 +112,7 @@ Example:
         if pre:
 
             # final func_dir
-            ffunc_dir = opj(fprep_dir, base_dir, 'func')
-            output_dir = opj(out_dir, base_dir, 'tmp')
-
-            if not os.path.exists(output_dir):
-                os.makedirs(output_dir, exist_ok=True)
+            ffunc_dir = utils.FindFiles(opj(fprep_dir, f'sub-{subject}'), extension="gii").files
 
             # load data
             funcs = utils.get_file_from_substring(search_hemi, ffunc_dir, exclude="json")
@@ -125,98 +120,257 @@ Example:
                 skip_run_id = True
                 funcs = [funcs]
 
-            for func in funcs:
+            # get session IDs
+            ses_ids = utils.get_ids(funcs, bids="ses")
+            if len(ses_ids) > 0:
+                for ses in ses_ids:
+                    
+                    ses_funcs = utils.get_file_from_substring([f"ses-{ses}"], funcs)
+                    if isinstance(ses_funcs, str):
+                        ses_funcs = [ses_funcs]
+                    
+                    # get run ids
+                    skip_run_id = False
+                    run_ids = utils.get_ids(ses_funcs, bids="run")
+                    if len(run_ids) == 1:
+                        skip_run_id = True
 
-                final_output = out_string
+                    for func in ses_funcs:
+                        
+                        # read bids components
+                        comps = utils.split_bids_components(func)
+                        base_dir = opj(f"sub-{comps['sub']}", f"ses-{comps['ses']}")
 
-                # split into bids components to get run ID
-                comps = utils.split_bids_components(func)
+                        # make output directory
+                        output_dir = opj(out_dir, base_dir, 'tmp')
+                        if not os.path.exists(output_dir):
+                            os.makedirs(output_dir, exist_ok=True)
 
-                for id in ['task', 'run', 'space', 'hemi']:
-                    if id in list(comps.keys()):
-                        if id == "run":
-                            if not skip_run_id:
-                                final_output = final_output+f"_{id}-{comps[id]}"
-                        else:
-                            final_output = final_output+f"_{id}-{comps[id]}"
-                
-                # read in file
-                obj = dataset.Dataset(
-                    func, 
-                    use_bids=True, 
-                    filter_strategy='raw', 
-                    standardization='raw', 
-                    verbose=False)
+                        # compile output name
+                        final_output=""
+                        for id in ['sub','ses','task','run','space','hemi']:
+                            if id in list(comps.keys()):
+                                if id == "sub":
+                                    final_output+= f"{id}-{comps[id]}"
+                                else:
+                                    if id == "run":
+                                        if not skip_run_id:
+                                            final_output+=f"_{id}-{comps[id]}"
+                                    else:
+                                        final_output+=f"_{id}-{comps[id]}"
+                        
+                        # read in file
+                        obj = dataset.Dataset(
+                            func, 
+                            use_bids=True, 
+                            filter_strategy='raw', 
+                            standardization='raw', 
+                            verbose=False)
 
-                # get raw data
-                raw = obj.fetch_fmri(dtype='raw')
+                        # get raw data
+                        raw = obj.fetch_fmri(dtype='raw')
 
-                # get standard deviation and mean
-                stdev = raw.values.std(axis=0, keepdims=True)
-                avg = raw.values.mean(axis=0, keepdims=True)
+                        # get standard deviation and mean
+                        stdev = raw.values.std(axis=0, keepdims=True)
+                        avg = raw.values.mean(axis=0, keepdims=True)
 
-                # save in pickle
-                tmp_data = {'std': stdev,
-                            'avg': avg}
+                        # save in pickle
+                        tmp_data = {'std': stdev,
+                                    'avg': avg}
 
-                pkl_file = opj(output_dir, final_output+'_desc-avgstd.pkl')
-                # print(f"Writing {pkl_file}")
-                f = open(pkl_file, "wb")
-                pickle.dump(tmp_data, f)
-                f.close()
+                        pkl_file = opj(output_dir, final_output+'_desc-avgstd.pkl')
+                        # print(f"Writing {pkl_file}")
+                        f = open(pkl_file, "wb")
+                        pickle.dump(tmp_data, f)
+                        f.close()
+
+            else:
+                # get run ids
+                skip_run_id = False
+                run_ids = utils.get_ids(funcs, bids="run")
+                if len(run_ids) == 1:
+                    skip_run_id = True
+
+                for func in funcs:
+                    
+                    # read bids components
+                    comps = utils.split_bids_components(func)
+                    base_dir = opj(f"sub-{comps['sub']}", f"ses-{comps['ses']}")
+
+                    # make output directory
+                    output_dir = opj(out_dir, base_dir, 'tmp')
+                    if not os.path.exists(output_dir):
+                        os.makedirs(output_dir, exist_ok=True)
+
+                    # compile output name
+                    final_output=""
+                    for id in ['sub','ses','task','run','space','hemi']:
+                        if id in list(comps.keys()):
+                            if id == "sub":
+                                final_output+= f"{id}-{comps[id]}"
+                            else:
+                                if id == "run":
+                                    if not skip_run_id:
+                                        final_output+=f"_{id}-{comps[id]}"
+                                else:
+                                    final_output+=f"_{id}-{comps[id]}"
+                    
+                    # read in file
+                    obj = dataset.Dataset(
+                        func, 
+                        use_bids=True, 
+                        filter_strategy='raw', 
+                        standardization='raw', 
+                        verbose=False)
+
+                    # get raw data
+                    raw = obj.fetch_fmri(dtype='raw')
+
+                    # get standard deviation and mean
+                    stdev = raw.values.std(axis=0, keepdims=True)
+                    avg = raw.values.mean(axis=0, keepdims=True)
+
+                    # save in pickle
+                    tmp_data = {'std': stdev,
+                                'avg': avg}
+
+                    pkl_file = opj(output_dir, final_output+'_desc-avgstd.pkl')
+                    # print(f"Writing {pkl_file}")
+                    f = open(pkl_file, "wb")
+                    pickle.dump(tmp_data, f)
+                    f.close()                                        
         else:
-            # final func_dir
-            denoised_dir = opj(out_dir, base_dir, 'denoising')
-            avg_dir = opj(out_dir, base_dir, 'tmp')
-            output_dir = opj(out_dir, base_dir, 'unzscored')
-
-            if not os.path.exists(output_dir):
-                os.makedirs(output_dir, exist_ok=True)
+            
+            # find all files
+            all_files = utils.FindFiles(opj(out_dir, base_dir), extension="npy").files
 
             # load data; check if we can load with 'run' flag, otherwise we only have a single run
-            full_search = search_hemi + ['run', 'denoised_bold']
-            try:
-                funcs = utils.get_file_from_substring(full_search, denoised_dir, exclude="raw")
-            except:
-                funcs = utils.get_file_from_substring(search_hemi+['denoised_bold'], denoised_dir, exclude="raw")
+            full_search = search_hemi + ['denoised_bold','denoising']
+            funcs = utils.get_file_from_substring(full_search, all_files, exclude="raw")
 
             if isinstance(funcs, str):
                 funcs = [funcs]
 
             if len(funcs) == 0:
-                raise ValueError(f"No files with {full_search} in '{denoised_dir}'")
+                raise ValueError(f"No files with {full_search} in '{opj(out_dir, base_dir)}/*'")
 
-            for func in funcs:
+            # get session IDs
+            ses_ids = utils.get_ids(funcs, bids="ses")
+            if len(ses_ids) > 0:
+                for ses in ses_ids:
 
-                # read in file
-                obj = dataset.Dataset(
-                    func, 
-                    use_bids=True, 
-                    filter_strategy='raw', 
-                    standardization='raw')
+                    ses_funcs = utils.get_file_from_substring([f"ses-{ses}"], funcs)
+                    if isinstance(ses_funcs, str):
+                        ses_funcs = [ses_funcs]
+                    
+                    # get run ids
+                    skip_run_id = False
+                    run_ids = utils.get_ids(ses_funcs, bids="run")
+                    if len(run_ids)<1:
+                        skip_run_id = True
 
-                # get raw data
-                raw = obj.fetch_fmri(dtype='raw')
+                    # filter out run-ID if present
+                    if not skip_run_id:
+                        ses_funcs = utils.get_file_from_substring(["run-"], ses_funcs)
 
-                # split into bids components to get run ID
-                comps = utils.split_bids_components(func)
-                if "run" in list(comps.keys()):
-                    run_search = search_hemi+[f"run-{comps['run']}_"]
-                else:
-                    run_search = search_hemi
+                    for func in ses_funcs:
 
-                # get standard deviation and mean
-                match = utils.get_file_from_substring(run_search, avg_dir)
-                if isinstance(match, list):
-                    raise ValueError(f"Found {len(match)} matches with filters {full_search}: {match}")
+                        # split into bids components to get run ID
+                        comps = utils.split_bids_components(func)
 
-                with open(match, 'rb') as input:
-                    data = pickle.load(input)
+                        if "ses" in list(comps.keys()):
+                            output_base = opj(f"sub-{comps['sub']}", f"ses-{comps['ses']}")
+                            ses_search = search_hemi + [f"ses-{comps['ses']}_"]
+                        else:
+                            ses_search = search_hemi
+                            output_base = f"sub-{comps['sub']}"
 
-                unzscored = raw*data['std'].T+data['avg'].T
-                fname = opj(output_dir, os.path.basename(func))
-                # print(f"Writing {fname}")
-                np.save(fname, unzscored.T)
-            
+                        if "run" in list(comps.keys()):
+                            all_search = ses_search + [f"run-{comps['run']}_"]
+                        else:
+                            all_search = ses_search
+
+                        avg_dir = opj(out_dir, output_base, 'tmp')
+                        output_dir = opj(out_dir, output_base, 'unzscored')
+
+                        if not os.path.exists(output_dir):
+                            os.makedirs(output_dir, exist_ok=True)
+
+                        # read in file
+                        obj = dataset.Dataset(
+                            func, 
+                            use_bids=True, 
+                            filter_strategy='raw', 
+                            standardization='raw')
+
+                        # get raw data
+                        raw = obj.fetch_fmri(dtype='raw')
+
+                        # get standard deviation and mean
+                        match = utils.get_file_from_substring(all_search, avg_dir)
+                        if isinstance(match, list):
+                            raise ValueError(f"Found {len(match)} matches with filters {full_search}: {match}")
+
+                        with open(match, 'rb') as input:
+                            data = pickle.load(input)
+
+                        unzscored = raw*data['std'].T+data['avg'].T
+                        fname = opj(output_dir, os.path.basename(func))
+                        print(f" Writing {fname}")
+                        np.save(fname, unzscored.T)
+            else:   
+
+                # get run ids
+                skip_run_id = False
+                run_ids = utils.get_ids(funcs, bids="run")
+                if len(run_ids) == 1:
+                    skip_run_id = True
+
+                for func in funcs:
+
+                    # split into bids components to get run ID
+                    comps = utils.split_bids_components(func)
+
+                    if "ses" in list(comps.keys()):
+                        output_base = opj(f"sub-{comps['sub']}", f"ses-{comps['ses']}")
+                        ses_search = search_hemi + [f"ses-{comps['ses']}_"]
+                    else:
+                        ses_search = search_hemi
+                        output_base = f"sub-{comps['sub']}"
+
+                    if "run" in list(comps.keys()):
+                        all_search = ses_search + [f"run-{comps['run']}_"]
+                    else:
+                        all_search = ses_search
+
+                    avg_dir = opj(out_dir, output_base, 'tmp')
+                    output_dir = opj(out_dir, output_base, 'unzscored')
+
+                    if not os.path.exists(output_dir):
+                        os.makedirs(output_dir, exist_ok=True)
+
+                    # read in file
+                    obj = dataset.Dataset(
+                        func, 
+                        use_bids=True, 
+                        filter_strategy='raw', 
+                        standardization='raw')
+
+                    # get raw data
+                    raw = obj.fetch_fmri(dtype='raw')
+
+                    # get standard deviation and mean
+                    match = utils.get_file_from_substring(all_search, avg_dir)
+                    if isinstance(match, list):
+                        raise ValueError(f"Found {len(match)} matches with filters {full_search}: {match}")
+
+                    with open(match, 'rb') as input:
+                        data = pickle.load(input)
+
+                    unzscored = raw*data['std'].T+data['avg'].T
+                    fname = opj(output_dir, os.path.basename(func))
+                    print(f" Writing {fname}")
+                    np.save(fname, unzscored.T)
+                        
 if __name__ == "__main__":
     main(sys.argv[1:])

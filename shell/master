@@ -490,6 +490,7 @@ Arguments:
                       - spinoza_bestvertex: set label file (default is 'V1.exvivo_thresh'
                       - spinoza_extractregions: ROI to extract (default is 'cerebrum')
                       - spinoza_freesurfer: which stage to use (maps to '-r' from call_freesurfer)
+                      - spinoza_denoising: run pybest on all available sessions
                       - spinoza_fitprfs: set repetition time
   -s <subject>      Subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
   -t <type|task>    used for;

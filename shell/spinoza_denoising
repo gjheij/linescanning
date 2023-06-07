@@ -29,7 +29,10 @@ Arguments:
   -j <n_cpus>         number of CPUs to use (default = 1)
   -c <n_comps>        overwrite the PYBEST_N_COMPS-variable deciding the number of components for 
                       the PCA (default = 10)
-  -o|--ow             overwrite existing files. Note that this deletes the full ses-<> folder!
+  -o|--ow             overwrite existing files. Note that this does not delete the full ses-<> folder!
+                      use --full to completely remove a folder
+  --full              Overwrite (i.e., remove) existing output. In case of "-r 'all'", the entire
+                      subject directory is removed
   -q <queue>          submit jobs to a specific queue. Defaults to SGE_QUEUE_LONG in spinoza_setup
   --sge               submit job to cluster (called with 'master -m <module> --sge')
   --no_raw            do NOT unzscore the output from pybest (default is to do so)
@@ -57,6 +60,7 @@ n_cpus=""
 task_flag=""
 raw_flag=""
 SGE=0
+FULL_OW=0
 
 # check if variable is set in setup file
 if [[ -z ${PYBEST_SPACE} ]]; then
@@ -73,7 +77,10 @@ do
           ;;
         ow)
           OW=1
-          ;;          
+          ;;      
+        full)
+          FULL_OW=1
+          ;;                 
         sge)
           SGE=1
           ;;          
@@ -174,18 +181,30 @@ for subID in ${search}; do
 
     if [[ ! -z ${ses} ]]; then
       nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
-      base_path=${sub_name}/ses-${nr}
-      base=${sub_name}_ses-${nr}
+      if [[ ${ses} != "all" ]]; then
+        base_path=${sub_name}/ses-${nr}
+        base=${sub_name}_ses-${nr}
+      else
+        nr="all"
+        base_path=${sub_name}
+      fi
     else
       base_path=${sub_name}
       base=${sub_name}
     fi
 
+    if [[ ${FULL_OW} -eq 1 ]]; then
+      # overwrite mode enabled
+      if [[ -d ${DENOISE}/${base_path} ]]; then
+        rm -r ${DENOISE}/${base_path}
+      fi
+    fi
+
     if [[ ! -d ${DENOISE} ]]; then
       mkdir -p ${DENOISE}
     fi
-
-    if [[ -d ${FPREP}/${base_path}/func ]]; then
+    
+    if [[ ${ses} == "all" || -d ${FPREP}/${base_path}/func ]]; then
 
       if [[ ! -d ${DENOISE}/${base_path}/denoising || ${OW} -eq 1 ]]; then
 
@@ -204,7 +223,7 @@ for subID in ${search}; do
         fi
 
         # full path is needed for qsub
-        ${job} ${DIR_SCRIPTS}/bin/call_pybest \
+        cmd="""${job} ${DIR_SCRIPTS}/bin/call_pybest \
           -s ${sub_id} \
           -n ${nr} \
           -o ${DENOISE} \
@@ -213,7 +232,9 @@ for subID in ${search}; do
           -c ${n_cpus} \
           -p ${PYBEST_N_COMPS} \
           ${task_flag} \
-          ${raw_flag}
+          ${raw_flag}"""
+        echo ${cmd}
+        eval ${cmd}
 
         if [[ $? != 0 ]]; then
           echo

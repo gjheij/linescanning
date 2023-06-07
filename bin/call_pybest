@@ -30,8 +30,8 @@ Arguments:
   -s <sub number>     number of subject's FreeSurfer directory from which you can omit "sub-" (e.g.,
                       for "sub-001", enter "001"). If left empty pybest will process everything it
                       can find in the fmriprep folder
-  -n <ses number>     session number. If left empty pybest will process everything it can find in
-                      the fmriprep folder.
+  -n <ses number>     session number. If left empty or 'all', pybest will process everything it 
+                      can find in the fmriprep folder.
   -o <output dir>     path to output directory. By default it will create a subject-specific folder,
                       but you can set where that subject folder is going to go. By default this
                       script will output to /projectroot/derivatives/pybest
@@ -116,11 +116,12 @@ fi
 
 # Make sure we run the specified session or all sessions pybest can find will be
 # processed
+base_dir="sub-${sub}/"
 if [[ ! -z ${ses} ]]; then
-  ses_input="--session ${ses}"
-  base_dir="sub-${sub}/ses-${ses}"
-else
-  base_dir="sub-${sub}"
+  if [[ ${ses} != "all" ]]; then
+    ses_input="--session ${ses}"
+    base_dir+="/ses-${ses}"
+  fi
 fi
 
 # Set output directory if specified, otherwise default to /derivatives/pybest
@@ -143,11 +144,6 @@ if [[ ! -d ${output_dir}/sub-${sub} ]]; then
   mkdir -p ${output_dir}/sub-${sub}
 fi 
 
-if [ ! -d ${input_dir}/${base_dir}/func ]; then
-  echo "ERROR in `basename ${0}`: input \"${input_dir}/${base_dir}/func\" does not exist. Run e.g., \"master -m 15 -s ${sub} -t func\" for preprocessing with fMRIPrep"
-  exit 1
-fi
-
 # loop through tasks; I know pybest can do ALL tasks at once, but it's nice to have a limiter in here
 for task_id in ${task_ids[@]}; do
   echo "Running pybest on task: \"${task_id}\""
@@ -168,7 +164,9 @@ for task_id in ${task_ids[@]}; do
 
     for hemi in "L" "R"; do
 
-      pybest \
+      echo "Dealing with hemi-${hemi}"
+
+      cmd="""pybest \
         ${sub_input} \
         ${ses_input} \
         --task ${task_id} \
@@ -177,7 +175,10 @@ for task_id in ${task_ids[@]}; do
         ${cpu_input} \
         --verbose ERROR \
         --save-all ${input_dir} \
-        --n-comps ${n_comps}
+        --n-comps ${n_comps}"""
+
+      echo ${cmd}
+      eval ${cmd}
 
       if [[ $? -ne 0 ]]; then
         echo "ERROR in `basename ${0}`: pybest existed with non-zero status"
@@ -189,6 +190,7 @@ for task_id in ${task_ids[@]}; do
     # undo z-scoring
     if [ ${raw} -eq 1 ]; then
       echo "Un-zcoring output from pybest"
+
       call_unzscore \
         -s ${sub} \
         -n ${ses} \
@@ -198,6 +200,8 @@ for task_id in ${task_ids[@]}; do
         -p ${in_space} \
         --post
     fi
+
+    echo "Done"
     
   else
 
