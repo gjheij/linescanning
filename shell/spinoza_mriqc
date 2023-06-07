@@ -186,7 +186,7 @@ for subID in ${search}; do
   fi
 
   # execute the command
-  ${job} \
+  cmd="""${job} \
     -s ${sub_id} \
     ${ses_flag} \
     -j ${n_cpus} \
@@ -196,7 +196,10 @@ for subID in ${search}; do
     -d ${OUTPUT} \
     -w ${workdir}  \
     ${mod_flag} \
-    ${fd_flag}
+    ${fd_flag}"""
+
+  echo ${cmd}
+  eval ${cmd}
 
   if [[ $? != 0 ]]; then
     echo "ERROR in `basename ${0}`: call_mriqc did not execute cleanly"
