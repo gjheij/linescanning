@@ -55,7 +55,7 @@ Example:
     except:
       raise ValueError(f"You used '{coord}'. Make sure to use '[x,y,z]' (comma-separated and no spaces)")
 
-    if in_type.lower() != "lps" and in_type.lower() != "ras":
+    if in_type.lower() not in ["lps","ras"]:
         raise ValueError(f"in_type is {in_type}; please use 'lps' or 'ras'")
 
     make_chicken_csv(coord, input=in_type, output_file=out_file, vol=0.343)

@@ -1,0 +1,52 @@
+#!/usr/bin/env python
+
+import os, sys
+import numpy as np
+import ast
+from linescanning.utils import read_chicken_csv
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_antsreadchicken
+
+Command-line script to read a chicken-file as per output of antsApplyTransformsToPoints. You'll only
+need to specify the csv file and whether the coordinate is in RAS or LPS convention (I assume by 
+default it is in LPS). The difference between RAS and LPS is that the first two dimensions are flipped. 
+
+Args:
+    <input file>    string-like representation to a .csv-file
+    <input conv>    convention the input coordinate uses; ("lps" (default)|"ras")
+
+Outputs
+    coord   coordinate
+
+Usage:
+    call_antsreadchicken <csv file> <convention>
+
+Example:
+    call_antsreadchicken test.csv ras
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    in_file = None
+    in_type = "ras"
+
+    if len(argv) < 2:
+        print("NOT ENOUGH ARGUMENTS SPECIFIED")
+        print(main.__doc__)
+        sys.exit()
+
+    in_file = argv[0]
+    in_type = argv[1]     
+
+    if in_type.lower() not in ["lps","ras"]:
+        raise ValueError(f"in_type is {in_type}; please use 'lps' or 'ras'")
+
+    coord = read_chicken_csv(in_file, return_type=in_type)
+    print(coord)
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
