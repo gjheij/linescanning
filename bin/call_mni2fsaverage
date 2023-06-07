@@ -18,8 +18,8 @@ https://github.com/ThomasYeoLab/CBIG/tree/master/stable_projects/registration/Wu
 
 Args:
   -o <out>    output directory
-  -p <prefix> decides 'prefix' in <prefix>_hemi-<L|R>_space-fsaverage_<suffix>
-  -s <suffix> decides 'suffix' in <prefix>_hemi-<L|R>_space-fsaverage_<suffix>
+  -p <prefix> decides 'prefix' in <prefix>_space-fsaverage_hemi-<L|R>_<suffix>
+  -s <suffix> decides 'suffix' in <prefix>_space-fsaverage_hemi-<L|R>_<suffix>
   <-i interp> interpolation method (linear or nearest neighbour). Default is linear
   input_file  file that needs to be transformed
 
@@ -28,7 +28,7 @@ Usage:
 
 Example:
   call_mni2fsaverage zstats1.nii.gz _desc-zstats1
-  call_mni2fsaverage -o PWD -p sub-01_ses-1_task-pRF zstats1.nii.gz _desc-zstats1
+  call_mni2fsaverage -o PWD -p sub-01_ses-1_task-pRF -s desc-zstat1 zstat1.nii.gz
 
 ---------------------------------------------------------------------------------------------------
 
@@ -141,7 +141,7 @@ fi
 
 # stacking giftis into numpy array so we can load them in with Pycortex
 lh=${output_dir}/lh.${suffix}.nii.gz
-rh=${output_dir}/lh.${suffix}.nii.gz
+rh=${output_dir}/rh.${suffix}.nii.gz
 
 # prefix for final output numpy file
 if [[ -z ${prefix} ]]; then

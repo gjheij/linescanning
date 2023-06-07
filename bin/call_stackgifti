@@ -46,8 +46,6 @@ Example:
     in2_mesh = surface.load_surf_data(in2)
     out_mesh = np.squeeze(np.vstack((in1_mesh[...,np.newaxis],in2_mesh[...,np.newaxis])),axis=-1)
     np.save(out, out_mesh)
-    np.save(in1.split('.')[0]+'.npy', in1_mesh)
-    np.save(in2.split('.')[0]+'.npy', in2_mesh)
 
 if __name__ == "__main__":
     main(sys.argv[1:])
