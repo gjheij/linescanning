@@ -220,9 +220,9 @@ if [[ ${fd_only} -eq 0 ]]; then
   fi
 
   # move html files to appropriate directory.
-  html_files=(`find ${derivatives} -type f -name "sub-${subj_ID}*" -and -name "*.html" 2>/dev/null`)
+  html_files=(`find ${derivatives} -maxdepth 1 -type f -name "sub-${subj_ID}*" -and -name "*.html" 2>/dev/null`)
   if [[ ! -z ${html_files} ]]; then
-    mv ${html_files} ${derivatives}/sub-${subj_ID} 2>/dev/null
+    mv ${html_files[@]} ${derivatives}/sub-${subj_ID} 2>/dev/null
   else
     echo "ERROR in `basename ${0}`: could not find html-files. This is suspicious.."
     exit 1
@@ -232,7 +232,6 @@ fi
 
 #-----------------------------------------------------------------------------
 # loop through moved html files to fetch fd file
-work=/data1/projects/dumoulinlab/Projects/packages/mriqc/SM-pRF
 html_files=(`find ${derivatives}/sub-${subj_ID} -type f -name "sub-${subj_ID}*" -and -name "*.html" -and -not -name "*T1w.html" -and -not -name "*T2w.html" 2>/dev/null`)
 
 if [[ ! -z ${html_files} ]]; then
