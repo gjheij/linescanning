@@ -1772,6 +1772,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         skip_grid=False,
         use_grid_bounds=True,
         mask=None,
+        transpose=False,
         **kwargs):
 
         self.data               = data
@@ -1797,6 +1798,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         self.skip_grid          = skip_grid
         self.use_grid_bounds    = use_grid_bounds
         self.mask               = mask
+        self.transpose          = transpose
         self.__dict__.update(kwargs)
 
         # read design matrix if needed
@@ -1815,6 +1817,9 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
             if self.data.ndim == 1:
                 self.data = self.data[np.newaxis,...]
 
+            if self.transpose:
+                self.data = self.data.T
+                
             if self.design_matrix.shape[-1] != self.data.shape[-1]:
                 missed_vols = self.design_matrix.shape[-1]-self.data.shape[-1]
                 self.design_matrix = self.design_matrix[...,missed_vols:]
@@ -2116,6 +2121,16 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                         setattr(self, f'{model}_{stage}_predictions', data['predictions'])
             
                 utils.verbose(f"Reading settings from '{params_file}' (safest option; overwrites other settings)", self.verbose)
+            
+            # try to read model- from the filename
+            if not isinstance(model, str):
+                try:
+                    comps = utils.split_bids_components(params_file)
+                except:
+                    comps = []
+                
+                if "model" in comps:
+                    model = comps["model"]
 
         elif isinstance(params_file, np.ndarray):
             params = params_file.copy()
