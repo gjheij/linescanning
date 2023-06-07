@@ -1416,7 +1416,7 @@ if [[ $? -eq 0 ]]; then
     ${START_STAGE} \
     ${FORCE_FLAG} \
     ${use_t2_flag} \
-    ${SGE_QUEUE} \    
+    ${SGE_QUEUE} \
     ${jobs_flag} \
     ${INPUT_DIR} ${FS_stage} ${DIR_DATA_HOME}
 
@@ -1539,6 +1539,7 @@ if [[ $? -eq 0 ]]; then
     ${SESSION} \
     ${SGE} \
     ${OW} \
+    ${FULL_OW} \
     ${PCA_COMPS} \
     ${TASK_ID} \
     ${space_flag} \
