@@ -479,7 +479,8 @@ Arguments:
   -m <module>       always required, specifies which module to run. Multiple modules should be com-
                     ma separated
   -n <session>      session nr, used to create file structure according to BIDS. Specify '-n none' if 
-                    you don't want to differentiate between sessions
+                    you don't want to differentiate between sessions. If '-n all' in spinoza_denoising,
+                    all sessions will be processed
   -o|--ow           turn on overwrite mode; removes subject-specific directories or crucial files so 
                     that the process is re-ran.
   -p <prf_model>    switch to specify what type of model to use for the pRF-modeling. Enabled for spi-
@@ -490,7 +491,6 @@ Arguments:
                       - spinoza_bestvertex: set label file (default is 'V1.exvivo_thresh'
                       - spinoza_extractregions: ROI to extract (default is 'cerebrum')
                       - spinoza_freesurfer: which stage to use (maps to '-r' from call_freesurfer)
-                      - spinoza_denoising: run pybest on all available sessions
                       - spinoza_fitprfs: set repetition time
   -s <subject>      Subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
   -t <type|task>    used for;
