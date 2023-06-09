@@ -10,9 +10,12 @@ from nipype.interfaces import utility as niu
 from niworkflows.utils.connections import pop_file, listify
 from fmriprep.interfaces import DerivativesDataSink
 from fmriprep.interfaces.reports import FunctionalSummary
+from niworkflows.engine.workflows import LiterateWorkflow as Workflow
+from smriprep.workflows.outputs import _bids_relative
+from niworkflows.interfaces.utility import KeySelect
 
 # BOLD workflows
-from fmriprep.workflows.bold.confounds import init_carpetplot_wf
+from fmriprep.workflows.bold.confounds import init_bold_confs_wf, init_carpetplot_wf
 from fmriprep.workflows.bold.hmc import init_bold_hmc_wf
 from fmriprep.workflows.bold.registration import init_bold_t1_trans_wf, init_bold_reg_wf
 from fmriprep.workflows.bold.resampling import (
@@ -24,6 +27,8 @@ from bids import BIDSLayout
 import numpy as np
 from fmriprep.config import DEFAULT_MEMORY_MIN_GB
 import os
+from linescanning import transform, utils
+opj = os.path.join
 
 class init_single_subject_wf():
 
@@ -38,7 +43,6 @@ class init_single_subject_wf():
         omp_nthreads=8, 
         max_topup_vols=5):
 
-        from niworkflows.engine.workflows import LiterateWorkflow as Workflow
         from niworkflows.utils.bids import collect_data
         import json
         from sdcflows import fieldmaps as fm
@@ -165,8 +169,6 @@ class init_single_subject_wf():
                     raise NotImplementedError(
                         "Sophisticated PEPOLAR schemes are unsupported."
                     )
-                
-            print(wf_inputs.in_data)
 
     def run(self):
 
@@ -216,13 +218,8 @@ class bold_reg_wf():
             write_report=False # will crash if True; missing 'source_file' on lta_ras2ras node
         )            
 
-        try:
-            self.prefix = os.environ.get("PREFIX")
-        except:
-            self.prefix = "sub-"
-
         self.bold_reg_wf.inputs.inputnode.ref_bold_brain = self.boldref
-        self.bold_reg_wf.inputs.inputnode.subject_id = f"{self.prefix}{self.subject_id}"
+        self.bold_reg_wf.inputs.inputnode.subject_id = self.subject_id
         self.bold_reg_wf.inputs.inputnode.subjects_dir = os.environ.get("SUBJECTS_DIR")
         self.bold_reg_wf.base_dir = self.workdir
 
@@ -236,14 +233,279 @@ class bold_reg_wf():
         else:
             config.loggers.workflow.log(25, "fMRIPrep (bold_reg_wf only) finished successfully!")
 
+
+class bold_confs_wf():
+    
+    def __init__(
+        self,
+        bids_dir: str=None,
+        bold_file: str=None,
+        bold_mask: str=None,
+        workdir: str=None,
+        movpar_file: str=None,
+        rmsd_file: str=None,
+        apply_warp: str=False,
+        t1_mask: str=None,
+        t1_tpms: str=None,
+        t1_bold_xform: str=None,
+        regressors_all_comps: bool=False,
+        regressors_dvars_th: float=1.5,
+        regressors_fd_th: float=0.5
+        ):
+        
+        self.bold_file = bold_file
+        self.bold_mask = bold_mask
+        self.apply_warp = apply_warp
+        self.bids_dir = bids_dir
+        self.movpar_file = movpar_file
+        self.t1_mask = t1_mask
+        self.t1_tpms = t1_tpms
+        self.t1_bold_xform = t1_bold_xform
+        self.regressors_all_comps = regressors_all_comps
+        self.regressors_dvars_th = regressors_dvars_th
+        self.regressors_fd_th = regressors_fd_th
+        self.workdir = workdir
+        self.rmsd_file = rmsd_file
+
+        # default to DIR_DATA_DERIV/fmriprep
+        if not isinstance(self.bids_dir, str):
+            self.bids_dir = opj(os.environ.get("DIR_DATA_DERIV"), "fmriprep")
+
+        # get bids layout
+        self.layout = BIDSLayout(self.bids_dir, validate=False)
+
+        # Extract metadata
+        all_metadata = [self.layout.get_metadata(fname) for fname in listify(self.bold_file)]
+
+        # Take first file as reference
+        self.boldref = pop_file(self.bold_file)
+        self.metadata = all_metadata[0]
+
+        if os.path.isfile(self.boldref):
+            self.bold_tlen, self.mem_gb = _create_mem_gb(self.boldref)
+
+        # initialize workflow
+        self.init_conf_wf()
+
+    def init_conf_wf(self):
+
+        # get confounds
+        self.bold_confounds_wf = init_bold_confs_wf(
+            mem_gb=self.mem_gb,
+            metadata=self.metadata,
+            regressors_all_comps=self.regressors_all_comps,
+            regressors_fd_th=self.regressors_dvars_th,
+            regressors_dvars_th=self.regressors_fd_th,
+            name="bold_confounds_wf",
+        )
+
+        # this is necessary for the reports!
+        self.bold_confounds_wf.get_node("inputnode").inputs.t1_transform_flags = [False]
+        for node in self.bold_confounds_wf.list_node_names():
+            if node.split(".")[-1].startswith("ds_report"):
+                self.bold_confounds_wf.get_node(node).inputs.base_directory = self.bids_dir
+                self.bold_confounds_wf.get_node(node).inputs.source_file = self.boldref
+
+        # check if we got a directory containing the masks. Assume format 'label-{GM|WM|CSF}'
+        if isinstance(self.t1_tpms, str):
+            mask_dir = self.t1_tpms
+            masks = utils.get_file_from_substring(["label-"], mask_dir)
+
+            # assume this outputs CSF-GM-WM. Order must be GM-WM-CSF
+            self.t1_tpms = [masks[1],masks[2],masks[0]]
+
+            # also check for brain mask
+            if not isinstance(self.t1_mask, str):
+                try:
+                    self.t1_mask = utils.get_file_from_substring(["brainmask.nii.gz"], mask_dir)
+                except:
+                    raise FileNotFoundError(f"Could not find 'motion_params.txt' file in '{search_dir}. Please specify manually or make sure 'call_topup' ran successfully")
+                            
+        # check if we should fetch already ran McFlirt output
+        if not isinstance(self.movpar_file, str):
+            try:
+                search_dir  = opj(self.workdir, "bold_hmc_wf", "normalize_motion")
+                self.movpar_file = utils.get_file_from_substring(["motion_params.txt"], search_dir)
+            except:
+                raise FileNotFoundError(f"Could not find 'motion_params.txt' file in '{search_dir}. Please specify manually or make sure 'call_topup' ran successfully")
+            
+        # check if we should fetch already ran McFlirt output
+        if not isinstance(self.rmsd_file, str):
+            try:
+                search_dir  = opj(self.workdir, "bold_hmc_wf", "mcflirt")
+                self.rmsd_file = utils.get_file_from_substring(["_rel.rms"], search_dir)
+            except:
+                raise FileNotFoundError(f"Could not find '*_rel.rms' file in '{search_dir}. Please specify manually or make sure 'call_topup' ran successfully")
+            
+        # check if we should fetch already bbreg
+        if not isinstance(self.t1_bold_xform, str):
+            try:
+                search_dir  = opj(self.workdir, "bold_reg_wf", "bbreg_wf", "concat_xfm")
+                self.rmsd_file = utils.get_file_from_substring(["out_inv.tfm"], search_dir)
+            except:
+                raise FileNotFoundError(f"Could not find 'out_inv.tfm' file in '{search_dir}. Please specify a valid T1w>BOLD registration file")            
+
+        # check if we can derive brain mask from input file
+        if not isinstance(self.bold_mask, str):
+            if self.bold_file.endswith("desc-preproc_bold.nii.gz"):
+                self.bold_mask = "-".join(self.bold_file.split("-")[:-1])+"-brain_mask.nii.gz"
+                if not os.path.exists(self.bold_mask):
+                    raise FileNotFoundError(f"Could not derive BOLD mask from '{self.bold_file}'. Please specify one.")
+            else:
+                raise FileNotFoundError(f"Could not derive BOLD mask from '{self.bold_file}'. Please specify one.")
+            
+        # apply T1w > BOLD transformation to T1w mask
+        if self.apply_warp:
+            self.bold_mask = transform.ants_applytrafo(
+                self.bold_file, 
+                self.t1_mask, 
+                trafo=self.t1_bold_xform, 
+                invert=0, 
+                interp='mul', 
+                output=self.bold_mask, 
+                return_type="file", 
+                verbose=False)
+
+        # set inputs
+        self.bold_confounds_wf.inputs.inputnode.bold            = self.bold_file
+        self.bold_confounds_wf.inputs.inputnode.bold_mask       = self.bold_mask
+        self.bold_confounds_wf.inputs.inputnode.movpar_file     = self.movpar_file
+        self.bold_confounds_wf.inputs.inputnode.t1w_mask        = self.t1_mask
+        self.bold_confounds_wf.inputs.inputnode.t1w_tpms        = self.t1_tpms
+        self.bold_confounds_wf.inputs.inputnode.t1_bold_xform   = self.t1_bold_xform
+        self.bold_confounds_wf.inputs.inputnode.rmsd_file       = self.rmsd_file
+
+        # set workdir
+        self.bold_confounds_wf.base_dir = self.workdir
+
+    def run(self):
+        config.loggers.workflow.log(25, "fMRIPrep (bold_reg_wf only) started!")
+        try:
+            # run workflow
+            self.res = self.bold_confounds_wf.run()
+            
+            # run the DerivativesDatasink thing to get the confound timeseries in the fmriprep folder
+            self.generate_outputs()
+        except Exception as e:
+            config.loggers.workflow.critical("fMRIPrep failed: %s", e)
+            raise
+        else:
+            config.loggers.workflow.log(25, "fMRIPrep (bold_reg_wf only) finished successfully!")
+
+    def init_conf_derivatives_wf(self):
+
+        name='func_derivatives_wf'
+        workflow = Workflow(name=name)
+
+        inputnode = pe.Node(
+            niu.IdentityInterface(
+                fields=[
+                    'source_file',
+                    'all_source_files',
+                    'confounds',
+                    'confounds_metadata',
+                    'anat2bold_xfm',
+                    'acompcor_masks',
+                    'tcompcor_mask',
+                ]
+            ),
+            name='inputnode',
+        )
+
+        raw_sources = pe.Node(niu.Function(function=_bids_relative), name='raw_sources')
+        raw_sources.inputs.bids_root = self.bids_dir
+
+        ds_confounds = pe.Node(
+            DerivativesDataSink(
+                base_directory=self.bids_dir,
+                desc='confounds',
+                suffix='timeseries',
+                dismiss_entities=("echo",),
+            ),
+            name="ds_confounds",
+            run_without_submitting=True,
+            mem_gb=config.DEFAULT_MEMORY_MIN_GB,
+        )
+        ds_ref_t1w_xfm = pe.Node(
+            DerivativesDataSink(
+                base_directory=self.bids_dir,
+                to='T1w',
+                mode='image',
+                suffix='xfm',
+                extension='.txt',
+                dismiss_entities=('echo',),
+                **{'from': 'scanner'},
+            ),
+            name='ds_ref_t1w_xfm',
+            run_without_submitting=True,
+        )
+        ds_ref_t1w_inv_xfm = pe.Node(
+            DerivativesDataSink(
+                base_directory=self.bids_dir,
+                to='scanner',
+                mode='image',
+                suffix='xfm',
+                extension='.txt',
+                dismiss_entities=('echo',),
+                **{'from': 'T1w'},
+            ),
+            name='ds_t1w_tpl_inv_xfm',
+            run_without_submitting=True,
+        )
+
+        workflow.connect([
+            (inputnode, raw_sources, [('all_source_files', 'in_files')]),
+            (inputnode, ds_confounds, [('source_file', 'source_file'),
+                                        ('confounds', 'in_file'),
+                                        ('confounds_metadata', 'meta_dict')]),
+            (inputnode, ds_ref_t1w_inv_xfm, [('source_file', 'source_file'),
+                                                ('anat2bold_xfm', 'in_file')]),
+        ])
+
+        return workflow
+
+    @staticmethod
+    def fetch_output(wf, node, key, graph=None):
+
+        # convert nodes in graph to strings 
+        str_nodes = [str(ii) for ii in list(graph.nodes)]
+
+        # then look for index in string-version of nodes
+        nn = f'{wf}.{node}'
+        ix_rel = str_nodes.index(nn)
+
+        # and fetch the node from the original graph
+        try:
+            out = list(graph.nodes)[ix_rel].result.outputs.get()[key]
+        except:
+            out = list(graph.nodes)[ix_rel].result.outputs
+        
+        return out
+
+    def generate_outputs(self):
+        
+        # initialize workflow
+        self.deriv_wf = self.init_conf_derivatives_wf()
+
+        # set input with outputs from bold_confound_wf (very annoying..)
+        self.deriv_wf.inputs.inputnode.all_source_files = self.bold_file
+        self.deriv_wf.inputs.inputnode.source_file = self.bold_file
+        self.deriv_wf.inputs.inputnode.anat2bold_xfm = self.t1_bold_xform
+        self.deriv_wf.inputs.inputnode.confounds = self.fetch_output("bold_confounds_wf", "spike_regressors", "confounds_file", graph=self.res)
+        self.deriv_wf.inputs.inputnode.confounds_metadata = self.fetch_output("bold_confounds_wf", "merge_confound_metadata2", "out_dict", graph=self.res)
+        self.deriv_wf.inputs.inputnode.tcompcor_mask = self.fetch_output("bold_confounds_wf", "tcompcor", "high_variance_masks", graph=self.res)
+        self.deriv_wf.inputs.inputnode.acompcor_masks = self.fetch_output("bold_confounds_wf", "acc_msk_bin", "out_file", graph=self.res)
+        self.deriv_wf.base_dir = self.workdir
+
+        # run wf
+        self.deriv_res = self.deriv_wf.run()
+
 def init_func_preproc_wf(bold_file, has_fieldmap=False, fmriprep_dir=None, layout=None, non_standard=['func'], omp_nthreads=8):
     """
     This workflow controls the functional preprocessing stages of *fMRIPrep*.
     """
-    from niworkflows.engine.workflows import LiterateWorkflow as Workflow
     from niworkflows.func.util import init_bold_reference_wf
     from niworkflows.interfaces.nibabel import ApplyMask
-    from niworkflows.interfaces.utility import KeySelect, DictMerge
     from niworkflows.interfaces.reportlets.registration import (
         SimpleBeforeAfterRPT as SimpleBeforeAfter,
     )
@@ -594,49 +856,6 @@ Non-gridded (surface) resamplings were performed using `mri_vol2surf`
     # # bypass STC from original BOLD in both SE and ME cases
     # else:
     workflow.connect([(select_bold, boldbuffer, [("out", "bold_file")])])
-
-    # # MULTI-ECHO EPI DATA #############################################
-    # if multiecho:  # instantiate relevant interfaces, imports
-    #     split_opt_comb = bold_split.clone(name="split_opt_comb")
-
-    #     inputnode.inputs.bold_file = ref_file  # Replace reference w first echo
-
-    #     join_echos = pe.JoinNode(
-    #         niu.IdentityInterface(fields=["bold_files"]),
-    #         joinsource="echo_index",
-    #         joinfield=["bold_files"],
-    #         name="join_echos",
-    #     )
-
-    #     # create optimal combination, adaptive T2* map
-    #     bold_t2s_wf = init_bold_t2s_wf(
-    #         echo_times=tes,
-    #         mem_gb=mem_gb["resampled"],
-    #         omp_nthreads=omp_nthreads,
-    #         name="bold_t2smap_wf",
-    #     )
-
-    #     t2s_reporting_wf = init_t2s_reporting_wf()
-
-    #     ds_report_t2scomp = pe.Node(
-    #         DerivativesDataSink(
-    #             desc="t2scomp",
-    #             datatype="figures",
-    #             dismiss_entities=("echo",),
-    #         ),
-    #         name="ds_report_t2scomp",
-    #         run_without_submitting=True,
-    #     )
-
-    #     ds_report_t2star_hist = pe.Node(
-    #         DerivativesDataSink(
-    #             desc="t2starhist",
-    #             datatype="figures",
-    #             dismiss_entities=("echo",),
-    #         ),
-    #         name="ds_report_t2star_hist",
-    #         run_without_submitting=True,
-    #     )
 
     bold_final = pe.Node(
         niu.IdentityInterface(fields=["bold", "boldref", "mask", "bold_echos", "t2star"]),
@@ -1155,7 +1374,6 @@ Non-gridded (surface) resamplings were performed using `mri_vol2surf`
         # fmt:on
         return workflow
 
-    from niworkflows.interfaces.utility import KeySelect
     from sdcflows.workflows.apply.registration import init_coeff2epi_wf
     from sdcflows.workflows.apply.correction import init_unwarp_wf
 
@@ -1433,9 +1651,6 @@ def init_func_derivatives_wf(
     """
     Set up a battery of datasinks to store derivatives in the right location.
     """
-    from niworkflows.engine.workflows import LiterateWorkflow as Workflow
-    from niworkflows.interfaces.utility import KeySelect
-    from smriprep.workflows.outputs import _bids_relative
 
     metadata = all_metadata[0]
     timing_parameters = prepare_timing_parameters(metadata)

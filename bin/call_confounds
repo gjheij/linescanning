@@ -1,0 +1,204 @@
+#!/usr/bin/env python
+#$ -j Y
+#$ -cwd
+#$ -V
+
+import mkl
+mkl.set_num_threads=1
+
+import os
+import sys
+import getopt
+from linescanning import fmriprep, utils
+
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_confounds
+
+This script runs only the confound nodes from fMRIPrep. Under the hood, it utilizes the functions 
+in 'linescanning.fmriprep', which are literally the workflows from fMRIPrep, but with all other 
+irrelevant stuff commented out (it's still there just in case). In contrast to regular fMRIprep
+calls, we can insert custom segmentations (ideally in DIR_DATA_DERIV/manual_masks) and registration
+between T1w and BOLD files. This means we can apply fmriprep to ultra partial FOV images, for which
+fMRIprep often fails at this stage.
+
+Parameters
+----------
+  -s|--sub      subject ID (to find default transformation matrix)
+  -n|--ses      subject ID (to find default transformation matrix). In this case, 'ses' refers to 
+                the 'target' session, while the source session is set to 1. In total, we look for
+                a file containing "from-ses1_to-ses{session}_rec-motion1" in DIR_DATA_DERIV/pycortex/
+                <subject>/transforms
+  -i|--in       input bold image (ideally the output from 'call_topup')
+  -b|--bids     BIDS-root. If you want the confounds for the output from 'call_topup', you can
+                leave this empty, as it'll default to 'DIR_DATA_DERIV/fmriprep'       
+  -w|--work     working directory where fMRIPrep's intermediate files are stored; default is some 
+                folder in /tmp. You can specify the folder that was used in 'call_topup' so that
+                all outputs are stored in the same directory. If nothing is specified, we'll try
+                to compile the directory name from the input name, subject/session, and DIR_DATA-
+                _SOURCE. So, if all goes well, this will result in `DIR_DATA_SOURCE/<subject>/<ses-
+                sion>/single_subject_<sub_id>_wf/func_preproc_<ses>_<task>_<run>_<acq>_wf`
+  -m|--mask     bold brain mask (defaults to <input image -preproc_bold.nii.gz)-brain_mask.nii.gz
+  -t|--trafo    transformation describing T1w to BOLD (defaults to '<work_dir>/bbreg_wf/concat_xfm/
+                out_inv.tfm')
+  --mov         output file from McFlirt in SPM format (leave empty to default to '<work_dir>bold-
+                _hmc_wf/normalize_motion/motion_params.txt
+  --rms         output file from McFlirt (leave empty to default to '<work_dir>/bold_hmc_wf/mcflirt/
+                *_rel.rms')
+  --t1_mask     brain mask in T1w-space. Can be transformed to BOLD-space if 'mask' is empty
+  --apply       if 'mask' is empty, but 't1_mask' in T1w-space is specified, apply the transforma-
+                tion specified with 'trafo'. Meant to fix broken brain masking
+  --tpms        one of 2 options:
+                  1)  String pointing to a directory containing 'label-{GM|WM|CSF}'-files (and 'brain-
+                      mask if 't1_mask' is empty). 
+                  2)  List of 3 elements pointing to the 3 probability maps (should be in the order
+                      GM>WM>CSF)
+                if no list/string is specified, we'll default to 'DIR_DATA_DERIV/manual_masks/<sub-
+                ject>/ses-1 (if subject is specified with '-s|--sub'). Here we assume the same
+                file naming ('label-{GM|WM|CSF}')
+
+Example
+----------
+>>> # let the script search for transformations/segmentations
+>>> call_confounds
+>>>   --sub sub-01
+>>>   --ses 2
+>>>   --in sub-01_ses-2_task-SRFi_acq-3DEPI_desc-preproc_bold.nii.gz
+>>>   -w work_dir
+
+>>> call_confounds
+>>>   --sub sub-01
+>>>   --ses 2
+>>>   --in sub-01_ses-2_task-SRFi_acq-3DEPI_desc-preproc_bold.nii.gz
+>>>   --work work_dir
+>>>   --tpms sub-01_label-GM.nii.gz,sub-01_label-WM.nii.gz,sub-01_label-CSF.nii.gz
+>>>   --trafo sub-01_from-T1w_to-ses2.mat
+>>>   --apply
+
+---------------------------------------------------------------------------------------------------
+"""
+
+    subject = None
+    session = None
+    bold_file = None
+    bids_dir = opj(os.environ.get("DIR_DATA_DERIV"), "fmriprep")
+    workdir = None
+    bold_mask = None
+    t1w_to_bold = None
+    mov_file = None
+    rms_file = None
+    apply_mask = False
+    t1_mask = None
+    t1_tpms = None
+
+    try:
+        opts = getopt.getopt(argv,"hi:b:w:m:t:s:n:",["sub=", "ses=", "help", "in=", "bids=", "work=", "mask=", "trafo=", "mov=", "rms=", "apply", "t1_mask=", "tpms="])[0]
+    except getopt.GetoptError:
+        print("ERROR while reading arguments; did you specify an illegal argument?")
+        print(main.__doc__)
+        sys.exit(2)
+    
+    for opt, arg in opts:
+        if opt in ('-h', '--help'):
+            print(main.__doc__)
+            sys.exit()
+        elif opt in ("-s", "--sub"):
+            subject = arg
+        elif opt in ("-n", "--ses"):
+            session = int(arg)            
+        elif opt in ("-i", "--in"):
+            bold_file = arg
+        elif opt in ("-b", "--bids"):
+            bids_dir = arg
+        elif opt in ("-w", "--work"):
+            workdir = arg
+        elif opt in ("-m", "--mask"):
+            bold_mask = arg
+        elif opt in ("-t", "--trafo"):
+            t1w_to_bold = arg  
+        elif opt in ("--mov"):
+            mov_file = arg           
+        elif opt in ("--rms"):
+            rms_file = arg      
+        elif opt in ("--apply"):
+            apply_mask = True
+        elif opt in ("--apply"):
+            apply_mask = True
+        elif opt in ("--t1_mask"):
+            t1_mask = arg
+        elif opt in ("--tpms"):
+            t1_tpms = arg            
+
+    if len(argv) < 1:
+        print(main.__doc__)
+        sys.exit()
+
+    # search for default transformation
+    if not isinstance(t1w_to_bold, str):
+        if isinstance(subject, str) and isinstance(session, int):
+            ctx_dir = opj(os.environ.get("DIR_DATA_DERIV"), "pycortex", subject, "transforms")
+            t1w_to_bold = utils.get_file_from_substring([f"from-ses1_to-ses{session}_rec-motion1"], ctx_dir, exclude="command.txt")
+
+            if isinstance(t1w_to_bold, list):
+                raise TypeError(f"Found multiple instances for 'from-ses1_to-ses{session}_rec-motion1', in '{ctx_dir}': {t1w_to_bold}")
+            
+        else:
+            raise ValueError(f"Insufficient information to search for 'from-ses1_to-ses<ses>_rec-motion1' in '{opj(os.environ.get('DIR_DATA_DERIV'), 'pycortex')}. Create a T1w>BOLD transformation with 'call_bbregwf' or 'call_antsregistration'")
+
+    # check if we can set default t1_tpms to DIR_DATA_DERIV/manual_masks/<subject>/ses-1
+    if not isinstance(t1_tpms, list):
+        if not isinstance(t1_tpms, str):
+            if isinstance(subject, str):
+                if not isinstance(t1_mask, str):
+                    t1_tpms = opj(os.environ.get("DIR_DATA_DERIV"), "manual_masks", subject, "ses-1")
+            else:
+                raise ValueError(f"Set subject flag to retrieve 'label-'/ and 'brainmask' files from '{opj(os.environ.get('DIR_DATA_DERIV'), 'manual_masks')}'")           
+        else:
+            # parse input to list
+            t1_tpms = utils.string2list(t1_tpms)
+
+    # set default work directory
+    if not isinstance(workdir, str):
+
+        # define base directory if subject/session is specified
+        base_dir = ""
+        if isinstance(subject, str):
+            base_dir+=subject
+
+        if isinstance(session, (int,str)):
+            base_dir = opj(base_dir, f"ses-{session}")
+    
+        # assemble workflow name
+        wf = utils.assemble_fmriprep_wf(bold_file)
+        
+        # combine
+        workdir = opj(os.environ.get('DIR_DATA_SOURCE'), base_dir, wf)
+
+        # make it
+        if not os.path.exists(workdir):
+            os.makedirs(workdir)
+
+    print(workdir)
+    sys.exit(1)
+    # initialize class
+    bf = fmriprep.bold_confs_wf(
+        bold_file=bold_file,
+        bids_dir=bids_dir,
+        bold_mask=bold_mask,
+        workdir=workdir,
+        movpar_file=mov_file,
+        rmsd_file=rms_file,
+        apply_warp=apply_mask,
+        t1_mask=t1_mask,
+        t1_tpms=t1_tpms,
+        t1_bold_xform=t1w_to_bold)
+    
+    # run
+    bf.run()
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
