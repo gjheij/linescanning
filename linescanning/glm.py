@@ -1,4 +1,5 @@
 from linescanning.plotting import LazyPlot, Defaults, conform_ax_to_obj
+from linescanning import utils
 from nilearn.glm.first_level import first_level
 from nilearn.glm.first_level import hemodynamic_models 
 from nilearn import plotting
@@ -133,14 +134,18 @@ class GenericGLM():
         regressors=None, 
         make_figure=False, 
         xkcd=False, 
+        plot_design=False,
+        plot_convolve=False,
         plot_event=None, 
         plot_vox=None, 
+        plot_fit=False,
         verbose=False, 
         nilearn=False, 
         derivative=False, 
         dispersion=False, 
         add_intercept=True,
         fit=True,
+        copes=None,
         cmap='inferno'):
         
         # instantiate 
@@ -164,6 +169,10 @@ class GenericGLM():
         self.add_intercept      = add_intercept
         self.cmap               = cmap
         self.run_fit            = fit
+        self.copes              = copes
+        self.plot_fit           = plot_fit
+        self.plot_design        = plot_design
+        self.plot_convolve      = plot_convolve
 
         if isinstance(data, np.ndarray):
             self.data = data.copy()
@@ -205,7 +214,7 @@ class GenericGLM():
             self.stims, 
             TR=self.TR,
             osf=self.osf,
-            make_figure=self.make_figure, 
+            make_figure=self.plot_convolve, 
             xkcd=self.xkcd,
             line_width=2,
             add_hline=0)
@@ -219,7 +228,19 @@ class GenericGLM():
             self.stims_convolved_resampled = self.stims_convolved.copy()
 
         self.condition_names = list(self.stims_convolved_resampled.keys())
+
+    def create_design(
+        self, 
+        regressors=None, 
+        add_intercept=True,
+        verbose=False,
+        make_figure=False):
         
+        self.regressors = regressors
+        self.add_intercept = add_intercept
+        self.verbose = verbose
+        self.make_figure = make_figure
+
         # finalize design matrix (with regressors)
         if verbose:
             print("Creating design matrix")
@@ -232,14 +253,26 @@ class GenericGLM():
         if self.make_figure:
             self.plot_design_matrix()
         
-        # Fit all
-        if self.run_fit:
-            if verbose:
-                print("Running fit")
-            
-            self.fit()
-        
-    def fit(self):
+    def fit(
+        self,
+        nilearn_method=False,
+        make_figure=False, 
+        xkcd=False, 
+        plot_vox=None, 
+        plot_event=None, 
+        cmap="inferno",
+        verbose=False,
+        copes=None):
+
+        self.nilearn_method = nilearn_method
+        self.xkcd = xkcd
+        self.plot_vox = plot_vox
+        self.plot_event = plot_event
+        self.cmap = cmap
+        self.verbose = verbose 
+        self.copes = copes
+        self.make_figure = make_figure
+
         if self.nilearn_method:
             # we're going to hack Nilearn's FirstLevelModel to be compatible with our line-data. First, we specify the model as usual
             self.fmri_glm = first_level.FirstLevelModel(
@@ -251,14 +284,14 @@ class GenericGLM():
                 high_pass=.01)
 
             # Normally, we'd run `fmri_glm = fmri_glm.fit()`, but because this requires nifti-like inputs, we run `run_glm` outside of that function to get the labels:
-            if isinstance(data, pd.DataFrame):
-                data = data.values
-            elif isinstance(data, np.ndarray):
-                data = data.copy()
+            if isinstance(self.data, pd.DataFrame):
+                self.data = self.data.values
+            elif isinstance(self.data, np.ndarray):
+                self.data = data.copy()
             else:
-                raise ValueError(f"Unknown input type {type(data)} for functional data. Must be pd.DataFrame or np.ndarray [time, voxels]")
+                raise ValueError(f"Unknown input type {type(self.data)} for functional data. Must be pd.DataFrame or np.ndarray [time, voxels]")
 
-            self.labels, self.results = first_level.run_glm(data, self.design, noise_model='ar1')
+            self.labels, self.results = first_level.run_glm(self.data, self.design, noise_model='ar1')
 
             # Then, we inject this into the `fmri_glm`-class so we can compute contrasts
             self.fmri_glm.labels_    = [self.labels]
@@ -306,7 +339,8 @@ class GenericGLM():
                 plot_vox=self.plot_vox, 
                 plot_event=self.plot_event, 
                 cmap=self.cmap,
-                verbose=self.verbose)
+                verbose=self.verbose,
+                copes=self.copes)
 
     def plot_contrast_matrix(self, save_as=None):
         if self.nilearn_method:
@@ -796,7 +830,7 @@ def first_level_matrix(stims_dict, regressors=None, add_intercept=True, names=No
 
     # check if we should add regressors
     if isinstance(regressors, np.ndarray):
-        regressors_df = pd.DataFrame(regressors, columns=[f'regressor {ii}' for ii in range(regressors.shape[-1])])
+        regressors_df = pd.DataFrame(regressors, columns=[f'regressor_{ii+1}' for ii in range(regressors.shape[-1])])
         return pd.concat([X_matrix, regressors_df], axis=1)
     elif isinstance(regressors, dict):
         regressors_df = pd.DataFrame(regressors)
@@ -886,25 +920,57 @@ def fit_first_level(
 
     X_conv = X_matrix.values.copy()
 
-    if copes == None:
-        C = np.identity(X_conv.shape[1])
+    # set default to first predictor
+    if not isinstance(copes, (int,list,np.ndarray)):
+        copes = 1
 
-        # C = np.array([[1,0,0],[0,1,0],[0,0,1]])
-        # print(C.shape)
+    # convert to array
+    if isinstance(copes, int):
+        C = np.zeros((X_conv.shape[1]))
+        C[copes] = 1
+    elif isinstance(copes, list):
+        C = np.array(copes, dtype=int)
+    else:
+        C = copes.copy()
+
+    # enforce integer
+    C = C.astype(int)
+
+    good_shape = np.zeros((C.shape[0], X_conv.shape[1]))
+    utils.paste(good_shape, C)
+    C = good_shape.copy()
+
+    # force into 2d
+    if C.ndim == 1:
+        C = C[np.newaxis,...]
 
     # np.linalg.pinv(X) = np.inv(X.T @ X) @ X
     betas_conv, sse, rank, s = np.linalg.lstsq(X_conv, data, rcond=-1)
     # betas_conv  = np.linalg.inv(X_conv.T @ X_conv) @ X_conv.T @ data
 
-    # calculate some other relevant parameters
-    cope        = C @ betas_conv
-    resids      = data - X_conv@betas_conv
-    dof         = X_conv.shape[0] - np.linalg.matrix_rank(X_conv)
-    sig2        = np.sum(resids**2,axis=0)/dof
-    varcope     = np.outer(C@np.diag(np.linalg.inv(X_conv.T@X_conv))@C.T,sig2)
+    # loop through contrasts
+    tstat = []
+    for co_ix in range(C.shape[0]):
+        
+        # contrast-specific vector
+        cope_c = C[co_ix,:]
 
-    # calculate t-stats
-    tstat = cope / np.sqrt(varcope)
+        # calculate some other relevant parameters
+        cope        = cope_c @ betas_conv
+        dof         = X_conv.shape[0] - rank
+        sigma_hat   = sse/dof
+        varcope     = sigma_hat*design_variance(X_conv, which_predictor=cope_c)
+
+        # calculate t-stats
+        t_ = cope / np.sqrt(varcope)
+        tstat.append(t_[0])
+
+    if len(tstat) > 0:
+        tstat = np.array(tstat)
+
+    if verbose:
+        for co_ix in range(C.shape[0]):
+            print(f"t-stat {C[co_ix,:]}: {tstat[co_ix]}")
 
     def best_voxel(betas):
         return np.where(betas == np.amax(betas))[0][0]
@@ -916,10 +982,6 @@ def fit_first_level(
 
     if betas_conv.ndim == 1:
         betas_conv = betas_conv[...,np.newaxis]
-    
-    if verbose:
-        print(f"max tstat (vox {best_vox}) = {tstat[-1,best_vox]}")
-        print(f"max beta (vox {best_vox}) = {betas_conv[-1,best_vox]}")
 
     if make_figure:
 
@@ -994,8 +1056,38 @@ def fit_first_level(
 
     return {'betas': betas_conv,
             'x_conv': X_conv,
-            'resids': resids,
-            'tstats': tstat}
+            'tstats': tstat,
+            'copes': C}
+
+def design_variance(X, which_predictor=1):
+    ''' Returns the design variance of a predictor (or contrast) in X.
+    
+    Parameters
+    ----------
+    X : numpy array
+        Array of shape (N, P)
+    which_predictor : int or list/array
+        The index of the predictor you want the design var from.
+        Note that 0 refers to the intercept!
+        Alternatively, "which_predictor" can be a contrast-vector
+        (which will be discussed later this lab).
+        
+    Returns
+    -------
+    des_var : float
+        Design variance of the specified predictor/contrast from X.
+    '''
+    
+    is_single = isinstance(which_predictor, int)
+    if is_single:
+        idx = which_predictor
+    else:
+        idx = np.array(which_predictor) != 0
+    
+    c = np.zeros(X.shape[1])
+    c[idx] = 1 if is_single == 1 else which_predictor[idx]
+    des_var = c.dot(np.linalg.inv(X.T.dot(X))).dot(c.T)
+    return des_var
 
 def double_gamma(x, lag=6, a2=12, b1=0.9, b2=0.9, c=0.35, scale=True):
     """double_gamma
