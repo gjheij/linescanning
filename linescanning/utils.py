@@ -1228,6 +1228,55 @@ def disassemble_fmriprep_wf(wf_path, subj_ID, prefix="sub-"):
     fname = "_".join(fname)
     return fname
 
+def assemble_fmriprep_wf(bold_path, wf_only=False):
+    """assemble_fmriprep_wf
+
+    Parses the bold file into a workflow name for fMRIPrep into its constituents to recreate a filename. Searches for the following keys: `['ses', 'task', 'acq', 'run']`.
+
+    Parameters
+    ----------
+    bold_path: str
+        Path to bold-file
+    wf_only: bool, optional
+        If `sub` tag is found in `bold_path`, we can reconstruct the full workflow folder including preceding `single_subject_<sub_id>_wf`. If you do not want this, set `wf_only` to **False**.
+
+    Returns
+    ----------
+    str
+        filename based on constituent file parts
+
+    Example
+    ----------
+    >>> from linescanning.utils import disassemble_fmriprep_wf
+    >>> bold_file = "sub-008_ses-2_task-SRFi_acq-3DEPI_run-1_desc-preproc_bold.nii.gz"
+    >>> wf_name = assemble_fmriprep_wf(bold_file)
+    >>> wf_name
+    >>> 'single_subject_008_wf/func_preproc_ses_2_task_SRFi_run_1_acq_3DEPI_wf'
+
+    >>> # workflow name only
+    >>> wf_name = assemble_fmriprep_wf(bold_file, wf_only=True)
+    >>> wf_name
+    >>> 'func_preproc_ses_2_task_SRFi_run_1_acq_3DEPI_wf'
+    """
+    bids_comps = split_bids_components(os.path.basename(bold_path))
+    fname = ["func_preproc"]
+
+    for tag in ['ses', 'task', 'run', 'acq']:
+        if tag in list(bids_comps.keys()):
+            fname.append(f"{tag}_{bids_comps[tag]}")
+    
+    base_dir = ""
+    fname = "_".join(fname)+"_wf"
+    if 'sub' in list(bids_comps.keys()):
+        base_dir = f"single_subject_{bids_comps['sub']}_wf"
+
+        if wf_only:
+            return fname
+        else:
+            return opj(base_dir, fname)
+    else:
+        return fname
+
 
 def resample2d(array:np.ndarray, new_size:int, kind='linear'):
     """resample2d
@@ -1356,3 +1405,18 @@ def make_polar_cmap():
     cmap = mcolors.ListedColormap(newcolors, name='hsvx2')
 
     return cmap
+
+# https://stackoverflow.com/a/50692782
+def paste_slices(tup):
+  pos, w, max_w = tup
+  wall_min = max(pos, 0)
+  wall_max = min(pos+w, max_w)
+  block_min = -min(pos, 0)
+  block_max = max_w-max(pos+w, max_w)
+  block_max = block_max if block_max != 0 else None
+  return slice(wall_min, wall_max), slice(block_min, block_max)
+
+def paste(large, small, loc=(0,0)):
+  loc_zip = zip(loc, small.shape, large.shape)
+  large_slices, small_slices = zip(*map(paste_slices, loc_zip))
+  large[large_slices] = small[small_slices]
