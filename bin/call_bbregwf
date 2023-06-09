@@ -1,10 +1,23 @@
-#!/usr/bin/env bash
+#!/usr/bin/env python
+#$ -j Y
+#$ -cwd
+#$ -V
 
-#---------------------------------------------------------------------------------------------------------
-# Create help text
-function Usage {
-    cat <<USAGE
+import mkl
+mkl.set_num_threads=1
 
+import os
+import sys
+import getopt
+from linescanning import (
+    fmriprep,
+    utils)
+import shutil
+opj = os.path.join
+
+def main(argv):
+
+    """
 ---------------------------------------------------------------------------------------------------
 call_topup
 
@@ -20,81 +33,163 @@ fail. Therefore, I just need motion-corrected, topup data for a very select part
 
 Parameters
 ----------
-    -s  subject ID
-    -b  reference bold file
-    -o  directory+basename of the output files
-    -w  working directory where fMRIPrep's intermediate files are stored; default is some folder 
-        in /tmp
-                        
+  -s|--sub      subject ID; together with `session`, used to reconstruct a default `workdir` if
+                none is specified. Defaults to `DIR_DATA_SOURCE/<subject>/<session>/single_sub-
+                ject_<sub_id>_wf/func_preproc_<ses>_<task>_<run>_<acq>_wf`. Subject is also requi-
+                red for the Freesurfer identification; if not specified, we'll try to read if from
+                the input file with :func:`linescanning.utils.split_bids_components`. This requi-
+                res your input to be BIDS-valid!
+  -n|--ses      session ID; together with `subject`, used to reconstruct a default `workdir` if
+                none is specified. Defaults to `DIR_DATA_SOURCE/<subject>/<session>/single_sub-
+                ject_<sub_id>_wf/func_preproc_<ses>_<task>_<run>_<acq>_wf` 
+  -b|--bids     BIDS-root. If you want the confounds for the output from 'call_topup', you can
+                leave this empty, as it'll default to 'DIR_DATA_DERIV/fmriprep'                  
+  -i|--in       input bold image (ideally the output from 'call_topup')
+  -w|--work     working directory where fMRIPrep's intermediate files are stored; default is some 
+                folder in /tmp. You can specify the folder that was used in 'call_topup' so that
+                all outputs are stored in the same directory. If nothing is specified, we'll try
+                to compile the directory name from the input name, subject/session, and DIR_DATA-
+                _SOURCE. So, if all goes well, this will result in `DIR_DATA_SOURCE/<subject>/<ses-
+                sion>/single_subject_<sub_id>_wf/func_preproc_<ses>_<task>_<run>_<acq>_wf`
+  -o|--out      output directory for final matrices; if nothing is specified, we'll default to the
+                directory of the input file
+  --cpu         nr of cpus to use (defaults to 1)
+
 Example
 ----------
->>> call_topup -s 001 -b boldref.nii.gz -o DIR_DATA_DERIV/fmriprep/sub-001/ses-2/func
->>> -w DIR_DATA_SOURCE/sub-001/ses-2/single_subject_008_wf
+>>> call_bbregwf -s sub-01 --in sub-008_ses-2_task-SRFi_acq-3DEPI_run-1_desc-bold_ref.nii.gz
 
 ---------------------------------------------------------------------------------------------------
-USAGE
-    exit 1
-}
+"""
 
-while getopts :-:hs:i:o:w:b: argument
-do
-case ${argument} in
-    s)  subject=${OPTARG}
-          ;;
-    b)  boldref=${OPTARG}
-          ;;
-    o)  outputdir=${OPTARG}
-          ;;
-    w)  workdir=${OPTARG}
-          ;;
-  esac
-done
+    subject = None
+    session = None
+    bold_file = None
+    workdir = None
+    cpus = 1
+    init = "header"
+    output_dir = None
+    dof = 6
 
-if [[ $# -lt 4 ]] ; then
-  Usage >&2
-  exit 1
-fi
+    try:
+        opts = getopt.getopt(argv,"hs:n:i:w:b:o:",["help", "bids=", "sub=", "ses=", "in=", "work=", "cpu=", "init=", "out="])[0]
+    except getopt.GetoptError:
+        print("ERROR while reading arguments; did you specify an illegal argument?")
+        print(main.__doc__)
+        sys.exit(2)
+    
+    for opt, arg in opts:
+        if opt in ('-h', '--help'):
+            print(main.__doc__)
+            sys.exit()
+        elif opt in ("-s", "--sub"):
+            subject = arg
+        elif opt in ("-n", "--ses"):
+            session = int(arg)
+        elif opt in ("-i", "--in"):
+            bold_file = os.path.abspath(arg)
+        elif opt in ("-o", "--out"):
+            output_dir = arg            
+        elif opt in ("-w", "--work"):
+            workdir = arg
+        elif opt in ("--cpu"):
+            cpus = int(arg)
+        elif opt in ("--init"):
+            init = arg  
+        elif opt in ("--dof"):
+            dof = int(arg)
 
-if [ ! -f ${boldref} ]; then
-    echo "ERROR in `basename ${0}`: specified boldref-image does not exist"
-fi
+    if len(argv) < 2:
+        print(main.__doc__)
+        sys.exit()
 
-# for some reason, fMRIPrep workflow crashes when ran from cmd-line, but not from python. 
-# so here we just send a block of code to python
-PYTHON_CODE=$(cat <<END
-from linescanning import fmriprep
-wf = fmriprep.bold_reg_wf("${subject}", 
-                          "${boldref}", 
-                          workdir="${workdir}",
-                          omp_nthreads=6,
-                          use_bbr=True,
-                          bold2t1w_init="header",
-                          bold2t1w_dof=6)
-wf.run()                                     
-END
-)
+    # need a subject ID for FreeSurfer
+    if not isinstance(subject, str):
+        try:
+            bids_comps = utils.split_bids_components(os.path.basename(bold_file))
+            subject = f"sub-{bids_comps['sub']}"
+        except:
+            raise ValueError(f"Please specify subject ID with '-s|--sub'")
 
-# run the code
-res="$(python -c "$PYTHON_CODE")"
-if [[ $? -ne 0 ]]; then
-    echo "ERROR in `basename ${0}`: workflow did not execute cleanly"
-    exit 1
-fi
+    # set default work directory
+    if not isinstance(workdir, str):
 
-# find the matrix files
-fwd=`find $workdir -type f -name "out_fwd.tfm" 2>/dev/null`
-inv=`find $workdir -type f -name "out_inv.tfm" 2>/dev/null`
+        # define base directory if subject/session is specified
+        base_dir = ""
+        if isinstance(subject, str):
+            base_dir+=subject
 
-if [ ! -z ${fwd} ]; then
-    cp ${fwd} ${outputdir}_from-bold_to-T1w_mode-image_xfm.txt 2>/dev/null
-else
-    echo "ERROR in `basename ${0}`: missing bold-to-T1w file. Check if workflow was executed correctly"
-    exit 1
-fi
+        bids_comps = utils.split_bids_components(os.path.basename(bold_file))
+        if 'ses' in list(bids_comps.keys()):
+            base_dir = opj(base_dir, f"ses-{bids_comps['ses']}")
+    
+        # assemble workflow name
+        wf = utils.assemble_fmriprep_wf(bold_file)
+        
+        # combine
+        workdir = opj(os.environ.get('DIR_DATA_SOURCE'), base_dir, wf)
 
-if [ ! -z ${inv} ]; then
-    cp ${inv} ${outputdir}_from-T1w_to-bold_mode-image_xfm.txt 2>/dev/null
-else
-    echo "ERROR in `basename ${0}`: missing bold-to-T1w file. Check if workflow was executed correctly"
-    exit 1
-fi
+        # make it
+        if not os.path.exists(workdir):
+            os.makedirs(workdir)
+
+    # try to derive output directory parts from input file if no output directory was specified
+    if not isinstance(output_dir, str):
+        output_dir = os.path.dirname(bold_file)
+    
+    # make output_dir
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    # init wf
+    wf = fmriprep.bold_reg_wf(
+        subject, 
+        bold_file, 
+        workdir=workdir,
+        omp_nthreads=cpus,
+        use_bbr=True,
+        bold2t1w_init=init,
+        bold2t1w_dof=dof)
+    
+    # run wf
+    wf.run()
+
+    # move tfm files to output_dir
+    tfm_files = utils.FindFiles(workdir, extension="tfm").files
+
+    # get bids components to derive output name
+    try_bids = True
+    try:
+        bids_comps = utils.split_bids_components(os.path.basename(bold_file))
+    except:
+        try_bids = False
+    
+    # check if the search resulted in files
+    if len(tfm_files) > 0:
+
+        for tag,out in zip(["fwd","inv"],["bold_to-T1w","T1w_to_bold"]):
+            
+            # source file
+            src = utils.get_file_from_substring(tag, tfm_files)
+
+            if try_bids:
+                base_name = []
+                for ii in ["sub","ses","task","acq","run"]:
+                    if ii in list(bids_comps.keys()):
+                        base_name.append(f"{ii}-{bids_comps[ii]}")
+                
+                if len(base_name) > 0:
+                    base_name = "_".join(base_name)
+
+                # target file
+                trg = opj(output_dir, f"{base_name}_from-{out}_mode-image_xfm.txt")
+            else:
+                trg = opj(output_dir, os.path.basename(src))
+
+            shutil.copyfile(src, trg)
+            
+    else:
+        raise ValueError(f"Could not find 'tfm'-files in '{workdir}'")
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
