@@ -262,7 +262,9 @@ class GenericGLM():
         plot_event=None, 
         cmap="inferno",
         verbose=False,
-        copes=None):
+        copes=None,
+        plot_full_only=False,
+        plot_full=False):
 
         self.nilearn_method = nilearn_method
         self.xkcd = xkcd
@@ -272,6 +274,8 @@ class GenericGLM():
         self.verbose = verbose 
         self.copes = copes
         self.make_figure = make_figure
+        self.plot_full_only = plot_full_only
+        self.plot_full = plot_full
 
         if self.nilearn_method:
             # we're going to hack Nilearn's FirstLevelModel to be compatible with our line-data. First, we specify the model as usual
@@ -340,7 +344,9 @@ class GenericGLM():
                 plot_event=self.plot_event, 
                 cmap=self.cmap,
                 verbose=self.verbose,
-                copes=self.copes)
+                copes=self.copes,
+                plot_full_only=self.plot_full_only,
+                plot_full=self.plot_full)
 
     def plot_contrast_matrix(self, save_as=None):
         if self.nilearn_method:
@@ -851,6 +857,8 @@ def fit_first_level(
     plot_event=1, 
     verbose=False, 
     cmap='inferno', 
+    plot_full_only=False,
+    plot_full=False,
     **kwargs):
 
     """fit_first_level
@@ -948,6 +956,13 @@ def fit_first_level(
     betas_conv, sse, rank, s = np.linalg.lstsq(X_conv, data, rcond=-1)
     # betas_conv  = np.linalg.inv(X_conv.T @ X_conv) @ X_conv.T @ data
 
+    # get full model predictions
+    preds = X_conv@betas_conv
+
+    # calculate r2
+    tse = (data.shape[0]-1) * np.var(data, axis=0, ddof=0)
+    r2 = 1-(sse/tse)
+
     # loop through contrasts
     tstat = []
     for co_ix in range(C.shape[0]):
@@ -963,7 +978,7 @@ def fit_first_level(
 
         # calculate t-stats
         t_ = cope / np.sqrt(varcope)
-        tstat.append(t_[0])
+        tstat.append(t_)
 
     if len(tstat) > 0:
         tstat = np.array(tstat)
@@ -972,11 +987,12 @@ def fit_first_level(
         for co_ix in range(C.shape[0]):
             print(f"t-stat {C[co_ix,:]}: {tstat[co_ix]}")
 
-    def best_voxel(betas):
-        return np.where(betas == np.amax(betas))[0][0]
+    def best_voxel(r2):
+        # get max over voxels and find max
+        return np.where(r2 == r2.max())[0][0]
 
     if not plot_vox:
-        best_vox = best_voxel(betas_conv[-1])
+        best_vox = best_voxel(r2)
     else:
         best_vox = plot_vox
 
@@ -985,66 +1001,54 @@ def fit_first_level(
 
     if make_figure:
 
+        # set defaults for actual datapoints
         markers = ['.']
         colors = ["#cccccc"]
         linewidth = [0.5]
-
         col_names = X_matrix.columns.to_list()
 
-        # you can specify to plot multiple events!
-        if isinstance(plot_event, str):
+        if not plot_full_only:
 
-            # get intercept, and all associated betas (to include derivatives)
-            beta_idx = [0] + [ix for ix,ii in enumerate(col_names) if plot_event in ii]
-
-            # # always include intercept
-            # beta_idx = [0,plot_event]
-
-            # get betas for all voxels
-            betas = betas_conv[beta_idx]
-            event = X_conv[:,beta_idx]
-
-            # get predictions
-            preds = event@betas
-
-            # to avoid annoying indexing, add intercept here again
-            signals = [data[:, best_vox], preds[:,best_vox]]
-            labels = ['True signal', 'Event signal']
-            markers.append(None)
-            colors.append("r")
-            linewidth.append(2)
-
-        elif isinstance(plot_event, list):
+            # make list so we can loop
+            if isinstance(plot_event, str):
+                plot_event = [plot_event]
 
             signals = [data[:, best_vox]]
             labels = ['True signal']
             for ev in plot_event:
 
                 # always include intercept
-                beta_idx = [0] + [ix for ix,ii in enumerate(col_names) if ev in ii]
+                beta_idx = [ix for ix,ii in enumerate(col_names) if ev in ii or "regressor" in ii or "intercept" in ii]
 
                 # get betas for all voxels
                 betas = betas_conv[beta_idx]
                 event = X_conv[:,beta_idx]
 
                 # get predictions
-                preds = event@betas
+                ev_preds = event@betas
 
-                signals.append(preds[:,best_vox])
+                signals.append(ev_preds[:,best_vox])
                 labels.append(f"Event '{ev}'")
                 markers.append(None)
                 linewidth.append(2)
 
             colors = [*colors, *sns.color_palette(cmap, len(plot_event))]
-
         else:
-            raise NotImplementedError("Im lazy.. Please use indexing for now")
+            plot_full = True
+
+        # append full model
+        if plot_full:
+            signals.append(preds[:,best_vox])
+            labels.append(f"full model")
+            markers.append(None)
+            linewidth.append(1)
+            colors.append("k")
 
         LazyPlot(
             signals,
-            y_label="Activity (A.U.)",
+            y_label="Activity (a.u.)",
             x_label="volumes",
-            title=f"Model fit vox {best_vox}",
+            title=f"model fit vox {best_vox+1}/{data.shape[1]} (r2={r2[best_vox]})",
             labels=labels,
             figsize=(20,5),
             font_size=20,
@@ -1057,6 +1061,7 @@ def fit_first_level(
     return {'betas': betas_conv,
             'x_conv': X_conv,
             'tstats': tstat,
+            'r2': r2,
             'copes': C}
 
 def design_variance(X, which_predictor=1):
