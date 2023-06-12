@@ -9,7 +9,7 @@ from nitime.analysis import SpectralAnalyzer
 import numpy as np
 import os
 import pandas as pd
-from scipy import signal
+from scipy import signal, fft
 import seaborn as sns
 from sklearn import decomposition
 from typing import Union
@@ -432,7 +432,7 @@ class RegressOut():
             self.clean_df = pd.DataFrame(self.clean_array, index=self.data.index, columns=self.data.columns)
 
 
-def highpass_dct(func, lb, TR=0.105):
+def highpass_dct(func, lb, TR=0.105, modes_to_remove=None):
     """highpass_dct
 
     Discrete cosine transform (DCT) is a basis set of cosine regressors of varying frequencies up to a filter cutoff of a specified number of seconds. Many software use 100s or 128s as a default cutoff, but we encourage caution that the filter cutoff isn't too short for your specific experimental design. Longer trials will require longer filter cutoffs. See this paper for a more technical treatment of using the DCT as a high pass filter in fMRI data analysis (https://canlab.github.io/_pages/tutorials/html/high_pass_filtering.html).
@@ -445,7 +445,9 @@ def highpass_dct(func, lb, TR=0.105):
         cutoff-frequency for low-pass
     TR: float, optional
         Repetition time of functional run, by default 0.105
-
+    modes_to_remove: int, optional
+        Remove first X cosines
+        
     Returns
     ----------
     dct_data: np.ndarray
@@ -462,12 +464,19 @@ def highpass_dct(func, lb, TR=0.105):
     """
 
     # Create high-pass filter and clean
-    n_vol           = func.shape[-1]
-    st_ref          = 0  # offset frametimes by st_ref * tr
-    ft              = np.linspace(st_ref * TR, (n_vol + st_ref) * TR, n_vol, endpoint=False)
-    hp_set          = _cosine_drift(lb, ft)
-    dct_data        = clean(func.T, detrend=False, standardize=False, confounds=hp_set).T
+    n_vol = func.shape[-1]
+    st_ref = 0  # offset frametimes by st_ref * tr
+    ft = np.linspace(st_ref * TR, (n_vol + st_ref) * TR, n_vol, endpoint=False)
+    hp_set = _cosine_drift(lb, ft)
 
+    # select modes
+    if isinstance(modes_to_remove, int):
+        hp_set[:,:modes_to_remove]
+    else:
+        # remove constant column
+        hp_set = hp_set[:,:-1]
+
+    dct_data = clean(func.T, detrend=False, standardize=False, confounds=hp_set).T
     return dct_data, hp_set
 
 def lowpass_savgol(func, window_length=None, polyorder=None):
