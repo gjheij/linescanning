@@ -62,7 +62,7 @@ if [[ $# -lt 3 ]] ; then
 fi
 
 set_tr=0
-INT="Linear"
+INT="--lin"
 VERB=0
 # Check for subject & session flags
 while getopts :-:r:o:p:t:i: argument
@@ -74,38 +74,35 @@ do
           set_tr=1
           ;;
         lin)
-          INT="Linear"
+          INT="--lin"
           ;;
         nn)
-          INT="NearestNeighbor"
+          INT="--nn"
           ;;
         mul)
-          INT="MultiLabel"
+          INT="--mul"
           ;;         
         gau)
-          INT="Gaussian"
+          INT="--gau"
           ;;               
         bspl*)
-          INT="BSpline[$(basename ${OPTARG} | cut -c 5)]"
+          INT="--bspl[$(basename ${OPTARG} | cut -c 5)]"
           ;;       
         cws)
-          INT="CosineWindowedSinc"
+          INT="--cws"
           ;;
         wws)
-          INT="WelchWindowedSinc"
+          INT="--wws"
           ;;
         hws)
-          INT="HammingWindowedSinc"
+          INT="--hws"
           ;;
         lws)
-          INT="LanczosWindowedSinc"
+          INT="--lws"
           ;;    
         gen)
-          INT="GenericLabel"
+          INT="--gen"
           ;;
-        mul)
-          INT="MultiLabel"
-          ;; 
         verbose)
           VERBOSE="--verbose"
           VERB=1
@@ -171,7 +168,7 @@ if [[ ! -z ${trafos} ]]; then
   moving=${INPUT}
   out=${fsnative_dir}/${PREF}_space-fsnative_${SUFFIX}.nii.gz
 
-  cmd="call_antsapplytransforms ${VERBOSE} ${invert} ${fixed} ${moving} ${out} ${trafos}"
+  cmd="call_antsapplytransforms ${VERBOSE} ${INT} ${invert} ${fixed} ${moving} ${out} ${trafos}"
   if [[ ${VERB} -eq 1 ]]; then
     echo ${cmd}
   fi
