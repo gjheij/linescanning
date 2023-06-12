@@ -119,7 +119,7 @@ IFS=', ' read -r -a WARP <<< "${TRAFOS}"
 unset IFS
 
 # match invert flags
-if [[ ! -z ${INV} ]]; then
+if [[ ! -z ${invert} ]]; then
   IFS=', ' read -ra LIST <<< ${invert[@]}
   unset IFS
 else
