@@ -540,10 +540,7 @@ class LazyPlot(Defaults):
                     else:
                         x = self.xx.copy()
 
-                if isinstance(self.labels, (list,np.ndarray)):
-                    if isinstance(self.labels, np.ndarray):
-                        self.labels = list(self.labels)
-
+                if self.labels:
                     lbl = self.labels[idx]
                 else:
                     lbl = None
@@ -1116,7 +1113,7 @@ class LazyBar():
             axs = self.axs
 
         # construct dataframe from loose inputs
-        if isinstance(self.y, (list,np.ndarray)):
+        if isinstance(self.y, np.ndarray):
             if not isinstance(self.x, (np.ndarray, list)):
                 self.x = np.arange(0,self.y.shape[0])
 
@@ -1170,12 +1167,15 @@ class LazyBar():
             
             # check if nr_samples in y > 1
             if self.data[yy].shape[0] > 1:
-                if self.error == "sem" or self.error == "std":
+                if self.error not in ["sem","std"]:
                     self.ci = None
                     if isinstance(self.data, pd.DataFrame):
 
                         # filter out relevant colums
-                        self.data = self.data[[self.x,self.y]]
+                        if hasattr(self, "hue"):
+                            self.data = self.data[[self.x,self.y,self.hue]]
+                        else:
+                            self.data = self.data[[self.x,self.y]]
 
                         # get relevant error
                         if self.error == "sem":
@@ -1195,11 +1195,6 @@ class LazyBar():
                             else:
                                 self.sem = self.data.groupby(self.x).std()[self.y].values
         
-        # set to None if we have too little data for error
-        if isinstance(self.sem, np.ndarray):
-            if np.any(np.isnan(self.sem)):
-                self.sem = None
-
         self.ff = sns.barplot(
             data=self.data,
             x=xx, 
@@ -1596,13 +1591,6 @@ class LazyHist(Defaults):
 
         if self.axs == None:
             _,self.axs = plt.subplots(figsize=self.figsize)
-
-        if isinstance(self.data, pd.DataFrame):
-            if not isinstance(self.y, str):
-                raise ValueError(f"'y' must be a column name of {type(self.data)}, not '{self.y}'")
-            self.data = self.data[self.y].values
-        elif isinstance(self.data, pd.Series):
-            self.data = self.data.values
 
         if self.hist:
             self.vals, self.bins, self.patches = self.axs.hist(
