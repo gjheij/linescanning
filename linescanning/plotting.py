@@ -999,6 +999,7 @@ class LazyBar():
         cmap: str="inferno",
         save_as: str=None,
         title: str=None,
+        hue: str=None,
         figsize=(4,8),
         add_labels: bool=False,
         add_axis: bool=True,
@@ -1026,6 +1027,7 @@ class LazyBar():
         self.data               = data
         self.x                  = x
         self.y                  = y
+        self.hue                = hue
         self.labels             = labels
         self.sns_ori            = sns_ori
         self.axs                = axs
@@ -1158,7 +1160,8 @@ class LazyBar():
                 self.palette = sns.color_palette(palette=self.palette)
 
             if not isinstance(self.palette, sns.palettes._ColorPalette):
-                self.palette = sns.color_palette(self.cmap, self.data.shape[0])
+                # self.palette = sns.color_palette(self.cmap, self.data.shape[0])
+                self.palette = self.cmap
                 
         # check if we can do sem
         self.sem = None
@@ -1167,19 +1170,19 @@ class LazyBar():
             
             # check if nr_samples in y > 1
             if self.data[yy].shape[0] > 1:
-                if self.error not in ["sem","std"]:
+                if self.error in ["sem","std"]:
                     self.ci = None
                     if isinstance(self.data, pd.DataFrame):
 
                         # filter out relevant colums
-                        if hasattr(self, "hue"):
+                        if isinstance(self.hue, str):
                             self.data = self.data[[self.x,self.y,self.hue]]
                         else:
                             self.data = self.data[[self.x,self.y]]
 
                         # get relevant error
                         if self.error == "sem":
-                            if hasattr(self, "hue"):
+                            if isinstance(self.hue, str):
                                 self.sem = self.data.groupby([self.hue,self.x]).sem()[self.y].values
                                 n_x = len(np.unique(self.data[self.x].values))
                                 n_h = len(np.unique(self.data[self.hue].values))
@@ -1187,7 +1190,7 @@ class LazyBar():
                             else:
                                 self.sem = self.data.groupby(self.x).sem()[self.y].values
                         elif self.error == "std":
-                            if hasattr(self, "hue"):
+                            if isinstance(self.hue, str):
                                 self.sem = self.data.groupby([self.hue,self.x]).std()[self.y].values
                                 n_x = len(np.unique(self.data[self.x].values))
                                 n_h = len(np.unique(self.data[self.hue].values))
@@ -1202,6 +1205,7 @@ class LazyBar():
             ax=axs, 
             orient=self.sns_ori,
             ci=self.ci,
+            hue=self.hue,
             **dict(
                 kw_sns,
                 color=self.color,
@@ -1223,7 +1227,7 @@ class LazyBar():
                 self.points_hue = None
 
             multi_strip = False
-            if hasattr(self, "hue"):
+            if isinstance(self.hue, str):
 
                 if isinstance(self.points_hue, str):
 
@@ -1243,10 +1247,22 @@ class LazyBar():
                                 x=xx, 
                                 y=yy, 
                                 hue=self.hue,
-                                dodge=True, 
+                                dodge=False, 
                                 palette=[color] * 2,
                                 ax=self.ff)
-                
+                else:
+                    multi_strip = True
+                    sns.stripplot(
+                        data=self.data, 
+                        x=xx, 
+                        y=yy, 
+                        hue=self.hue,
+                        dodge=True, 
+                        ax=self.ff,
+                        color=self.points_color,
+                        palette=self.points_palette,
+                        alpha=self.points_alpha
+                    )                                
             else:
                 sns.stripplot(
                     data=self.data, 
@@ -1261,7 +1277,7 @@ class LazyBar():
                 )
 
         if self.bar_legend:
-            if hasattr(self, "hue"):
+            if isinstance(self.hue, str):
 
                 # find categorical handles
                 handles,labels = self.ff.get_legend_handles_labels()
