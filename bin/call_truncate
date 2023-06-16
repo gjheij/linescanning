@@ -200,8 +200,9 @@ Example:
             # cut columes, skip index so that "Unnamed" column is not made.
             # DONT USE SKIP_ROWS, YOU NEED THE COLUMN NAMES
             if execute:
-                pd.read_csv(tsv, delimiter="\t").iloc[cut_vols:,:].to_csv(out_tsv, index=False, sep="\t")
-                utils.verbose(f"wrote ({ix+1}/{len(all_tsv)}) confs {pd.read_csv(out_tsv, sep="\t").shape}: '{out_tsv}'", verbose)
+                new_csv = pd.read_csv(tsv, delimiter="\t").iloc[cut_vols:,:]
+                new_csv.to_csv(out_tsv, index=False, sep="\t")
+                utils.verbose(f"wrote ({ix+1}/{len(all_tsv)}) confs {new_csv.shape}: '{out_tsv}'", verbose)
     
 if __name__ == "__main__":
     main(sys.argv[1:])
