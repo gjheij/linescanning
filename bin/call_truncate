@@ -51,7 +51,7 @@ Example:
     verbose = False
     overwite = False
     full_ow = False
-    filters = None
+    filters = []
     conf_only = False
     overwrite = False
     tr = None
