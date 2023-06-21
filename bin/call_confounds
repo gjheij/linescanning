@@ -10,7 +10,7 @@ import os
 import sys
 import getopt
 from linescanning import fmriprep, utils
-
+import shutil
 opj = os.path.join
 
 def main(argv):
@@ -94,9 +94,11 @@ Example
     apply_mask = False
     t1_mask = None
     t1_tpms = None
+    invert = 0
+    overwrite = False
 
     try:
-        opts = getopt.getopt(argv,"hi:b:w:m:t:s:n:",["sub=", "ses=", "help", "in=", "bids=", "work=", "mask=", "tfm=", "mov=", "rms=", "apply", "t1_mask=", "tpms="])[0]
+        opts = getopt.getopt(argv,"hi:b:w:m:t:s:n:",["sub=", "ses=", "help", "in=", "bids=", "work=", "mask=", "tfm=", "mov=", "rms=", "apply", "t1_mask=", "tpms=", "invert=", "ow"])[0]
     except getopt.GetoptError:
         print("ERROR while reading arguments; did you specify an illegal argument?")
         print(main.__doc__)
@@ -121,7 +123,9 @@ Example
         elif opt in ("-t", "--tfm"):
             t1w_to_bold = arg  
         elif opt in ("--mov"):
-            mov_file = arg           
+            mov_file = arg     
+        elif opt in ("--ow"):
+            overwrite = True                     
         elif opt in ("--rms"):
             rms_file = arg      
         elif opt in ("--apply"):
@@ -131,7 +135,9 @@ Example
         elif opt in ("--t1_mask"):
             t1_mask = arg
         elif opt in ("--tpms"):
-            t1_tpms = arg            
+            t1_tpms = arg 
+        elif opt in ("--invert"):
+            invert = int(arg)
 
     if len(argv) < 1:
         print(main.__doc__)
@@ -142,6 +148,7 @@ Example
         if isinstance(subject, str) and isinstance(session, int):
             ctx_dir = opj(os.environ.get("DIR_DATA_DERIV"), "pycortex", subject, "transforms")
             t1w_to_bold = utils.get_file_from_substring([f"from-ses1_to-ses{session}_rec-motion1"], ctx_dir, exclude="command.txt")
+            invert = 0
 
             if isinstance(t1w_to_bold, list):
                 raise TypeError(f"Found multiple instances for 'from-ses1_to-ses{session}_rec-motion1', in '{ctx_dir}': {t1w_to_bold}")
@@ -193,8 +200,16 @@ Example
         apply_warp=apply_mask,
         t1_mask=t1_mask,
         t1_tpms=t1_tpms,
-        t1_bold_xform=t1w_to_bold)
+        t1_bold_xform=t1w_to_bold,
+        invert=invert)
     
+    # remove workdir is overwrite == True
+    if overwrite:
+        fname = opj(workdir, "bold_confounds_wf")
+        if os.path.exists(fname):
+            print(f"deleting {fname}")
+            shutil.rmtree(fname)
+
     # run
     bf.run()
 
