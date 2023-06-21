@@ -808,6 +808,7 @@ class LazyCorr(Defaults):
         x_ticks: list=None,
         y_ticks: list=None,        
         points=True,
+        label: str=None,
         scatter_kwargs={},
         **kwargs):
 
@@ -828,6 +829,7 @@ class LazyCorr(Defaults):
         self.scatter_kwargs = scatter_kwargs
         self.x_ticks        = x_ticks
         self.y_ticks        = y_ticks
+        self.label          = label
 
         super().__init__()
         self.__dict__.update(kwargs)
@@ -861,6 +863,7 @@ class LazyCorr(Defaults):
             color=self.color, 
             ax=axs,
             scatter=self.points,
+            label=self.label,
             scatter_kws=self.scatter_kwargs)
 
         if isinstance(self.x_label, str):
@@ -1213,6 +1216,7 @@ class LazyBar():
                 yerr=self.sem
             ))
 
+        multi_strip = False
         if self.add_points:
 
             if not hasattr(self, "points_hue"):
@@ -1226,7 +1230,7 @@ class LazyBar():
                 self.points_palette = None
                 self.points_hue = None
 
-            multi_strip = False
+            
             if isinstance(self.hue, str):
 
                 if isinstance(self.points_hue, str):
