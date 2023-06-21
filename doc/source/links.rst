@@ -16,7 +16,9 @@
 .. _Pybest: https://github.com/gjheij/pybest
 .. _Pycortex: https://github.com/gallantlab/pycortex
 .. _Hedfpy: https://github.com/gjheij/hedfpy
+.. _surface_tools: https://github.com/gjheij/surface_tools
 .. _spinoza_lineplanning: https://github.com/gjheij/linescanning/blob/main/shell/spinoza_lineplanning
+.. _spinoza_mriqc: https://github.com/gjheij/linescanning/blob/main/shell/spinoza_mriqc
 .. _spinoza_scanner2bids: https://github.com/gjheij/linescanning/blob/main/shell/spinoza_scanner2bids
 .. _spinoza_linerecon: https://github.com/gjheij/linescanning/blob/main/shell/spinoza_linerecon 
 .. _spinoza_qmrimaps: https://github.com/gjheij/linescanning/blob/main/shell/spinoza_qmrimaps
