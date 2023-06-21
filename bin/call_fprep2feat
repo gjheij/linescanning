@@ -1,0 +1,76 @@
+#!/usr/bin/env python
+
+import pandas as pd
+from linescanning import utils
+import os
+import sys
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_fprep2feat
+
+Convert the confound regressor files as per output of fMRIprep to FEAT-compatible text files. Be-
+cause the file from fmriprep has a loooot of regressors, we'll filter them by default. Use 'motion'
+[default] to include just the motion parameters; 'motion+acompcor' for motion + anatomical component regres-
+rors, or 'full' for everything (excluding 'global signal'). 
+
+Usage:
+  call_fprep2feat <fprep_directory> <type>
+
+Example:
+  call_fprep2feat <derivatives>/fmriprep/<subject>/<ses->/func motion
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    fprep_dir   = None
+    which_conf  = "motion"
+
+    if len(argv) == 0:
+        print(main.__doc__)
+        sys.exit(1)
+
+    fprep_dir   = argv[0]
+    which_conf  = argv[1]
+
+    confounds = utils.get_file_from_substring("confounds_timeseries.tsv", fprep_dir)
+    if isinstance(confounds, str):
+        confounds = [confounds]
+
+    for conf in confounds:
+        # read in confound file
+        confounds_file = pd.read_csv(conf, sep='\t')
+
+        # fetch relevant columns
+        if which_conf == "motion":
+            get_confounds = [x for x in confounds_file.columns if 'trans' in x or 'rot' in x]
+            replace_string = "motion"
+        elif which_conf == "acomp":
+            get_confounds = [x for x in confounds_file.columns if 'white_matter' in x or 'csf' in x]
+            replace_string = "acomp"            
+        elif which_conf == "motion+acomp":
+            get_confounds = [x for x in confounds_file.columns if 'trans' in x or 'rot' in x or 'white_matter' in x or 'csf' in x]
+            replace_string = "motion+acomp"
+        elif which_conf == "full":
+            # remove global signal though
+            get_confounds = [x for x in confounds_file.columns if "global_signal" not in x]
+            replace_string = "full"
+        else:
+            raise ValueError(f"Unknown selection for '{which_conf}'. Must be one of 'motion', 'motion+acomp', or 'full'")
+
+        # filter for selected columns
+        extracted_confounds = confounds_file[get_confounds]
+
+        # drop empty columns
+        extracted_confounds = extracted_confounds.loc[:, (extracted_confounds != 0).any(axis=0)]
+
+        # write output file
+        output = utils.replace_string(conf, "timeseries.tsv", f"{replace_string}.tsv")
+        extracted_confounds.to_csv(output, sep='\t', index=False)
+        print(f"wrote '{output}'")
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
