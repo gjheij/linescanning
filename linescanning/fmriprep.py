@@ -41,7 +41,9 @@ class init_single_subject_wf():
         bids_filters=None, 
         non_standard=['func'], 
         omp_nthreads=8, 
-        max_topup_vols=5):
+        max_topup_vols=5,
+        bold_mask=None,
+        wm_seg=None):
 
         from niworkflows.utils.bids import collect_data
         import json
@@ -57,15 +59,17 @@ class init_single_subject_wf():
         self.omp_nthreads   = omp_nthreads
         self.workdir        = workdir
         self.max_topup_vols = max_topup_vols
+        self.bold_mask      = bold_mask
+        self.wm_seg         = wm_seg
 
         # get bids layout
-        self.layout = BIDSLayout(self.bids_dir, validate=False)
+        self.layout = BIDSLayout(self.bids_dir, validate=False, invalid_filters='allow')
 
         if isinstance(self.bids_filters, str):
             if os.path.exists(self.bids_filters):
                 with open(self.bids_filters) as f:
                     self.bids_filters = json.load(f)
-
+        
         self.name = "single_subject_%s_wf" % self.subject_id
         self.subject_data = collect_data(
             self.layout,
@@ -87,6 +91,7 @@ class init_single_subject_wf():
             subject=self.subject_id,
             fmapless=False,
             force_fmapless=False,
+            bids_filters=self.bids_filters["fmap"]
         )
 
         if self.fmap_estimators:
@@ -108,7 +113,9 @@ class init_single_subject_wf():
                 fmriprep_dir=self.fmriprep_dir, 
                 layout=self.layout,
                 non_standard=self.non_standard,
-                omp_nthreads=self.omp_nthreads)
+                omp_nthreads=self.omp_nthreads,
+                bold_mask=self.bold_mask,
+                wm_seg=self.wm_seg)
             
             if func_preproc_wf is None:
                 continue
@@ -143,6 +150,7 @@ class init_single_subject_wf():
             if node.split(".")[-1].startswith("ds_"):
                 self.fmap_wf.get_node(node).interface.out_path_base = ""  
 
+        print(self.fmap_estimators)
         for estimator in self.fmap_estimators:
             config.loggers.workflow.info(f"""\
     Setting-up fieldmap "{estimator.bids_id}" ({estimator.method}) with \
@@ -172,14 +180,14 @@ class init_single_subject_wf():
 
     def run(self):
 
-        config.loggers.workflow.log(25, "fMRIPrep (McFlirt+Topup only) started!")
+        config.loggers.workflow.log(25, "fMRIPrep (Topup only) started!")
         try:
             self.workflow.run()
         except Exception as e:
             config.loggers.workflow.critical("fMRIPrep failed: %s", e)
             raise
         else:
-            config.loggers.workflow.log(25, "fMRIPrep (McFlirt+Topup only) finished successfully!")
+            config.loggers.workflow.log(25, "fMRIPrep (Topup only) finished successfully!")
 
 class bold_reg_wf():
 
@@ -333,9 +341,9 @@ class bold_confs_wf():
         if not isinstance(self.rmsd_file, str):
             try:
                 search_dir  = opj(self.workdir, "bold_hmc_wf", "mcflirt")
-                self.rmsd_file = utils.get_file_from_substring(["_rel.rms"], search_dir)
+                self.rmsd_file = utils.get_file_from_substring(["rel.rms"], search_dir)
             except:
-                raise FileNotFoundError(f"Could not find '*_rel.rms' file in '{search_dir}. Please specify manually or make sure 'call_topup' ran successfully")
+                raise FileNotFoundError(f"Could not find '*rel.rms' file in '{search_dir}. Please specify manually or make sure 'call_topup' ran successfully")
             
         # check if we should fetch already bbreg
         if not isinstance(self.t1_bold_xform, str):
@@ -379,7 +387,7 @@ class bold_confs_wf():
         self.bold_confounds_wf.base_dir = self.workdir
 
     def run(self):
-        config.loggers.workflow.log(25, "fMRIPrep (bold_reg_wf only) started!")
+        config.loggers.workflow.log(25, "fMRIPrep (bold_confs_wf only) started!")
         try:
             # run workflow
             self.res = self.bold_confounds_wf.run()
@@ -390,7 +398,7 @@ class bold_confs_wf():
             config.loggers.workflow.critical("fMRIPrep failed: %s", e)
             raise
         else:
-            config.loggers.workflow.log(25, "fMRIPrep (bold_reg_wf only) finished successfully!")
+            config.loggers.workflow.log(25, "fMRIPrep (bold_confs_wf only) finished successfully!")
 
     def init_conf_derivatives_wf(self):
 
@@ -500,11 +508,281 @@ class bold_confs_wf():
         # run wf
         self.deriv_res = self.deriv_wf.run()
 
-def init_func_preproc_wf(bold_file, has_fieldmap=False, fmriprep_dir=None, layout=None, non_standard=['func'], omp_nthreads=8):
+def init_bold_reference_wf(
+    omp_nthreads,
+    bold_file=None,
+    bold_mask=None,
+    sbref_files=None,
+    brainmask_thresh=0.85,
+    pre_mask=False,
+    multiecho=False,
+    name="bold_reference_wf",
+    gen_report=False,
+):
+    """
+    Build a workflow that generates reference BOLD images for a series.
+
+    The raw reference image is the target of :abbr:`HMC (head motion correction)`, and a
+    contrast-enhanced reference is the subject of distortion correction, as well as
+    boundary-based registration to T1w and template spaces.
+
+    LIMITATION: If one wants to extract the reference from several SBRefs
+    with several echoes each, the first echo should be selected elsewhere
+    and run this interface in ``multiecho = False`` mode. In other words,
+    SBRef inputs are assumed to be single-echo.
+
+    LIMITATION: If a list of SBRefs is provided, each can be 3D or 4D, but they
+    are assumed to be sampled in the exact same 3D-grid and have the same orientation
+    information in their headers so that they can directly be merged into a 4D volume.
+
+    Workflow Graph
+        .. workflow::
+            :graph2use: orig
+            :simple_form: yes
+
+            from niworkflows.func.util import init_bold_reference_wf
+            wf = init_bold_reference_wf(omp_nthreads=1)
+
+    Parameters
+    ----------
+    omp_nthreads : :obj:`int`
+        Maximum number of threads an individual process may use
+    bold_file : :obj:`str`
+        BOLD series NIfTI file
+    sbref_files : :obj:`list` or :obj:`bool`
+        Single band (as opposed to multi band) reference NIfTI file.
+        If ``True`` is passed, the workflow is built to accommodate SBRefs,
+        but the input is left undefined (i.e., it is left open for connection)
+    brainmask_thresh: :obj:`float`
+        Lower threshold for the probabilistic brainmask to obtain
+        the final binary mask (default: 0.85).
+    pre_mask : :obj:`bool`
+        Indicates whether the ``pre_mask`` input will be set (and thus, step 1
+        should be skipped).
+    multiecho : :obj:`bool`
+        If multiecho data was supplied, data from the first echo will be selected
+    name : :obj:`str`
+        Name of workflow (default: ``bold_reference_wf``)
+    gen_report : :obj:`bool`
+        Whether a mask report node should be appended in the end
+
+    Inputs
+    ------
+    bold_file : str
+        BOLD series NIfTI file
+    all_bold_files : str
+        Validated and header-corrected BOLD series; multiple if multi-echo
+    bold_mask : bool
+        A tentative brain mask to initialize the workflow (requires ``pre_mask``
+        parameter set ``True``).
+    dummy_scans : int or None
+        Number of non-steady-state volumes specified by user at beginning of ``bold_file``
+    sbref_file : str
+        single band (as opposed to multi band) reference NIfTI file
+
+    Outputs
+    -------
+    bold_file : str
+        Validated BOLD series NIfTI file
+    raw_ref_image : str
+        Reference image to which BOLD series is motion corrected
+    skip_vols : int
+        Number of non-steady-state volumes selected at beginning of ``bold_file``
+    algo_dummy_scans : int
+        Number of non-steady-state volumes agorithmically detected at
+        beginning of ``bold_file``
+    ref_image : str
+        Contrast-enhanced reference image
+    ref_image_brain : str
+        Skull-stripped reference image
+    bold_mask : str
+        Skull-stripping mask of reference image
+    validation_report : str
+        HTML reportlet indicating whether ``bold_file`` had a valid affine
+
+
+    Subworkflows
+        * :py:func:`~niworkflows.func.util.init_enhance_and_skullstrip_wf`
+
+    """
+    from niworkflows.utils.connections import pop_file as _pop
+    from niworkflows.interfaces.bold import NonsteadyStatesDetector
+    from niworkflows.interfaces.images import RobustAverage
+    from niworkflows.utils.misc import pass_dummy_scans as _pass_dummy_scans
+    from niworkflows.interfaces.header import CopyXForm, ValidateImage, MatchHeader
+    from nipype.interfaces.fsl import ApplyMask
+    from niworkflows.interfaces.reportlets.masks import SimpleShowMaskRPT
+
+    workflow = Workflow(name=name)
+    workflow.__desc__ = f"""\
+First, a reference volume and its skull-stripped version were generated
+{'from the shortest echo of the BOLD run' * multiecho} using a custom
+methodology of *fMRIPrep*.
+"""
+
+    inputnode = pe.Node(
+        niu.IdentityInterface(
+            fields=["bold_file", "bold_mask", "dummy_scans", "sbref_file"]
+        ),
+        name="inputnode",
+    )
+    outputnode = pe.Node(
+        niu.IdentityInterface(
+            fields=[
+                "bold_file",
+                "all_bold_files",
+                "raw_ref_image",
+                "skip_vols",
+                "algo_dummy_scans",
+                "ref_image",
+                "ref_image_brain",
+                "bold_mask",
+                "validation_report",
+                "mask_report",
+            ]
+        ),
+        name="outputnode",
+    )
+
+    # Simplify manually setting input image
+    if bold_file is not None:
+        inputnode.inputs.bold_file = bold_file
+    
+    # Simplify manually setting input image
+    if bold_mask is not None:
+        inputnode.inputs.bold_mask = bold_mask
+
+    val_bold = pe.MapNode(
+        ValidateImage(),
+        name="val_bold",
+        mem_gb=DEFAULT_MEMORY_MIN_GB,
+        iterfield=["in_file"],
+    )
+
+    get_dummy = pe.Node(NonsteadyStatesDetector(), name="get_dummy")
+    gen_avg = pe.Node(RobustAverage(), name="gen_avg", mem_gb=1)
+
+    # enhance_and_skullstrip_bold_wf = init_enhance_and_skullstrip_bold_wf(
+    #     brainmask_thresh=brainmask_thresh,
+    #     omp_nthreads=omp_nthreads,
+    #     pre_mask=pre_mask,
+    # )
+
+    apply_custom_mask = pe.Node(ApplyMask(), name="apply_custom_mask")
+
+    calc_dummy_scans = pe.Node(
+        niu.Function(function=_pass_dummy_scans, output_names=["skip_vols_num"]),
+        name="calc_dummy_scans",
+        run_without_submitting=True,
+        mem_gb=DEFAULT_MEMORY_MIN_GB,
+    )
+
+    # workflow.connect([
+    #     (inputnode, val_bold, [(("bold_file", listify), "in_file")]),
+    #     (inputnode, get_dummy, [(("bold_file", _pop), "in_file")]),
+    #     (inputnode, enhance_and_skullstrip_bold_wf, [("bold_mask", "inputnode.pre_mask")]),
+    #     (inputnode, calc_dummy_scans, [("dummy_scans", "dummy_scans")]),
+    #     (gen_avg, enhance_and_skullstrip_bold_wf, [("out_file", "inputnode.in_file")]),
+    #     (get_dummy, calc_dummy_scans, [("n_dummy", "algo_dummy_scans")]),
+    #     (calc_dummy_scans, outputnode, [("skip_vols_num", "skip_vols")]),
+    #     (gen_avg, outputnode, [("out_file", "raw_ref_image")]),
+    #     (get_dummy, outputnode, [("n_dummy", "algo_dummy_scans")]),
+    #     (val_bold, outputnode, [(("out_file", _pop), "bold_file"),
+    #                             ("out_file", "all_bold_files"),
+    #                             (("out_report", _pop), "validation_report")]),
+    #     (enhance_and_skullstrip_bold_wf, outputnode, [
+    #         ("outputnode.bias_corrected_file", "ref_image"),
+    #         ("outputnode.mask_file", "bold_mask"),
+    #         ("outputnode.skull_stripped_file", "ref_image_brain"),
+    #     ]),
+    # ])
+
+    # fmt: off
+    workflow.connect([
+        (inputnode, val_bold, [(("bold_file", listify), "in_file")]),
+        (inputnode, get_dummy, [(("bold_file", _pop), "in_file")]),
+        (inputnode, calc_dummy_scans, [("dummy_scans", "dummy_scans")]),
+        (get_dummy, calc_dummy_scans, [("n_dummy", "algo_dummy_scans")]),
+        (calc_dummy_scans, outputnode, [("skip_vols_num", "skip_vols")]),
+        (gen_avg, outputnode, [
+            ("out_file", "raw_ref_image"),
+            ("out_file", "ref_image")]),
+        (gen_avg, apply_custom_mask, [("out_file", "in_file")]),
+        (inputnode, apply_custom_mask, [("bold_mask", "mask_file")]),
+        (apply_custom_mask, outputnode, [("out_file", "ref_image_brain")]),
+        (inputnode, outputnode, [("bold_mask", "bold_mask")]),
+        (get_dummy, outputnode, [("n_dummy", "algo_dummy_scans")]),
+        (val_bold, outputnode, [(("out_file", _pop), "bold_file"),
+                                ("out_file", "all_bold_files"),
+                                (("out_report", _pop), "validation_report")
+        ]),
+    ])
+    # fmt: on
+
+    if gen_report:
+        mask_reportlet = pe.Node(SimpleShowMaskRPT(), name="mask_reportlet")
+        # fmt: off
+        workflow.connect([
+            (gen_avg, mask_reportlet, [("out_file", "background_file")]),
+            (inputnode, mask_reportlet, [("bold_mask", "mask_file")])
+        ])
+        # fmt: on
+
+    if not sbref_files:
+        # fmt: off
+        workflow.connect([
+            (val_bold, gen_avg, [(("out_file", _pop), "in_file")]),  # pop first echo of ME-EPI
+            (get_dummy, gen_avg, [("t_mask", "t_mask")]),
+        ])
+        # fmt: on
+        return workflow
+
+    from niworkflows.interfaces.nibabel import MergeSeries
+
+    nsbrefs = 0
+    if sbref_files is not True:
+        # If not boolean, then it is a list-of or pathlike.
+        inputnode.inputs.sbref_file = sbref_files
+        nsbrefs = 1 if isinstance(sbref_files, str) else len(sbref_files)
+
+    val_sbref = pe.MapNode(
+        ValidateImage(),
+        name="val_sbref",
+        mem_gb=DEFAULT_MEMORY_MIN_GB,
+        iterfield=["in_file"],
+    )
+    merge_sbrefs = pe.Node(MergeSeries(), name="merge_sbrefs")
+
+    # fmt: off
+    workflow.connect([
+        (inputnode, val_sbref, [(("sbref_file", listify), "in_file")]),
+        (val_sbref, merge_sbrefs, [("out_file", "in_files")]),
+        (merge_sbrefs, gen_avg, [("out_file", "in_file")]),
+    ])
+    # fmt: on
+
+    # Edit the boilerplate as the SBRef will be the reference
+    workflow.__desc__ = f"""\
+First, a reference volume and its skull-stripped version were generated
+by aligning and averaging {nsbrefs or ''} single-band references (SBRefs).
+"""
+
+    return workflow
+
+def init_func_preproc_wf(
+    bold_file, 
+    has_fieldmap=False, 
+    fmriprep_dir=None, 
+    layout=None, 
+    non_standard=['func'], 
+    omp_nthreads=8,
+    bold_mask=None,
+    wm_seg=None):
+
     """
     This workflow controls the functional preprocessing stages of *fMRIPrep*.
     """
-    from niworkflows.func.util import init_bold_reference_wf
+    # from niworkflows.func.util import init_bold_reference_wf
     from niworkflows.interfaces.nibabel import ApplyMask
     from niworkflows.interfaces.reportlets.registration import (
         SimpleBeforeAfterRPT as SimpleBeforeAfter,
@@ -642,6 +920,8 @@ Non-gridded (surface) resamplings were performed using `mri_vol2surf`
         niu.IdentityInterface(
             fields=[
                 "bold_file",
+                "bold_mask",
+                "wm_seg",
                 "subjects_dir",
                 "subject_id",
                 "t1w_preproc",
@@ -666,6 +946,8 @@ Non-gridded (surface) resamplings were performed using `mri_vol2surf`
         name="inputnode",
     )
     inputnode.inputs.bold_file = bold_file
+    inputnode.inputs.bold_mask = bold_mask
+    inputnode.inputs.wm_seg = wm_seg
 
     outputnode = pe.Node(
         niu.IdentityInterface(
@@ -785,14 +1067,28 @@ Non-gridded (surface) resamplings were performed using `mri_vol2surf`
     # fmt:on
 
     # Generate a tentative boldref
+    if isinstance(bold_mask, str):
+        if os.path.exists(bold_mask):
+            pre_mask = True
+        else:
+            raise FileNotFoundError(f"Could not find bold_mask '{bold_mask}'")
+    else:
+        pre_mask = False
+
     initial_boldref_wf = init_bold_reference_wf(
         name="initial_boldref_wf",
         omp_nthreads=omp_nthreads,
         bold_file=bold_file,
+        bold_mask=bold_mask,
         sbref_files=sbref_files,
         multiecho=multiecho,
+        pre_mask=True
     )
     initial_boldref_wf.inputs.inputnode.dummy_scans = 0
+
+    # set init bold mask
+    # if pre_mask:
+    initial_boldref_wf.inputs.inputnode.bold_mask = bold_mask
 
     # Select validated BOLD files (orientations checked or corrected)
     select_bold = pe.Node(niu.Select(), name="select_bold")
@@ -862,12 +1158,21 @@ Non-gridded (surface) resamplings were performed using `mri_vol2surf`
         name="bold_final"
     )
 
+    # truncate image intensities
+    truncate_wf = pe.Node(
+        niu.Function(function=utils.ants_truncate_intensities), 
+        name='truncate_wf')
+
+    truncate_wf.inputs.lower = 0
+    truncate_wf.inputs.out_file = "truncated.nii.gz"
+
     # Generate a final BOLD reference
     # This BOLD references *does not use* single-band reference images.
     final_boldref_wf = init_bold_reference_wf(
         name="final_boldref_wf",
         omp_nthreads=omp_nthreads,
         multiecho=multiecho,
+        bold_mask=bold_mask,
     )
     final_boldref_wf.__desc__ = None  # Unset description to avoid second appearance
 
@@ -882,10 +1187,10 @@ Non-gridded (surface) resamplings were performed using `mri_vol2surf`
         # BOLD buffer has slice-time corrected if it was run, original otherwise
         (boldbuffer, bold_split, [("bold_file", "in_file")]),
         # HMC
-        (initial_boldref_wf, bold_hmc_wf, [
-            ("outputnode.raw_ref_image", "inputnode.raw_ref_image"),
-            ("outputnode.bold_file", "inputnode.bold_file"),
-        ]),
+        # (initial_boldref_wf, bold_hmc_wf, [
+        #     ("outputnode.raw_ref_image", "inputnode.raw_ref_image"),
+        #     ("outputnode.bold_file", "inputnode.bold_file"),
+        # ]),
         # # EPI-T1w registration workflow
         # (inputnode, bold_reg_wf, [
         #     ("t1w_dseg", "inputnode.t1w_dseg"),
@@ -955,11 +1260,18 @@ Non-gridded (surface) resamplings were performed using `mri_vol2surf`
         # ]),
         # Native-space BOLD files (if calculated)
         (bold_final, outputnode, [
-            ("bold", "bold_native"),
             ("boldref", "bold_native_ref"),
             ("mask", "bold_mask_native"),
             ("bold_echos", "bold_echos_native"),
-            ("t2star", "t2star_bold"),
+            ("t2star", "t2star_bold")
+        ]),
+
+        # truncate image intensities
+        (bold_final, truncate_wf, [
+            ("bold", "in_file"),
+        ]),
+        (truncate_wf, outputnode, [
+            ("out", "bold_native"),
         ]),
         # Summary
         # (initial_boldref_wf, summary, [("outputnode.algo_dummy_scans", "algo_dummy_scans")]),
@@ -1349,15 +1661,14 @@ Non-gridded (surface) resamplings were performed using `mri_vol2surf`
             # Connect bold_bold_trans_wf
             (bold_source, bold_bold_trans_wf, [("out", "inputnode.name_source")]),
             (bold_split, bold_bold_trans_wf, [("out_files", "inputnode.bold_file")]),
-            (bold_hmc_wf, bold_bold_trans_wf, [
-                ("outputnode.xforms", "inputnode.hmc_xforms"),
-            ]),
+            # (bold_hmc_wf, bold_bold_trans_wf, [
+            #     ("outputnode.xforms", "inputnode.hmc_xforms"),
+            # ]),
         ])
 
         workflow.connect([
             (bold_bold_trans_wf, bold_final, [("outputnode.bold", "bold")]),
-            (bold_bold_trans_wf, final_boldref_wf, [
-                ("outputnode.bold", "inputnode.bold_file"),
+            (bold_bold_trans_wf, final_boldref_wf, [("outputnode.bold", "inputnode.bold_file"),
             ])
         ] 
         # if not multiecho else [
@@ -1387,6 +1698,7 @@ Non-gridded (surface) resamplings were performed using `mri_vol2surf`
         omp_nthreads=omp_nthreads,
     )
     unwarp_wf.inputs.inputnode.metadata = metadata
+    # unwarp_wf.inputs.inputnode.bold_mask = bold_mask
 
     output_select = pe.Node(
         KeySelect(fields=["fmap", "fmap_ref", "fmap_coeff", "fmap_mask", "sdc_method"]),
@@ -1438,17 +1750,19 @@ Non-gridded (surface) resamplings were performed using `mri_vol2surf`
         (initial_boldref_wf, coeff2epi_wf, [
             ("outputnode.ref_image", "inputnode.target_ref"),
             ("outputnode.bold_mask", "inputnode.target_mask")]),
+        (initial_boldref_wf, unwarp_wf, [
+            ("outputnode.ref_image", "inputnode.distorted_ref"),
+        ]),            
         (coeff2epi_wf, unwarp_wf, [
             ("outputnode.fmap_coeff", "inputnode.fmap_coeff")]),
-        (bold_hmc_wf, unwarp_wf, [
-            ("outputnode.xforms", "inputnode.hmc_xforms")]),
+        # (bold_hmc_wf, unwarp_wf, [
+        #     ("outputnode.xforms", "inputnode.hmc_xforms")]),
         (initial_boldref_wf, sdc_report, [
             ("outputnode.ref_image", "before")]),
         (bold_split, unwarp_wf, [
             ("out_files", "inputnode.distorted")]),
-        (final_boldref_wf, sdc_report, [
-            ("outputnode.ref_image", "after"),
-            ("outputnode.bold_mask", "wm_seg")]),
+        (final_boldref_wf, sdc_report, [("outputnode.ref_image", "after")]),
+        (inputnode, sdc_report, [("wm_seg", "wm_seg")]),
         (inputnode, ds_report_sdc, [("bold_file", "source_file")]),
         (sdc_report, ds_report_sdc, [("out_report", "in_file")]),
 
@@ -1474,56 +1788,6 @@ Non-gridded (surface) resamplings were performed using `mri_vol2surf`
         ])
         # fmt:on
         return workflow
-
-    # # Finalize connections if ME-EPI
-    # join_sdc_echos = pe.JoinNode(
-    #     niu.IdentityInterface(
-    #         fields=[
-    #             "fieldmap",
-    #             "fieldwarp",
-    #             "corrected",
-    #             "corrected_ref",
-    #             "corrected_mask",
-    #         ]
-    #     ),
-    #     joinsource="echo_index",
-    #     joinfield=[
-    #         "fieldmap",
-    #         "fieldwarp",
-    #         "corrected",
-    #         "corrected_ref",
-    #         "corrected_mask",
-    #     ],
-    #     name="join_sdc_echos",
-    # )
-
-    # def _dpop(list_of_lists):
-    #     return list_of_lists[0][0]
-
-    # # fmt:off
-    # workflow.connect([
-    #     (unwarp_wf, join_echos, [
-    #         ("outputnode.corrected", "bold_files"),
-    #     ]),
-    #     (unwarp_wf, join_sdc_echos, [
-    #         ("outputnode.fieldmap", "fieldmap"),
-    #         ("outputnode.fieldwarp", "fieldwarp"),
-    #         ("outputnode.corrected", "corrected"),
-    #         ("outputnode.corrected_ref", "corrected_ref"),
-    #         ("outputnode.corrected_mask", "corrected_mask"),
-    #     ]),
-    #     # remaining workflow connections
-    #     (join_sdc_echos, final_boldref_wf, [
-    #         ("corrected", "inputnode.bold_file"),
-    #     ]),
-    #     (join_sdc_echos, bold_t2s_wf, [
-    #         (("corrected_mask", pop_file), "inputnode.bold_mask"),
-    #     ]),
-    # ])
-    # # fmt:on
-
-    # return workflow
-
 
 def _create_mem_gb(bold_fname):
     bold_size_gb = os.path.getsize(bold_fname) / (1024 ** 3)
