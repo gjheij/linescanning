@@ -665,7 +665,7 @@ class Neighbours(SurfaceCalc):
 
                 return result
 
-class pRFCalc(pycortex.SavePycortexViews):
+class pRFCalc():
 
     """pRFCalc
 
@@ -837,7 +837,7 @@ class pRFCalc(pycortex.SavePycortexViews):
         self,
         **kwargs):
 
-        super().__init__(
+        self.pyc = pycortex.SavePycortexViews(
             self.prf_data_dict,
             subject=self.subject,
             **kwargs)
