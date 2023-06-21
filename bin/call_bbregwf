@@ -11,25 +11,30 @@ import sys
 import getopt
 from linescanning import (
     fmriprep,
+    transform,
     utils)
 import shutil
 opj = os.path.join
+opd = os.path.dirname
 
 def main(argv):
 
     """
 ---------------------------------------------------------------------------------------------------
-call_topup
+call_bbregwf
 
-This script runs only the initializing nodes from fMRIPrep. E.g., is will do all the header stuff, 
-validation, but most most importantly, motion correction and topup. Under the hood, it utilizes the
-functions in 'linescanning.fmriprep', which are literally the workflows from fMRIPrep, but with all
-other irrelevant stuff commented out (it's still there just in case). 
-
-Input needs to be the full project root directory so the correct fieldmaps can be found. Using the 
-fmriprep_config?.json files you can select particular subsets of the entire dataset. E.g., I only 
-use this script for my limited FOV data, as the brainmasking fails on that data causing aCompCor to
-fail. Therefore, I just need motion-corrected, topup data for a very select part of the dataset. 
+This script runs from-T1w_to-bold registration with `bbregister`. This means that the input image
+needs to be more or less in this space already. Because this script is tailored for partial FOV
+images, we'll initialize on the header instead of registration (this fails horrendously). If your
+BOLD image is from the same session from which the FreeSurfer output is generated, you will be fine.
+If not, you need to do the following:
+  1)  create a bold reference image with ``call_antsreference``. This will allow you to retain the 
+      resolution while applying warps (not sure why, but it works..)
+  2)  apply the transformation mapping one session to the other using this newly created image as
+      reference image (this retains resolution of original file)
+  3)  run ``call_bbregwf`` with the output of 2) to refine registration
+  4)  concatenate the transformation mapping session to session and the refining transformation 
+      into a single ``from-bold_to-T1w``-transformation file.
 
 Parameters
 ----------
@@ -70,9 +75,14 @@ Example
     init = "header"
     output_dir = None
     dof = 6
+    ref = None
+    tfm = None
+    invert = 0
+    interp = "lin" # Linear
+    verbose = False
 
     try:
-        opts = getopt.getopt(argv,"hs:n:i:w:b:o:",["help", "bids=", "sub=", "ses=", "in=", "work=", "cpu=", "init=", "out="])[0]
+        opts = getopt.getopt(argv,"hs:n:i:w:b:o:",["help", "bids=", "sub=", "ses=", "in=", "work=", "cpu=", "init=", "out=", "tfm=", "ref=", "verbose"])[0]
     except getopt.GetoptError:
         print("ERROR while reading arguments; did you specify an illegal argument?")
         print(main.__doc__)
@@ -98,10 +108,28 @@ Example
             init = arg  
         elif opt in ("--dof"):
             dof = int(arg)
+        elif opt in ("--ref"):
+            ref = arg          
+        elif opt in ("--tfm"):
+            tfm = arg
+        elif opt in ("--invert"):
+            invert = int(arg)
+        elif opt in ("--interp"):
+            interp = arg
+        elif opt in ("--verbose"):
+            verbose = True
 
-    if len(argv) < 2:
+    if len(argv) < 1:
         print(main.__doc__)
         sys.exit()
+
+    # try to derive output directory parts from input file if no output directory was specified
+    if not isinstance(output_dir, str):
+        output_dir = opd(bold_file)
+    
+    # make output_dir
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
 
     # need a subject ID for FreeSurfer
     if not isinstance(subject, str):
@@ -111,18 +139,58 @@ Example
         except:
             raise ValueError(f"Please specify subject ID with '-s|--sub'")
 
+    # check if we should apply initial registration
+    concat = False
+    in_file = bold_file
+    reg_ref = None
+    if isinstance(tfm, str):
+        concat = True
+        if isinstance(ref, str):
+            if os.path.exists(ref):
+
+                # define output
+                output = opj(opd(bold_file), "tmp.nii.gz")
+                if not os.path.exists(opd(output)):
+                    os.makedirs(opd(output), exist_ok=True)
+
+                reg_ref = transform.ants_applytrafo(
+                    ref, 
+                    bold_file, 
+                    trafo=tfm, 
+                    invert=invert, 
+                    interp=interp, 
+                    output=output,
+                    return_type="file", 
+                    verbose=verbose)
+
+                # set registered file as bold_file
+                in_file = reg_ref
+            else:
+                raise FileNotFoundError(f"Reference file '{ref}' does not exist..")
+        else:
+            raise TypeError(f"reference must be a string, not '{type(ref)}'")
+    
     # set default work directory
     if not isinstance(workdir, str):
 
+        # read BIDS components
+        bids_comps = utils.split_bids_components(os.path.basename(bold_file))
+
+        # try to read subject ID from file
+        if not isinstance(subject, str):
+            try:
+                subject = f"sub-{bids_comps['sub']}"
+            except:
+                raise ValueError(f"Could not derive subject ID from {os.path.basename(bold_file)}. Change the filename or specifiy subject ID with '--sub <subject>'")
+            
         # define base directory if subject/session is specified
         base_dir = ""
         if isinstance(subject, str):
             base_dir+=subject
 
-        bids_comps = utils.split_bids_components(os.path.basename(bold_file))
         if 'ses' in list(bids_comps.keys()):
             base_dir = opj(base_dir, f"ses-{bids_comps['ses']}")
-    
+
         # assemble workflow name
         wf = utils.assemble_fmriprep_wf(bold_file)
         
@@ -133,18 +201,10 @@ Example
         if not os.path.exists(workdir):
             os.makedirs(workdir)
 
-    # try to derive output directory parts from input file if no output directory was specified
-    if not isinstance(output_dir, str):
-        output_dir = os.path.dirname(bold_file)
-    
-    # make output_dir
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-
     # init wf
     wf = fmriprep.bold_reg_wf(
         subject, 
-        bold_file, 
+        in_file, 
         workdir=workdir,
         omp_nthreads=cpus,
         use_bbr=True,
@@ -167,10 +227,41 @@ Example
     # check if the search resulted in files
     if len(tfm_files) > 0:
 
-        for tag,out in zip(["fwd","inv"],["bold_to-T1w","T1w_to_bold"]):
+        # check if we should concatenate with specified trafo
+        if concat:
+
+            # ses1 to ses2 > only return from-T1w_to-bold (inv)
+            if invert == 1:
+                src = utils.get_file_from_substring("inv", tfm_files)
+                utils.verbose(f"Concatenating inverse transform '{tfm}' with '{src}'", verbose)
+                tfms = [src,tfm]
+                out_tag = "T1w_to-bold"
+            else:
+                src = utils.get_file_from_substring("fwd", tfm_files)
+                utils.verbose(f"Concatenating forward transform '{tfm}' with '{src}'", verbose)                
+                tfms = [tfm, src]
+                out_tag = "bold_to-T1w"
+
+            # combine in 1 txt-file
+            itk_outs = []
+            for ix,ff in enumerate(tfms):
+                tf_txt = "#Transform %d\n" % ix
+                if ff.endswith(".mat"):
+                    out_ = ff.split('.')[0]+'.txt'
+                    cmd = f"ConvertTransformFile 3 {ff} {out_}"
+                    os.system(cmd)
+                else:
+                    out_ = ff
+                
+                with open(out_) as itkfh:
+                    tf_txt += "".join(itkfh.readlines()[2:])
+                
+                itk_outs.append((ix,tf_txt))
             
-            # source file
-            src = utils.get_file_from_substring(tag, tfm_files)
+            # make itk txt file
+            tfms = "#Insight Transform File V1.0\n" + "".join(
+                [el[1] for el in sorted(itk_outs)]
+            )
 
             if try_bids:
                 base_name = []
@@ -182,14 +273,42 @@ Example
                     base_name = "_".join(base_name)
 
                 # target file
-                trg = opj(output_dir, f"{base_name}_from-{out}_mode-image_xfm.txt")
+                trg = opj(output_dir, f"{base_name}_from-{out_tag}_mode-image_xfm.txt")
             else:
                 trg = opj(output_dir, os.path.basename(src))
 
-            shutil.copyfile(src, trg)
+            with open(trg, "w") as f:
+                f.write(tfms) 
+            utils.verbose(f"Wrote '{trg}'", verbose)
+
+        else:
+            for tag,out in zip(["fwd","inv"],["bold_to-T1w","T1w_to-bold"]):
+                
+                # source file
+                src = utils.get_file_from_substring(tag, tfm_files)
+
+                if try_bids:
+                    base_name = []
+                    for ii in ["sub","ses","task","acq","run"]:
+                        if ii in list(bids_comps.keys()):
+                            base_name.append(f"{ii}-{bids_comps[ii]}")
+                    
+                    if len(base_name) > 0:
+                        base_name = "_".join(base_name)
+
+                    # target file
+                    trg = opj(output_dir, f"{base_name}_from-{out}_mode-image_xfm.txt")
+                else:
+                    trg = opj(output_dir, os.path.basename(src))
+
+                shutil.copyfile(src, trg)
             
     else:
         raise ValueError(f"Could not find 'tfm'-files in '{workdir}'")
+    
+    # clean up
+    if isinstance(reg_ref, str):
+        os.remove(reg_ref)
 
 if __name__ == "__main__":
     main(sys.argv[1:])
