@@ -5,8 +5,131 @@ import pickle
 import sys
 import getopt
 import numpy as np
+import nibabel as nb
+import pandas as pd
 import glob
 opj = os.path.join
+
+def fetch_filepath(func, skip_run_id=False):
+
+    # get bids components
+    comps = utils.split_bids_components(func)
+
+    # compile output name
+    final_output=""
+    for id in ['sub','ses','task','run','space','hemi']:
+        if id in list(comps.keys()):
+            if id == "sub":
+                final_output+= f"{id}-{comps[id]}"
+            else:
+                if id == "run":
+                    if not skip_run_id:
+                        final_output+=f"_{id}-{comps[id]}"
+                else:
+                    final_output+=f"_{id}-{comps[id]}"
+
+    base_dir = f"sub-{comps['sub']}"
+    if "ses" in list(comps.keys()):
+        base_dir = opj(base_dir, f"ses-{comps['ses']}")
+
+    return final_output,base_dir
+
+def unzscore(raw,data):
+
+    if isinstance(raw, (np.ndarray,pd.DataFrame)):
+        unz = raw*data["std"].T+data["avg"].T
+        return unz.values
+    else:
+        r1 = raw.get_fdata()
+        r2 = data["std"].get_fdata()[...,np.newaxis]
+        r3 = data["avg"].get_fdata()[...,np.newaxis]
+
+        # insert TR in header
+        hdr = raw.header.copy()
+        hdr["pixdim"][4] = float(data["tr"])
+
+        # unzscore
+        unz = r1*r2+r3
+        return nb.Nifti1Image(unz, affine=raw.affine, header=hdr)
+
+def read_data(func):
+
+    if func.endswith(".nii.gz"):
+        return nb.load(func)
+    else:
+        obj = dataset.Dataset(
+            func, 
+            use_bids=True, 
+            filter_strategy='raw', 
+            standardization='raw', 
+            verbose=False)
+
+        # get raw data
+        raw = obj.fetch_fmri(dtype='raw')
+
+        return raw
+
+def calculate_std(raw):
+
+    # get standard deviation and mean
+    if isinstance(raw, (np.ndarray,pd.DataFrame)):
+        stdev = raw.values.std(axis=0, keepdims=True)
+        avg = raw.values.mean(axis=0, keepdims=True)
+
+        tmp_data = {
+            'std': stdev,
+            'avg': avg
+        }        
+    else:
+        data = raw.get_fdata()
+        stdev = nb.Nifti1Image(data.std(axis=-1), affine=raw.affine, header=raw.header)
+        avg = nb.Nifti1Image(data.mean(axis=-1), affine=raw.affine, header=raw.header)
+
+        # save in pickle
+        tmp_data = {
+            'std': stdev,
+            'avg': avg,
+            'tr': raw.header["pixdim"][4]
+        }
+
+    return tmp_data
+
+def bids_search(func, start_search=[]):
+    # split into bids components to get run ID
+    comps = utils.split_bids_components(func)
+    
+    output_base = f"sub-{comps['sub']}"
+    if "ses" in list(comps.keys()):
+        output_base = opj(output_base, f"ses-{comps['ses']}")
+        start_search += [f"ses-{comps['ses']}_"]
+
+    if "run" in list(comps.keys()):
+        start_search += [f"run-{comps['run']}_"]
+
+    if "hemi" in list(comps.keys()):
+        start_search += [f"hemi-{comps['hemi']}_"]
+
+    return start_search, output_base
+
+def fetch_match_data(search_for, search_dir):
+
+    # get standard deviation and mean
+    match = utils.get_file_from_substring(search_for, search_dir)
+    if isinstance(match, list):
+        raise ValueError(f"Found {len(match)} matches with filters {search_for}: {match}")
+    
+    # print(f"found match: '{match}'")
+    with open(match, 'rb') as in_file:
+        data = pickle.load(in_file)
+    
+    return data
+
+def write_pickle(data, fname):
+    
+    # print(f"Writing {pkl_file}")
+    f = open(fname, "wb")
+    pickle.dump(data, f)
+    f.close()  
 
 def main(argv):
 
@@ -96,26 +219,39 @@ Example:
 
     if session != None:
         if session != "all":
-            search_for += [f'ses-{session}']
+            search_for += [f'ses-{session}_']
 
     if task != None:
         search_for += [f'task-{task}']
 
-    if space != None:
-        search_for += [f'space-{space}']
+    # check if inputs are niftis
+    is_nifti = False
+    extension = "npy"
+    exclude = None
+    if isinstance(space, str):
+        if not "fs" in space:
+            is_nifti = True
+            extension = "nii.gz"
+            search_hemi = []
 
-    for hemi in hemi_list:
+            search_for += ["desc-preproc_bold.nii.gz"]
+            if space != "func":
+                search_for += [f'space-{space}']
+            else:
+                exclude = "space-"
+        else:
+            search_for += [f'space-{space}']
+    
+    # pre-pybest workflow; saves std and mean
+    if pre:
 
-        if hemi != None:
-            search_hemi = search_for + [f'hemi-{hemi}']    
-
-        if pre:
+        if is_nifti:
 
             # final func_dir
-            ffunc_dir = utils.FindFiles(opj(fprep_dir, f'sub-{subject}'), extension="gii").files
+            ffunc_dir = utils.FindFiles(opj(fprep_dir, f'sub-{subject}'), extension="nii.gz").files
 
             # load data
-            funcs = utils.get_file_from_substring(search_hemi, ffunc_dir, exclude="json")
+            funcs = utils.get_file_from_substring(search_for, ffunc_dir, exclude="json")
             if isinstance(funcs, str):
                 skip_run_id = True
                 funcs = [funcs]
@@ -125,7 +261,7 @@ Example:
             if len(ses_ids) > 0:
                 for ses in ses_ids:
                     
-                    ses_funcs = utils.get_file_from_substring([f"ses-{ses}"], funcs)
+                    ses_funcs = utils.get_file_from_substring([f"ses-{ses}_"], funcs, exclude=exclude)
                     if isinstance(ses_funcs, str):
                         ses_funcs = [ses_funcs]
                     
@@ -137,53 +273,22 @@ Example:
 
                     for func in ses_funcs:
                         
-                        # read bids components
-                        comps = utils.split_bids_components(func)
-                        base_dir = opj(f"sub-{comps['sub']}", f"ses-{comps['ses']}")
+                        print(f" {func}")
+                        # construct output basename and base output dir
+                        final_output, base_dir = fetch_filepath(func, skip_run_id=skip_run_id)
 
                         # make output directory
                         output_dir = opj(out_dir, base_dir, 'tmp')
                         if not os.path.exists(output_dir):
                             os.makedirs(output_dir, exist_ok=True)
-
-                        # compile output name
-                        final_output=""
-                        for id in ['sub','ses','task','run','space','hemi']:
-                            if id in list(comps.keys()):
-                                if id == "sub":
-                                    final_output+= f"{id}-{comps[id]}"
-                                else:
-                                    if id == "run":
-                                        if not skip_run_id:
-                                            final_output+=f"_{id}-{comps[id]}"
-                                    else:
-                                        final_output+=f"_{id}-{comps[id]}"
                         
                         # read in file
-                        obj = dataset.Dataset(
-                            func, 
-                            use_bids=True, 
-                            filter_strategy='raw', 
-                            standardization='raw', 
-                            verbose=False)
-
-                        # get raw data
-                        raw = obj.fetch_fmri(dtype='raw')
-
-                        # get standard deviation and mean
-                        stdev = raw.values.std(axis=0, keepdims=True)
-                        avg = raw.values.mean(axis=0, keepdims=True)
-
-                        # save in pickle
-                        tmp_data = {'std': stdev,
-                                    'avg': avg}
-
+                        raw = read_data(func)
+                        write_data = calculate_std(raw)
+                        
+                        # write file
                         pkl_file = opj(output_dir, final_output+'_desc-avgstd.pkl')
-                        # print(f"Writing {pkl_file}")
-                        f = open(pkl_file, "wb")
-                        pickle.dump(tmp_data, f)
-                        f.close()
-
+                        write_pickle(write_data, pkl_file)
             else:
                 # get run ids
                 skip_run_id = False
@@ -193,183 +298,199 @@ Example:
 
                 for func in funcs:
                     
-                    # read bids components
-                    comps = utils.split_bids_components(func)
-                    base_dir = opj(f"sub-{comps['sub']}", f"ses-{comps['ses']}")
+                    print(f" {func}")
+                    # construct output basename and base output dir
+                    final_output, base_dir = fetch_filepath(func, skip_run_id=skip_run_id)
 
                     # make output directory
                     output_dir = opj(out_dir, base_dir, 'tmp')
                     if not os.path.exists(output_dir):
                         os.makedirs(output_dir, exist_ok=True)
 
-                    # compile output name
-                    final_output=""
-                    for id in ['sub','ses','task','run','space','hemi']:
-                        if id in list(comps.keys()):
-                            if id == "sub":
-                                final_output+= f"{id}-{comps[id]}"
-                            else:
-                                if id == "run":
-                                    if not skip_run_id:
-                                        final_output+=f"_{id}-{comps[id]}"
-                                else:
-                                    final_output+=f"_{id}-{comps[id]}"
-                    
                     # read in file
-                    obj = dataset.Dataset(
-                        func, 
-                        use_bids=True, 
-                        filter_strategy='raw', 
-                        standardization='raw', 
-                        verbose=False)
-
-                    # get raw data
-                    raw = obj.fetch_fmri(dtype='raw')
-
-                    # get standard deviation and mean
-                    stdev = raw.values.std(axis=0, keepdims=True)
-                    avg = raw.values.mean(axis=0, keepdims=True)
-
-                    # save in pickle
-                    tmp_data = {'std': stdev,
-                                'avg': avg}
-
-                    pkl_file = opj(output_dir, final_output+'_desc-avgstd.pkl')
-                    # print(f"Writing {pkl_file}")
-                    f = open(pkl_file, "wb")
-                    pickle.dump(tmp_data, f)
-                    f.close()                                        
-        else:
-            
-            # find all files
-            all_files = utils.FindFiles(opj(out_dir, base_dir), extension="npy").files
-
-            # load data; check if we can load with 'run' flag, otherwise we only have a single run
-            full_search = search_hemi + ['denoised_bold','denoising']
-            funcs = utils.get_file_from_substring(full_search, all_files, exclude="raw")
-
-            if isinstance(funcs, str):
-                funcs = [funcs]
-
-            if len(funcs) == 0:
-                raise ValueError(f"No files with {full_search} in '{opj(out_dir, base_dir)}/*'")
-
-            # get session IDs
-            ses_ids = utils.get_ids(funcs, bids="ses")
-            if len(ses_ids) > 0:
-                for ses in ses_ids:
-
-                    ses_funcs = utils.get_file_from_substring([f"ses-{ses}"], funcs)
-                    if isinstance(ses_funcs, str):
-                        ses_funcs = [ses_funcs]
+                    raw = read_data(func)
+                    write_data = calculate_std(raw)   
                     
-                    # get run ids
-                    skip_run_id = False
-                    run_ids = utils.get_ids(ses_funcs, bids="run")
-                    if len(run_ids)<1:
+                    # write file
+                    pkl_file = opj(output_dir, final_output+'_desc-avgstd.pkl')
+                    write_pickle(write_data, pkl_file)  
+        else:
+
+            for hemi in hemi_list:
+
+                if hemi != None:
+                    search_hemi = search_for + [f'hemi-{hemi}']    
+
+                if pre:
+
+                    # final func_dir
+                    ffunc_dir = utils.FindFiles(opj(fprep_dir, f'sub-{subject}'), extension="gii").files
+
+                    # load data
+                    funcs = utils.get_file_from_substring(search_hemi, ffunc_dir, exclude="json")
+                    if isinstance(funcs, str):
                         skip_run_id = True
+                        funcs = [funcs]
 
-                    # filter out run-ID if present
-                    if not skip_run_id:
-                        ses_funcs = utils.get_file_from_substring(["run-"], ses_funcs)
+                    # get session IDs
+                    ses_ids = utils.get_ids(funcs, bids="ses")
+                    if len(ses_ids) > 0:
+                        for ses in ses_ids:
+                            
+                            ses_funcs = utils.get_file_from_substring([f"ses-{ses}_"], funcs)
+                            if isinstance(ses_funcs, str):
+                                ses_funcs = [ses_funcs]
+                            
+                            # get run ids
+                            skip_run_id = False
+                            run_ids = utils.get_ids(ses_funcs, bids="run")
+                            if len(run_ids) == 1:
+                                skip_run_id = True
 
-                    for func in ses_funcs:
+                            for func in ses_funcs:
+                                
+                                # construct output basename and base output dir
+                                final_output, base_dir = fetch_filepath(func, skip_run_id=skip_run_id)
 
-                        # split into bids components to get run ID
-                        comps = utils.split_bids_components(func)
+                                # make output directory
+                                output_dir = opj(out_dir, base_dir, 'tmp')
+                                if not os.path.exists(output_dir):
+                                    os.makedirs(output_dir, exist_ok=True)
+                                
+                                # read in file
+                                raw = read_data(func)
+                                write_data = calculate_std(raw)
 
-                        if "ses" in list(comps.keys()):
-                            output_base = opj(f"sub-{comps['sub']}", f"ses-{comps['ses']}")
-                            ses_search = search_hemi + [f"ses-{comps['ses']}_"]
-                        else:
-                            ses_search = search_hemi
-                            output_base = f"sub-{comps['sub']}"
+                                # write file
+                                pkl_file = opj(output_dir, final_output+'_desc-avgstd.pkl')
+                                write_pickle(write_data, pkl_file)
+                    else:
+                        # get run ids
+                        skip_run_id = False
+                        run_ids = utils.get_ids(funcs, bids="run")
+                        if len(run_ids) == 1:
+                            skip_run_id = True
 
-                        if "run" in list(comps.keys()):
-                            all_search = ses_search + [f"run-{comps['run']}_"]
-                        else:
-                            all_search = ses_search
+                        for func in funcs:
+                            
+                            # construct output basename and base output dir
+                            final_output, base_dir = fetch_filepath(func, skip_run_id=skip_run_id)
 
-                        avg_dir = opj(out_dir, output_base, 'tmp')
-                        output_dir = opj(out_dir, output_base, 'unzscored')
+                            # make output directory
+                            output_dir = opj(out_dir, base_dir, 'tmp')
+                            if not os.path.exists(output_dir):
+                                os.makedirs(output_dir, exist_ok=True)
 
-                        if not os.path.exists(output_dir):
-                            os.makedirs(output_dir, exist_ok=True)
+                            # read in file
+                            raw = read_data(func)
+                            write_data = calculate_std(raw)
 
-                        # read in file
-                        obj = dataset.Dataset(
-                            func, 
-                            use_bids=True, 
-                            filter_strategy='raw', 
-                            standardization='raw')
+                            # write file
+                            pkl_file = opj(output_dir, final_output+'_desc-avgstd.pkl')
+                            write_pickle(write_data, pkl_file)                                       
+    else:
+        
+        # find all files
+        all_files = utils.FindFiles(opj(out_dir, base_dir), extension=extension).files
 
-                        # get raw data
-                        raw = obj.fetch_fmri(dtype='raw')
+        # load data; check if we can load with 'run' flag, otherwise we only have a single run
+        full_search = search_for + ['denoised_bold','denoising']
 
-                        # get standard deviation and mean
-                        match = utils.get_file_from_substring(all_search, avg_dir)
-                        if isinstance(match, list):
-                            raise ValueError(f"Found {len(match)} matches with filters {full_search}: {match}")
+        # filter out remnants from nifti-specification
+        if is_nifti:
+            full_search = utils.get_file_from_substring([], full_search, exclude="desc-preproc_bold.nii.gz")
 
-                        with open(match, 'rb') as input:
-                            data = pickle.load(input)
+        funcs = utils.get_file_from_substring(full_search, all_files, exclude="raw")
 
-                        unzscored = raw*data['std'].T+data['avg'].T
-                        fname = opj(output_dir, os.path.basename(func))
-                        print(f" Writing {fname}")
-                        np.save(fname, unzscored.T)
-            else:   
+        if isinstance(funcs, str):
+            funcs = [funcs]
 
+        if len(funcs) == 0:
+            raise ValueError(f"No files with {full_search} in '{opj(out_dir, base_dir)}/*'")
+
+        # get session IDs
+        ses_ids = utils.get_ids(funcs, bids="ses")
+        if len(ses_ids) > 0:
+            for ses in ses_ids:
+
+                ses_funcs = utils.get_file_from_substring([f"ses-{ses}/", f"ses-{ses}_"], funcs, exclude=exclude)
+                if isinstance(ses_funcs, str):
+                    ses_funcs = [ses_funcs]
+                
                 # get run ids
                 skip_run_id = False
-                run_ids = utils.get_ids(funcs, bids="run")
-                if len(run_ids) == 1:
+                run_ids = utils.get_ids(ses_funcs, bids="run")
+                if len(run_ids)<1:
                     skip_run_id = True
 
-                for func in funcs:
+                # filter out run-ID if present
+                if not skip_run_id:
+                    ses_funcs = utils.get_file_from_substring(["run-"], ses_funcs)
 
+    
+                for func in ses_funcs:
+                    
                     # split into bids components to get run ID
-                    comps = utils.split_bids_components(func)
+                    all_search, output_base = bids_search(func, start_search=[])
 
-                    if "ses" in list(comps.keys()):
-                        output_base = opj(f"sub-{comps['sub']}", f"ses-{comps['ses']}")
-                        ses_search = search_hemi + [f"ses-{comps['ses']}_"]
-                    else:
-                        ses_search = search_hemi
-                        output_base = f"sub-{comps['sub']}"
-
-                    if "run" in list(comps.keys()):
-                        all_search = ses_search + [f"run-{comps['run']}_"]
-                    else:
-                        all_search = ses_search
-
+                    # set tmp directory containing pkl-files
                     avg_dir = opj(out_dir, output_base, 'tmp')
                     output_dir = opj(out_dir, output_base, 'unzscored')
 
                     if not os.path.exists(output_dir):
                         os.makedirs(output_dir, exist_ok=True)
 
-                    # read in file
-                    obj = dataset.Dataset(
-                        func, 
-                        use_bids=True, 
-                        filter_strategy='raw', 
-                        standardization='raw')
+                    # read in file; returns nibabel.Nifti1Image if extension == "nii.gz"
+                    raw = read_data(func)
 
-                    # get raw data
-                    raw = obj.fetch_fmri(dtype='raw')
+                    # find matching pkl-file
+                    data = fetch_match_data(all_search, avg_dir)
 
-                    # get standard deviation and mean
-                    match = utils.get_file_from_substring(all_search, avg_dir)
-                    if isinstance(match, list):
-                        raise ValueError(f"Found {len(match)} matches with filters {full_search}: {match}")
+                    # undo zscore
+                    unzscored = unzscore(raw,data)
 
-                    with open(match, 'rb') as input:
-                        data = pickle.load(input)
-
-                    unzscored = raw*data['std'].T+data['avg'].T
+                    # sort nifti dimensions
                     fname = opj(output_dir, os.path.basename(func))
                     print(f" Writing {fname}")
+                    if extension == "nii.gz":
+                        unzscored.to_filename(fname)
+                    else:
+                        np.save(fname, unzscored.T)
+        else:   
+
+            # get run ids
+            skip_run_id = False
+            run_ids = utils.get_ids(funcs, bids="run")
+            if len(run_ids) == 1:
+                skip_run_id = True
+
+            for func in funcs:
+
+                # split into bids components to get run ID
+                all_search, output_base = bids_search(func, start_search=search_hemi)
+
+                # set tmp directory containing pkl-files
+                avg_dir = opj(out_dir, output_base, 'tmp')
+                output_dir = opj(out_dir, output_base, 'unzscored')
+
+                if not os.path.exists(output_dir):
+                    os.makedirs(output_dir, exist_ok=True)
+
+                # read in file
+                raw = read_data(func)
+
+                # find matching pkl-file
+                data = fetch_match_data(all_search, avg_dir)
+
+                # undo zscore
+                unzscored = unzscore(raw,data)
+
+                # sort nifti dimensions
+                fname = opj(output_dir, os.path.basename(func))
+                print(f" Writing {fname}")
+                if extension == "nii.gz":
+                    unzscored.to_filename(fname)
+                else:
                     np.save(fname, unzscored.T)
                         
 if __name__ == "__main__":
