@@ -514,7 +514,28 @@ def lowpass_savgol(func, window_length=None, polyorder=None):
     
     return signal.savgol_filter(func, window_length, polyorder, axis=-1)
 
-def get_freq(func, TR=0.105, spectrum_type='psd', clip_power=None):
+class Freq():
+
+    def __init__(self, func, *args, **kwargs) -> None:
+        self.func = func
+        self.freq = get_freq(self.func, *args, **kwargs)
+
+    def plot_timecourse(self, **kwargs):
+        plotting.LazyPlot(
+            self.func,
+            x_label="volumes",
+            y_label="amplitude",
+            **kwargs)  
+        
+    def plot_freq(self, **kwargs):
+        plotting.LazyPlot(
+            self.freq[1],
+            xx=self.freq[0],
+            x_label="frequency (Hz)",
+            y_label="power (a.u.)",
+            **kwargs)  
+        
+def get_freq(func, TR=0.105, spectrum_type='fft', clip_power=None):
     """get_freq
 
     Create power spectra of input timeseries with the ability to select implementations from `nitime`. Fourier transform is implemented as per J. Siero's implementation.
