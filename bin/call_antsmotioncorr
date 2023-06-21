@@ -173,15 +173,16 @@ Example
     np.savetxt(pars_file, moco_pars, delimiter="\t")
 
     # convert each Affine matrix to FSL
-    split = fsl.Split(dimension="t", in_file=bold_file)
+    utils.verbose(f"Running FSLSplit for reference image for each frame", verbose)
+    split = fsl.Split(dimension="t", in_file=bold_file, out_base_name=opj(os.path.dirname(bold_file), "vol"))
     _ = split.run()
 
     # filter vol* files into list
-    ref_vols = utils.get_file_from_substring(["vol"], utils.FindFiles(os.getcwd(), extension=".nii.gz").files)
+    ref_vols = utils.get_file_from_substring(["vol"], utils.FindFiles(os.path.dirname(bold_file), extension=".nii.gz").files)
 
     # double check..
     if len(ref_vols) != len(moco["motion_parameters"]):
-        raise ValueError(f"Found unequal nr of reference volums ({len(ref_vols)}) and motion estimates ({len(moco['motion_parameters'])})")
+        raise ValueError(f"Found unequal nr of reference volumes ({len(ref_vols)}) and motion estimates ({len(moco['motion_parameters'])})")
     
     # run call_ras2fsl for all and run rmsdiff
     utils.verbose(f"Converting matrices to FSL and calculating _rel.rms/_abs.rms", verbose)
