@@ -43,7 +43,7 @@ Parameters
                 _SOURCE. So, if all goes well, this will result in `DIR_DATA_SOURCE/<subject>/<ses-
                 sion>/single_subject_<sub_id>_wf/func_preproc_<ses>_<task>_<run>_<acq>_wf`
   -m|--mask     bold brain mask (defaults to <input image -preproc_bold.nii.gz)-brain_mask.nii.gz
-  -t|--trafo    transformation describing T1w to BOLD (defaults to '<work_dir>/bbreg_wf/concat_xfm/
+  -t|--tfm      transformation describing T1w to BOLD (defaults to '<work_dir>/bbreg_wf/concat_xfm/
                 out_inv.tfm')
   --mov         output file from McFlirt in SPM format (leave empty to default to '<work_dir>bold-
                 _hmc_wf/normalize_motion/motion_params.txt
@@ -96,7 +96,7 @@ Example
     t1_tpms = None
 
     try:
-        opts = getopt.getopt(argv,"hi:b:w:m:t:s:n:",["sub=", "ses=", "help", "in=", "bids=", "work=", "mask=", "trafo=", "mov=", "rms=", "apply", "t1_mask=", "tpms="])[0]
+        opts = getopt.getopt(argv,"hi:b:w:m:t:s:n:",["sub=", "ses=", "help", "in=", "bids=", "work=", "mask=", "tfm=", "mov=", "rms=", "apply", "t1_mask=", "tpms="])[0]
     except getopt.GetoptError:
         print("ERROR while reading arguments; did you specify an illegal argument?")
         print(main.__doc__)
@@ -118,7 +118,7 @@ Example
             workdir = arg
         elif opt in ("-m", "--mask"):
             bold_mask = arg
-        elif opt in ("-t", "--trafo"):
+        elif opt in ("-t", "--tfm"):
             t1w_to_bold = arg  
         elif opt in ("--mov"):
             mov_file = arg           
@@ -182,8 +182,6 @@ Example
         if not os.path.exists(workdir):
             os.makedirs(workdir)
 
-    print(workdir)
-    sys.exit(1)
     # initialize class
     bf = fmriprep.bold_confs_wf(
         bold_file=bold_file,
