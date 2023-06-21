@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+source call_bashhelper
+
 function Usage {
   cat <<USAGE
 
@@ -11,15 +13,18 @@ cified in /project_folder/<subject>/ses-X/anat. It uses predefined paths only so
 something in previous steps you can use it with just the subject ID.
 
 It will look for the following files:
-  - ses-1 anat: $PYMP2RAGE/<subject>/ses-1
-  - ses-2 anat: $DIR_DATA_HOME/<subject>/ses-2/anat
+  - ses-1 anat: derivatives/<anat_stage>/<subject>/ses-1  (uses 'find_hierarchical_anatomy' func-
+                tion if certain stages are not present. Will look in 'denoised' first, then 'pymp-
+                2rage', then 'anat' in DIR_DATA_HOME)
+  - ses-2 anat: $DIR_DATA_HOME/<subject>/ses-<ses_nr>/anat/*acq-MP2RAGE*_T1w.nii.gz
 
 And output a transformation matrix as:
   $CTX/transforms/<subject>_from-ses1_to-ses2_desc-genaff.mat
 
 Arguments:
-  <subject>    subject ID, e.g., sub-001
-  <ses nr>     session number, e.g., 2
+  --inv       invert the matrix 
+  <subject>   subject ID, e.g., sub-001
+  <ses nr>    session number, e.g., 2
 Usage:
   call_ses1_to_ses <subject> <ses_nr>
 
@@ -32,30 +37,81 @@ USAGE
   exit 1
 }
 
+invert=0
+verbose=""
+while getopts :-:vh argument
+do
+  case ${argument} in
+    -)
+      case "${OPTARG}" in
+        inv)
+          invert=1
+          ;;
+        verbose)
+          verbose="--verbose"
+          ;;          
+        *)
+          if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
+            echo "Unknown option --${OPTARG}"
+            exit 1
+          fi
+          ;;
+      esac;;        
+    i)  invert=1
+          ;;       
+  esac
+done
+
 if [[ $# -lt 1 ]] ; then
   Usage >&2
   exit 1
 fi
 
+
+sub_id=${@:$OPTIND:1}
+ses_id=${@:$OPTIND+1:1}
+
 #-----------------------------------------------------------------------------
 # Check some directories/files
-if [[ ! -d $CTX/${1} ]]; then
-  call_ctximport -s ${1}
+if [[ ! -d $CTX/${sub_id} ]]; then
+  call_ctximport -s ${sub_id}
 fi
 
-ses1=`find ${DIR_DATA_DERIV}/pymp2rage/${1}/ses-1 -type f -name "${1}*" -and -name "*T1w.nii.gz" 2>/dev/null`
-ses2=`find ${DIR_DATA_HOME}/${1}/ses-${2}/anat -type f -name "${1}*" -and -name "*acq-MP2RAGE*" -and -name "*T1w.nii.gz" 2>/dev/null`
+# find anatomy directory hierarchically
+INPUT_DIR=`find_hierarchical_anatomy 3`
+
+ses1=`find ${INPUT_DIR}/${sub_id}/ses-1 -type f -name "${sub_id}*" -and -name "*T1w.nii.gz" 2>/dev/null`
+ses2=`find ${DIR_DATA_HOME}/${sub_id}/ses-${ses_id}/anat -type f -name "${sub_id}*" -and -name "*acq-MP2RAGE*" -and -name "*T1w.nii.gz" 2>/dev/null`
 
 if [[ -z ${ses1} ]] || [[ -z ${ses2} ]]; then
-  echo "ERROR in `basename ${0}`: could not find ses-1 or ses-${2} anatomy"
+  echo "ERROR in `basename ${0}`: could not find ses-1 or ses-${ses_id} anatomy"
   exit 1
 fi
 
-aff=${CTX}/${1}/transforms/${1}_from-ses1_to-ses${2}_desc-genaff.mat
+# set input/output
+if [[ ${invert} -eq 1 ]]; then
+  ref=${ses1}
+  mov=${ses2}
+  tag=ses${ses_id}_to-ses1
+else
+  ref=${ses2}
+  mov=${ses1}
+  tag=ses1_to-ses${ses_id}
+fi
+
+aff=${CTX}/${sub_id}/transforms/${sub_id}_from-${tag}_desc-genaff.mat
 if [[ ! -d $(dirname ${aff}) ]]; then
   mkdir -p $(dirname ${aff})
 fi
 
-cmd="call_antsregistration ${ses2} ${ses1} $(dirname ${aff})/$(basename ${aff} genaff.mat) rigid"
-echo ${cmd}
-exec ${cmd}
+cmd="""call_antsregistration \
+  ${verbose} \
+  ${ref} \
+  ${mov} \
+  $(dirname ${aff})/$(basename ${aff} genaff.mat)"""
+
+if [[ ! -z ${verbose} ]]; then
+  echo ${cmd}
+fi
+
+eval ${cmd}
