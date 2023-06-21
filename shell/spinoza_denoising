@@ -40,6 +40,8 @@ Arguments:
                       native)
   --fsnative          overwrite PYBEST_SPACE-variable and use FSNative for pybest (defaults to fs-
                       native)
+  --func              overwrite PYBEST_SPACE-variable and use 'func'-space for pybest
+  --anat              overwrite PYBEST_SPACE-variable and use 'T1w'-space for pybest
   <project root>      base directory containing the derivatives and the subject's folders.
   <derivatives>       path to the derivatives folder
 
@@ -89,7 +91,13 @@ do
           ;; 
         fsnative)
           PYBEST_SPACE="fsnative"
-          ;;                     
+          ;;  
+        func)
+          PYBEST_SPACE="func"
+          ;;
+        anat)
+          PYBEST_SPACE="T1w"
+          ;;                           
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}"
