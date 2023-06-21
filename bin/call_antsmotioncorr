@@ -1,61 +1,265 @@
-#!/usr/bin/env bash
+#!/usr/bin/env python
+#$ -j Y
+#$ -cwd
+#$ -V
 
-function Usage {
-    cat <<USAGE
+import mkl
+mkl.set_num_threads=1
 
+import ants
+from linescanning import utils
+from nipype.interfaces import fsl
+import os
+import sys
+import getopt
+import shutil
+import numpy as np
+from scipy.io import loadmat
+import subprocess
+from alive_progress import alive_bar
+
+opj = os.path.join
+
+
+def main(argv):
+
+    """
 ---------------------------------------------------------------------------------------------------
 call_antsmotioncorr
 
-Do motion correction with ANTs' antsMotionCorr. Seems to deal better with partial FOV compared to 
-McFlirt.
+Run motion correction using `antspyx`. This allows us to easily get all the files that are normally
+outputted by `mcflirt`, such as a file containing registration matrices from all volumes to the re-
+ference image (either the average or another fixed image), framewise displacement following Power, 
+et al (2012), and SPM-formatted motion parameters by converting the registration matrices to x,y,z,
+rx,ry,rz. Also calculates the *_rel.rms and *_abs.rms according to McFlirt convention by converting
+the individual ANTs matrices to FSL convention and run `rmsdiff`. *_rel refers to the RMS between
+each successive frame, while *_abs refers to the RMS between reference (identity matrix) and all
+frames. These files can be used for `call_confounds`
 
-Args:
-  <to-be-corrected>   file to warp
-  <output>            moving-in-ref output name (WITHOUT EXTENSION! nii.gz will be appended)
+Parameters
+----------         
+  -i|--in       subject-directory containing the files that need to be run through Topup. Defaults 
+                to DIR_DATA_HOME as per spinoza_setup
+  -o|--out      output directory containing the topup'ed data. Easiest is to give the fMRIPrep fol-
+                der, it will be formatted accordingly automatically. Defaults to <input_dir>/deriva-
+                tives/fmriprep
+  -m|--mask     use initial bold mask (e.g. a custom one by registering the T1w-mask to func space;
+                this is recommended for extremely partial FOV data)
+  -r|--ref      custom reference image (if not specified, the average is taken)                
+  --ow          overwrite intermediate files
+  --verbose     print progress to the terminal
+  --avg         take the average of timeseries if `ref` not specified. Otherwise first volume will 
+                be taken
+  --itk         keep motion parameters in ITK-format (no flipped y-translation)               
+  --keep_xfms   do not delete the ANTs matrices in FSL convention [default is to remove them]
+  --keep_vols   do not delete the split 4D timeseries files [default is to remove them]
+  --keep_tfm    do not delete *.txt transform files
+  --keep_aff    do not delete *GenericAffine.mat files
 
-Usage:
-  call_antsmotioncorr <4D nifti file> <output file>
-
-Example:
-  call_antsmotioncorr bold.nii.gz bold_motioncorr.nii.gz
+Example
+----------
+>>> call_antsmotioncorr --in fmri.nii.gz --ref ref.nii.gz --mask mask.nii.gz --out moco
+>>> call_antsmotioncorr --in fmri.nii.gz --ref ref.nii.gz --mask mask.nii.gz --out moco --verbose
 
 ---------------------------------------------------------------------------------------------------
+"""
 
-USAGE
-    exit 1
-}
+    bold_img = None
+    mask_file = None
+    ref_file = None
+    verbose = False
+    overwrite = False
+    output = None
+    first_vol = True
+    fmt = "SPM"
+    clean_vols = True
+    clean_xfms = True
+    clean_tfm = True
+    clean_aff = True
 
-source call_bashhelper
+    try:
+        opts = getopt.getopt(argv,"hi:o:m:r:",["help", "in=", "out=", "verbose", "ow", "mask=", "first", "itk", "keep_xfms", "keep_vols", "keep_tfm", "keep_aff", "ref="])[0]
+    except getopt.GetoptError:
+        print("ERROR while reading arguments; did you specify an illegal argument?")
+        print(main.__doc__)
+        sys.exit(2)
+    
+    for opt, arg in opts:
+        if opt in ('-h', '--help'):
+            print(main.__doc__)
+            sys.exit()
+        elif opt in ("-i", "--in"):
+            bold_file = os.path.abspath(arg)
+        elif opt in ("-r", "--ref"):
+            ref_file = arg          
+        elif opt in ("-m", "--mask"):
+            mask_file = arg              
+        elif opt in ("-o", "--out"):
+            output = arg
+        elif opt in ("--ow"):
+            overwrite = True
+        elif opt in ("--verbose"):
+            verbose = True
+        elif opt in ("--avg"):
+            first_vol = False                        
+        elif opt in ("--itk"):
+            fmt = "ITK"                                    
+        elif opt in ("-m", "--mask"):
+            ref_file = arg
+        elif opt in ("--keep_xfms"):
+            clean_xfms = False
+        elif opt in ("--keep_vols"):
+            clean_vols = False  
+        elif opt in ("--keep_tfm"):
+            clean_tfm = False
+        elif opt in ("--keep_aff"):
+            clean_aff = False            
 
-if [[ $# -lt 2 ]] ; then
-  Usage >&2
-  exit 1
-fi
+    if len(argv) < 2:
+        print(main.__doc__)
+        sys.exit()
 
-# define input/output
-INPUT=${@:$OPTIND:1}
-OUTPUT=${@:$OPTIND+1:1}
+    # sort output
+    if not isinstance(output, str):
+        output = opj(os.path.dirname(bold_file), "moco")
+    else:
+        output = os.path.abspath(output)
 
-INPUT=`fetch_filepath ${INPUT}`
-OUTPUT=`fetch_filepath ${OUTPUT}`
+    if not os.path.exists(os.path.dirname(output)):
+        os.makedirs(os.path.dirname(output))
 
-# do stuff
-if [[ ${INPUT} == "*_bold.nii.gz" ]]; then
-  base=$(basename ${INPUT} _bold.nii.gz)
-else
-  base=$(basename ${INPUT} .nii.gz)
-fi
+    # read timeseries in ANTs object
+    bold_img = ants.image_read(bold_file)
 
-ref=$(dirname ${INPUT})/${base}_desc-boldref.nii.gz
-if [[ ! -f ${ref} ]]; then
-  antsMotionCorr -d 3 -a $INPUT -o $ref
-fi
+    # check if we should take first vol
+    ref_img = None
+    if not isinstance(ref_file, str):
+        if first_vol:
+            ref_img = ants.get_average_of_timeseries(bold_img, idx=range(1))
+            ref_file = f"{output}_boldref.nii.gz"
+            ref_img.to_filename(ref_file)
+            utils.verbose("Using first volume as reference", verbose)
+        else:
+            utils.verbose("Using average as reference", verbose)
+    else:
+        utils.verbose("Using custom reference file", verbose)
+        ref_img = ants.image_read(ref_file)
+        
+    # read mask if available
+    mask_img = None
+    if isinstance(mask_file, str):
+        mask_file = os.path.abspath(mask_file)
+        mask_img = ants.image_read(mask_file)
 
-antsMotionCorr -d 3 \
-               -o [${OUTPUT},${OUTPUT}.nii.gz] \
-               -m MI[${ref}, ${INPUT}, 1, 32, Regular, 0.1] \
-               -t Rigid[0.1] \
-               -u 1 \
-               -i 15 \
-               -f 1 \
-               -s 1
+    # initialize motion correction
+    moco = ants.motion_correction(
+        bold_img,
+        fixed=ref_img,
+        type_of_transform="BOLDRigid",
+        mask=mask_img,
+        fdOffset=50,
+        outprefix=output,
+        verbose=verbose)
+    
+    # saving motion corrected data
+    moco_file = f"{output}_bold.nii.gz"
+    utils.verbose(f"Writing moco file: {moco_file}", verbose)
+    moco["motion_corrected"].to_filename(moco_file)
+
+    # convert to SPM
+    moco_pars = np.concatenate([utils.ants_to_spm_moco(loadmat(x[0])['AffineTransform_float_3_3'], convention=fmt) for x in moco['motion_parameters']], axis=1).T
+    pars_file = f"{output}_desc-motionpars.txt"
+    utils.verbose(f"Writing moco parameters [{fmt}]: {pars_file}", verbose)
+    np.savetxt(pars_file, moco_pars, delimiter="\t")
+
+    # convert each Affine matrix to FSL
+    split = fsl.Split(dimension="t", in_file=bold_file)
+    _ = split.run()
+
+    # filter vol* files into list
+    ref_vols = utils.get_file_from_substring(["vol"], utils.FindFiles(os.getcwd(), extension=".nii.gz").files)
+
+    # double check..
+    if len(ref_vols) != len(moco["motion_parameters"]):
+        raise ValueError(f"Found unequal nr of reference volums ({len(ref_vols)}) and motion estimates ({len(moco['motion_parameters'])})")
+    
+    # run call_ras2fsl for all and run rmsdiff
+    utils.verbose(f"Converting matrices to FSL and calculating _rel.rms/_abs.rms", verbose)
+
+    rel_ = []
+    abs_ = []
+    xfm_list = []
+    with alive_bar(len(ref_vols)) as bar:
+        for ix,tf in enumerate(moco["motion_parameters"]):
+            in_xfm = tf[0]
+            out_xfm = "_".join(in_xfm.split("_")[:-1]+["xfm.mat"])
+            trg = ref_vols[ix]
+            cmd = f"call_ras2fsl {ref_file} {trg} {in_xfm} {out_xfm}"
+            os.system(cmd)
+            xfm_list.append(out_xfm)
+
+            ## source code McFlirt: http://ftp.nmr.mgh.harvard.edu/pub/dist/freesurfer/tutorial_packages/centos6/fsl_507/src/mcflirt/mcflirt.cc
+            # _abs.rms = deviation(identity,array[i])
+            ident = opj(os.environ.get('FSLDIR'), 'etc', 'flirtsch', 'ident.mat')
+            abs_cmd = f"rmsdiff {ident} {out_xfm} {ref_file}"
+            abs_rms = float(subprocess.getoutput(abs_cmd).split("\n")[-1])
+            abs_.append(abs_rms)
+            
+            # _rel.rms = deviation(array[i-1],array[i])
+            if ix == 0:
+                ref_mat = out_xfm
+            else:
+                ref_mat = xfm_list[ix-1]
+
+            rel_cmd = f"rmsdiff {ref_mat} {out_xfm} {ref_file} {mask_file}"   
+            rel_rms = float(subprocess.getoutput(rel_cmd).split("\n")[-1])
+            rel_.append(rel_rms)
+
+            bar()
+
+    # save as mcflirt'y files for call_confounds input
+    utils.verbose("Writing _abs/_rel.rms-files", verbose)
+    np.savetxt(output+"_desc-abs.rms", np.array(abs_))
+    np.savetxt(output+"_desc-rel.rms", np.array(rel_))
+
+    utils.verbose("Concatenating all matrices in mat2itk-file", verbose)
+    aff_list = utils.get_file_from_substring(["Affine.mat"], os.path.dirname(output))
+    txt_list = []
+    itk_outs = []
+    for ix,ff in enumerate(aff_list):
+        transform = "#Transform %d\n" % ix
+        out_ = ff.split('.')[0]+'.txt'
+        cmd = f"ConvertTransformFile 3 {ff} {out_}"
+        os.system(cmd)
+        with open(out_) as itkfh:
+            transform += "".join(itkfh.readlines()[2:])
+
+        itk_outs.append((ix,transform))
+        txt_list.append(out_)
+
+    tfms = "#Insight Transform File V1.0\n" + "".join(
+        [el[1] for el in sorted(itk_outs)]
+    )
+
+    out_file = f"{output}_desc-mat2itk.txt"
+    utils.verbose(f"Writing concat tfms: {out_file}", verbose)
+    with open(out_file, "w") as f:
+        f.write(tfms)    
+
+    # clean up
+    for tag,ll in zip(
+        [clean_vols, clean_xfms, clean_tfm, clean_aff], 
+        [ref_vols, xfm_list, txt_list, aff_list]
+        ):
+
+        if tag:
+            for ii in ll:
+                try:
+                    os.remove(ii)
+                except:
+                    pass
+
+    utils.verbose("Done", verbose)
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
