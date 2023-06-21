@@ -596,8 +596,7 @@ def get_matrixfromants(mat, invert=False):
     if mat.endswith(".mat"):
         genaff = io.loadmat(mat)
         key = list(genaff.keys())[0]
-        matrix = np.hstack((genaff[key][0:9].reshape(
-            3, 3), genaff[key][9:].reshape(3, 1)))
+        matrix = np.hstack((genaff[key][0:9].reshape(3, 3), genaff[key][9:].reshape(3, 1)))
         matrix = np.vstack([matrix, [0, 0, 0, 1]])
     elif mat.endswith(".txt"):
         matrix = np.loadtxt(mat)
@@ -607,6 +606,56 @@ def get_matrixfromants(mat, invert=False):
         matrix = np.linalg.inv(matrix)
 
     return matrix
+
+def ants_truncate_intensities(
+    in_file, 
+    out_file, 
+    lower=0.01, 
+    upper=0.99, 
+    n_bins=256):
+
+    import nibabel as nb
+    import os
+
+    if not isinstance(in_file, str):
+        raise TypeError(f"Input must be a string pointing to a nifti file or a nb.Nifti1Image-object, not '{type(in_file)}'")
+    else:
+        dims = nb.load(in_file).header["dim"][0]
+
+    if not isinstance(out_file, str):
+        out_file = os.path.abspath(in_file)
+        raise TypeError(f"out_file must be a string, not '{type(out_file)}'")
+    else:
+        out_file = os.path.abspath(out_file)
+
+    cmd = f"ImageMath {dims} {out_file} TruncateImageIntensity {in_file} {lower} {upper} {n_bins}"
+    
+    # print command if verb = True
+    print(cmd)
+    os.system(cmd)
+    
+    return out_file
+
+def ants_to_spm_moco(affine, deg=False, convention="SPM"):
+
+    """SPM output = x [LR], y [AP], z [SI], rx, ry, rz. ANTs employs an LPS system, so y value should be switched"""
+    dx, dy, dz = affine[9:]
+
+    if convention == "SPM":
+        dy = reverse_sign(dy)
+
+    rot_x = np.arcsin(affine[6])
+    cos_rot_x = np.cos(rot_x)
+    rot_y = np.arctan2(affine[7] / cos_rot_x, affine[8] / cos_rot_x)
+    rot_z = np.arctan2(affine[3] / cos_rot_x, affine[0] / cos_rot_x)
+
+    if deg:
+        rx,ry,rz = np.degrees(rot_x),np.degrees(rot_y),np.degrees(rot_z)
+    else:
+        rx,ry,rz = rot_x,rot_y,rot_z
+
+    moco_pars = np.array([dx,dy,dz,rx,ry,rz])
+    return moco_pars
 
 def make_chicken_csv(coord, input="ras", output_file=None, vol=0.343):
     """make_chicken_csv
@@ -993,12 +1042,21 @@ def select_from_df(df, expression="run = 1", index=True, indices=None, match_exa
 
         return sub_df
 
-def split_bids_components(fname):
+def split_bids_components(fname, entities=False):
 
     comp_list = fname.split('_')
     comps = {}
     
     ids = ['sub', 'ses', 'task', 'acq', 'rec', 'run', 'space', 'hemi', 'model', 'stage', 'desc', 'vox']
+
+    full_entities = [
+        "subject",
+        "session",
+        "task",
+        "reconstruction",
+        "acquisition",
+        "run"
+    ]
     for el in comp_list:
         for i in ids:
             if i in el:
@@ -1019,9 +1077,65 @@ def split_bids_components(fname):
                 comps[i] = comp
 
     if len(comps) != 0:
-        return comps
+
+        if entities:
+            return comps, full_entities
+        else:
+            return comps
     else:
         raise ValueError(f"Could not find any element of {ids} in {fname}")
+
+class BIDSFile():
+
+    def __init__(self, bids_file):
+        self.bids_file = os.path.abspath(bids_file)
+
+    def get_bids_basepath(self, *args):
+        return self._get_bids_basepath(self.bids_file, *args)
+    
+    def get_bids_root(self, *args):
+        return self._get_bids_root(self.bids_file, *args)
+
+    def get_bids_workbase(self, *args):
+        return self._get_bids_workbase(self.bids_file, *args) 
+
+    def get_bids_workflow(self, **kwargs):
+        return assemble_fmriprep_wf(self.bids_file, **kwargs)   
+
+    # def get_bids_root(self):
+    @staticmethod
+    def _get_bids_basepath(file, pref="sub"):
+        sp = file.split(os.sep)
+        for i in sp:
+            if i.startswith(pref) and not i.endswith('.nii.gz'):
+                base_path = os.sep.join(sp[sp.index(i)+1:-1])
+                break
+
+        return base_path
+    
+    # def get_bids_root(self):
+    @staticmethod
+    def _get_bids_workbase(file, pref="sub"):
+        sp = file.split(os.sep)
+        for i in sp:
+            if i.startswith(pref) and not i.endswith('.nii.gz'):
+                base_path = os.sep.join(sp[sp.index(i):-2])
+                break
+
+        return base_path    
+    
+    @staticmethod
+    def _get_bids_root(file, pref="sub"):
+        sp = file.split(os.sep)
+        for i in sp:
+            if i.startswith(pref) and not i.endswith('.nii.gz'):
+                bids_root = os.sep.join(sp[:sp.index(i)])
+                break
+
+        return bids_root
+    
+    def get_bids_ids(self, **kwargs):
+        return split_bids_components(self.bids_file, **kwargs)
 
 def get_ids(func_list, bids="task"):
 
