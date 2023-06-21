@@ -1,0 +1,183 @@
+#!/bin/bash
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_injectident
+
+Follow workflow https://mumfordbrainstats.tumblr.com/post/166054797696/feat-registration-workaround
+To use fMRIprep output in FEAT. Uses the mean of the functional run as 'standard', rather than the
+MNI152-image.
+
+Args:
+  -s <subject ID>   full subject ID as used throughout the analysis
+  -n <session ID>   session IDs to run the process for
+  -t <task>         task IDs to consider
+  -l <level1 tag>   tag for level1 analysis (e.g., 'level1' [default] or 'level1_confounds')
+  -f <feat dir>     directory where your subject-specific feat-directories live (defaults to DIR-
+                    DATA_HOME/derivatives/feat/<level1_tag>)
+  -p <project dir>  project root folder (defaults to DIR_DATA_HOME)
+
+Example:
+  ./call_injectident             run script for all subjects
+  ./call_injectident -s sub-001  run script for particular subject
+
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+SPACE=""
+# Check for subject & session flags
+while getopts :-:hs:l:n:r:f:p:t: argument
+do
+  case ${argument} in
+    -)
+      case "${OPTARG}" in
+        help)
+          HELP=1
+          ;;   
+        mni)
+          SPACE="MNI152NLin6Asym_res-1"
+          ;;                                
+        *)
+          if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
+            echo "Unknown option --${OPTARG}" >&2
+          fi
+          ;;
+      esac;;   
+    h)  HELP=1
+        ;;
+    s)  sub=${OPTARG}
+          ;;
+    n)  ses=${OPTARG}
+          ;;    
+    r)  runs=${OPTARG}
+          ;;                 
+    l)  L1_tag=${OPTARG}
+          ;;
+    f)  ft_dir=${OPTARG}
+          ;;
+    p)  project_dir=${OPTARG}
+          ;;
+    t)  task=${OPTARG}
+          ;;
+  esac
+done
+
+if [[ ${HELP} -eq 1 ]]; then
+  Usage >&2
+  exit 1
+fi
+
+# specify defaults
+if [[ -z ${project_dir} ]]; then
+  project_dir=${DIR_DATA_HOME}
+fi
+
+# set level1 tag
+if [[ -z ${L1_tag} ]]; then
+  L1_tag="level1"
+else
+  L1_tag=${L1_tag}
+fi
+
+if [[ ! -z ${SPACE} ]]; then
+  L1_tag+="_space-${SPACE}"
+fi
+
+# set full directory
+if [[ -z ${ft_dir} ]]; then
+  ft_dir=${project_dir}/derivatives/feat/${L1_tag}
+fi
+
+# specify loop
+if [[ -z ${sub} ]]; then
+  # loop through subjects
+  search="${ft_dir}/${SUBJECT_PREFIX}*"
+else
+  # do for 1 subject
+  search="${ft_dir}/${sub}"
+fi
+
+if [[ ! -d ${ft_dir} ]]; then
+  echo "Directory \"${ft_dir}\" does not exist.. Check your -l tag: \"${L1_tag}\""
+  exit 1
+fi
+
+# sort out sessions/runs
+if [[ ! -z ${ses} ]]; then
+  # read specified subjects into array
+  IFS=', ' read -r -a ses_ids <<< "${ses}"
+  unset IFS
+fi
+
+if [[ ! -z ${runs} ]]; then
+  # read specified subjects into array
+  IFS=', ' read -r -a run_ids <<< "${runs}"
+  unset IFS
+fi
+
+if [[ ! -z ${task} ]]; then
+  # read specified subjects into array
+  IFS=', ' read -r -a task_ids <<< "${task}"
+  unset IFS
+fi
+
+for sub in ${search}; do
+
+  subj=$(basename ${sub})
+  echo
+  echo "**************************************** Processing $subj ***************************************"
+
+  if [[ ! -z ${ses} ]]; then
+    for s in ${ses_ids[@]}; do
+
+      ses_dir=${ft_dir}/${subj}/ses-${s}
+      if [ -d ${ses_dir} ]; then
+        for r in ${run_ids[@]}; do
+
+          feat_dir=${ft_dir}/${subj}/ses-${s}/run${r}.feat
+
+          if [[ -d ${feat_dir} ]]; then
+
+            echo "Processing ${feat_dir}"
+
+            # remove standard dir
+            if [[ -d ${feat_dir}/reg_standard ]]; then
+              echo " Removing \"reg_standard\" directory"
+              rm -r ${feat_dir}/reg_standard 2>/dev/null
+            fi
+
+            # create reg dir
+            if [[ ! -d ${feat_dir}/reg ]]; then
+              mkdir -p ${feat_dir}/reg
+            fi
+
+            # echo " Removing matrix files from reg directory"
+            rm -r ${feat_dir}/reg/*.mat 2>/dev/null
+            rm -r ${feat_dir}/reg/standard.nii.gz 2>/dev/null
+
+            # echo " Copying identity matrix to reg directory"
+            cp $FSLDIR/etc/flirtsch/ident.mat ${feat_dir}/reg/example_func2standard.mat
+
+            # echo " Renaming mean_func to standard to prevent interpolation"
+            cp ${feat_dir}/mean_func.nii.gz ${feat_dir}/reg/standard.nii.gz
+
+          else
+            echo "Feat directory does not exists"
+          fi
+
+        done
+      else
+        echo "Directory \"${ses_dir}\" does not exist"
+      fi
+    done
+  fi
+done
+
+echo "Done"
