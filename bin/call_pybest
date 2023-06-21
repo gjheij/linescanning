@@ -309,6 +309,7 @@ for task_id in ${task_ids[@]}; do
             fi
 
             # define and run cmd
+            echo " Writing ${masked_bold}"
             cmd="""fslmaths ${bold} -mas ${mask} ${masked_bold}"""
             eval ${cmd}
 
@@ -317,7 +318,6 @@ for task_id in ${task_ids[@]}; do
               echo "ERROR in `basename ${0}`: fslmaths exited with non-zero status"
               exit 1
             fi
-            echo " wrote ${masked_bold}"
 
           done
           echo "Done"
