@@ -22,7 +22,7 @@ from nilearn import image
 import nibabel as nb
 import platform
 from bids import BIDSLayout
-from linescanning.utils import get_file_from_substring, remove_files
+from linescanning import utils
 warnings.filterwarnings("ignore")
 opj = os.path.join
 opb = os.path.basename
@@ -132,7 +132,7 @@ Notes:
     if inputdir != None:
         # we got an input directory; look for files with "acq-MP2RAGE"
         bids_fn = BIDSLayout(opj(inputdir), validate=False).get(datatype='anat', extension=['nii.gz'], return_type='file')
-        select_fn = get_file_from_substring(['acq-MP2RAGE_', 'inv'], bids_fn)
+        select_fn = utils.get_file_from_substring(['acq-MP2RAGE_', 'inv'], bids_fn)
     else:
         select_fn = []
         # we did not get an input directory; check if separate files have been specified
@@ -223,19 +223,7 @@ Notes:
         base_path = None
         if not os.path.exists(json_file):
             
-            sp = select_fn[0].split(os.sep)
-            for i in sp:
-
-                # try to read prefix
-                try:
-                    pref = os.environ.get("SUBJECT_PREFIX")
-                except:
-                    pref = "sub-"
-
-                if i.startswith(pref) and not i.endswith('.nii.gz'):
-                    base_path = os.sep.join(sp[sp.index(i)+1:-1])
-                    break
-            
+            base_path = utils.BIDSFile(json_file).get_bids_basepath()
             if not base_path:
                 base_path = os.path.dirname(select_fn[0])
 
@@ -280,7 +268,7 @@ Notes:
                 new_mask.to_filename(brainmask)
 
                 # remove files starting with 'tmp'
-                remove_files(inputdir, 'tmp', ext=False)
+                utils.remove_files(inputdir, 'tmp', ext=False)
 
         # remove pepper noise pattern around brain
         print("Removing noise pattern around the brain")
