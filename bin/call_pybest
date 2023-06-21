@@ -120,7 +120,7 @@ base_dir="sub-${sub}/"
 if [[ ! -z ${ses} ]]; then
   if [[ ${ses} != "all" ]]; then
     ses_input="--session ${ses}"
-    base_dir+="/ses-${ses}"
+    base_dir+="ses-${ses}"
   fi
 fi
 
@@ -129,7 +129,7 @@ if [[ ! -z ${outputdir} ]]; then
   output_dir=${outputdir}
 fi
 
-# Set input directory if specified, otherwise default to /derivatives/pybest
+# Set input directory if specified, otherwise default to /derivatives/fmriprep
 if [[ ! -z ${fprepdir} ]]; then
   input_dir=${fprepdir}
 fi
@@ -155,11 +155,16 @@ for task_id in ${task_ids[@]}; do
       call_unzscore \
         -s ${sub} \
         -n ${ses} \
-        -o ${DIR_DATA_DERIV}/pybest \
+        -o ${outputdir} \
         -f ${input_dir} \
         -t ${task_id} \
         -p ${in_space} \
         --pre
+
+      if [[ $? -ne 0 ]]; then
+        echo "ERROR in `basename ${0}`: call_unzscore (--pre) existed with non-zero status"
+        exit 1
+      fi          
     fi
 
     for hemi in "L" "R"; do
@@ -174,7 +179,9 @@ for task_id in ${task_ids[@]}; do
         --hemi ${hemi} \
         ${cpu_input} \
         --verbose ERROR \
-        --save-all ${input_dir} \
+        --save-all \
+        --out-dir ${outputdir} \
+        ${input_dir} \
         --n-comps ${n_comps}"""
 
       echo ${cmd}
@@ -194,29 +201,133 @@ for task_id in ${task_ids[@]}; do
       call_unzscore \
         -s ${sub} \
         -n ${ses} \
-        -o ${DIR_DATA_DERIV}/pybest \
+        -o ${output_dir} \
         -f ${input_dir} \
         -t ${task_id} \
         -p ${in_space} \
         --post
+
+      if [[ $? -ne 0 ]]; then
+        echo "ERROR in `basename ${0}`: call_unzscore (--post) existed with non-zero status"
+        exit 1
+      fi          
     fi
 
     echo "Done"
     
   else
 
-    pybest \
+    # save standard deviation and mean in tmp/ folder (pkl files)
+    if [ ${raw} -eq 1 ]; then
+      echo "Saving average/standard deviation"
+      call_unzscore \
+        -s ${sub} \
+        -n ${ses} \
+        -o ${outputdir} \
+        -f ${input_dir} \
+        -t ${task_id} \
+        -p ${in_space} \
+        --pre
+
+      if [[ $? -ne 0 ]]; then
+        echo "ERROR in `basename ${0}`: call_unzscore (--pre) existed with non-zero status"
+        exit 1
+      fi         
+    fi
+
+    # we got volumetric data, so stuff gets a bit more exotic
+    cmd="""pybest \
       ${sub_input} \
       ${ses_input} \
+      --out-dir ${outputdir} \
       --task ${task_id} \
       --space ${in_space} \
       --verbose ERROR \
-      --save-all ${input_dir} \
-      --n-comps ${n_comps}
+      --save-all \
+      ${input_dir} \
+      --n-comps ${n_comps}"""
+
+    echo ${cmd}
+    eval ${cmd}
 
     if [[ $? -ne 0 ]]; then
       echo "ERROR in `basename ${0}`: pybest existed with non-zero status"
       exit 1
-    fi    
+    fi 
+
+    # undo z-scoring
+    if [ ${raw} -eq 1 ]; then
+      echo "Un-zcoring output from pybest"
+
+      call_unzscore \
+        -s ${sub} \
+        -n ${ses} \
+        -o ${output_dir} \
+        -f ${input_dir} \
+        -t ${task_id} \
+        -p ${in_space} \
+        --post
+
+      if [[ $? -ne 0 ]]; then
+        echo "ERROR in `basename ${0}`: call_unzscore (--post) existed with non-zero status"
+        exit 1
+      fi   
+
+      echo "Done"
+            
+    fi       
+
+    # apply mask; safe in 'masked'
+    out_dir=${output_dir}/${base_dir}
+    mask=(`find -L ${out_dir}/preproc -type f -name "*desc-preproc_mask.nii.gz" 2>/dev/null`)
+
+    n_masks=${#mask[@]}
+    if [[ ${n_masks} -gt 0 ]]; then
+      if [[ ${n_masks} -gt 1 ]]; then
+        echo "Found multiple masks in \"${output_dir}\""
+        for i in ${masks[@]}; do
+          echo " $i"
+        done
+      else
+        echo "Applying \"${mask}\" to nifti-files"
+
+        # dir is different depending on unzcoring or not.
+        if [[ ${raw} -eq 1 ]]; then
+          ddir="unzscored"
+        else
+          ddir="denoising"
+        fi
+
+        # search for bold files
+        bold_files=(`find -L ${out_dir}/${ddir} -type f -name "*desc-denoised_bold.nii.gz" 2>/dev/null`)
+        if [[ ${#bold_files[@]} -gt 0 ]]; then
+
+          for bold in ${bold_files[@]}; do
+            masked_bold=$(dirname $(dirname ${bold}))/masked/$(basename ${bold})
+            if [[ ! -d $(dirname ${masked_bold}) ]]; then
+              mkdir -p $(dirname ${masked_bold})
+            fi
+
+            # define and run cmd
+            cmd="""fslmaths ${bold} -mas ${mask} ${masked_bold}"""
+            eval ${cmd}
+
+            # check if execution was ok
+            if [[ $? -ne 0 ]]; then
+              echo "ERROR in `basename ${0}`: fslmaths exited with non-zero status"
+              exit 1
+            fi
+            echo " wrote ${masked_bold}"
+
+          done
+          echo "Done"
+        else
+          echo "ERROR in `basename ${0}`: could not find files with \"*${ddir}/*\" and \"*desc-denoised_bold.nii.gz\" in \"${out_dir}\"" 
+          exit 1
+        fi
+      fi
+    else
+      echo "Could not find file with \"*desc-preproc_mask.nii.gz\" in \"${out_dir}/preproc\""
+    fi
   fi
 done
