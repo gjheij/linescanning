@@ -125,7 +125,7 @@ def ants_applytrafo(
     # call_antsapplytransforms
     if trafo != None:
         if isinstance(trafo, list):
-            trafo_list = " ".join(trafo)
+            trafo_list = ",".join(trafo)
         else:
             trafo_list = trafo
     else:
@@ -138,7 +138,7 @@ def ants_applytrafo(
             if len(invert) != len(trafo):
                 raise ValueError("list of inversion does not equal list of transformations: {} vs {}".format(len(invert), len(trafo)))
 
-            inv_list = " ".join(str(e) for e in invert)
+            inv_list = ",".join(str(e) for e in invert)
         else:
             inv_list = invert
 
