@@ -29,13 +29,12 @@ Parameters
   -i|--in     subject-directory containing the files that need to be run through Topup. Defaults 
               to DIR_DATA_HOME as per spinoza_setup
   -o|--out    output directory containing the topup'ed data. Easiest is to give the fMRIPrep fol-
-              der, it will be formatted accordingly automatically. Defaults to dirname(input_dir)/
-              events
+              der, it will be formatted accordingly automatically. Defaults to <input_dir>/events
   --verbose   turn on verbose
 
 Example
 ----------
->>> call_onsets2fsl --in $DIR_DATA_HOME/sub-001
+>>> call_onsets2fsl --in $DIR_DATA_HOME/sub-001/ses-2
 
 ---------------------------------------------------------------------------------------------------
 """
