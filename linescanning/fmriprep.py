@@ -253,6 +253,7 @@ class bold_confs_wf():
         movpar_file: str=None,
         rmsd_file: str=None,
         apply_warp: str=False,
+        invert: int=0,
         t1_mask: str=None,
         t1_tpms: str=None,
         t1_bold_xform: str=None,
@@ -274,6 +275,7 @@ class bold_confs_wf():
         self.regressors_fd_th = regressors_fd_th
         self.workdir = workdir
         self.rmsd_file = rmsd_file
+        self.invert = invert
 
         # default to DIR_DATA_DERIV/fmriprep
         if not isinstance(self.bids_dir, str):
@@ -325,9 +327,12 @@ class bold_confs_wf():
             # also check for brain mask
             if not isinstance(self.t1_mask, str):
                 try:
-                    self.t1_mask = utils.get_file_from_substring(["brainmask.nii.gz"], mask_dir)
+                    self.t1_mask = utils.get_file_from_substring(["spm_mask.nii.gz"], mask_dir)
                 except:
-                    raise FileNotFoundError(f"Could not find 'motion_params.txt' file in '{search_dir}. Please specify manually or make sure 'call_topup' ran successfully")
+                    try:
+                        self.t1_mask = utils.get_file_from_substring(["brainmask.nii.gz"], mask_dir)
+                    except:
+                        raise FileNotFoundError(f"Could not find '*brainmask.nii.gz' or '*spm_mask.nii.gz' file in '{mask_dir}")
                             
         # check if we should fetch already ran McFlirt output
         if not isinstance(self.movpar_file, str):
@@ -368,7 +373,7 @@ class bold_confs_wf():
                 self.bold_file, 
                 self.t1_mask, 
                 trafo=self.t1_bold_xform, 
-                invert=0, 
+                invert=self.invert, 
                 interp='mul', 
                 output=self.bold_mask, 
                 return_type="file", 
