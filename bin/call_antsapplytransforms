@@ -165,7 +165,29 @@ if [ ${VERB} -eq 1 ]; then
   echo
 fi 
 
-exec ${cmd}
+# eval doesn't quit script like 'exec' does
+eval ${cmd}
+
+# check if we need to set s/qform code
+res=`check_function fslorient`
+if [[ ${res} -eq 0 ]]; then
+  qform=`fslorient -getqformcode ${OUT}`
+  sform=`fslorient -getsformcode ${OUT}`
+
+  # set qform with sform
+  if [[ ${qform} -eq 0 ]]; then
+    if [[ ${sform} -ne 0 ]]; then
+      fslorient -copysform2qform ${OUT}
+    fi
+  fi
+
+  # set sform with qform [MOST LIKELY THE CASE]
+  if [[ ${sform} -eq 0 ]]; then
+    if [[ ${qform} -ne 0 ]]; then
+      fslorient -copyqform2sform ${OUT}
+    fi
+  fi 
+fi
 
 # # apply genaff + invwarp;
 # call_antsapplytransforms -v -i "1 0" -t gen \
