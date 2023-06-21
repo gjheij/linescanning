@@ -9,7 +9,7 @@ mkl.set_num_threads=1
 import os
 import sys
 import getopt
-from linescanning import fmriprep
+from linescanning import (fmriprep, utils)
 import shutil
 opj = os.path.join
 
@@ -31,24 +31,38 @@ fail. Therefore, I just need motion-corrected, topup data for a very select part
 
 Parameters
 ----------
+  -i|--in       initiate workflow for single bold-file. In this case, we assume your filename fully
+                complies to BIDS, e.g., (sub-<>_ses-<>_task-<>_rec-<>_bold.nii.gz). A BIDS filter-
+                dictionary is created based on the BIDS-elements in the file (similar to a bids
+                filter file you can use for fMRIprep). Using this option, you do not need to specify
+                `subject`, `session`, `acquisition` and `filters`. These will be derived from the 
+                input file
   -s|--sub      subject ID
   -n|--ses      session ID; will be used to construct a bids-filter dictionary. We'll first check
                 if a filter file is specified with (--filter). If not, and session has been speci-
                 fied, func/fmap fields will be filtered with `session`
   -a|--acq      acq ID; will be used to construct a bids-filter dictionary            
-  -i|--in       subject-directory containing the files that need to be run through Topup. Defaults 
+  -b|--bids     subject-directory containing the files that need to be run through Topup. Defaults 
                 to DIR_DATA_HOME as per spinoza_setup
   -o|--out      output directory containing the topup'ed data. Easiest is to give the fMRIPrep fol-
                 der, it will be formatted accordingly automatically. Defaults to <input_dir>/deriva-
                 tives/fmriprep
-  -w|--work     working directory where fMRIPrep's intermediate files are stored; default is some 
-                folder in /tmp
+  -w|--work     working directory where fMRIPrep's intermediate files are stored; if nothing is spe-
+                cified, but a <bold_file> has been specified, we'll default to DIR_DATA_SOURCE/
+                <subject_id>/<session_id>. If no file has been specified, we'll try to process all
+                runs available given the <subject> and <session> IDs. Based on those, we'll default
+                to DIR_DATA_SOURCE/<subject_id>/<session_id> too. For this, the `-s` and/or `-n`
+                flag should be specified
   -b|--filters  bids filter file (maps to --bids-filter-file from fMRIPrep); allows you to select 
                 particular files
   -o|--ow       overwrite intermediate files
+  --mask     use initial bold mask (e.g. a custom one by registering the T1w-mask to func space;
+                this is recommended for extremely partial FOV data)
+  --wm       custom white matter segmentation in functional space for the SDC-report               
                         
 Example
 ----------
+>>> call_topup --in sub-01_ses-1_task-pRF_run-1_bold.nii.gz
 >>> call_topup -s 001 --filters misc/fmriprep_config1.json
 >>> call_topup -s 001 -i DIR_DATA_HOME -o DIR_DATA_DERIV/fmriprep -w DIR_DATA_SOURCE/sub-001/ses-2
 >>> call_topup -s 001 -i DIR_DATA_HOME -o DIR_DATA_DERIV/fmriprep -b misc/fmriprep_config1.json
@@ -56,17 +70,22 @@ Example
 ---------------------------------------------------------------------------------------------------
 """
 
+    bold_file = None
     subject = None
     session = None
     acquisition = None
-    inputdir = os.environ.get("DIR_DATA_HOME")
+    recon = None
+    run = None
+    inputdir = None
     outputdir = opj(os.environ.get("DIR_DATA_DERIV"), "fmriprep")
     workdir = None
     bids_filters = None
     overwrite = False
+    bold_mask = None
+    wm_mask = None
 
     try:
-        opts = getopt.getopt(argv,"ohs:n:i:o:w:b:a:",["help", "sub=", "ses=", "acq=", "in=", "out=", "work=", "filters=", "ow"])[0]
+        opts = getopt.getopt(argv,"ohs:n:i:o:w:b:a:m:r:",["help", "sub=", "ses=", "acq=", "in=", "out=", "work=", "filters=", "ow", "mask=", "wm=", "bids=", "rec=", "run="])[0]
     except getopt.GetoptError:
         print("ERROR while reading arguments; did you specify an illegal argument?")
         print(main.__doc__)
@@ -80,56 +99,147 @@ Example
             subject = arg
         elif opt in ("-n", "--ses"):
             session = int(arg)
-        elif opt in ("-a", "--acq"):
+        elif opt in ("--acq"):
             acquisition = arg
+        elif opt in ("--rec"):
+            recon = arg  
+        elif opt in ("--run"):
+            run = arg                        
         elif opt in ("-i", "--in"):
-            inputdir = arg
+            bold_file = arg
+        elif opt in ("-b", "--bids"):
+            inputdir = arg            
         elif opt in ("-o", "--out"):
             outputdir = arg
         elif opt in ("-w", "--work"):
             workdir = arg
-        elif opt in ("-b", "--filters"):
+        elif opt in ("--filters"):
             bids_filters = arg
         elif opt in ("-o", "--ow"):
             overwrite = True
+        elif opt in ("--mask"):
+            bold_mask = arg
+        elif opt in ("--wm"):
+            wm_mask = arg
 
     if len(argv) < 1:
         print(main.__doc__)
         sys.exit()
     
-    if not isinstance(bids_filters, str):
+    # set up bids filters if bold_file is specified; unfortunately, these need to be the full entity names, e.g., "subject", rather than "sub"..
+    if isinstance(bold_file, str):
+        bids_cl = utils.BIDSFile(bold_file)
+        bids_filters = {}
+        comps, entities = bids_cl.get_bids_ids(entities=True)
+        # for el in ["bold","fmap"]:
+
+        #     if el == "bold":
+        #         dt = "func"
+        #         suf = "bold"
+        #     else:
+        #         dt = "fmap"
+        #         suf = "epi"
+
+        #     # set base level
+        #     bids_filters[el] = {}
+        #     bids_filters[el]["datatype"] = dt
+        #     bids_filters[el]["suffix"] = suf
+
+        #     for key,val in comps.items():
+                
+        #         # filter out 'rec' for fmap..
+        #         if el == "fmap":
+        #             if key != "rec":
+        #                 for kk in entities:
+        #                     if key in kk:
+        #                         bids_filters[el][kk] = str(val)
+        #         else:
+        #             for kk in entities:
+        #                 if key in kk:
+        #                     bids_filters[el][kk] = str(val)
         bids_filters = {
-            "bold": {
-                "datatype": "func",
-                "suffix": "bold"
-            },
-            "fmap": {
-                "datatype": "fmap",
-                "suffix": "epi"
+            'bold': {
+                'datatype': 'func', 
+                'suffix': 'bold', 
+                'session': '2', 
+                'acquisition': '3DEPI', 
+                'run': '1'}, 
+            'fmap': {
+                'datatype': 'fmap', 
+                'suffix': 'epi', 
+                'session': '2', 
+                'acquisition': '3DEPI', 'run': '1'
             }
         }
+        # derive bids root dir
+        inputdir = bids_cl.get_bids_root()
 
-        if isinstance(session, int):
-            for el in ["bold","fmap"]:
-                bids_filters[el]["session"] = str(session)
+        # sort out working directory
+        if not isinstance(workdir, str):
+            dd = bids_cl.get_bids_workbase()
+            workdir = opj(os.environ.get("DIR_DATA_SOURCE"), dd)
 
-        if isinstance(acquisition, str):
-            for el in ["bold","fmap"]:
-                bids_filters[el]["acquisition"] = str(acquisition)
+    else:
+        # sort out bids filters
+        if not isinstance(bids_filters, str):
+            bids_filters = {
+                "bold": {
+                    "datatype": "func",
+                    "suffix": "bold"
+                },
+                "fmap": {
+                    "datatype": "fmap",
+                    "suffix": "epi"
+                }
+            }
+                
+            if isinstance(session, int):
+                for el in ["bold","fmap"]:
+                    bids_filters[el]["session"] = str(session)
 
+            if isinstance(acquisition, str):
+                for el in ["bold","fmap"]:
+                    bids_filters[el]["acquisition"] = str(acquisition)
+
+            if isinstance(recon, str):
+                for el in ["bold"]:
+                    bids_filters[el]["reconstruction"] = str(recon)   
+
+            if isinstance(run, (str,int)):
+                for el in ["bold","fmap"]:
+                    bids_filters[el]["run"] = str(run)   
+
+        # sort out default working directory
+        if not isinstance(workdir, str):
+            dd = f"sub-{subject}"
+
+            if isinstance(session, int):
+                dd = opj(dd, f"ses-{session}")
+
+            workdir = opj(os.environ.get("DIR_DATA_SOURCE"), dd)
+        
+        # set default input directory
+        if not isinstance(inputdir, str):
+            inputdir = os.environ.get("DIR_DATA_HOME")
+
+    # initialize workflow
     wf = fmriprep.init_single_subject_wf(
         subject, 
         bids_dir=inputdir,
         fmriprep_dir=outputdir,
         bids_filters=bids_filters,
-        workdir=workdir)
+        workdir=workdir,
+        bold_mask=bold_mask,
+        wm_seg=wm_mask)
     
+    # remove workdir is overwrite == True
     if overwrite:
         fname = opj(workdir, wf.name)
         if os.path.exists(fname):
             print(f"deleting {fname}")
             shutil.rmtree(fname)
 
+    # run
     wf.run()
 
 if __name__ == "__main__":
