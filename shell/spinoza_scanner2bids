@@ -221,8 +221,9 @@ for subID in ${search}; do
   # full overwrite
   if [[ ! -z ${FULL_OW} ]]; then
     rm -r ${output_dir} 2>/dev/null
+    rm -r ${bids_dir} 2>/dev/null
   fi
-
+  
   if [[ ${SES_TYPE} == "regular" ]]; then
 
     if [[ -d ${bids_dir}/anat && -d ${bids_dir}/func ]]; then
@@ -251,7 +252,7 @@ for subID in ${search}; do
         echo "Reorienting images to LPI (conform fMRIPrep)"
         # for convenience, reorient all files to RAS+ (used by nibabel & fMRIprep)
         files=`find ${bids_dir} -type f -name "*.nii.gz"`
-        for f in ${files[@${OW} ${FULL_OW} ${SES_TYPE} ${ADD_INV}]}; do
+        for f in ${files[@]}; do
           val=`fslval ${f} qform_xorient`
           if [ ${val} != "Left-to-Right" ]; then
             call_reorient -i ${f} -c nb
@@ -311,7 +312,6 @@ for subID in ${search}; do
           ${ORIENT_FLAG} \
           ${PROT_FLAG} \
           ${PE_FLAG} \
-          ${OW} \
           -i ${input_dir} -o ${output_dir} -b ${bids_dir} -n ${base} ${RUNS}
           
       else
