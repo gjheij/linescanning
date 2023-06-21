@@ -14,14 +14,22 @@ This scripts makes the call to ImageMath Windorize a little easier, as you'll on
 the input image
 
 Usage:
-  call_winsorize <input> <output>
+  call_winsorize [options] <input> <output>
 
 Arguments:
-  <input>   input image to be resample
-  <output>  output name of resampled image
+  --verbose   echo command to terminal
+  -l <lower>  lower percentile (default = 0.01)
+  -u <upper>  upper percentile (default = 0.99)
+  -b <bins>   number of bins to use (default = 256)
+  <input>     input image to be resample
+  <output>    output name of resampled image
 
 Example:
-  call_winsorize input.nii.gz output.nii.gz
+  call_winsorize input.nii.gz output.nii.gz                 # use all defaults
+  call_winsorize --verbose input.nii.gz output.nii.gz       # 
+  call_winsorize -l 0 input.nii.gz output.nii.gz
+  call_winsorize -l 0.05 -u 0.95 input.nii.gz output.nii.gz
+  call_winsorize -b 65 input.nii.gz output.nii.gz
 
 ---------------------------------------------------------------------------------------------------
 
@@ -29,17 +37,77 @@ USAGE
     exit 1
 }
 
+VERB=0
+lower=0.01
+upper=0.99
+n_bins=256
+while getopts :-:vl:u:t: argument
+do
+  case ${argument} in
+    -)
+      case "${OPTARG}" in                
+        verbose)
+          VERBOSE="--verbose 1"
+          VERB=1
+          ;;
+        *)
+          if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
+            echo "Unknown option --${OPTARG}"
+            exit 1
+          fi
+          ;;
+      esac;;        
+    l)  lower=${OPTARG}
+          ;;
+    u)  upper=${OPTARG}
+          ;;    
+    b)  n_bins=${OPTARG}
+          ;;                
+    v)  VERBOSE="--verbose 1"
+        VERB=1
+          ;;          
+  esac
+done
+
 if [[ $# -lt 1 ]] ; then
   Usage >&2
   exit 1
 fi
 
-in_file=`fetch_filepath ${1}`
-if [[ -z ${2} ]]; then
-  out_file=${in_file}
-else
-  out_file=`fetch_filepath ${2}`
+# set input/output
+in=${@:$OPTIND:1}
+out=${@:$OPTIND+1:1}
+
+in_file=`fetch_filepath ${in}`
+
+# echo intensities before Truncation
+if [[ ${VERB} -eq 1 ]]; then
+  intensities_pre=`fslstats ${in_file} -R`
+  echo "pre: ${intensities_pre}"
 fi
 
+# set output to input if no output is specified
+if [[ -z ${out} ]]; then
+  out_file=${in_file}
+else
+  out_file=`fetch_filepath ${out}`
+fi
+
+# set dimensions and define command
 dim=`fslval ${in_file} dim0`
-ImageMath ${dim} ${out_file} TruncateImageIntensity ${in_file} 0.01 0.99 256
+cmd="""ImageMath ${dim} ${out_file} TruncateImageIntensity ${in_file} ${lower} ${upper} ${n_bins}"""
+
+# echo cmd
+if [[ ${VERB} -eq 1 ]]; then
+  echo ${cmd}
+fi
+
+# run cmd
+eval ${cmd}
+
+# echo intensities before Truncation
+if [[ ${VERB} -eq 1 ]]; then
+  intensities_post=`fslstats ${out_file} -R`
+  echo "post: ${intensities_post}"
+fi
+
