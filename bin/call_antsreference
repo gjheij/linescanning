@@ -1,0 +1,49 @@
+#!/usr/bin/env python
+#$ -j Y
+#$ -cwd
+#$ -V
+
+import mkl
+mkl.set_num_threads=1
+
+import ants
+import sys
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_antsreference
+
+Create a reference image with ANTs. The image ANTs outputs tends to be recognized better when apply-
+ing transformation files.
+
+Parameters
+----------         
+    <in file>   BOLD timeseries file
+    <out file>  Output reference image
+
+Example
+----------
+>>> call_antsreference fmri.nii.gz ref.nii.gz
+
+---------------------------------------------------------------------------------------------------
+"""
+
+    bold_file = None
+    ref_file = None 
+
+    if len(argv) < 2:
+        print(main.__doc__)
+        sys.exit()
+
+    bold_file = argv[0]
+    ref_file = argv[1] 
+
+    # read timeseries in ANTs object
+    bold_img = ants.image_read(bold_file)
+    ref_img = ants.get_average_of_timeseries(bold_img, idx=range(1))
+    ref_img.to_filename(ref_file)
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
