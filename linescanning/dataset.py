@@ -2171,10 +2171,20 @@ Functional data preprocessing
                     self.ts_magnitude = np.load(func_file).T
 
             elif func_file.endswith("nii") or func_file.endswith("gz"):
-                fdata = nb.load(func_file).get_fdata()
+                
+                # read niimg
+                nimg = nb.load(func_file)
+                fdata = nimg.get_fdata()
+
+                # read TR from header
+                if not isinstance(nimg, nb.cifti2.cifti2.Cifti2Image):
+                    self.hdr = nimg.header
+                    self.affine = nimg.affine
+                    self.TR = self.hdr["pixdim"][4]
 
                 # cifti nii's are already 2D
                 if fdata.ndim > 2:
+                    self.orig_dim = fdata.shape
                     xdim,ydim,zdim,time_points = fdata.shape
                     self.ts_magnitude = fdata.reshape(xdim*ydim*zdim, time_points)
                 else:
@@ -2353,10 +2363,11 @@ Functional data preprocessing
                     run=run,
                     task=task,
                     ses=self.target_session,
-                    ref_slice=reference_slice,
                     save_as=save_as,
                     shift=shift,
-                    **kwargs)
+                    **dict(
+                        kwargs,
+                        ref_slice=reference_slice))
                 
                 self.clean_tag = "acompcor"
                 self.clean_data = self.acomp.acomp_data
@@ -2477,6 +2488,18 @@ The data was then low-pass filtered using a Savitsky-Golay filter [removes high 
         # final
         self.desc_func = self.func_pre_desc + self.desc_trim + self.desc_filt
 
+    def to_nifti(self, func, fname=None):
+        
+        func_res = func.reshape(self.orig_dim)
+        print(func_res.shape)
+        niimg = nb.Nifti1Image(func_res, affine=self.affine, header=self.hdr)
+    
+        if isinstance(fname, str):
+            niimg.to_filename(fname)
+            return fname
+        else:
+            return niimg
+        
     def run_acompcor(
         self, 
         run=None,
