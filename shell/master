@@ -68,6 +68,7 @@ clean_flag=""             # spinoza_fmriprep
 fetch_fsl_flag=""         # spinoza_fmriprep
 run_local=""              # spinoza_fmriprep/spinoza_fitprfs
 LAYER_FLAG=""             # spinoza_layering
+NR_LAYERS=""              # spinoza_layering
 GDH_FLAG=""               # spinoza_mgdm
 REG_TYPE=""               # spinoza_registration
 FSL_FLAG=""               # spinoza_registration
@@ -88,10 +89,11 @@ use_t2_flag=""            # spinoza_freesurfer
 space_flag=""             # spinoza_denoising
 mod_flag=""               # spinoza_mriqc
 fd_flag=""                # spinoza_mriqc
+t_specified=0             # keep track when t-flag is specified or --func is used (alias for -t func)
 
 # use long options in bash:
 # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options
-declare -a array=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv" "--no_fit" "--fmriprep" "--fprep" "--v1" "--v2" "--save_grid" "--debug" "--no_nordic" "--dcm_fix" "--ow" "--no_bounds" "--no_tsnr" "--mag" "--no_highres" "--xopts-use" "--xopts-clean" "--xopts-overwrite" "--take-avg-tr" "--force_exec" "--no_t2" "--merge_ses" "--fsaverage" "--fsnative" "--ap" "--pa" "--lr" "--rl" "--no_lpi" "--anat_only" "--func_only" "--no_boldref" "--gauss" "--dog" "--css" "--norm" "--no_srf" "--srf_file" "--gallery" "--abc" "--abd" "--manual" "--ctx" "--func" "--help" "--ofsl" "--clean" "--fd" "--fetch_fsl")
+declare -a array=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv" "--no_fit" "--fmriprep" "--fprep" "--v1" "--v2" "--save_grid" "--debug" "--no_nordic" "--dcm_fix" "--ow" "--no_bounds" "--no_tsnr" "--mag" "--no_highres" "--xopts-use" "--xopts-clean" "--xopts-overwrite" "--take-avg-tr" "--force_exec" "--no_t2" "--merge_ses" "--fsaverage" "--fsnative" "--ap" "--pa" "--lr" "--rl" "--no_lpi" "--anat_only" "--func_only" "--no_boldref" "--gauss" "--dog" "--css" "--norm" "--no_srf" "--srf_file" "--gallery" "--abc" "--abd" "--manual" "--ctx" "--func" "--help" "--ofsl" "--clean" "--fd" "--fetch_fsl" "--anat")
 
 # sort options array
 IFS=$'\n' opts=($(sort <<<"${array[*]}"))
@@ -330,7 +332,11 @@ do
           ;;       
         func)
           TYPE="func"
+          space_flag="--func"
           ;;     
+        anat)
+          space_flag="--anat"
+          ;;               
         help)
           HELP=1
           ;;
@@ -367,8 +373,10 @@ do
     o)  OW="-o"
           ;;
     t)  TYPE=${OPTARG}
+        t_specified=1
           ;;
     l)  WHICH_MOD=${OPTARG}
+        NR_LAYERS="-l ${OPTARG}"
           ;;
     v)  VERTICES=${OPTARG}
           ;;
@@ -468,14 +476,8 @@ Arguments:
                     sed. For VSCode: https://stackoverflow.com/a/44704969
   -l <which mod>    look for a module number given a string to search for (e.g., master -l layer); 
                     can also be used with:
-                    - spinoza_bestvertex to use a particular label-file (default = V1_exvivo.thresh).
-                      If label file is being specified, the following applies:
-                        - File must live in SUBJECTS_DIR/<subject>/label
-                        - File must be preceded by '?h.', representing a file for both hemispheres 
-                          separately
-                        - Can be either a FreeSurfer-defined label file or gitfi-files (e.g., 'hand-
-                          knob_fsnative.gii' means there's a 'lh.handknob_fsnative.gii' and 'rh.hand-
-                          knob_fsnative.gii' file)
+                    - spinoza_layering: set number of layers (default = 10 for nighres, 5 for Wagstyl's
+                      equivolumetric layering)
   -m <module>       always required, specifies which module to run. Multiple modules should be com-
                     ma separated
   -n <session>      session nr, used to create file structure according to BIDS. Specify '-n none' if 
@@ -523,6 +525,9 @@ Arguments:
                     FMAP will be automatically inverted. This flag can be specified to be a bit more 
                     flexible than using the PE_DIR_BOLD-variable in the setup file                      
   --affine          use 'affine'-registration (spinoza_registration)
+  --anat            Used for:
+                    - spinoza_denoising: overwrite PYBEST_SPACE to use T1w-space for denoi-
+                      sing
   --bgfs            use L-BGFS minimization for both the Gaussian as well as the extended model (e.g.,
                     DoG, CSS, or DN). By default, we'll use trust-constr minimization for both. It's
                     recommended to at least to Gaussian fitting with trust-constr, and potential ex-
@@ -555,7 +560,10 @@ Arguments:
                     setup file)
   --fsnative        overwrite PYBEST_SPACE-variable and use FSNative for denoising/fitting (see your 
                     setup file)     
-  --func            alias for '-t func' for spinoza_fmriprep
+  --func            Used for:
+                      - spinoza_fmriprep: as alias for '-t func'
+                      - spinoza_denoising: overwrite PYBEST_SPACE to use native func space for denoi-
+                        sing
   --gallery         save all cortex-objects from 'optimal.TargetVertex()' in a figure. If pRFs and SRFs
                     are included, this will yield in a 4x5 grid with brainmaps of various kinds that 
                     were used in the selection process of the target vertex.  
@@ -1518,10 +1526,13 @@ if [[ $? -eq 0 ]]; then
 
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Data denoising with pybest"
-
-  if [[ ! -z ${TYPE} ]]; then
-    TASK_ID="-t ${TYPE}"
-  fi   
+  
+  # --func = alias for -t func, but refers to space, not task. Force actual usage of -t to set task ID, otherwise it'll use "func" for task..
+  if [[ ${t_specified} -eq 1 ]]; then
+    if [[ ! -z ${TYPE} ]]; then
+      TASK_ID="-t ${TYPE}"
+    fi   
+  fi
 
   if [[ -z ${images} ]]; then
     INPUT_DIR=${DIR_DATA_DERIV}/fmriprep
@@ -1868,7 +1879,12 @@ if [[ $? -eq 0 ]]; then
     exit 1
   fi
 
-  ${job} spinoza_layering ${SUBJECT} ${SESSION} ${INPUT_DIR} ${SOFTWARE}
+  ${job} spinoza_layering \
+     ${SUBJECT} \
+     ${SESSION} \
+     ${OW} \
+     ${NR_LAYERS} \
+     ${INPUT_DIR} ${SOFTWARE}
   
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_layering exited with non-zero status"

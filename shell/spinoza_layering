@@ -19,23 +19,21 @@ by default in overwrite mode, meaning that the files created earlier will be ove
 This doesn't take too long, so it doesn't really matter and prevents the need for an overwrite switch.
 To disable, you can specify a condition before running this particular script.
 
-Possible inputs for software are:
- Nighres: "nighres", "Nighres", "nigh", "NIGHRES" for nighres or"
- Suface tools: "surface", "surface_tools", "SURFACE", "SURFACE_TOOLS", or "ST" for Wagstyl's surface
-               tools"
-
 Usage:
   spinoza_layering [options] <input dir> <software>
 
 Arguments:
   -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
   -n <session>        session ID (e.g., 1, 2, or none)
+  -l <nr_layers>      number of layers to estimate (defaults: nighres=10; FreeSurfer=5)
   -o                  overwrite existing files
   <input folder>      if software == 'nighres', then we need the nighres output folder (generally 
                       DIR_DATA_DERIV/nighres). If software == 'freesurfer', then we need the SUB-
                       JECTS_DIR
-  <software>          'nighres' or 'surface', for Nighres equivolumetric layering or 'fs' for Wagstyl's
-                      equivolumetric layering function 
+  <software>          Possible inputs for software are:
+                        Nighres: "nighres", "Nighres", "nigh", "NIGHRES" for nighres or"
+                        Suface tools: "surface", "surface_tools", "SURFACE", "SURFACE_TOOLS", or 
+                                      "ST"
 
 Example:
   spinoza_layering SUBJECTS_DIR surface
@@ -75,7 +73,7 @@ fi
 
 # Check for subject & session flags
 OW=0
-while getopts os:n: argument
+while getopts os:n:l: argument
 do
   case ${argument} in
     s)  sub=${OPTARG}
@@ -83,7 +81,9 @@ do
     n)  ses=${OPTARG}
           ;;
     o)  OW=1
-          ;;          
+          ;;         
+    l)  nr_layers=${OPTARG}
+          ;; 
   esac
 done
 
@@ -105,35 +105,17 @@ else
   unset IFS
 fi
 
-if [[ ${SOFTWARE,,} == "nighres" ]] || [[ ${SOFTWARE} == "nigh" ]]; then
+if [[ ${SOFTWARE,,} == "nighres" || ${SOFTWARE} == "nigh" ]]; then
   software="NIGHRES"
-elif [[ ${SOFTWARE,,} == "surface" ]] || [[ ${SOFTWARE,,} == "surface_tools" ]] || [[ ${SOFTWARE,,} == "st" ]]; then
-
-  software="SURFACE"
-
-  # check if generate_equivolumetric_surfaces.py is on the PATH
-  CMD=`command -v generate_equivolumetric_surfaces.py`
-  if [[ -z ${CMD} ]]; then
-    # checking if it's somewhere in home directory > "print quit" means stop looking at the first instance of a match.
-    FILE=`find ${HOME} -type f \( -name "*generate_equivolumetric_surfaces.py*" \) -print -quit 2>/dev/null`
-    if [[ ! -z ${FILE} ]]; then
-      CMD="python ${FILE}"
-    else
-      FILE=`find ${PATH_HOME} -type f \( -name "*generate_equivolumetric_surfaces.py*" \) -print -quit 2>/dev/null`
-      if [[ ! -z ${FILE} ]]; then
-        CMD="python ${FILE}"
-      else
-        echo "generate_equivolumetric_surfaces is not on your PATH, in HOME, or PATH_HOME.."
-        echo "type \"spinoza_layering\" for more help"
-        exit 1
-      fi
-
-    fi
-
+  if [[ -z ${nr_layers} ]]; then
+    nr_layers=10
   fi
-
+elif [[ ${SOFTWARE,,} == "surface" || ${SOFTWARE,,} == "surface_tools" || ${SOFTWARE,,} == "st" ]]; then
+  software="SURFACE"
+  if [[ -z ${nr_layers} ]]; then
+    nr_layers=5
+  fi
 else
-
   if [[ ! -z ${SOFTWARE} ]]; then
     echo "You specified \"${SOFTWARE}\", accepted strings are:"
     Options >&2
@@ -143,7 +125,6 @@ else
     Options >&2
     exit 1
   fi
-
 fi
 
 #-----------------------------------------------------------------------------
@@ -229,7 +210,6 @@ for subID in ${search}; do
       
       echo
       echo "**************************************** Processing ${sub_name} ***************************************"
-      nr_layers=10
       echo "Creating `basename ${output}` with ${nr_layers} layers"
       call_nighreslayering \
         -i ${INPUTS[0]} \
@@ -266,22 +246,47 @@ for subID in ${search}; do
 
     export SUBJECTS_DIR=${INPUT}
 
+    # check if generate_equivolumetric_surfaces.py is on the PATH
+    CMD="python ${PATH_HOME}/surface_tools/equivolumetric_surfaces/generate_equivolumetric_surfaces.py"
+
+    # loop through hemis
     for i in "lh" "rh"; do
 
-      echo "Running generate_equivolumetric_surfaces.py on ${i}"
-      ${CMD} \
+      # overwrite
+      rm ${input_dir}/surf/${i}.equi* 2>/dev/null
+
+      # run cmd
+      echo "Running generate_equivolumetric_surfaces.py on ${i} with ${nr_layers} layers"
+      run_cmd="""${CMD} \
         --smoothing  0 \
         ${input_dir}/surf/${i}.pial \
         ${input_dir}/surf/${i}.white \
-        5 \
+        ${nr_layers} \
         ${i}.equi \
         --software freesurfer \
-        --subject_id ${sub_name}
+        --subject_id ${sub_name}"""
+      
+      # store command
+      out_f=${input_dir}/scripts/${i}.equi.txt
+      if [[ -f ${out_f} ]]; then  
+        rm -r ${out_f}
+      fi
+      
+      # run command
+      echo ${run_cmd} >> ${input_dir}/scripts/${i}.equi.txt
+      echo ${run_cmd}
+      eval ${run_cmd}
 
-      echo "Stored outputs in ${SUBJECTS_DIR}/${sub_name}/surf"
-      echo
+      if [[ $? -ne 0 ]]; then
+        echo "ERROR in `basename ${0}`: generate_equivolumetric_surfaces.py exited with non-zero status"
+        exit 1
+      fi
 
     done
+
+    echo "Stored outputs in ${SUBJECTS_DIR}/${sub_name}/surf/?h.equi*"
+    echo "Warp your surface to each individual layers using:"
+    echo "for hemi in \"lh\" \"rh\"; do mri_vol2surf --src func.nii.gz --out ${hemi}.equi_intensity_??.gii --hemi lh --surf <subj>/surf/lh.equi??.pial --out_type gii; done #(where ?? is the equidistance, e.g., 0.5)"
 
   fi
 
