@@ -61,7 +61,7 @@ Example:
     freeview    = False
 
     try:
-        opts = getopt.getopt(argv,"h:n:m:t:i:",["help", "sub=", "model=", "gauss", "dog", "css", "norm", "thr=", "max_ecc=", "freeview"])[0]
+        opts = getopt.getopt(argv,"h:n:m:t:i:",["in=", "help", "sub=", "model=", "gauss", "dog", "css", "norm", "thr=", "max_ecc=", "freeview"])[0]
     except getopt.GetoptError:
         print("ERROR while reading arguments; did you specify an illegal argument?")
         print(main.__doc__)
