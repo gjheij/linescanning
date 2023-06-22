@@ -9,7 +9,7 @@ import string
 from typing import Union
 
 class Defaults():
-    def __init__(self):
+    def __init__(self, **kwargs):
         self.pad_title = 20
         self.font_size = 18
         self.label_size = 14
@@ -29,16 +29,59 @@ class Defaults():
         self.xlim_right = None
         self.set_xlim_zero = False
         self.legend_handletext = 0.05
-
+        
+        # set default font
         if self.xkcd:
             self.fontname = "Humor Sans"
         else:
             self.fontname = "Montserrat"
+
+        # update kwargs
+        self.__dict__.update(kwargs)
         
+        # update font widely
         self.update_rc(self.fontname)
 
     def update_rc(self, font):
         plt.rcParams.update({'font.family': font})
+
+    def _set_spine_width(self, ax):
+        for axis in ['top', 'bottom', 'left', 'right']:
+            ax.spines[axis].set_linewidth(self.axis_width)
+
+    def _set_xlabel(self, ax, lbl):
+        self.axs.set_xlabel(lbl, fontsize=self.font_size)
+
+    def _set_ylabel(self, ax, lbl):
+        self.axs.set_ylabel(lbl, fontsize=self.font_size)
+
+    def _set_tick_width(self, ax):
+        ax.tick_params(
+            width=self.tick_width, 
+            length=self.tick_length,
+            labelsize=self.label_size)
+
+    def _set_title(self, ax, title):
+        ax.set_title(title, fontsize=self.font_size)
+
+    @staticmethod
+    def _set_xticks(ax, ticks):
+        ax.set_xticks(ticks)
+
+    @staticmethod
+    def _set_yticks(ax, ticks):
+        ax.set_yticks(ticks)
+
+    @staticmethod
+    def _set_ylim(ax,lim):
+        ax.set_ylim(lim)
+
+    @staticmethod
+    def _set_xlim(ax,lim):
+        ax.set_xlim(lim)        
+
+    def _despine(self, ax):
+        sns.despine(ax=ax, offset=self.sns_offset, trim=self.sns_trim)
 
 class LazyPRF(Defaults):
     """LazyPRF
@@ -540,7 +583,7 @@ class LazyPlot(Defaults):
                     else:
                         x = self.xx.copy()
 
-                if self.labels:
+                if isinstance(self.labels, (list,np.ndarray)):
                     lbl = self.labels[idx]
                 else:
                     lbl = None
@@ -568,7 +611,7 @@ class LazyPlot(Defaults):
                     axs.fill_between(x, ymax, ymin, color=self.color_list[idx], alpha=self.error_alpha)
 
         # axis labels and titles
-        if self.labels:
+        if isinstance(self.labels, (list,np.ndarray)):
             axs.legend(
                 frameon=False, 
                 fontsize=self.label_size)
@@ -810,6 +853,10 @@ class LazyCorr(Defaults):
         points=True,
         label: str=None,
         scatter_kwargs={},
+        stat_kwargs: dict={},
+        color_by: Union[list,np.ndarray]=None,
+        regression: bool=False,
+        correlation: bool=False,
         **kwargs):
 
         self.x              = x
@@ -830,10 +877,13 @@ class LazyCorr(Defaults):
         self.x_ticks        = x_ticks
         self.y_ticks        = y_ticks
         self.label          = label
+        self.color_by       = color_by
+        self.regression     = regression
+        self.correlation    = correlation
+        self.stat_kwargs    = stat_kwargs
 
-        super().__init__()
-        self.__dict__.update(kwargs)
-        self.update_rc(self.fontname)
+        # init default plotter class
+        super().__init__(**kwargs)
 
         if self.xkcd:
             with plt.xkcd():
@@ -850,55 +900,145 @@ class LazyCorr(Defaults):
             else:
                 raise ValueError(f"Unknown input '{self.save_as}' for 'save_as'")
 
+        # run quick regression with pingouin
+        if self.regression:
+            self._run_regression()
+
+        # run quick correlation with pingouin
+        if self.correlation:
+            self._run_correlation()            
+
+    def _run_regression(self):
+        
+        try:
+            import pingouin as pg
+        except:
+            raise ImportError("Could not import pingouin, so this functionality is not available")
+
+        self.regression_result = pg.linear_regression(
+            self.x, 
+            self.y, 
+            **self.stat_kwargs)
+
+    def _run_correlation(self):
+
+        try:
+            import pingouin as pg
+        except:
+            raise ImportError("Could not import pingouin, so this functionality is not available")
+        
+        # convert to dataframe
+        self.data = pd.DataFrame({"x": self.x, "y": self.y})
+        self.x = "x"
+        self.y = "y"
+    
+        self.correlation_result = pg.pairwise_corr(
+            self.data,
+            columns=["x","y"], 
+            **self.stat_kwargs)
+
     def plot(self):
 
         if self.axs == None:
-            _, axs = plt.subplots(figsize=self.figsize)
+            _, self.axs = plt.subplots(figsize=self.figsize)
         else:
-            axs = self.axs        
+            self.axs = self.axs        
+
+        # c-arguments clashes with "color" argument if you pass it to sns.regplot in "scatter_kws"; hence this solution
+        if isinstance(self.color_by, (list, np.ndarray)):
+            points = self.axs.scatter(
+                self.x,
+                self.y, 
+                c=self.color_by, 
+                **self.scatter_kwargs)
+            
+            # set colorbar
+            self.cbar = plt.colorbar(points)
+            if "label" in list(self.scatter_kwargs.keys()):
+                self.cbar.set_label(self.scatter_kwargs["label"], fontsize=self.label_size)            
+            
+            # sort out ticks
+            self._set_tick_width(self.cbar.ax)
+            self._set_spine_width(self.cbar.ax)
+
+            # remove outside edge from colorbar
+            self.cbar.ax.set_frame_on(False)
+
+            # set stuff to false/empty for sns.regplot
+            self.points = False
+            self.scatter_kwargs = {}
 
         sns.regplot(
             x=self.x, 
             y=self.y, 
             color=self.color, 
-            ax=axs,
+            ax=self.axs,
             scatter=self.points,
             label=self.label,
             scatter_kws=self.scatter_kwargs)
 
-        if isinstance(self.x_label, str):
-            axs.set_xlabel(self.x_label, fontsize=self.font_size)
+        # set labels and titles
+        for lbl,func in zip(
+            [self.x_label, self.y_label, self.title],
+            [self._set_xlabel, self._set_ylabel, self._set_title]):
 
-        if isinstance(self.y_label, str):
-            axs.set_ylabel(self.y_label, fontsize=self.font_size)
+            if isinstance(lbl, str):
+                func(self.axs, lbl)
 
-        if self.title:
-            axs.set_title(self.title, fontsize=self.font_size)
+        # sort out ticks
+        self._set_spine_width(self.axs)
+        self._set_tick_width(self.axs)
 
-        axs.tick_params(
-            width=self.tick_width, 
-            length=self.tick_length,
-            labelsize=self.label_size)
+        for lbl,func in zip(
+            [self.x_ticks, self.y_ticks],
+            [self._set_xticks, self._set_yticks]):
 
-        for axis in ['top', 'bottom', 'left', 'right']:
-            axs.spines[axis].set_linewidth(self.axis_width)
+            if isinstance(lbl, list):
+                func(self.axs, lbl)
 
-        if self.x_lim:
-            axs.set_xlim(self.x_lim)
+        # if isinstance(self.x_label, str):
+        #     self._set_xlabel(self.axs, self.x_label)
 
-        if self.y_lim:
-            axs.set_ylim(self.y_lim)
+        # if isinstance(self.y_label, str):
+        #     self._set_ylabel(self.axs, self.y_label)            
 
-        if isinstance(self.x_ticks, list):
-            self.axs.set_xticks(self.x_ticks)
+        # if isinstance(self.title, str):
+        #     self._set_xlabel(self.axs, self.x_label)
 
-        if isinstance(self.y_ticks, list):
-            self.axs.set_yticks(self.y_ticks)  
+            # self.axs.set_xlabel(self.x_label, fontsize=self.font_size)
 
-        sns.despine(offset=self.sns_offset, trim=self.sns_trim)
+        # # if isinstance(self.y_label, str):
+        # #     self.axs.set_ylabel(self.y_label, fontsize=self.font_size)
 
-        if self.return_obj:
-            return self
+        # # if self.title:
+        # #     self.axs.set_title(self.title, fontsize=self.font_size)
+
+        # self.axs.tick_params(
+        #     width=self.tick_width, 
+        #     length=self.tick_length,
+        #     labelsize=self.label_size)
+
+        # for axis in ['top', 'bottom', 'left', 'right']:
+        #     self.axs.spines[axis].set_linewidth(self.axis_width)
+
+        for lim,func in zip([self.x_lim, self.y_lim], [self._set_xlim, self._set_ylim]):
+            if lim:
+                func(self.axs, lim)
+
+        # if self.x_lim:
+        #     self.axs.set_xlim(self.x_lim)
+
+        # if self.y_lim:
+        #     self.axs.set_ylim(self.y_lim)
+
+        # if isinstance(self.x_ticks, list):
+        #     self.axs.set_xticks(self.x_ticks)
+
+        # if isinstance(self.y_ticks, list):
+        #     self.axs.set_yticks(self.y_ticks)  
+
+        # sns.despine(offset=self.sns_offset, trim=self.sns_trim)
+        self._despine(self.axs)
 
 class LazyBar():
 
@@ -1118,7 +1258,10 @@ class LazyBar():
             axs = self.axs
 
         # construct dataframe from loose inputs
-        if isinstance(self.y, np.ndarray):
+        if isinstance(self.y, (np.ndarray,list)):
+            if isinstance(self.y, list):
+                self.y = np.array(self.y)
+                
             if not isinstance(self.x, (np.ndarray, list)):
                 self.x = np.arange(0,self.y.shape[0])
 
