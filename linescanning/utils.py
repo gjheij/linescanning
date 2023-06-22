@@ -871,6 +871,44 @@ def make_binary_cm(color):
 
     return cmap
 
+def make_stats_cm(
+    direction, 
+    lower_neg=(51,0,248),
+    upper_neg=(151,253,253), 
+    lower_pos=(217,36,36),
+    upper_pos=(251,255,72)):
+
+    if direction not in ["pos","neg"]:
+        raise ValueError(f"direction must be one of 'pos' or 'neg', not '{direction}'")
+    
+    if direction == "pos":
+        input_list = [lower_pos,upper_pos]
+    else:
+        input_list = [lower_neg, upper_neg]
+
+    # scale to 0-1
+    col_list = []
+    for color in input_list:
+        if isinstance(color, tuple):
+            (R,G,B) = color
+        elif isinstance(color, str):
+            color = ImageColor.getcolor(color, "RGB")
+            (R,G,B) = color
+
+        if R > 1:
+            R = R/255
+
+        if G > 1:
+            G = G/255
+
+        if B > 1:
+            B = B/255
+
+        scaled_color = (R,G,B)
+        col_list.append(scaled_color)
+
+    return mcolors.LinearSegmentedColormap.from_list("", col_list)
+
 def percent_change(ts, ax, nilearn=False, baseline=20):
     """percent_change
 
