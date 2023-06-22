@@ -379,6 +379,7 @@ class NideconvFitter():
 
         # define events
         self.cond = self.used_onsets.reset_index().event_type.unique()
+        self.run_ids = self.used_onsets.reset_index().run.unique()
         self.cond = np.array(sorted([event for event in self.cond if event != 'nan']))
 
         # add events to model
@@ -876,9 +877,13 @@ class NideconvFitter():
 
         self.arr_voxels_in_event = np.concatenate(self.all_voxels_in_event, axis=0)
         self.arr_error_in_event = np.concatenate(self.all_error_in_voxels, axis=0)
-        
-        top = self.arr_voxels_in_event + self.arr_error_in_event
-        bottom = self.arr_voxels_in_event - self.arr_error_in_event
+
+        # try to find min/max across voxels. Use error if there were more than 1 run
+        top = self.arr_voxels_in_event
+        bottom = self.arr_voxels_in_event
+        if len(self.run_ids) > 1:
+            top += self.arr_error_in_event
+            bottom -= self.arr_error_in_event
         
         if make_figure:
             if n_cols == None:
@@ -920,7 +925,7 @@ class NideconvFitter():
                     vox_error = [self.arr_error_in_event[ix,ii,:] for ii in range(len(self.cond))]                    
                     
                     if sharey:
-                        ylim = [bottom.min(), top.max()]
+                        ylim = [np.nanmin(bottom), np.nanmax(top)]
                     else:
                         ylim = None
 
