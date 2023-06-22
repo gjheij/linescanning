@@ -937,7 +937,7 @@ class CalcBestVertex():
                 self.epi = tmp.mean(axis=0)
 
             else:
-
+                
                 if isinstance(self.epi_file, str):
                     # read string
                     tmp = prf.read_par_file(self.epi_file)
@@ -972,7 +972,7 @@ class CalcBestVertex():
                 vmin1=0,
                 vmax1=self.epi_sm.max(),
                 cmap="magma")
-            
+        
     def apply_thresholds(
         self, 
         x_thresh=None,
@@ -1001,19 +1001,15 @@ class CalcBestVertex():
         x_thres: int, float, optional
             refers to `x-position` (left-to-right vertical meridian). Usually between -10 and 10. Defaults to 0. A list of values for left and right hemisphere should be given. For the right hemisphere, thresholds are treated as `smaller than` (left hemifield); for left hemisphere, thresholds denote `greater than` (right hemifield). Used to push the vertex away from the fovea
         y_thres: int, float, optional
-            refers to y-position in visual space. Usually between -5 and 5 (defaults to the minimum of `y`). Threshold is specified as 'greater than <value>'                
+            refers to y-position in visual space. Usually between -5 and 5 (defaults to the maximum of `y`). Thresholds are defined as a range within which a pRF should fall, e.g,. (-5,5) for screen dimensions in y-direction
         r2_thres: int, float, optional
             refers to amount of variance explained. Usually between 0 and 1 (defaults to the minimum `r2`). Threshold is specified as 'greater than <value>'
         size_thres: int, float, optional
-            refers to size of the pRF in visual space. Usually between 0 and 5 (defaults to 0). Threshold is specified as 'greater than <value>'            
+            refers to size of the pRF in visual space. Usually between 0 and 5 (defaults to 0). Thresholds are defined as a range within which a pRF should fall, e.g,. (0.5,2.5)            
         ecc_thresh: int, float, optional
-            refers to `size` of pRF (smaller = foveal, larger = peripheral). Usually between 0 and 15. Defaults to minimum of `r2 array`. Threshold is specified as 'lower than <value>'
+            refers to `size` of pRF (smaller = foveal, larger = peripheral). Usually between 0 and 15. Thresholds are defined as a range within which a pRF should fall, e.g., (2,3)
         curv_thresh: int, float, optional
-            refers to curvature of the cortex. Usually between -1 and 1. Used when `selection=="manual"`, otherwise the minimum curvature is specified
-        a_thresh: int, float, optional
-        b_thresh: int, float, optional
-        c_thresh: int, float, optional
-        d_thresh: int, float, optional        
+            refers to curvature of the cortex. Usually between -1 and 1. Used when `selection=="manual"`, otherwise the minimum curvature is specified      
         epi thresh: int, float, optional
             refers to the EPI intensities. Defaults to all values, at the risk of selecting areas that might have veins. Threshold is specified as 'greater than <value>' and siginifies a percentile value.
         polar_thresh: list, float, optional 
@@ -1050,11 +1046,19 @@ class CalcBestVertex():
         if hasattr(self, 'prf'):
             
             # set thresholds
-            self.y_thresh       = y_thresh or self.prf.y.r2.min()
+            self.y_thresh       = y_thresh or self.prf.y.r2.max()
             self.r2_thresh      = r2_thresh or self.prf.df_prf.r2.min()
             self.size_thresh    = size_thresh or self.prf.df_prf.prf_size.max()
             self.ecc_thresh     = ecc_thresh or self.prf.df_prf.ecc.max()
             
+            # set default size range if 1 value was specified
+            if not isinstance(self.size_thresh, list):
+                self.size_thresh = [self.size_thresh, self.prf.df_prf.prf_size.max()]
+
+            # set default y range if 1 value was specified
+            if not isinstance(self.y_thresh, list):
+                self.y_thresh = [self.y_thresh, self.prf.df_prf.y.max()]
+
             # parse out polar angle
             self.polar_array    = self.prf.df_prf.polar.values
             self.polar_thresh   = polar_thresh or [max(self.polar_array[:self.surface.lh_surf_data[0].shape[0]]),min(self.polar_array[self.surface.lh_surf_data[0].shape[0]:])]
@@ -1078,11 +1082,13 @@ class CalcBestVertex():
             # check if ecc was list or not
             prf_idc = list(
                 df.loc[
-                    (df.y >= self.y_thresh)
+                    (df.y <= self.y_thresh[1]) &
+                    (df.y >= self.y_thresh[0])
                     & (df.r2 >= self.r2_thresh)
                     & (df.ecc >= self.ecc_thresh[0])
                     & (df.ecc <= self.ecc_thresh[1])
-                    & (df.prf_size <= self.size_thresh)
+                    & (df.prf_size >= self.size_thresh[0])
+                    & (df.prf_size <= self.size_thresh[1])                
                 ].index)
 
             # sort out polar angle
@@ -1090,8 +1096,8 @@ class CalcBestVertex():
             self.prf_mask = (self.prf_mask * polar * x_pos)
 
             utils.verbose(f" x-position:    >={self.x_thresh[0]}/<={self.x_thresh[1]}", True)
-            utils.verbose(f" y-position:    >= {round(self.y_thresh,2)}", True)
-            utils.verbose(f" pRF size:      <= {round(self.size_thresh,2)}", True)
+            utils.verbose(f" y-position:    {round(self.y_thresh[0],4)}-{round(self.y_thresh[1],4)}", True)
+            utils.verbose(f" pRF size:      {round(self.size_thresh[0],4)}-{round(self.size_thresh[1],4)}", True)
             utils.verbose(f" eccentricity:  {round(self.ecc_thresh[0],4)}-{round(self.ecc_thresh[1],4)}", True)
             utils.verbose(f" variance (r2): >= {round(self.r2_thresh,4)}", True)
             utils.verbose(f" polar angle:   {self.polar_thresh}", True)
@@ -2099,9 +2105,14 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
                 self.prf_file = None
                 self.model = None
             
+            # print some stuff to the terminal
             utils.verbose(f"pRFs = {self.prf_file}", self.verbose)
             utils.verbose(f"ROI = {self.roi}", self.verbose)
-
+            
+            if isinstance(epi_file, str):
+                utils.verbose(f"EPI = {self.epi_file}", self.verbose)
+                self.use_epi = True
+            
             # This thing mainly does everything. See the linescanning/optimal.py file for more information
             utils.verbose("Combining surface and pRF-estimates in one object", self.verbose)
             CalcBestVertex.__init__(
@@ -2163,14 +2174,14 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
                         # y-position
                         self.y_val = set_threshold(
                             name="y-position", 
-                            borders=(-10,10), 
-                            set_default=round(self.prf.df_prf.y.min(),2))            
+                            borders=(-6,6), 
+                            set_default=(round(self.prf.df_prf.y.min(),2),round(self.prf.df_prf.y.max(),2)))           
 
                         # pRF size
                         self.size_val = set_threshold(
                             name="pRF size (beta)", 
                             borders=(0,5), 
-                            set_default=round(self.prf.df_prf.prf_size.max(),2))
+                            set_default=(0,round(self.prf.df_prf.prf_size.max(),2)))
                         
                         # r2
                         self.r2_val = set_threshold(
