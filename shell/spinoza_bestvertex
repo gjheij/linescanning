@@ -36,7 +36,8 @@ Args:
   --gallery       save all cortex-objects from 'optimal.TargetVertex()' in a figure. If pRFs and SRFs
                   are included, this will yield in a 4x5 grid with brainmaps of various kinds that 
                   were used in the selection process of the target vertex.
-  --manual        use manual selection for the vertex, rather than minimizing for curvature                  
+  --manual        use manual selection for the vertex, rather than minimizing for curvature     
+  --no_epi        do not use EPI-intensities even though you could             
   -s <subject>    subject ID as used throughout the pipeline without prefix (e.g., 001 > 001)
   -n <session>    session ID used to extract the correct pRF-parameters. Will combined with <deriva-
                   tives>/prf/ses-<session>
@@ -45,6 +46,8 @@ Args:
   -v <vertices>   manually specify two vertices to use instead of having the program look for it. 
                   The format is important here and should always be: "<vertex in lh>,<vertex in rh>".
                   Always try to specify two vertices; doesn't matter too much if one is not relevant
+  -e <epi_file>   Specify custom EPI-intensity file rather than looking in DIR_DATA_DERIV/fmriprep. 
+                  Automatically sets --use_epi.
   <project root>  Path to where the subject-drectories are located; used to loop through subjects, 
                   unless the -s switch is triggered
   <derivatives>   Derivatives folder containing the output from pycortex and pRF-fitting. Looks for 
@@ -98,7 +101,9 @@ FULL_OW=0
 gallery_flag=""
 selection=""
 open_with=""
-while getopts :-:fos:v:n:m:t: argument
+epi=1
+epi_file=""
+while getopts :-:fos:v:n:m:t:e: argument
 do
   case ${argument} in
     -)
@@ -152,7 +157,10 @@ do
           ;;     
         ctx)
           open_with="--ctx"
-          ;;                                                          
+          ;;     
+        no_epi)
+          epi=0
+          ;;                                                               
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}"
@@ -171,7 +179,9 @@ do
     m)  model=${OPTARG}
           ;;           
     t)  task=${OPTARG}
-          ;;               
+          ;;          
+    e)  epi_file=${OPTARG}
+          ;;                 
   esac
 done
 
@@ -283,7 +293,15 @@ for subID in ${search}; do
       srf_flag=""
     else
       use_prfs="--use-prf"
-      epi_flag="--use-epi"
+
+      if [[ -z ${epi_file} ]]; then
+        if [[ ${epi} -eq 1 ]]; then
+          epi_flag="--use-epi"
+        fi
+        epi_file_flag=""
+      else
+        epi_file_flag="--epi_file ${epi_file}"
+      fi
 
       # find prf parameters
       if [[ ! -z ${search_pars} ]]; then
@@ -331,7 +349,8 @@ for subID in ${search}; do
       ${srf_file_flag} \
       ${gallery_flag} \
       ${selection} \
-      ${open_with}
+      ${open_with} \
+      ${epi_file_flag}
 
     if [[ $? != 0 ]]; then
       echo
