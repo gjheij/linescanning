@@ -93,9 +93,10 @@ Notes
     gallery     = False
     selection   = None
     open_with   = "fs"
+    epi_file    = None
 
     try:
-        opts = getopt.getopt(argv,"fuhd:s:t:r:o:b:v:m:n:p:",["help", "deriv=", "sub=", "roi=", "out=", "vert=", "use-prf", "no-freeview", "prf_file=", "use-epi", "srf", "srf_file=", "gallery", "manual", "ctx"])[0]
+        opts = getopt.getopt(argv,"fuhd:s:t:r:o:b:v:m:n:p:",["help", "deriv=", "sub=", "roi=", "out=", "vert=", "use-prf", "no-freeview", "prf_file=", "use-epi", "srf", "srf_file=", "gallery", "manual", "ctx", "epi_file="])[0]
     except getopt.GetoptError:
         print("ERROR IN ARGUMENT HANDLING!")
         print(main.__doc__)
@@ -115,6 +116,8 @@ Notes
             deriv = arg
         elif opt in ("-p", "--prf_file"):
             prf_file = arg
+        elif opt in ("--epi_file"):
+            epi_file = arg            
         elif opt in ("-e", "--use-epi"):
             use_epi = True
         elif opt in ("-u", "--use-prf"):
@@ -151,6 +154,7 @@ Notes
         subject,
         prf_file=prf_file,
         use_epi=use_epi,
+        epi_file=epi_file,
         deriv=deriv, 
         vert=verts,
         use_prf=use_prf,
