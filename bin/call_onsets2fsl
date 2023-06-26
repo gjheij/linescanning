@@ -83,6 +83,10 @@ Example
         print(main.__doc__)
         sys.exit()
 
+    # check if directory exists
+    if not os.path.exists(inputdir):
+        raise ValueError(f"Directory '{inputdir}' does not exist")
+    
     # set default output directory
     if not isinstance(outputdir, str):
         outputdir = opj(inputdir, "events")
@@ -100,9 +104,13 @@ Example
         if "," in exclude:
             exclude = exclude.split(",")
 
-    # find all tsv-files
+    # find all tsv- 
     tsv_files = utils.FindFiles(inputdir, extension="tsv", exclude=exclude, filters=add_search).files
 
+    if isinstance(tsv_files, list):
+        if len(tsv_files) < 1:
+            raise ValueError(f"Could not find files ending with '*tsv' in '{inputdir}' (exclude = {exclude} | filters = {add_search})")
+        
     # plop in object
     exp_ = dataset.ParseExpToolsFile(
         tsv_files, 
