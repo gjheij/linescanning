@@ -427,7 +427,10 @@ Example:
                 if not skip_run_id:
                     ses_funcs = utils.get_file_from_substring(["run-"], ses_funcs)
 
-    
+                # make string again
+                if isinstance(ses_funcs, str):
+                    ses_funcs = [ses_funcs]
+                
                 for func in ses_funcs:
                     
                     # split into bids components to get run ID
