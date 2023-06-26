@@ -40,7 +40,7 @@ class init_single_subject_wf():
         workdir=None, 
         bids_filters=None, 
         non_standard=['func'], 
-        omp_nthreads=8, 
+        omp_nthreads=1, 
         max_topup_vols=5,
         bold_mask=None,
         wm_seg=None):
@@ -105,8 +105,25 @@ class init_single_subject_wf():
         self.func_preproc_wfs = []
         self.has_fieldmap = bool(self.fmap_estimators)
 
-        for bold_file in self.subject_data['bold']:
-            print(bold_file)
+        for ix,bold_file in enumerate(self.subject_data['bold']):
+
+            # parse list for unique masks
+            if isinstance(self.wm_seg, list):
+                wm_seg = self.wm_seg[ix]
+            else:
+                wm_seg = self.wm_seg
+
+            if isinstance(self.bold_mask, list):
+                bold_mask = self.bold_mask[ix]
+            else:
+                bold_mask = self.bold_mask
+
+            for txt,ff in zip(["white matter", "brain"],[wm_seg,bold_mask]):
+                config.loggers.workflow.info(
+                    f"Custom '{txt}' mask: "
+                    f" {ff}."
+                )
+            
             func_preproc_wf = init_func_preproc_wf(
                 bold_file, 
                 has_fieldmap=self.has_fieldmap, 
@@ -114,8 +131,8 @@ class init_single_subject_wf():
                 layout=self.layout,
                 non_standard=self.non_standard,
                 omp_nthreads=self.omp_nthreads,
-                bold_mask=self.bold_mask,
-                wm_seg=self.wm_seg)
+                bold_mask=bold_mask,
+                wm_seg=wm_seg)
             
             if func_preproc_wf is None:
                 continue

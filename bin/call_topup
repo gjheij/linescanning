@@ -55,10 +55,11 @@ Parameters
                 flag should be specified
   -b|--filters  bids filter file (maps to --bids-filter-file from fMRIPrep); allows you to select 
                 particular files
+  -j|--jobs     total number of jobs to run (default = 1)
   -o|--ow       overwrite intermediate files
-  --mask     use initial bold mask (e.g. a custom one by registering the T1w-mask to func space;
+  --mask        use initial bold mask (e.g. a custom one by registering the T1w-mask to func space;
                 this is recommended for extremely partial FOV data)
-  --wm       custom white matter segmentation in functional space for the SDC-report               
+  --wm          custom white matter segmentation in functional space for the SDC-report               
                         
 Example
 ----------
@@ -83,9 +84,10 @@ Example
     overwrite = False
     bold_mask = None
     wm_mask = None
+    n_jobs = 1
 
     try:
-        opts = getopt.getopt(argv,"ohs:n:i:o:w:b:a:m:r:",["help", "sub=", "ses=", "acq=", "in=", "out=", "work=", "filters=", "ow", "mask=", "wm=", "bids=", "rec=", "run="])[0]
+        opts = getopt.getopt(argv,"ohs:n:i:o:w:b:a:m:r:j:",["help", "sub=", "ses=", "acq=", "in=", "out=", "work=", "filters=", "ow", "mask=", "wm=", "bids=", "rec=", "run=", "jobs="])[0]
     except getopt.GetoptError:
         print("ERROR while reading arguments; did you specify an illegal argument?")
         print(main.__doc__)
@@ -113,14 +115,20 @@ Example
             outputdir = arg
         elif opt in ("-w", "--work"):
             workdir = arg
+        elif opt in ("-j", "--jobs"):
+            n_jobs = int(arg)
         elif opt in ("--filters"):
             bids_filters = arg
         elif opt in ("-o", "--ow"):
             overwrite = True
         elif opt in ("--mask"):
             bold_mask = arg
+            if "," in bold_mask:
+                bold_mask = utils.string2list(bold_mask)
         elif opt in ("--wm"):
             wm_mask = arg
+            if "," in wm_mask:
+                wm_mask = utils.string2list(wm_mask)
 
     if len(argv) < 1:
         print(main.__doc__)
@@ -230,7 +238,8 @@ Example
         bids_filters=bids_filters,
         workdir=workdir,
         bold_mask=bold_mask,
-        wm_seg=wm_mask)
+        wm_seg=wm_mask,
+        omp_nthreads=n_jobs)
     
     # remove workdir is overwrite == True
     if overwrite:
