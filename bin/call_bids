@@ -208,44 +208,47 @@ if [[ ${ADD_INV} -eq 1 || ${DCM_FIX} -eq 1 ]]; then
   echo " Dealing with anatomical images.."
   invs=(`find -L "${tmp_dir}" -type f \( -name "*T1w_*" -and -name "*_t10*" -and -not -name "*WIP*" -or -name "*_t29*" -and -not -name "*WIP*" -or -name "*_t30*" -and -not -name "*WIP*" \) 2>/dev/null | sort`)
 
-  # make directory if not empty
+  # do stuff if files are found
   if [[ ! -z ${invs} ]]; then
+    
+    # make directory
     if [[ ! -d ${bids_dir}/anat ]]; then
       mkdir -p ${bids_dir}/anat
     fi
-  fi
 
-  # loop through files and find correct tags
-  for ff in ${invs[@]}; do
-    if [[ ${ff} == *"_ph_"* ]]; then
-      rec_tag="part-phase"
-    else
-      rec_tag="part-mag"
-    fi
+    # loop through files and find correct tags
+    for ff in ${invs[@]}; do
+      if [[ ${ff} == *"_ph_"* ]]; then
+        rec_tag="part-phase"
+      else
+        rec_tag="part-mag"
+      fi
 
-    if [[ ${ff} == *"t10"* ]]; then
-      inv_tag="inv-1"
-    else
-      inv_tag="inv-2"
-    fi
+      if [[ ${ff} == *"t10"* ]]; then
+        inv_tag="inv-1"
+      else
+        inv_tag="inv-2"
+      fi
 
-    ext=`fetch_extension ${ff}`
-    if [[ ${ext} == "gz" ]]; then
-      ext="nii.gz"
-    fi
+      ext=`fetch_extension ${ff}`
+      if [[ ${ext} == "gz" ]]; then
+        ext="nii.gz"
+      fi
 
-    out_fn=${bids_dir}/anat/${base}_acq-${DATA}_${inv_tag}_${rec_tag}.${ext}
-    if [[ ! -f ${out_fn} || ${OW} -eq 1 ]]; then
-      cp ${ff} ${out_fn}
+      out_fn=${bids_dir}/anat/${base}_acq-${DATA}_${inv_tag}_${rec_tag}.${ext}
+      if [[ ! -f ${out_fn} || ${OW} -eq 1 ]]; then
+        cp ${ff} ${out_fn}
 
-      if [[ ${ext} == *"nii.gz"* ]]; then
-        if [[ ${reorient} -eq 1 ]]; then
-          call_reorient -i ${out_fn}
+        if [[ ${ext} == *"nii.gz"* ]]; then
+          if [[ ${reorient} -eq 1 ]]; then
+            call_reorient -i ${out_fn}
+          fi
         fi
       fi
-    fi
 
-  done
+    done
+
+  fi
 
   # find T2s or FLAIR
   for qq in "T2w" "FLAIR"; do
