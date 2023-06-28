@@ -312,6 +312,7 @@ for subID in ${search}; do
           ${ORIENT_FLAG} \
           ${PROT_FLAG} \
           ${PE_FLAG} \
+          ${OW} \
           -i ${input_dir} -o ${output_dir} -b ${bids_dir} -n ${base} ${RUNS}
           
       else
