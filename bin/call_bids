@@ -61,6 +61,14 @@ Example:
     DIR_DATA_HOME/sub-02/ses-1            # BIDS output
     sub-02_ses-1                          # BIDS base name
 
+Notes:
+  - MP2RAGE files will be selected on the presence of the following strings in the filename:
+    - 'T1w_'; this must be somewhere in your sequence name
+    - '_t10', '_t29', '_t30'; denote different trigger delays, will be appended by the dcm2niix conver-
+      sion
+    - Excludes files that have 'WIP' in them, as we're combining the inversion images with pymp2rage
+  - FLAIR/T2w files will be selected on the presence of '{FLAIR|T2w}.nii.gz' in the filename
+
 ---------------------------------------------------------------------------------------------------------
 
 EOF
@@ -196,16 +204,18 @@ fi
 #---------------------------------------------------------------------------------------------------------
 # anatomicals
 if [[ ${ADD_INV} -eq 1 || ${DCM_FIX} -eq 1 ]]; then
-  
-  if [[ ! -d ${bids_dir}/anat ]]; then
-    mkdir -p ${bids_dir}/anat
-  fi
 
   echo " Dealing with anatomical images.."
-  inv_img=`find -L "${tmp_dir}" -type f \( -name "*T1w_*" -and -name "*_t10*" -or -name "*_t29*" -or -name "*_t30*" \) 2>/dev/null`
-  IFS=$'\n' invs=($(sort <<<"${inv_img[*]}"))
-  unset IFS
+  invs=(`find -L "${tmp_dir}" -type f \( -name "*T1w_*" -and -name "*_t10*" -and -not -name "*WIP*" -or -name "*_t29*" -and -not -name "*WIP*" -or -name "*_t30*" -and -not -name "*WIP*" \) 2>/dev/null | sort`)
 
+  # make directory if not empty
+  if [[ ! -z ${invs} ]]; then
+    if [[ ! -d ${bids_dir}/anat ]]; then
+      mkdir -p ${bids_dir}/anat
+    fi
+  fi
+
+  # loop through files and find correct tags
   for ff in ${invs[@]}; do
     if [[ ${ff} == *"_ph_"* ]]; then
       rec_tag="part-phase"
