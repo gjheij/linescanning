@@ -247,7 +247,7 @@ for subID in ${search}; do
     # check if there's a T1w in the 'anat' folder; even though you've already ran it, fMRIprep requires T1w-files
     anat=`find -L "${func_dir}/${base_path}/anat" -type f \( -name "*T1w.nii.gz" \) 2>/dev/null`
     if [[ -z ${anat} ]]; then
-      anat_dir=`find_hierarchical_anatomy 6`
+      anat_dir=`find_hierarchical_anatomy 5`
       diff_anat=`find -L "${anat_dir}/${base_path}" -type f \( -name "*T1w.nii.gz" \) 2>/dev/null`
       if [[ ! -z ${diff_anat} ]]; then
         if [[ ! -d ${func_dir}/${base_path}/anat ]]; then
