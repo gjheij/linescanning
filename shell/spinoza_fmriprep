@@ -240,12 +240,28 @@ for subID in ${search}; do
   # define input
   input_dir=${INPUT}/${base_path}
   if [[ ${MODE} == "anat" ]]; then
-    anat=`find -L "${input_dir}/anat" -type f \( -name "*T1w*" -and -name "*acq-${DATA^^}*" -and -name "*.nii.gz" \) 2>/dev/null`
-    if [[ -z ${anat} ]]; then
-      echo " ${sub_name}; missing anatomical data"
-      continue
-    fi
+
+    # intro text
     func_txt="Only including anatomical data"
+
+    # check if there's a T1w in the 'anat' folder; even though you've already ran it, fMRIprep requires T1w-files
+    anat=`find -L "${func_dir}/${base_path}/anat" -type f \( -name "*T1w.nii.gz" \) 2>/dev/null`
+    if [[ -z ${anat} ]]; then
+      anat_dir=`find_hierarchical_anatomy 6`
+      diff_anat=`find -L "${anat_dir}/${base_path}" -type f \( -name "*T1w.nii.gz" \) 2>/dev/null`
+      if [[ ! -z ${diff_anat} ]]; then
+        if [[ ! -d ${func_dir}/${base_path}/anat ]]; then
+          mkdir -p ${func_dir}/${base_path}/anat
+        fi
+
+        # copy file
+        cp ${diff_anat} ${func_dir}/${base_path}/anat
+
+      else
+        echo "ERROR in `basename ${0}`: Could not find T1w-file in \"${anat_dir}\". Please copy a file containing \"_T1w.nii.gz\" to \"${func_dir}/${base_path}/anat\" as a T1w-file needs to be present. If you've already ran the anatomical workflows, the file will be ignored. Nevertheless, it's needs to be present for fMRIprep to initiate"
+        exit 1
+      fi    
+    fi   
   else
     func_txt="Including functional data"
     if [[ ! -z ${func_dir} ]]; then
@@ -267,7 +283,7 @@ for subID in ${search}; do
           cp ${diff_anat} ${func_dir}/${base_path}/anat
 
         else
-          echo "ERROR in `basename ${0}`: Could not find T1w-file in \"${anat_dir}\". Please copy your FreeSurfer input to \"${func_dir}/${base_path}/anat\" as a T1w-file needs to be present. If you've already ran the anatomical workflows, the file will be ignored. Nevertheless, it's needs to be present for fMRIprep to initiate"
+          echo "ERROR in `basename ${0}`: Could not find T1w-file in \"${anat_dir}\". Please copy a file containing \"_T1w.nii.gz\" to \"${func_dir}/${base_path}/anat\" as a T1w-file needs to be present. If you've already ran the anatomical workflows, the file will be ignored. Nevertheless, it's needs to be present for fMRIprep to initiate"
           exit 1
         fi    
       fi  
