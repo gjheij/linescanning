@@ -218,7 +218,7 @@ if left to empty, it will look by default for the following files:
             outside = all_masks['sinus']
         except:
             print(f"Could not find mask with 'sinus' in '{masks}'. Setting 'dura'-mask as 'sinus'-mask")
-            outside = duramask
+            outside = dura_mask
 
     try:
         inside = all_masks['inside']
