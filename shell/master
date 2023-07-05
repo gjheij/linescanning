@@ -72,6 +72,7 @@ run_local=""              # spinoza_fmriprep/spinoza_fitprfs
 LAYER_FLAG=""             # spinoza_layering
 NR_LAYERS=""              # spinoza_layering
 GDH_FLAG=""               # spinoza_mgdm
+MAN_FLAG=""               # spinoza_masking
 REG_TYPE=""               # spinoza_registration
 FSL_FLAG=""               # spinoza_registration
 DRAW_SAG="itk"            # spinzoa_sagittalsinus
@@ -95,7 +96,7 @@ t_specified=0             # keep track when t-flag is specified or --func is use
 
 # use long options in bash:
 # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options
-declare -a array=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv" "--no_fit" "--fmriprep" "--fprep" "--v1" "--v2" "--save_grid" "--debug" "--no_nordic" "--dcm_fix" "--ow" "--no_bounds" "--no_tsnr" "--mag" "--no_highres" "--xopts-use" "--xopts-clean" "--xopts-overwrite" "--take-avg-tr" "--force_exec" "--no_t2" "--merge_ses" "--fsaverage" "--fsnative" "--ap" "--pa" "--lr" "--rl" "--no_lpi" "--anat_only" "--func_only" "--no_boldref" "--gauss" "--dog" "--css" "--norm" "--no_srf" "--srf_file" "--gallery" "--abc" "--abd" "--manual" "--ctx" "--func" "--help" "--ofsl" "--clean" "--fd" "--fetch_fsl" "--anat" "--no_epi")
+declare -a array=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv" "--no_fit" "--fmriprep" "--fprep" "--v1" "--v2" "--save_grid" "--debug" "--no_nordic" "--dcm_fix" "--ow" "--no_bounds" "--no_tsnr" "--mag" "--no_highres" "--xopts-use" "--xopts-clean" "--xopts-overwrite" "--take-avg-tr" "--force_exec" "--no_t2" "--merge_ses" "--fsaverage" "--fsnative" "--ap" "--pa" "--lr" "--rl" "--no_lpi" "--anat_only" "--func_only" "--no_boldref" "--gauss" "--dog" "--css" "--norm" "--no_srf" "--srf_file" "--gallery" "--abc" "--abd" "--manual" "--ctx" "--func" "--help" "--ofsl" "--clean" "--fd" "--fetch_fsl" "--anat" "--no_epi" "--no_manual")
 
 # sort options array
 IFS=$'\n' opts=($(sort <<<"${array[*]}"))
@@ -357,6 +358,9 @@ do
         no_epi)
           MAN_EPI="--no_epi"
           ;;  
+        no_manual)
+          MAN_FLAG="--no_manual"
+          ;;            
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             for ii in ${opts[@]}; do echo " ${ii}"; done
@@ -613,6 +617,8 @@ Arguments:
                     on more raw data, I'd advise you to reorient to LPI and to NOT use this flag. 
                     This flag is mainly here because it can take some time with big files which slows 
                     down debugging.  
+  --no_manual       Just combine masks and apply (spinoza_masking); will prevent that ITK-Snap is opened
+                    for further manual edits
   --no_nordic       turn off NORDIC denoising during reconstruction of line-scanning data
   --no_tsnr         do NOT calculate tSNR before and after NORDIC (spinoza_nordic) and save them as images  
   --no_t2           do not reuse T2 with autorecon3. Must be used in concert with '-e' and '-r'. By 
@@ -1379,6 +1385,7 @@ if [[ $? -eq 0 ]]; then
     ${SUBJECT} \
     ${SESSION} \
     ${OW} \
+    ${MAN_FLAG} \
     ${INPUT_DIR} ${DIR_DATA_DERIV}/masked_${DATA,,} ${DIR_DATA_DERIV}/manual_masks ${DIR_DATA_DERIV}/skullstripped
 
   if [[ $? -ne 0 ]]; then

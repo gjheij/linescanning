@@ -38,6 +38,7 @@ Parameters
                   empty..
                     - masked T1w: suffixed with _masked.nii.gz
                     - mask:       suffixed with _brainmask.nii.gz
+  --no_manual     Do not do any further manual edits; use the masks as is
 
 Returns
 ----------
@@ -65,9 +66,10 @@ if left to empty, it will look by default for the following files:
     t1w_fn  = None
     masks   = None
     output  = None
+    manual  = True
 
     try:
-        opts = getopt.getopt(argv,"hs:n:i:t:m:d:o:",["subj=", "ses=", "inv=", "t1w=", "masks=", "output="])[0]
+        opts = getopt.getopt(argv,"hs:n:i:t:m:d:o:",["subj=", "ses=", "inv=", "t1w=", "masks=", "output=", "no_manual"])[0]
     except getopt.GetoptError:
         print(main.__doc__)
         sys.exit(2)
@@ -88,6 +90,8 @@ if left to empty, it will look by default for the following files:
             masks = arg
         elif opt in ("-o", "--output"):
             output = arg
+        elif opt in ("--no_manual"):
+            manual = arg            
 
     if len(argv) < 1:
         print("\nNOT ENOUGH ARGUMENTS SPECIFIED")
@@ -300,12 +304,13 @@ if left to empty, it will look by default for the following files:
         except:
             print("WARNING: could not copy geometry from {} to {}".format(t1w_fn, outside_fn))
 
-        try:
-            print("Manually edit the outside mask in ITKSnap")
-            cmd_txt = "itksnap -g {anat} -s {dura}".format(anat=t1w_fn, dura=outside_fn)
-            os.system(cmd_txt)
-        except:
-            print("Could not initiate ITKsnap to manually edit outside mask")
+        if manual:
+          try:
+              print("Manually edit the outside mask in ITKSnap")
+              cmd_txt = "itksnap -g {anat} -s {dura}".format(anat=t1w_fn, dura=outside_fn)
+              os.system(cmd_txt)
+          except:
+              print("Could not initiate ITKsnap to manually edit outside mask")
 
     # Stuff like dura should be put to 0, not just multiplied with INV2
     print("Set sagittal sinus and dura stuff to zero")

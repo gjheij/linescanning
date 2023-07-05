@@ -25,6 +25,7 @@ Arguments:
   -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
   -n <session>        session ID (e.g., 1, 2, or none)
   -o                  overwrite existing files
+  --no_manual         do not do any further manual editing; just combine all masks and apply
   <anat dir>          parent directory containing the sub-xxx folders for anatomies
   <output skull>      output folder for masked T1w-image (with skull)
   <mask dir>          folder containing a bunch of masks from previous modules. Should contains files 
@@ -47,9 +48,22 @@ USAGE
 
 # Check for subject & session flags
 OW=0
+man_flag=""
 while getopts os:n: argument
 do
   case ${argument} in
+    -)
+      case "${OPTARG}" in
+        no_manual)
+          man_flag="--no_manual"
+          ;;                                                                                             
+        *)
+          if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
+            echo "Unknown option --${OPTARG}"
+            exit 1
+          fi
+          ;;
+      esac;;   
     s)  sub=${OPTARG}
           ;;
     n)  ses=${OPTARG}
@@ -154,7 +168,15 @@ for subID in ${search}; do
         # if we cannot do masking, then just copy the input image as "masked" image
         if [[ ! -z ${MASK} ]]; then
           echo "Remove background noise with call_gdhmasking"
-          call_gdhmasking -s ${sub_name} -n ${nr} -t ${t1w_fn}
+          cmd="""call_gdhmasking \
+            ${man_flag} \
+            -s ${sub_name} \
+            -n ${nr} \
+            -t ${t1w_fn}"""
+
+          # echo command
+          echo ${cmd}
+          eval ${cmd}
 
           if [[ $? != 0 ]]; then
             echo
