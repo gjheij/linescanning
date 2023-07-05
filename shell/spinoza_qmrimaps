@@ -179,13 +179,13 @@ for subID in ${search}; do
   done
 
   # copy T2w-file to pymp2rage folder for later convenience
-  t2=`find -L\ "${input_dir}" -type f \( -name "*T2w.nii.gz" \) 2>/dev/null`
+  t2=`find -L "${input_dir}" -type f \( -name "*T2w.nii.gz" \) 2>/dev/null`
   if [ ! -z ${t2} ]; then
     cp ${t2} ${output_dir} 2>/dev/null
   fi
 
   # copy FLAIR-file to pymp2rage folder for later convenience
-  flair=`find -L\ "${input_dir}" -type f \( -name "*FLAIR.nii.gz" \) 2>/dev/null`
+  flair=`find -L "${input_dir}" -type f \( -name "*FLAIR.nii.gz" \) 2>/dev/null`
   if [ ! -z ${flair} ]; then
     cp ${flair} ${output_dir} 2>/dev/null
   fi  
