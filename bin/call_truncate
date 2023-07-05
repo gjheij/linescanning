@@ -109,7 +109,7 @@ Example:
         fprep_dir = opj(os.environ.get("DIR_DATA_DERIV"), "fmriprep")
 
     if not isinstance(output, str):
-        output = opj(os.environ.get("DIR_DATA_DERIV"), f"def{cut_vols}")
+        output = opj(os.environ.get("DIR_DATA_DERIV"), f"del{cut_vols}")
 
     utils.verbose(f"Input directory: {opj(fprep_dir, subject)}", verbose)
     utils.verbose(f"Output directory: {opj(output, subject)}", verbose)
