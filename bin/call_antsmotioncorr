@@ -78,7 +78,7 @@ Example
     clean_aff = True
 
     try:
-        opts = getopt.getopt(argv,"hi:o:m:r:",["help", "in=", "out=", "verbose", "ow", "mask=", "first", "itk", "keep_xfms", "keep_vols", "keep_tfm", "keep_aff", "ref="])[0]
+        opts = getopt.getopt(argv,"hi:o:m:r:",["help", "in=", "out=", "verbose", "ow", "mask=", "first", "itk", "keep_xfms", "keep_vols", "keep_tfm", "keep_aff", "ref=", "keep_xfms"])[0]
     except getopt.GetoptError:
         print("ERROR while reading arguments; did you specify an illegal argument?")
         print(main.__doc__)
