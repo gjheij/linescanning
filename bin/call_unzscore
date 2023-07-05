@@ -94,20 +94,37 @@ def calculate_std(raw):
 
     return tmp_data
 
-def bids_search(func, start_search=[]):
+def bids_search(func, start_search=[], skip_run_id=False):
     # split into bids components to get run ID
     comps = utils.split_bids_components(func)
     
     output_base = f"sub-{comps['sub']}"
     if "ses" in list(comps.keys()):
         output_base = opj(output_base, f"ses-{comps['ses']}")
-        start_search += [f"ses-{comps['ses']}_"]
 
-    if "run" in list(comps.keys()):
-        start_search += [f"run-{comps['run']}_"]
+        if len(start_search) > 0:
+            if not any("ses" in i for i in start_search):
+                start_search += [f"ses-{comps['ses']}_"]
 
-    if "hemi" in list(comps.keys()):
-        start_search += [f"hemi-{comps['hemi']}_"]
+    for el in ["run","hemi","task","acq"]:
+
+        if el in list(comps.keys()):
+
+            add_el = True
+            # define cases where element should not be appended
+            if len(start_search) > 0:
+                
+                # don't add element if it's already in 'start_search'
+                if any(el in i for i in start_search):
+                    add_el = False
+
+            # don't add run if skip_run_id == True
+            if el == "run":
+                if skip_run_id:
+                    add_el = False
+                    
+            if add_el:
+                start_search += [f"{el}-{comps[el]}_"]
 
     return start_search, output_base
 
@@ -420,8 +437,8 @@ Example:
                 # get run ids
                 skip_run_id = False
                 run_ids = utils.get_ids(ses_funcs, bids="run")
-                if len(run_ids)<1:
-                    skip_run_id = True
+                if len(run_ids)<2:
+                    skip_run_id = True  
 
                 # filter out run-ID if present
                 if not skip_run_id:
@@ -434,7 +451,7 @@ Example:
                 for func in ses_funcs:
                     
                     # split into bids components to get run ID
-                    all_search, output_base = bids_search(func, start_search=[])
+                    all_search, output_base = bids_search(func, start_search=[], skip_run_id=skip_run_id)
 
                     # set tmp directory containing pkl-files
                     avg_dir = opj(out_dir, output_base, 'tmp')
@@ -448,7 +465,7 @@ Example:
 
                     # find matching pkl-file
                     data = fetch_match_data(all_search, avg_dir)
-
+                    
                     # undo zscore
                     unzscored = unzscore(raw,data)
 
@@ -470,7 +487,7 @@ Example:
             for func in funcs:
 
                 # split into bids components to get run ID
-                all_search, output_base = bids_search(func, start_search=search_hemi)
+                all_search, output_base = bids_search(func, start_search=search_hemi, skip_run_id=skip_run_id)
 
                 # set tmp directory containing pkl-files
                 avg_dir = opj(out_dir, output_base, 'tmp')
