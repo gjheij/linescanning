@@ -149,7 +149,7 @@ Example
             if os.path.exists(ref):
 
                 # define output
-                output = opj(opd(bold_file), "tmp.nii.gz")
+                output = bold_file.split('.')[0]+"_tmp.nii.gz"
                 if not os.path.exists(opd(output)):
                     os.makedirs(opd(output), exist_ok=True)
 
