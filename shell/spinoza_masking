@@ -49,7 +49,7 @@ USAGE
 # Check for subject & session flags
 OW=0
 man_flag=""
-while getopts os:n: argument
+while getopts :-:os:n: argument
 do
   case ${argument} in
     -)
