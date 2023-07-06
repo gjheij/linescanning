@@ -307,7 +307,7 @@ CMD(){
   ) > ${fs_script}
   
   if [[ ${submit} -eq 1 ]]; then
-    qsub ${fs_script}
+    qsub -pe smp ${n_cpus} ${fs_script}
     echo "Now wait until the program has finished and do some editing in FreeView if required."
     echo "Waiting to qstat.."
     sleep 5
