@@ -203,6 +203,20 @@ for subID in ${search}; do
         if [[ -f ${par_file} ]]; then
           fileparts=`read_par ${par_file} "Protocol name"`
           task=`task_id ${fileparts}`
+
+          # read echoes from PAR file, verify against specified nr of echoes
+          n_par_echo=`read_par ${par_file} "number of echoes"`
+          if [[ -z ${echo_flag} ]]; then
+            if [[ ! -z ${n_par_echo} ]]; then
+              echo "Reading nr of echoes from PAR-file (${n_par_echo})"
+              echo_flag="-m ${n_par_echo}"
+            else
+              if [[ ${n_echoes} -ne ${n_par_echo} ]]; then
+                echo "WARNING: par-file says ${n_par_echo} echoes, but ${n_echoes} were specified. Leave echo-flag empty to use echoes specified in PAR-file"
+                exit 1
+              fi
+            fi
+          fi
         fi
 
         # set output name
@@ -275,10 +289,8 @@ for subID in ${search}; do
     fi
 
   else
-
-    echo "${sub_name}: ses-${nr} not yet performed"
+    echo "Could not find \"${lab_func}\""
     continue
-
   fi
 
 done

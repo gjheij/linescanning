@@ -119,43 +119,13 @@ if [[ -f ${RAW} && -f ${LSD} ]]; then
   echo " Nordic = ${do_nordic}"
   echo " Echos  = ${n_echos}"
 
-  if [[ ${multiecho} -eq 0 ]]; then
-    (
+  # add stuff that's shared between single-/ and multi-echo
+  (
     echo "%% paths"
     echo "addpath(getenv('MRRECON')) %working without patch or with seline patch"
     echo "addpath(getenv('MATLAB_DIR'))"
-    echo "addpath('/data1/projects/MicroFunc/common');"
-    echo "addpath(genpath(fullfile(getenv('PATH_HOME'), 'programs', 'luisa')))"
-    echo "disp(\"Starting recon\")"
-    echo "filelocation = '$(dirname ${RAW})/';"
-    echo ""
-    echo "% py_PAR   = 'RECON_PAR'; % sub-xxx_desc-recon.PAR"
-    echo "py_lab   = '$(basename ${RAW})';  % sub-xxx_desc-recon.LAB"
-    echo "nopy_lab = '$(basename ${LSD})'; % sub-xxx_task-2R_bold.LAB"
-    echo "nordic   = '${do_nordic}';"
-    echo ""
-    echo "Nc = 32; % nr of channels"
-    echo "TR = 105; %TR in ms"
-    echo "sp_res = 0.25; %line resolution [mm]"
-    echo "gausskernel = 24;"
-    echo ""
-    echo "Data_pc       = basic_recon(py_lab,filelocation, Nc);"
-    echo "nord_tresh    = 9; %not used now, since you are selecting the NORDIC threshold based on the scree plot"
-    echo "varargin_par  = {Data_pc, nord_tresh};"
-    echo "Data_wcsmtSNR = LS_recon_1way(nopy_lab, filelocation, Nc, 'all', TR, gausskernel, 'no', 'wcsmtSNR', nordic, varargin_par);"
-    echo ""
-    echo "save('${OUT}','Data_wcsmtSNR');"
-    echo "disp(\"Done\")"
-    ) >> ${newrecon}
-  
-  elif [[ ${multiecho} -eq 1 ]]; then
-    ## INSERT MULTIECHO PIPELINE
-    (
-    echo "%% paths"
-    echo "addpath(getenv('MRRECON')) %working without patch or with seline patch"
-    echo "addpath(getenv('MATLAB_DIR'))"
-    echo "addpath('/data1/projects/MicroFunc/common');"
-    echo "addpath(genpath(fullfile(getenv('PATH_HOME'), 'programs', 'luisa')))"
+    echo "addpath('${REPO_DIR}/recon');"
+    # echo "addpath(genpath(fullfile(getenv('PATH_HOME'), 'programs', 'luisa')))"
     echo "disp(\"Starting recon\")"
     echo "filelocation = '$(dirname ${RAW})/';"
     echo ""
@@ -168,30 +138,51 @@ if [[ -f ${RAW} && -f ${LSD} ]]; then
     echo "TR = 105; %TR in ms"
     echo "sp_res = 0.25; %line resolution [mm]"
     echo "gausskernel = 24;"
-    echo "Nechos = ${n_echos};"
     echo ""
     echo "Data_pc        = basic_recon(py_lab,filelocation, Nc);"
     echo "csm4ls_sm_cplx = coil_sens_MELS(abs(Data_pc), gausskernel);"
     echo "nord_tresh     = 9; %not used now, since you are selecting the NORDIC threshold based on the scree plot"
-    echo "varargin_par   = {'before', nord_tresh};"
-    echo "if strcmp(nordic,'off')"
-    echo "Data = GELINEME_NORDIC_FastRecon(csm4ls_sm_cplx, nopy_lab, filelocation, Nc, Nechos, TR, sp_res, 'off', nordic, varargin_par);"
-    echo "else"
-    echo "[Data, removed_comp] = GELINEME_NORDIC_FastRecon(csm4ls_sm_cplx, nopy_lab, filelocation, Nc, Nechos, TR, sp_res, 'off', nordic, varargin_par);"
-    echo "end"
-    echo ""
-    echo "TE1 = 6.*10^(-3);"
-    echo "deltaTE= 8.*10^(-3);"
-    echo "echotimes = TE1(1):deltaTE(1):(TE1(1)+deltaTE(1)*(Nechos(1)-1));"
-    echo "Data_comb = CombineEchoes_nofor_LS(Data, echotimes, 'SoS');"
-    echo "save('${OUT}','Data_comb');"
-    echo "disp(\"Done\")"
+    echo "varargin_par   = {'before', nord_tresh};"    
+  ) >> ${newrecon}
+
+  # make output directory
+  if [[ ! -d $(dirname ${OUT}) ]]; then
+    mkdir -p $(dirname ${OUT})
+  fi
+
+  if [[ ${multiecho} -eq 0 ]]; then
+    # SINGLE-ECHO 
+    (
+      echo "Data_wcsmtSNR = LS_recon_1way(nopy_lab, filelocation, Nc, 'all', TR, gausskernel, 'no', 'wcsmtSNR', nordic, varargin_par);"
+      echo ""
+      echo "save('${OUT}','Data_wcsmtSNR');"
+      echo "disp(\"Done\")"
+    ) >> ${newrecon}
+  
+  elif [[ ${multiecho} -eq 1 ]]; then
+    ## MULTI-ECHO w/ NORDIC
+    (
+      echo "Nechos = ${n_echos};"
+      echo "if strcmp(nordic,'off')"
+      echo "Data = GELINEME_NORDIC_FastRecon(csm4ls_sm_cplx, nopy_lab, filelocation, Nc, Nechos, TR, sp_res, 'off', nordic, varargin_par);"
+      echo "else"
+      echo "[Data, removed_comp] = GELINEME_NORDIC_FastRecon(csm4ls_sm_cplx, nopy_lab, filelocation, Nc, Nechos, TR, sp_res, 'off', nordic, varargin_par);"
+      echo "end"
+      echo ""
+      echo "TE1 = 6.*10^(-3);"
+      echo "deltaTE= 8.*10^(-3);"
+      echo "echotimes = TE1(1):deltaTE(1):(TE1(1)+deltaTE(1)*(Nechos(1)-1));"
+      echo "Data_comb = CombineEchoes_nofor_LS(Data, echotimes, 'SoS');"
+      echo "save('${OUT}','Data_comb');"
+      echo "disp(\"Done\")"
     ) >> ${newrecon}
   fi
 
   if [[ $DEBUG -eq 0 ]]; then
     echo "Initiating call to Matlab"
     call_matlab ${newrecon} 
+  else
+    echo "Script: \"${newrecon}\""
   fi
 
 else
