@@ -2854,6 +2854,10 @@ class Dataset(ParseFuncFile,SetAttributes):
 
         if isinstance(func_file, str) and func_file.endswith(".h5"):
             self.from_hdf(func_file)
+
+            # set all kwargs
+            # print(kwargs)
+            self.__dict__.update(kwargs)
         else:
             ParseFuncFile.__init__(
                 self,
