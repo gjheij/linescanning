@@ -124,7 +124,7 @@ class SurfaceCalc(object):
 
         # check if we need to reload kernel to activate changes to filestore
         if os.environ.get("PROJECT") not in self.ctx_path:
-            raise TypeError(f"Project '{os.environ.get('PROJECT')}' not found in '{self.ctx_path}'. This can happen if you changed the filestore, but haven't reloaded the kernel. Please do so to make changes to the filestore available.")
+            raise TypeError(f"Project '{os.environ.get('PROJECT')}' not found in '{self.ctx_path}'. This can happen if you changed the filestore, but haven't reloaded the kernel. Use 'call_ctxfilestore' to set the filestore (and reload window if running from VSCode)")
             
         if fs_dir == None:
             self.fs_dir = os.environ.get("SUBJECTS_DIR")
