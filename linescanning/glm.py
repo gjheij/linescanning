@@ -4,6 +4,7 @@ from nilearn.glm.first_level import first_level
 from nilearn.glm.first_level import hemodynamic_models 
 from nilearn import plotting
 import numpy as np
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import pandas as pd
 from scipy.interpolate import interp1d
@@ -264,7 +265,8 @@ class GenericGLM():
         verbose=False,
         copes=None,
         plot_full_only=False,
-        plot_full=False):
+        plot_full=False,
+        save_as=None):
 
         self.nilearn_method = nilearn_method
         self.xkcd = xkcd
@@ -276,6 +278,7 @@ class GenericGLM():
         self.make_figure = make_figure
         self.plot_full_only = plot_full_only
         self.plot_full = plot_full
+        self.save_as = save_as
 
         if self.nilearn_method:
             # we're going to hack Nilearn's FirstLevelModel to be compatible with our line-data. First, we specify the model as usual
@@ -291,7 +294,7 @@ class GenericGLM():
             if isinstance(self.data, pd.DataFrame):
                 self.data = self.data.values
             elif isinstance(self.data, np.ndarray):
-                self.data = data.copy()
+                self.data = self.data.copy()
             else:
                 raise ValueError(f"Unknown input type {type(self.data)} for functional data. Must be pd.DataFrame or np.ndarray [time, voxels]")
 
@@ -346,7 +349,8 @@ class GenericGLM():
                 verbose=self.verbose,
                 copes=self.copes,
                 plot_full_only=self.plot_full_only,
-                plot_full=self.plot_full)
+                plot_full=self.plot_full,
+                save_as=self.save_as)
 
     def plot_contrast_matrix(self, save_as=None):
         if self.nilearn_method:
@@ -955,12 +959,12 @@ def fit_first_level(
     # np.linalg.pinv(X) = np.inv(X.T @ X) @ X
     betas_conv, sse, rank, s = np.linalg.lstsq(X_conv, data, rcond=-1)
     # betas_conv  = np.linalg.inv(X_conv.T @ X_conv) @ X_conv.T @ data
-
+    
     # get full model predictions
     preds = X_conv@betas_conv
 
     # calculate r2
-    tse = (data.shape[0]-1) * np.var(data, axis=0, ddof=0)
+    tse = (data.shape[0]-1) * np.var(data, axis=0, ddof=1)
     r2 = 1-(sse/tse)
 
     # loop through contrasts
@@ -1048,7 +1052,7 @@ def fit_first_level(
             signals,
             y_label="Activity (a.u.)",
             x_label="volumes",
-            title=f"model fit vox {best_vox+1}/{data.shape[1]} (r2={r2[best_vox]})",
+            title=f"model fit vox {best_vox+1}/{data.shape[1]} (r2={round(r2[best_vox],4)})",
             labels=labels,
             figsize=(20,5),
             font_size=20,
@@ -1140,42 +1144,33 @@ def double_gamma(x, lag=6, a2=12, b1=0.9, b2=0.9, c=0.35, scale=True):
     return hrf
     
 class Posthoc(Defaults):
+    """Posthoc
 
-    def __init__(
-        self,
-        df=None,
-        dv=None,
-        between=None,
-        parametric=True,
-        padjust="fdr_bh",
-        effsize="cohen",
-        axs=None,
-        alpha=0.05,
-        y_pos=0.95,
-        line_separate_factor=-0.065,
-        ast_frac=0.2,
-        ns_annot=False,
-        ns_frac=5):
+    Run posthoc analysis on the output from `pingouin` ANOVA/ANCOVA or just straight up as pairwise t-tests. During intialization, the plotting arguments are internalized from :class:`linescanning.plotting.Defaults()`. Posthoc test should then be executed using the :func:`linescanning.glm.Posthoc.run_posthoc()` function, which accepts all arguments that :class:`pingouin.pairwise_tukey()` or :class:`pingouin.pairwise_tests()` accept. You can then choose to have the significance bars plotted on a specified `axs`. Note that this only works for relatively simple tests; there's NO support for complicated (nested) data structures such as repeated-measures.
 
-        super().__init__()
+    Parameters
+    ----------
+    See: :class:`linescanning.plotting.Defaults()`
 
-        self.df = df
-        self.dv = dv
-        self.between = between
-        self.parametric = parametric
-        self.padjust = padjust
-        self.effsize = effsize
-        self.axs = axs
-        self.alpha = alpha
-        self.y_pos = y_pos
-        self.line_separate_factor = line_separate_factor
-        self.ast_frac = ast_frac
-        self.ns_frac = ns_frac
-        self.annotate_ns = ns_annot
+    Example
+    ----------
+    >>> from linescanning import glm
+    >>> posth = glm.Posthoc()
+    >>> posth.run_posthoc(
+    >>>     data=df,
+    >>>     dv="dependent_variable",
+    >>>     between="grouping_variable",
+    >>>     )
+    >>> posth.plot_bars(axs=axs)
+    """
 
+    def __init__(self, **kwargs):
+        # initialize plotting setting
+        super().__init__(**kwargs)
+    
     @classmethod
     def sort_posthoc(self, df):
-
+        """sort the output of posthoc tests based on distance so that the longest significance bar spans the largest distance"""
         conditions = np.unique(np.array(list(df["A"].values)+list(df["B"].values)))
 
         distances = []
@@ -1191,35 +1186,112 @@ class Posthoc(Defaults):
         df["distances"] = distances
         return df.sort_values("distances", ascending=False)
 
-    def run_posthoc(self):
+    def run_posthoc(
+        self, 
+        test: str="tukey",
+        *args, 
+        **kwargs):
+        
+        """run_posthoc
+
+        Run the posthoc test. By default, we'll run a `tukey`-test. If the argument is something else, the :class:`pingouin.pairwise_tests()` is invoked.
+
+        Parameters
+        ----------
+        test: str, optional
+            Type of test to execute, by default "tukey"
+
+        Raises
+        ----------
+        ImportError
+            If pingouin cannot by imported
+        """
+        self.test = test
+
+        # internalize data
+        if "data" in list(kwargs.keys()):
+            self.data = kwargs["data"]
 
         try:
-            import pingouin
+            import pingouin as pg
         except:
             raise ImportError(f"Could not import 'pingouin'")
 
         # FDR-corrected post hocs with Cohen's D effect size
-        self.posthoc = pingouin.pairwise_tests(
-            data=self.df, 
-            dv=self.dv, 
-            between=self.between, 
-            parametric=self.parametric, 
-            padjust=self.padjust, 
-            effsize=self.effsize)
+        if self.test == "tukey":
+            self.posthoc = pg.pairwise_tukey(
+                *args,
+                **kwargs
+            )
+            self.p_tag = "p-tukey"
+        else:
+            self.posthoc = pg.pairwise_tests(
+                *args,
+                **kwargs)
 
-    def plot_bars(self):
+            self.p_tag = "p-corr"
+
+        # internalize all kwargs
+        self.__dict__.update(kwargs)
+
+    def plot_bars(
+        self, 
+        axs: mpl.axes._axes.Axes=None,
+        alpha: float=0.05,
+        y_pos: float=0.95,
+        line_separate_factor: float=-0.065,
+        ast_frac: float=0.2,
+        ns_annot: bool=False,
+        ns_frac: bool=5,
+        *args,
+        **kwargs):
+
+        """plot_bars
+
+        Function that plots the significance bars given a matplotlib axis. Based on the sorted posthoc output, it'll draw the significance bars from top to bottom (longest significance bar up top).
+
+        Parameters
+        ----------
+        axs: mpl.axes._axes.Axes, optional
+            Axis to plot the lines on, by default None
+        alpha: float, optional
+            Alpha value to consider contrasts significant, by default 0.05
+        y_pos: float, optional
+            Starting position of top significance line in axis proportions (1 = top of plot), by default 0.95. While looping through significant contrasts, this factor is reduced with `line_separate_factor`
+        line_separate_factor: float, optional
+            Factor to reduce the y-position of subsequent significance bars with, by default -0.065
+        ast_frac: float, optional
+            Distance between significance line and annotation (e.g., asterix denoting significance or 'ns' if `ns_annot==True`), by default 0.2
+        ns_annot: bool, optional
+            Also annotate non-significant contrasts with 'ns', by default False
+        ns_frac: bool, optional
+            Additional factor to scale the distance between the significance lines and text as `ast_frac` will yield different results for text and asterixes, by default 5
+        """
+
+        # internalize args
+        self.axs = axs
+        self.alpha = alpha
+        self.y_pos = y_pos
+        self.line_separate_factor = line_separate_factor
+        self.ast_frac = ast_frac
+        self.ns_annot = ns_annot
+        self.ns_frac = ns_frac
         
+        # run posthoc if not present
         if not hasattr(self, "posthoc"):
-            self.run_posthoc()
+            self.run_posthoc(*args,**kwargs)
+            
+            # internalize all kwargs
+            self.__dict__.update(kwargs)
 
         self.minmax = list(self.axs.get_ylim())
-        self.conditions = np.unique(self.df[self.between].values)
+        self.conditions = np.unique(self.data[self.between].values)
 
         # sort posthoc so that bars furthest away are on top (if significant)
         self.posthoc_sorted = self.sort_posthoc(self.posthoc)
 
-        if "p-corr" in list(self.posthoc_sorted.columns):
-            p_meth = "p-corr"
+        if self.p_tag in list(self.posthoc_sorted.columns):
+            p_meth = self.p_tag
         else:
             p_meth = "p-unc"
 
@@ -1240,7 +1312,7 @@ class Posthoc(Defaults):
                 dist = self.ast_frac
 
             else:
-                if self.annotate_ns:
+                if self.ns_annot:
                     txt = "ns"
                     style = "italic"
                     f_size = self.label_size
@@ -1280,111 +1352,193 @@ class Posthoc(Defaults):
                 # reset txt
                 txt = None
 
-class ANCOVA(Defaults):
+class ANOVA(Posthoc):
+
+    """ANOVA
+
+    Run an ANOVA with pingouin and subsequently run posthoc test. Allows you to immediately visualize significant results given a matplotlib axis. In contrast to :class:`linescanning.glm.Posthoc()`, arguments for the ANOVA test are immediately passed on during the initialization stage.
+
+    Parameters
+    ----------
+    alpha: float, optional
+        Alpha value to consider contrasts significant, by default 0.05
+    axs: mpl.axes._axes.Axes, optional
+        Axis to plot the lines on, by default None
+    posthoc_kw: dict, optional
+        Dictionairy containing arguments that are passed to :func:`linescanning.glm.Posthoc.plot_bars()`, by default {}. See docs for arguments
+
+    Example
+    ----------
+    >>> from linescanning import glm
+    >>> anv = glm.ANOVA(
+    >>>     data=df,
+    >>>     dv="dependent_variable",
+    >>>     between="grouping_variable",
+    >>>     posthoc_kw={
+    >>>         "ns_annot": True    
+    >>>     },
+    >>>     axs=axs,
+    >>> )
+    """
 
     def __init__(
-        self,
-        df=None,
-        dv=None,
-        between=None,
-        covar=None,
-        axs=None,
-        alpha=0.05,
-        y_pos=0.95,
-        ast_frac=0.2,
-        ns_annot=False,
-        ns_frac=5):
-
-        super().__init__()
+        self, 
+        alpha: float=0.05, 
+        axs: mpl.axes._axes.Axes=None,
+        posthoc_kw: dict={},
+        *args, 
+        **kwargs):
         
-        self.df = df
-        self.dv = dv
-        self.between = between
-        self.covar = covar
-        self.axs = axs
+        # set posthoc kwargs        
+        self.posthoc_kw = posthoc_kw
+        if not "alpha" in list(self.posthoc_kw.keys()):
+            self.alpha = 0.05
+
+        # run anova
+        self.run_anova(
+            alpha=self.alpha,
+            posthoc_kw=self.posthoc_kw,
+            axs=axs,
+            *args,
+            **kwargs)
+        
+    def _get_results(
+        self, 
+        df: pd.DataFrame, 
+        alpha: float=0.05):
+
+        effects = df["Source"].to_list()
+        p_vals = {}
+        for ef in effects:
+            p_ = df.loc[(df["Source"] == ef)]["p-unc"].values[0]
+
+            if p_ < alpha:
+                p_vals[ef] = p_
+
+        return p_vals
+    
+    def run_anova(
+        self, 
+        alpha: float=0.05,
+        axs: mpl.axes._axes.Axes=None,
+        posthoc_kw={},
+        *args, 
+        **kwargs):
+        
         self.alpha = alpha
-        self.y_pos = y_pos
-        self.ast_frac = ast_frac
-        self.ns_frac = ns_frac
-        self.annotate_ns = ns_annot
-
-    def run_ancova(self, **kwargs):
-
         try:
-            import pingouin
+            import pingouin as pg
         except:
             raise ImportError(f"Could not import 'pingouin'")
         
         # do stats
-        self.anc = pingouin.ancova(
-            data=self.df, 
-            dv=self.dv,
-            covar=self.covar,
-            between=self.between,
-            **kwargs)
+        self.ano = pg.anova(
+            *args,
+            **kwargs
+        )
+
+        # check if there's signifcant results
+        self.results = self._get_results(self.ano, alpha=self.alpha)
+
+        # found sig results; do posthoc
+        self.ph_obj = {}
+        if len(self.results)>0:
+            super().__init__(**kwargs)
+            self.run_posthoc(*args, **kwargs)
+
+            if isinstance(axs, mpl.axes._axes.Axes):
+                self.plot_bars(
+                    axs=axs,
+                    **posthoc_kw)
                 
-    def plot_bars(
+class ANCOVA(Posthoc):
+
+    """ANCOVA
+
+    Run an ANCOVA with pingouin and subsequently run posthoc test. Allows you to immediately visualize significant results given a matplotlib axis. In contrast to :class:`linescanning.glm.Posthoc()`, arguments for the ANCOVA test are immediately passed on during the initialization stage.
+
+    Parameters
+    ----------
+    alpha: float, optional
+        Alpha value to consider contrasts significant, by default 0.05
+    axs: mpl.axes._axes.Axes, optional
+        Axis to plot the lines on, by default None
+    posthoc_kw: dict, optional
+        Dictionairy containing arguments that are passed to :func:`linescanning.glm.Posthoc.plot_bars()`, by default {}. See docs for arguments
+
+    Example
+    ----------
+    >>> from linescanning import glm
+    >>> ancv = glm.ANCOVA(
+    >>>     data=df,
+    >>>     dv="dependent_variable",
+    >>>     between="grouping_variable",
+    >>>     covar="covariate",
+    >>>     posthoc_kw={
+    >>>         "ns_annot": True    
+    >>>     },
+    >>>     axs=axs,
+    >>> )
+    """
+
+    def __init__(
         self, 
-        plot_var=None):
-    
-        if not hasattr(self, "anc"):
-            self.run_ancova()
-
-        # find which variable to plot
-        if not isinstance(plot_var, str):
-            plot_var = self.between
+        alpha: float=0.05, 
+        axs: mpl.axes._axes.Axes=None,
+        posthoc_kw: dict={},
+        *args, 
+        **kwargs):
         
-        # get index of variable
-        plot_ix = list(self.anc.Source.values).index(plot_var)
+        self.posthoc_kw = posthoc_kw
+        self.alpha = alpha
+        self.run_anova(
+            alpha=self.alpha,
+            axs=axs,
+            posthoc_kw=self.posthoc_kw,
+            *args,
+            **kwargs)
+        
+    def _get_results(self,df, alpha=0.05):
+        effects = df["Source"].to_list()
+        p_vals = {}
+        for ef in effects:
+            p_ = df.loc[(df["Source"] == ef)]["p-unc"].values[0]
 
-        if "p-corr" in list(self.anc.columns):
-            p_meth = "p-corr"
-        else:
-            p_meth = "p-unc"
+            if p_ < self.alpha:
+                p_vals[ef] = p_
 
-        txt = None
+        return p_vals
+    
+    def run_ancova(
+        self, 
+        alpha: float=0.05,
+        axs: mpl.axes._axes.Axes=None,
+        posthoc_kw={},
+        *args, 
+        **kwargs):
 
-        # get pval
-        p_val = self.anc[p_meth].iloc[plot_ix] 
-        if p_val<self.alpha:
-            
-            if 0.01 < p_val < 0.05:
-                txt = "*"
-            elif 0.001 < p_val < 0.01:
-                txt = "**"
-            elif p_val < 0.001:
-                txt = "***"
-                
-            style = None
-            f_size = self.font_size
-            dist = self.ast_frac
+        self.alpha = alpha
+        try:
+            import pingouin as pg
+        except:
+            raise ImportError(f"Could not import 'pingouin'")
+        
+        # do stats
+        self.ano = pg.anova(
+            *args,
+            **kwargs
+        )
 
-        else:
-            if self.annotate_ns:
-                txt = "ns"
-                style = "italic"
-                f_size = self.label_size
-                dist = self.ast_frac*self.ns_frac   
+        # check if there's signifcant results
+        self.results = self._get_results(self.ano, alpha=self.alpha)
 
-        if isinstance(txt, str):
-            self.minmax = list(self.axs.get_ylim())
-            diff = self.minmax[1]-self.minmax[0]
-            y,h,col =  (diff*self.y_pos)+self.minmax[0], diff*0.02, 'k'
-            x1,x2 = 0,1
-            self.axs.plot(
-                [x1,x1,x2,x2], 
-                [y,y+h,y+h,y], 
-                lw=self.tick_width, 
-                c=col)
-            
-            x_txt = (x1+x2)*.5
-            y_txt = y+h*dist
-            self.axs.text(
-                x_txt, 
-                y_txt, 
-                txt, 
-                ha='center', 
-                va='bottom', 
-                color=col,
-                fontsize=f_size,
-                style=style)
+        # found sig results; do posthoc
+        self.ph_obj = {}
+        if len(self.results)>0:
+            super().__init__(**kwargs)
+            self.run_posthoc(*args, **kwargs)
+
+            if isinstance(axs, mpl.axes._axes.Axes):
+                self.plot_bars(
+                    axs=axs,
+                    **posthoc_kw)
