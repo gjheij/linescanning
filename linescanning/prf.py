@@ -407,7 +407,13 @@ def plot_stims(
     extent=([-5,5],[-5,5]),
     save_as=None,
     axis_on=False,
-    interval=1):
+    prf_object=None,
+    as_circle=False,
+    prf_color="g",
+    interval=1,
+    add_fixation=False,
+    flipud=True,
+    stim_color=None):
 
     """plot_stims
 
@@ -417,6 +423,26 @@ def plot_stims(
     ----------
     stims: list
         list of numpy.ndarrays with meshgrid-size containing the stimuli
+    n_cols: int, optional
+        number of columns to use. Number of rows will be automatically derived from the number of `stims` and `interval`
+    figsize: tuple, optional
+        custom figure size; otherwise will be determined from the number of columns and rows
+    save_as: str, optional 
+        save the figure
+    axis_on: bool, optional
+        show the axes in the figures. Default is false
+    prf_object: np.ndarray, optional
+        add a spatial representation of a pRF to the figure
+    as_circle: bool, optional
+        plot `prf_object` as a simple circle rather than full on pRF-object. The outline of the circle will denote the size of the pRF as per `prfpy`'s convention
+    prf_color: str, optional
+        color of `prf_object`. If `as_circle==True`, the outline will have this color. If not, a binary colormap will be created using :func:`linescanning.utils.make_binary_cm()`
+    interval: int, optional
+        show the stimuli with a certain interval. This prevents a mega-amount of figures that needs to be created.
+    stim_color: str, optional
+        color of `stims`. Binary colormap will be created using :func:`linescanning.utils.make_binary_cm()`. If false, colormap will be `viridis`
+    add_fixation: bool, optional
+        add fixation cross add (0,0). If `stim_color` is specified, the color will be black; with viridis, the cross will be white
 
     Returns
     ----------
@@ -441,20 +467,85 @@ def plot_stims(
     fig,_ = plt.subplots(
         n_rows, 
         n_cols, 
-        figsize=figsize)
+        figsize=figsize,
+        constrained_layout=True)
+
+    if isinstance(prf_object, np.ndarray):
+        add_prf = True
+    else:
+        add_prf = False
+
+    if isinstance(stim_color, (tuple,str)):
+        stim_cm = utils.make_binary_cm(stim_color)
+        cross_hair_color = "black"
+    else:
+        stim_cm = "viridis"
+        cross_hair_color = "white"
 
     start = 0
     for i, ax in enumerate(fig.axes):
 
-        if isinstance(stims, list):
-            ax.imshow(np.flipud(stims[start]), extent=extent[0]+extent[1])
-        else:
-            ax.imshow(np.flipud(stims[...,start]), extent=extent[0]+extent[1])
-        
-        if not axis_on:
-            ax.axis('off')
+        try:
+            # decide input type
+            if isinstance(stims, list):
+                data = stims[start]
+            else:
+                data = stims[...,start]
+            
+            # decide if we need to flip; actual screenshot do no have to be flipped
+            if flipud:
+                data = np.flipud(data)
 
-        start += interval
+            # plot
+            ax.imshow(data, extent=extent[0]+extent[1], cmap=stim_cm)
+            
+            if add_fixation:
+                # line on x-axis
+                ax.axvline(
+                    0, 
+                    color=cross_hair_color, 
+                    linestyle='dashed', 
+                    lw=0.5,
+                    zorder=1)
+
+                # line on y-axis
+                ax.axhline(
+                    0, 
+                    color=cross_hair_color, 
+                    linestyle='dashed', 
+                    lw=0.5,
+                    zorder=1)
+
+            if add_prf:
+                if as_circle:
+                    prf_ = plt.Circle(
+                        (prf_object[0],prf_object[1]),
+                        prf_object[2],
+                        ec=prf_color,
+                        fill=False,
+                        lw=2)
+
+                    ax.add_artist(prf_) 
+
+                else:
+                    cm = utils.make_binary_cm(prf_color)
+                    prf_ = make_prf(prf_object)
+                    plotting.LazyPRF(
+                        prf_, 
+                        extent,
+                        axs=ax,
+                        cmap=cm,
+                        cross_color="k",
+                        edge_color=None,
+                        shrink_factor=0.9,
+                        vf_only=True)
+
+            if not axis_on:
+                ax.axis('off')
+
+            start += interval
+        except:
+            ax.axis("off")
 
     plt.tight_layout()
     if isinstance(save_as, str):
@@ -1122,10 +1213,14 @@ def create_line_prf_matrix(
                 # zero-pad number https://stackoverflow.com/questions/2189800/how-to-find-length-of-digits-in-an-integer
                 zfilling = len(str(len(os.listdir(screenshot_path))))
                 img_number = str(ix).zfill(zfilling)
+                search_for = f"Screenshots{img_number}.png"
                 try:
-                    image_file = utils.get_file_from_substring(f"{img_number}.png", screenshot_path)
+                    image_file = utils.get_file_from_substring(search_for, screenshot_path)
                 except:
                     image_file = None
+
+                if isinstance(image_file, list):
+                    raise ValueError(f"Found multiple ({len(image_file)}) files for '{search_for}': {image_file}")
                 
                 if image_file != None:
                     
@@ -1139,7 +1234,9 @@ def create_line_prf_matrix(
                     # assumes: standard RGB255 format; only colors present in image are black, white, grey, red, green.
                     design_matrix[..., tr][np.where(((img[..., 0] < 40) & (img[..., 1] < 40)) |
                                                     ((img[..., 0] > 200) & (img[..., 1] > 200)))] = 1
-        
+                else:
+                    print(f"WARNING; could not find image for trial #{tr} ({search_for})")
+
         #top, bottom, left, right
         design_matrix[:dm_edges_clipping[0], :, :] = 0
         design_matrix[(design_matrix.shape[0]-dm_edges_clipping[1]):, :, :] = 0
@@ -2370,7 +2467,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                 prf_array, 
                 cross_color=cross_col,
                 vf_extent=self.settings['vf_extent'], 
-                ax=ax1, 
+                axs=ax1, 
                 xkcd=xkcd,
                 **kwargs)
 
@@ -2965,7 +3062,7 @@ class SizeResponse():
         self, 
         stim, 
         vf_extent=([-5,5],[-5,5]), 
-        ax=None, 
+        axs=None, 
         clip=True, 
         cmap=(8,178,240),
         axis=False):
