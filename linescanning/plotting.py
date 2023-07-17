@@ -300,12 +300,16 @@ class Defaults():
         """set y-limit"""
         if isinstance(lim, list):
             ax.set_ylim(lim)
-
+        elif isinstance(lim, (int,float)):
+            ax.set_xlim(bottom=lim)
+            
     @staticmethod
     def _set_xlim(ax,lim):
         """set x-limit"""
         if isinstance(lim, list):
-            ax.set_xlim(lim)        
+            ax.set_xlim(lim)   
+        elif isinstance(lim, (int,float)):
+            ax.set_xlim(left=lim)
 
     def _despine(self, ax, **kwargs):
         """despine plot"""
@@ -406,7 +410,7 @@ class Defaults():
                 # add lines
                 if test_attr == "default":
                     test_attr = {'pos': 0}
-                elif isinstance(test_attr, (int,list,np.ndarray)):
+                elif isinstance(test_attr, (float,int,list,np.ndarray)):
                     test_attr = {"pos": test_attr}
                 elif isinstance(test_attr, dict):
                     add_line = True
@@ -1777,14 +1781,13 @@ class LazyHist(Defaults):
             if not "legend" in list(self.kde_kwargs):
                 self.kde_kwargs["legend"] = False
 
-            self.kde_color = utils.make_between_cm(self.color,self.color,as_list=True)
             self.ff = sns.kdeplot(
                 data=self.data,
                 x=self.x,
                 y=self.y,
                 ax=self.axs,
                 fill=self.fill,
-                palette=self.kde_color, # can't get color to work?
+                color=self.color,
                 **self.kde_kwargs
             )
 
@@ -1915,7 +1918,7 @@ def conform_ax_to_obj(
     for lim,func in zip(
         [obj.x_lim, obj.y_lim], 
         [obj._set_xlim, obj._set_ylim]):
-        if lim:
+        if isinstance(lim, (float,int,list)):
             func(ax, lim)
 
     # draw horizontal/vertical lines with ax?line
