@@ -818,6 +818,7 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
         event_names=None,
         invoked_from_func=False,
         button_duration=1,
+        response_window=3,
         **kwargs):
 
         self.tsv_file                       = tsv_file
@@ -838,6 +839,7 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
         self.event_names                    = event_names
         self.invoked_from_func              = invoked_from_func
         self.button_duration                = button_duration
+        self.response_window                = response_window
         
         # filter kwargs
         tmp_kwargs = filter_kwargs(
@@ -987,6 +989,7 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
         self.start_time     = float(self.data.loc[(self.data['event_type'] == "pulse") & (self.data['phase'] == 0)]['onset'].values[0])
         self.trimmed        = self.data.loc[(self.data['event_type'] == "stim") & (self.data['phase'] == phase_onset)].iloc[1:,:]
         self.onset_times    = self.trimmed['onset'].values[...,np.newaxis]
+        self.n_trials       = np.unique(self.trimmed["onset"].values).shape[0]
 
         skip_duration = False
         if isinstance(duration, (float,int)):
@@ -1091,111 +1094,81 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
             if not isinstance(self.RT_relative_to, str):
                 raise ValueError(f"Need a reference column to calculate reaction times (RTs), not '{self.RT_relative_to}'")
             
-            # get response times
-            if not hasattr(self, "response_df"):
-                self.response_df = self.data.loc[(self.data['event_type'] == "response") & (self.data['response'] != 'space')]
+            # get response dataframe
+            self.response_df = self.data.loc[(self.data['event_type'] == "response") & (self.data['response'] != 'space')]
             
-            # fetch trials were target happened
-            self.id_target = {}
-            self.id_no_target = []
-            self.false_alarms = []
-            self.correct_rejection = []
-            for idx in self.trimmed['trial_nr'].values:
+            # get target dataframe
+            self.target_df = self.data.loc[~pd.isnull(self.data.target_onset)]
 
-                # cross-check
-                trial_overview = self.data.loc[(self.data['trial_nr'] == idx)]
-                
-                # get the values of reference column; skip if all elements are nan
-                if self.RT_relative_to != "start":
-                    ref_values = np.unique(trial_overview[self.RT_relative_to].values)
-                    has_nans = np.isnan(ref_values)
-
-                    # should be safe as any response will not have a value in reference column
-                    if False in has_nans:
-                        
-                        # increase number of target to remain agnostic about design
-                        id_no_nan = np.where(has_nans == False)[0]
-                        if len(id_no_nan) != 0:
-                            self.id_target[idx] = ref_values[id_no_nan]
-                    else:
-                        # append no targets
-                        self.id_no_target.append(idx)
-                        
-                        # false alarm = no target but response
-                        if 'response' in list(trial_overview['event_type'].values):
-                            self.false_alarms.append(idx)
-                        else:
-                            # correct rejection = no target and no response
-                            self.correct_rejection.append(idx)
+            # now we need to cross references them
+            self.n_hits = 0
+            self.n_miss = 0
+            self.n_fa = 0
+            self.n_cr = 0
 
             self.rts = []
-            self.hits = []
-            for target_trial in self.id_target.keys():
-        
-                # get corresponding reference value
-                if self.RT_relative_to != "start":
-                    ref_value = self.id_target[target_trial]
-                else:
-                    ref_value = trial_overview.loc[(trial_overview['event_type'] == 'stim')]['onset'].values
-                
-                # get response value (length will be 0 if dataframe is empty)
-                response_value = self.response_df.loc[(self.response_df['trial_nr'] == target_trial)]['onset'].values
+            self.unique_targets = np.unique(self.target_df["trial_nr"].values)
+            self.n_targets = self.unique_targets.shape[0]
+            self.n_responses = len(np.unique(self.response_df["trial_nr"].values))
+            for trial in self.unique_targets:
 
-                # check if lengths of reference value and response value are equal
-                if len(response_value) == len(ref_value):
-                    rt = response_value - ref_value
+                # get target onset
+                trial_targ = self.target_df.loc[(self.target_df["trial_nr"] == trial)]
+                targ_onset = trial_targ["target_onset"].values[0]
 
-                    # ignore negative reaction times..
-                    if rt > 0:
+                # check if there's a response within window regardless of whether response occured in trial ID
+                resp = self.response_df.query(f"{targ_onset} < onset < {targ_onset+self.response_window}")
+
+                if len(resp) > 0:
+                    # found response
+                    resp_time = resp["onset"].values[0]
+
+                    if resp_time > targ_onset:
+                        rt = resp_time-targ_onset
                         self.rts.append(rt)
-                
+
+                    self.n_hits+=1
+
             if len(self.rts) >= 1:
                 self.rts = np.array(self.rts)
             else:
                 self.rts = np.array([0])
 
-            if len(self.id_target) != 0:
-                self.hits = len(self.rts)/len(self.id_target)
-                self.miss = (len(self.id_target)-len(self.rts))/len(self.id_target)
-                self.fa = len(self.false_alarms)/len(self.id_no_target)
-                self.cr = len(self.correct_rejection)/len(self.id_no_target)
+            if self.n_hits > 0:
+                self.hits = self.n_hits/self.n_targets
+                self.n_miss = self.n_targets-self.n_hits
+            else:
+                self.n_miss = self.n_targets
 
-                # set FA to something if 0 to avoid d' = inf
-                if self.fa == float(0):
-                    self.fa = 0.5*(1/len(self.trimmed['trial_nr'].values))
-                    add_fa_txt = f"[added {round(self.fa,2)} to avoid d' = inf]"
-                else:
-                    add_fa_txt = ""
+            # track false alarms
+            self.unique_responses = np.unique(self.response_df["trial_nr"].values)
 
-                # set HITS to something if 0 to avoid d' = inf
-                if self.hits == float(0):
-                    self.hits = 0.5*(1/len(self.trimmed['trial_nr'].values))
-                    add_hits_txt = f"[added {round(self.hits,2)} to avoid d' = inf]"
-                else:
-                    add_hits_txt = ""
+            # track false alarms
+            if self.n_responses > self.n_targets:
+                self.n_fa = self.n_responses-self.n_targets
+            else:
+                self.n_fa = 0    
 
-                # calculate d-prime
-                self.hitZ = stats.norm.ppf(self.hits)
-                self.faZ = stats.norm.ppf(self.fa)
-                self.dPrime = self.hitZ-self.faZ
+            # track correct rejections
+            if self.n_fa > 0:
+                self.n_cr = self.n_targets-self.n_fa
+            else:
+                self.n_cr = int(self.n_trials-self.n_targets)
 
-                # d-prime=0 is considered as pure guessing.
-                # d-prime=1 is considered as good measure of signal sensitivity/detectability.
-                # d-prime=2 is considered as awesome.
-                
-                self.accuracy_df = self.index_accuracy(np.array([self.hits, self.miss, self.fa, self.cr, self.dPrime], dtype=float)[np.newaxis,...], columns=['hits','miss','fa','cr','d_prime'], subject=self.sub, run=run)
+            # calculate d-prime
+            #   d-prime=0 is considered as pure guessing.
+            #   d-prime=1 is considered as good measure of signal sensitivity/detectability.
+            #   d-prime=2 is considered as awesome.
+            self.sdt_ = utils.SDT(self.n_hits,self.n_miss,self.n_fa,self.n_cr)
 
-            if self.verbose:
-                if hasattr(self, 'dPrime'):
-                    print(f" Hits:\t{round(self.hits,2)}\t({len(self.rts)}/{len(self.id_target)})\t{add_hits_txt}")
-                    print(f" Miss:\t{round(self.miss,2)}\t({(len(self.id_target)-len(self.rts))}/{len(self.id_target)})")
-                    print(f" FA:\t{round(self.fa,2)}\t({len(self.false_alarms)}/{len(self.id_no_target)})\t{add_fa_txt}")
-                    print(f" CR:\t{round(self.cr,2)}\t({len(self.correct_rejection)}/{len(self.id_no_target)})")
-                    print(f" D':\t{round(self.dPrime,2)}\t(0=guessing;1=good;2=awesome)")
-                
-                print(f" Average reaction time (RT) = {round(self.rts.mean(),2)}s (relative to '{self.RT_relative_to}').")
-
+            if hasattr(self, 'sdt_'):
+                utils.verbose(f" Hits:\t{round(self.sdt_['hit'],2)}\t({self.n_hits}/{self.n_targets})", self.verbose)
+                utils.verbose(f" FA:\t{round(self.sdt_['fa'],2)}\t({self.n_fa}/{self.n_targets})", self.verbose)
+                utils.verbose(f" D':\t{round(self.sdt_['d'],2)}\t(0=guessing;1=good;2=awesome)", self.verbose)
+                utils.verbose(f" Average reaction time (RT) = {round(self.rts.mean(),2)}s (relative to '{self.RT_relative_to}').", self.verbose)
+            
             # parse into dataframe
+            self.accuracy_df = self.index_accuracy(self.sdt_, subject=self.sub, run=run)
             self.rts_df = self.index_rts(self.rts, columns=["RTs"], subject=self.sub, run=run)
 
     def index_onset(
@@ -1208,7 +1181,7 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
         set_index=False):
         
         if columns == None:
-            df = pd.DataFrame(array)
+            df = pd.DataFrame(array, index=[0])
         else:
             df = pd.DataFrame(array, columns=columns)
             
@@ -1254,8 +1227,8 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
     @staticmethod
     def index_accuracy(array, columns=None, subject=1, run=1, set_index=False):
         
-        if columns == None:
-            df = pd.DataFrame(array)
+        if isinstance(array, dict):
+            df = pd.DataFrame(array, index=[0])
         else:
             df = pd.DataFrame(array, columns=columns)
             
