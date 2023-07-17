@@ -820,6 +820,33 @@ class VertexInfo:
             elif hemi.lower() == "left" or hemi.lower() == "l" or hemi.lower() == "lh":
                 return self.data[keyword]['L']
 
+def convert_to_rgb(color, as_integer=False):
+    if isinstance(color, tuple):
+        (R,G,B) = color
+    elif isinstance(color, str):
+        if len(color) == 1:
+            color = mcolors.to_rgb(color)
+        else:
+            color = ImageColor.getcolor(color, "RGB")
+            
+        (R,G,B) = color
+    
+    if not as_integer:
+        rgb = []
+        for v in [R,G,B]:
+            if v>1:
+                v /= 255
+            rgb.append(v)
+        R,G,B = rgb
+    else:
+        rgb = []
+        for v in [R,G,B]:
+            if v<=1:
+                v = int(v*255)
+            rgb.append(v)
+        R,G,B = rgb
+        
+    return (R,G,B)
 
 def make_binary_cm(color):
 
@@ -850,26 +877,40 @@ def make_binary_cm(color):
     >>> cm
     >>> <matplotlib.colors.LinearSegmentedColormap at 0x7f35f7154a30>
     """
-
-    if isinstance(color, tuple):
-        (R,G,B) = color
-    elif isinstance(color, str):
-        color = ImageColor.getcolor(color, "RGB")
-        (R,G,B) = color
-
-    if R > 1:
-        R = R/255
-
-    if G > 1:
-        G = G/255
-
-    if B > 1:
-        B = B/255
+    
+    # convert input to RGB
+    R,G,B = convert_to_rgb(color)
 
     colors = [(R,G,B,c) for c in np.linspace(0,1,100)]
     cmap = mcolors.LinearSegmentedColormap.from_list('mycmap', colors, N=5)
 
     return cmap
+
+def find_missing(lst):
+    return [i for x, y in zip(lst, lst[1:])
+        for i in range(x + 1, y) if y - x > 1]
+        
+def make_between_cm(
+    col1,
+    col2,
+    as_list=False,
+    **kwargs):
+
+    input_list = [col1,col2]
+
+    # scale to 0-1
+    col_list = []
+    for color in input_list:
+
+        scaled_color = convert_to_rgb(color)
+        col_list.append(scaled_color)
+
+    cm = mcolors.LinearSegmentedColormap.from_list("", col_list, **kwargs)
+
+    if as_list:
+        return [mcolors.rgb2hex(cm(i)) for i in range(cm.N)]
+    else:
+        return cm
 
 def make_stats_cm(
     direction, 
@@ -889,22 +930,7 @@ def make_stats_cm(
     # scale to 0-1
     col_list = []
     for color in input_list:
-        if isinstance(color, tuple):
-            (R,G,B) = color
-        elif isinstance(color, str):
-            color = ImageColor.getcolor(color, "RGB")
-            (R,G,B) = color
-
-        if R > 1:
-            R = R/255
-
-        if G > 1:
-            G = G/255
-
-        if B > 1:
-            B = B/255
-
-        scaled_color = (R,G,B)
+        scaled_color = convert_to_rgb(color)
         col_list.append(scaled_color)
 
     return mcolors.LinearSegmentedColormap.from_list("", col_list)
@@ -1572,3 +1598,38 @@ def paste(large, small, loc=(0,0)):
   loc_zip = zip(loc, small.shape, large.shape)
   large_slices, small_slices = zip(*map(paste_slices, loc_zip))
   large[large_slices] = small[small_slices]
+
+
+def SDT(hits, misses, fas, crs):
+    from scipy import stats
+    Z = stats.norm.ppf
+
+    """ returns a dict with d-prime measures given hits, misses, false alarms, and correct rejections"""
+    # Floors an ceilings are replaced by half hits and half FA's
+    half_hit = 0.5 / (hits + misses)
+    half_fa = 0.5 / (fas + crs)
+ 
+    # Calculate hit_rate and avoid d' infinity
+    hit_rate = hits / (hits + misses)
+    if hit_rate == 1: 
+        hit_rate = 1 - half_hit
+    if hit_rate == 0: 
+        hit_rate = half_hit
+ 
+    # Calculate false alarm rate and avoid d' infinity
+    fa_rate = fas / (fas + crs)
+    if fa_rate == 1: 
+        fa_rate = 1 - half_fa
+    if fa_rate == 0: 
+        fa_rate = half_fa
+ 
+    # Return d', beta, c and Ad'
+    out = {}
+    out['d'] = Z(hit_rate) - Z(fa_rate)
+    out['beta'] = math.exp((Z(fa_rate)**2 - Z(hit_rate)**2) / 2)
+    out['c'] = -(Z(hit_rate) + Z(fa_rate)) / 2
+    out['Ad'] = stats.norm.cdf(out['d'] / math.sqrt(2))
+    out['hit'] = hit_rate
+    out['fa'] = fa_rate
+    
+    return(out)
