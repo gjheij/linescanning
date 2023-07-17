@@ -143,7 +143,8 @@ class Defaults():
             "add_hline",
             "dpi",
             "figure_background_color",
-            "bbox_inches"
+            "bbox_inches",
+            "fontname"
         ]
 
         self.pad_title = 20
@@ -184,16 +185,19 @@ class Defaults():
         self.dpi = 300
         self.figure_background_color = "white"
         self.bbox_inches = "tight"
+        self.fontname = None
+        
+
+        # update kwargs
+        self.__dict__.update(kwargs)
         
         # set default font
         if self.xkcd:
             self.fontname = "Humor Sans"
         else:
-            self.fontname = "Montserrat"
+            if not isinstance(self.fontname, str):
+                self.fontname = "Montserrat"
 
-        # update kwargs
-        self.__dict__.update(kwargs)
-        
         # update font widely
         self.update_rc(self.fontname)
             
@@ -215,12 +219,20 @@ class Defaults():
     def _set_xlabel(self, ax, lbl, **kwargs):
         """set x-label"""
         if isinstance(lbl, (str,list)):
-            ax.set_xlabel(lbl, fontsize=self.font_size, **kwargs)
+            ax.set_xlabel(
+                lbl, 
+                fontsize=self.font_size,
+                fontname=self.fontname,
+                **kwargs)
 
     def _set_ylabel(self, ax, lbl, **kwargs):
         """set y-label"""
         if isinstance(lbl, (str,list)):
-            ax.set_ylabel(lbl, fontsize=self.font_size, **kwargs)
+            ax.set_ylabel(
+                lbl, 
+                fontsize=self.font_size, 
+                fontname=self.fontname,
+                **kwargs)
 
     def _set_tick_params(self, ax, **kwargs):
         """set width/length/labelsize of ticks"""
@@ -358,6 +370,7 @@ class Defaults():
             ax.legend(
                 frameon=False, 
                 fontsize=self.label_size,
+                fontname=self.fontname
                 **kwargs)        
 
     def _save_as(self, save_as, **kwargs):
@@ -503,7 +516,6 @@ class LazyPRF(Defaults):
         self, 
         prf, 
         vf_extent, 
-        save_as=None, 
         cmap='RdBu_r', 
         cross_color="white", 
         alpha=None,
@@ -1085,7 +1097,10 @@ class LazyCorr(Defaults):
             # set colorbar
             self.cbar = plt.colorbar(points)
             if "label" in list(self.scatter_kwargs.keys()):
-                self.cbar.set_label(self.scatter_kwargs["label"], fontsize=self.label_size)            
+                self.cbar.set_label(
+                    self.scatter_kwargs["label"], 
+                    fontsize=self.label_size,
+                    fontname=self.fontname)            
             
             # sort out ticks
             self._set_tick_params(self.cbar.ax)
@@ -1285,7 +1300,8 @@ class LazyBar():
             "font_name",
             "bar_legend",
             "labels"
-            "strip_kw"
+            "strip_kw",
+            "fontname"
         ]
 
         kw_sns = {}
@@ -1523,9 +1539,15 @@ class LazyBar():
 
         if isinstance(self.sns_rot, (int,float)):
             if self.sns_ori == 'h':
-                self.ff.set_yticklabels(self.ff.get_yticklabels(), rotation=self.sns_rot)
+                self.ff.set_yticklabels(
+                    self.ff.get_yticklabels(), 
+                    rotation=self.sns_rot,
+                    fontname=self.fontname)
             elif self.sns_ori == "v":
-                self.ff.set_xticklabels(self.ff.get_xticklabels(), rotation=self.sns_rot)
+                self.ff.set_xticklabels(
+                    self.ff.get_xticklabels(), 
+                    rotation=self.sns_rot,
+                    fontname=self.fontname)
             else:
                 raise ValueError(f"sns_ori must be 'v' or 'h', not '{self.sns_ori}'")
 
