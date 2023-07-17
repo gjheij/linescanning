@@ -9,9 +9,142 @@ import string
 from typing import Union
 
 class Defaults():
+    """Defaults
+
+    Default settings for plotting.
+
+    Parameters
+    ----------
+    pad_title: int
+        Set the distance between the title and the plot. Default = 20
+    title_size: int
+        Set the font size of titles. Default = 22
+    font_size: int
+        Set the font size of axis labels/titles. Default = 18
+    label_size: int
+        Set the font size of tick labels. Default = 14
+    tick_width: float
+        Set the line-width of the ticks. Default = 0.5
+    tick_length: float
+        Set the length of the ticks. Default = 0 (no ticks)
+    axis_width: float
+        Set the line-width of axes. Default = 0.5
+    line_width: int
+        Line widths for either all graphs (then *int*) or a *list* with the number of elements as requested graphs, default = 1.
+    line_style: str
+        Set the style of data in line-plots. Default = "solid"
+    sns_offset: int
+        Set the distance between y-axis and start of plot. Default = None
+    sns_trim: bool
+        Trim the axes following seaborn's convention. Default = False
+    sns_bottom: bool
+        Trim specifically the x-axis of plots. Default = False
+    sns_ori: str, optional
+        Default orientation for bar-plots. Default is up-right (vertical). Allowed options are "v" or "h". :class:`linescanning.plotting.LazyBar()`
+    sns_rot: int, float, optional
+        Rotation of labels in bar plot. Specific to :class:`linescanning.plotting.LazyBar()`
+    xkcd: bool
+        Plot with cartoon style. Default = False
+    ylim_bottom: float
+        Set the y-limiter at the bottom of the plot. Default = None
+    ylim_top: float
+        Set the y-limiter at the top of the plot. Default = None
+    xlim_left: float
+        Set the x-limiter at the left of the plot. Default = None
+    xlim_right: float
+        Set the x-limiter at the right of the plot. Default = None        
+    set_xlim_zero: bool
+        Set the distance between plot and y-axis to 0. Default = False
+    legend_handletext: float
+        Set the distance between the handle and text in legends. Default = 0.05 (bit closer than default)
+    x_label: str, optional
+        Label of x-axis, by default None
+    y_label: str, optional
+        Label of y-axis, by default None
+    labels: str, list, optional
+        String (if 1 timeseries) or list (with the length of `ts`) of colors, by default None. Labels for the timeseries to be used in the legend
+    title: str, dict, optional
+        String of dictionary collecting the following keys representing information about the title:
+        >>> title = {
+        >>>     'title' "some title",       # title text
+        >>>     'color': 'k',               # color (default = 'k')
+        >>>     'fontweight': "bold"}       # fontweight (default = 'normal'), can be any of the matplotib fontweight options (e.g., 'italic', 'bold', 'normal' etc.)    
+    color: str, list, optional
+        String (if 1 timeseries) or list (with the length of `ts`) of colors, by default None. If nothing is specified, we'll use `cmap` to create a color palette         
+    save_as: str, list, optional
+        Save the plot, by default None. If you want to use figures in Inkscape, save them as PDFs to retain high resolution; specify a list of strings to save the plot with multiple extensions
+    y_lim: list, optional
+        List for `self._set_ylim`
+    x_lim: list, optional
+        List for `self_.set_xlim`       
+    x_dec: int, optional
+        Enforce `x_ticks` to have `x_dec` decimal accuracy. Default is whatever the data dictates
+    y_dec: int, optional
+        Enforce `y_ticks` to have `x_dec` decimal accuracy. Default is whatever the data dictates      
+    add_hline: dict, optional
+        Dictionary for a horizontal line through the plot, by default None. Collects the following items:
+        >>> add_hline = {
+        >>>     'pos' 0,       # position
+        >>>     'color': 'k',  # color
+        >>>     'lw': 1,       # linewidth
+        >>>     'ls': '--'}    # linestyle
+        You can get the settings above by specifying *add_hline='default'*. Now also accepts *add_hline='mean'* for single inputs
+    add_vline: dict, optional
+        Dictionary for a vertical line through the plot, by default None. Same keys as `add_hline`       
+    dpi: int, optional
+        Save figures with DPI-value. Default is 300
+    figure_background_color: str, optional
+        Background of images. Default is "white"
+    bbox_inches: str, optional
+        Bounding box settings. Default is "tight"    
+    """
+
     def __init__(self, **kwargs):
+
+        self.ls_kwargs = [
+            "pad_title",
+            "font_size",
+            "title_size",
+            "label_size",
+            "tick_width",
+            "tick_length",
+            "axis_width",
+            "line_width",
+            "line_style",
+            "sns_offset",
+            "sns_trim",
+            "sns_bottom",
+            "sns_ori",
+            "sns_rot",
+            "xkcd",
+            "ylim_bottom",
+            "ylim_top",
+            "xlim_left",
+            "xlim_right",
+            "set_xlim_zero",
+            "legend_handletext",
+            "x_label",
+            "y_label",
+            "title",
+            "save_as",
+            "y_lim",
+            "x_lim",
+            "x_ticks",
+            "y_ticks",
+            "axs",
+            "color",
+            "y_dec",
+            "x_dec",
+            "add_vline",
+            "add_hline",
+            "dpi",
+            "figure_background_color",
+            "bbox_inches"
+        ]
+
         self.pad_title = 20
         self.font_size = 18
+        self.title_size = 24
         self.label_size = 14
         self.tick_width = 0.5
         self.tick_length = 0
@@ -21,14 +154,32 @@ class Defaults():
         self.sns_offset = None
         self.sns_trim = False
         self.sns_bottom = False
+        self.sns_ori = "v"
+        self.sns_rot = None
         self.xkcd = False
-        self.return_obj = False
         self.ylim_bottom = None
         self.ylim_top = None
         self.xlim_left = None
         self.xlim_right = None
         self.set_xlim_zero = False
         self.legend_handletext = 0.05
+        self.x_label = None
+        self.y_label = None
+        self.title = None
+        self.save_as = None
+        self.y_lim = None
+        self.x_lim = None
+        self.x_ticks = None
+        self.y_ticks = None
+        self.axs = None
+        self.color = None
+        self.y_dec = None
+        self.x_dec = None
+        self.add_vline = None
+        self.add_hline = None
+        self.dpi = 300
+        self.figure_background_color = "white"
+        self.bbox_inches = "tight"
         
         # set default font
         if self.xkcd:
@@ -41,47 +192,263 @@ class Defaults():
         
         # update font widely
         self.update_rc(self.fontname)
-
+            
     def update_rc(self, font):
+        """update font"""
         plt.rcParams.update({'font.family': font})
 
+    def _set_figure_axs(self, figsize=None):
+        if not isinstance(self.axs, mpl.axes._axes.Axes):
+            if not isinstance(figsize, tuple):
+                figsize = self.figsize
+            _, self.axs = plt.subplots(figsize=figsize)
+
     def _set_spine_width(self, ax):
+        """update spine width"""
         for axis in ['top', 'bottom', 'left', 'right']:
             ax.spines[axis].set_linewidth(self.axis_width)
 
-    def _set_xlabel(self, ax, lbl):
-        self.axs.set_xlabel(lbl, fontsize=self.font_size)
+    def _set_xlabel(self, ax, lbl, **kwargs):
+        """set x-label"""
+        if isinstance(lbl, (str,list)):
+            ax.set_xlabel(lbl, fontsize=self.font_size, **kwargs)
 
-    def _set_ylabel(self, ax, lbl):
-        self.axs.set_ylabel(lbl, fontsize=self.font_size)
+    def _set_ylabel(self, ax, lbl, **kwargs):
+        """set y-label"""
+        if isinstance(lbl, (str,list)):
+            ax.set_ylabel(lbl, fontsize=self.font_size, **kwargs)
 
-    def _set_tick_width(self, ax):
+    def _set_tick_params(self, ax, **kwargs):
+        """set width/length/labelsize of ticks"""
         ax.tick_params(
             width=self.tick_width, 
             length=self.tick_length,
-            labelsize=self.label_size)
+            labelsize=self.label_size,
+            **kwargs)
 
-    def _set_title(self, ax, title):
-        ax.set_title(title, fontsize=self.font_size)
+    def _set_title(self, ax, title, **kwargs):
+        """set title of plot"""
+
+        if isinstance(title, (str,dict)):
+            default_dict = {
+                'color': 'k', 
+                'fontweight': 'normal'}
+
+            if isinstance(title, str):
+                title_dict = {"title": self.title}
+            elif isinstance(title, dict):
+                title_dict = title.copy()
+            else:
+                raise ValueError(f"title input must be a string or dictionary, not {type(title)}: '{title}'")
+            
+            # add default keys if they're missing in dictionary
+            for key in list(default_dict.keys()):
+                if key not in list(title_dict.keys()):
+                    title_dict[key] = default_dict[key]
+
+            ax.set_title(
+                title_dict["title"],
+                color=title_dict["color"] ,
+                fontweight=title_dict["fontweight"],
+                fontname=self.fontname, 
+                fontsize=self.title_size,
+                pad=self.pad_title,
+                **kwargs)
+    
+    def _set_bar_lim(self, ax, lim):
+        if isinstance(lim, list):
+            if self.sns_ori == 'h':
+                fc = self._set_xlim
+            elif self.sns_ori == "v":
+                fc = self._set_ylim
+            else:
+                raise ValueError(f"sns_ori must be 'v' or 'h', not '{self.sns_ori}'")  
+
+            # set
+            fc(ax, lim)
+
+    def _set_bar_ticks(self, ax, ticks):
+        if isinstance(ticks, list):
+            if self.sns_ori == 'h':
+                fc = self._set_xticks
+            elif self.sns_ori == "v":
+                fc = self._set_yticks
+            else:
+                raise ValueError(f"sns_ori must be 'v' or 'h', not '{self.sns_ori}'")  
+
+            # set
+            fc(ax, ticks)
 
     @staticmethod
     def _set_xticks(ax, ticks):
-        ax.set_xticks(ticks)
+        """set x-ticks"""
+        if isinstance(ticks, list):
+            ax.set_xticks(ticks)
 
     @staticmethod
     def _set_yticks(ax, ticks):
-        ax.set_yticks(ticks)
+        """set y-ticks"""
+        if isinstance(ticks, list):
+            ax.set_yticks(ticks)
 
     @staticmethod
     def _set_ylim(ax,lim):
-        ax.set_ylim(lim)
+        """set y-limit"""
+        if isinstance(lim, list):
+            ax.set_ylim(lim)
 
     @staticmethod
     def _set_xlim(ax,lim):
-        ax.set_xlim(lim)        
+        """set x-limit"""
+        if isinstance(lim, list):
+            ax.set_xlim(lim)        
 
-    def _despine(self, ax):
-        sns.despine(ax=ax, offset=self.sns_offset, trim=self.sns_trim)
+    def _despine(self, ax, **kwargs):
+        """despine plot"""
+        sns.despine(
+            ax=ax, 
+            offset=self.sns_offset, 
+            trim=self.sns_trim,
+            **kwargs)
+
+    @staticmethod
+    def _set_y_ticker(ax, dec):
+        """set all y-ticks to decimal"""
+        if isinstance(dec, int):
+            from matplotlib.ticker import FormatStrFormatter
+            ax.yaxis.set_major_formatter(FormatStrFormatter(f"%.{dec}f"))
+
+    @staticmethod
+    def _set_x_ticker(ax, dec):
+        """set all x-ticks to decimal"""
+        if isinstance(dec, int):
+            from matplotlib.ticker import FormatStrFormatter
+            ax.xaxis.set_major_formatter(FormatStrFormatter(f"%.{dec}f"))
+
+    def _set_shaded_error(
+        self, 
+        x: np.ndarray=None,
+        tc: np.ndarray=None,
+        ax: mpl.axes._axes.Axes=None, 
+        yerr: np.ndarray=None,
+        **kwargs):
+
+        if np.isscalar(yerr) or len(yerr) == len(tc):
+            ymin = tc - yerr
+            ymax = tc + yerr
+        elif len(yerr) == 2:
+            ymin, ymax = yerr
+
+        ax.fill_between(
+            x, 
+            ymax, 
+            ymin, 
+            **kwargs)
+
+    def _set_legend_labels(self, ax, labels=None, **kwargs):
+        if isinstance(labels, (list,np.ndarray)):
+            ax.legend(
+                frameon=False, 
+                fontsize=self.label_size,
+                **kwargs)        
+
+    def _save_as(self, save_as, **kwargs):
+        """simple save function"""
+        if isinstance(save_as, str):
+            plt.savefig(
+                save_as,
+                bbox_inches=self.bbox_inches,
+                dpi=self.dpi,
+                facecolor=self.figure_background_color,
+                **kwargs
+            )
+
+    def _save_figure(self, save_as):
+        """save same figure with multiple extensions"""
+        if isinstance(save_as, (list,str)):
+            if isinstance(save_as, str):
+                save_as = [save_as]
+            
+            for ii in save_as:
+                self._save_as(ii)
+  
+    def _add_line(
+        self,
+        ax=None,
+        **kwargs):
+
+        for ii in ["hline","vline"]:
+
+            test_attr = getattr(self, f"add_{ii}")
+            if isinstance(test_attr, (float,int,dict,str,list)):
+
+                add_line = True
+
+                # define default dictionary
+                default_dict = {
+                    'color': 'k', 
+                    'ls': 'dashed', 
+                    'lw': 0.5
+                }
+
+                # set fixer depending on line being drawn
+                if ii == "hline":
+                    default_dict["min"] = 0
+                    default_dict["max"] = 1
+                else:
+                    default_dict["min"] = 0                    
+                    default_dict["max"] = 1
+
+                # add lines
+                if test_attr == "default":
+                    test_attr = {'pos': 0}
+                elif isinstance(test_attr, (int,list,np.ndarray)):
+                    test_attr = {"pos": test_attr}
+                elif isinstance(test_attr, dict):
+                    add_line = True
+                else:
+                    add_line = False
+
+                if add_line:
+                    for key in list(default_dict.keys()):
+                        if key not in list(test_attr.keys()):
+                            test_attr[key] = default_dict[key]
+
+                    # enforce list so we only need to call functions once
+                    if not "pos" in list(test_attr.keys()):
+                        raise ValueError(f"Need the 'pos' key to denote position..")
+                    else:
+                        if isinstance(test_attr['pos'], (int,float)):
+                            test_attr['pos'] = [test_attr['pos']]
+
+                    # loop through elements
+                    if isinstance(test_attr['pos'], (list,np.ndarray)):
+                        for ix,line in enumerate(test_attr['pos']):
+                            if isinstance(test_attr['color'], list):
+                                color = test_attr['color'][ix]
+                            else:
+                                color = test_attr['color']
+
+                            if ii == "hline":
+                                ax.axhline(
+                                    line,
+                                    color=color,
+                                    lw=test_attr['lw'], 
+                                    ls=test_attr['ls'],
+                                    xmin=test_attr["min"],
+                                    xmax=test_attr["max"],
+                                    **kwargs
+                                )
+                            else:
+                                ax.axvline(
+                                    line,
+                                    color=color,
+                                    lw=test_attr['lw'], 
+                                    ls=test_attr['ls'],
+                                    ymin=test_attr["min"],
+                                    ymax=test_attr["max"],
+                                    **kwargs
+                                )            
 
 class LazyPRF(Defaults):
     """LazyPRF
@@ -94,10 +461,6 @@ class LazyPRF(Defaults):
         instantiation of `gauss2D_iso_cart`; will be np.squeeze'ed over the first axis if `ndim >= 3`.
     vf_extent: list
         the space the pRF lives in
-    save_as: str, optional
-        file path to save the image (*.pdf is recommended for quality and compatibility with Inkscape)
-    ax: <AxesSubplot:>, optional
-        Matplotlib axis to store the figure on
     cmap: str, optional
         Colormap for imshow; accepts output from :func:`linescanning.utils.make_binary_cm`. Defaults to 'magma'
     cross_color: str, optional
@@ -106,24 +469,10 @@ class LazyPRF(Defaults):
         Opacity for imshow
     shrink_factor: float, optional
         When the background of the image is white, we create a black border around the Circle patch. If this is equal to `vf_extent`, the border is cut off at some points. This factor shrinks the radius of the Circle, so that we can have a nice border. When set to 0.9, it becomes sort of like a target. This is relevant for **all** non-`magma` color maps that you insert, specifically a :func:`linescanning.utils.make_binary_cm` object
-    xkcd: bool, optional
-        Plot in cartoon-format
-    label_size: int, optional
-        Set the font size of the labels (i.e., axes). Default = 10
-    tick_width: float, optional
-        Set the thickness of the ticks. Larger value means thicker tick. Default = 0.5 (thin'ish)
-    tick_length: int, optional
-        Set the length of the ticks. Larger values mean longer ticks. Default = 7 (long'ish)
-    axis_width: float, optional
-        Set the thickness of the spines of the plot. Larger values mean thicker spines. Default = 0.5 (thin'ish)
     full_axis: bool, optional
         If `True`, the entire axis of `vf_extent` will be used for the ticks (more detailed). If `False`, a truncated/trimmed version will be returned (looks cleaner). Default = False
     axis_off: bool, optional
         If `True` the x/y axis will be maintained, and the `vf_extent` will be given as ticks. If `False`, axis will be turned off. If `axis_off=True`, then `full_axis` and other label/axis parameters are ignored. Default = True
-    sns_trim: bool, optional
-        If `True`, limit spines to the smallest and largest major tick on each non-despined axis. Maps to `sns.despine(trim=sns_trim)`
-    sns_offset: int, optional
-        Offset in the origin of the plot. Maps to `sns.despine(offset=sns_offset)`. Default is 10
     vf_only: bool, optional
         Only show the outline of the the visual field, without pRF. You still need to specify the pRF as we'll `imshow` an empty array with the same shape rather than the pRF. Default = False
     line_width: float, optional
@@ -134,6 +483,8 @@ class LazyPRF(Defaults):
         Set the order of the vertical/horizontal lines. Default is **on top** of the pRF (1)
     z_prf: int, optional
         Set the order of the pRF imshow. Default is below the axis lines, but can be changed to be on top of them. Default = 0
+    imshow_kw: dict, optional
+        Additional kwargs passed on to `imshow`
 
     Returns
     ----------
@@ -145,13 +496,10 @@ class LazyPRF(Defaults):
         prf, 
         vf_extent, 
         save_as=None, 
-        ax=None, 
         cmap='RdBu_r', 
         cross_color="white", 
         alpha=None,
         shrink_factor=1, 
-        xkcd=False,
-        title=None,
         axis_off=True,
         figsize=(8,8),
         full_axis=False,
@@ -161,18 +509,15 @@ class LazyPRF(Defaults):
         z_lines=1,
         z_prf=0,
         edge_color=None,
+        imshow_kw={},
         **kwargs):
         
         self.prf            = prf
         self.vf_extent      = vf_extent
-        self.save_as        = save_as
-        self.ax             = ax
         self.cmap           = cmap
         self.cross_color    = cross_color
         self.alpha          = alpha
-        self.xkcd           = xkcd
         self.shrink_factor  = shrink_factor
-        self.title          = title
         self.axis_off       = axis_off
         self.figsize        = figsize
         self.full_axis      = full_axis
@@ -182,6 +527,7 @@ class LazyPRF(Defaults):
         self.z_lines        = z_lines
         self.z_prf          = z_prf
         self.edge_color     = edge_color
+        self.imshow_kw      = imshow_kw
 
         super().__init__()
         self.__dict__.update(kwargs)
@@ -193,19 +539,13 @@ class LazyPRF(Defaults):
         else:
             self.plot()
 
-        if self.save_as:
-            if isinstance(self.save_as, list):
-                for ii in self.save_as:
-                    plt.savefig(ii, transparent=True, dpi=300, bbox_inches='tight')
-            elif isinstance(self.save_as, str):
-                plt.savefig(self.save_as, transparent=True, dpi=300, bbox_inches='tight')
-            else:
-                raise ValueError(f"Unknown input '{self.save_as}' for 'save_as'")
+        # save
+        self._save_figure(self.save_as)
 
     def plot(self):
 
-        if self.ax == None:
-            _,self.ax = plt.subplots(figsize=self.figsize)
+        # set figure axis
+        self._set_figure_axs()
 
         if self.prf.ndim >= 3:
             self.prf = np.squeeze(self.prf, axis=0)
@@ -213,21 +553,20 @@ class LazyPRF(Defaults):
         if self.alpha == None:
             self.alpha = 1
 
-        # line on x-axis
-        self.ax.axvline(
-            0, 
-            color=self.cross_color, 
-            linestyle='dashed', 
-            lw=self.cross_width,
-            zorder=self.z_lines)
+        # add cross-hair
+        for ii in ["hline","vline"]:
+            self.line_kw = {
+                "pos": 0,
+                "color": self.cross_color,
+                "lw": self.cross_width
+            }
 
-        # line on y-axis
-        self.ax.axhline(
-            0, 
-            color=self.cross_color, 
-            linestyle='dashed', 
-            lw=self.cross_width,
-            zorder=self.z_lines)
+            setattr(self, f"add_{ii}", self.line_kw)
+        
+        self._add_line(
+            self.axs,
+            zorder=self.z_lines
+        )
 
         if not self.vf_only:
             plot_obj = self.prf
@@ -242,62 +581,64 @@ class LazyPRF(Defaults):
             vmin = -plot_obj.max()
             vmax = plot_obj.max()
                     
-        im = self.ax.imshow(
+        if len(self.vf_extent) < 4:
+            self.use_extent = self.vf_extent+self.vf_extent
+        else:
+            self.use_extent = self.vf_extent
+
+        im = self.axs.imshow(
             plot_obj, 
-            extent=self.vf_extent+self.vf_extent, 
+            extent=self.use_extent, 
             cmap=self.cmap, 
             alpha=self.alpha,
             zorder=self.z_prf,
             vmin=vmin,
-            vmax=vmax)
+            vmax=vmax,
+            **self.imshow_kw)
         
         # In case of a white background, the circle for the visual field is cut off, so we need to make an adjustment:
         if self.cmap != 'magma' and self.cmap != 'viridis':
-            radius = self.vf_extent[-1]*self.shrink_factor
+            radius = self.use_extent[-1]*self.shrink_factor
         else:
-            radius = self.vf_extent[-1]
+            radius = self.use_extent[-1]
 
-        if self.title != None:
-            self.ax.set_title(
-                self.title, 
-                fontsize=self.font_size, 
-                fontname=self.fontname,
-                pad=self.pad_title)
-            
+        # set title
+        self._set_title(self.axs, self.title)
+        
+        # set patch
         self.patch = patches.Circle(
-            (0, 0),
+            (0,0),
             radius=radius,
-            transform=self.ax.transData,
+            transform=self.axs.transData,
             edgecolor=self.edge_color,
             facecolor="None",
             linewidth=self.line_width)
 
-        self.ax.add_patch(self.patch)
+        self.axs.add_patch(self.patch)
         im.set_clip_path(self.patch)
 
         if self.axis_off:
-            self.ax.axis('off')
+            self.axs.axis('off')
         else:
-            self.ax.tick_params(
-                width=self.tick_width, 
-                length=self.tick_length,
-                labelsize=self.label_size)
-
-            for axis in ['top', 'bottom', 'left', 'right']:
-                self.ax.spines[axis].set_linewidth(0)
+            # set tick params
+            self._set_tick_params(self.axs)
+        
+            # set spine widths
+            self._set_spine_width(self.axs)
             
             if self.full_axis:
-                new_ticks = np.arange(self.vf_extent[0],self.vf_extent[1]+1, 1)
-                self.ax.set_xticks(new_ticks)
-                self.ax.set_yticks(new_ticks)
+                self.use_ticks = np.arange(self.vf_extent[0],self.vf_extent[1]+1, 1)
             else:
-                self.ax.set_yticks(self.vf_extent)
-                self.ax.set_xticks(self.vf_extent)
+                self.use_ticks = self.vf_extent
 
-            if self.sns_trim:
-                sns.despine(
-                    offset=self.sns_offset, 
-                    trim=self.sns_trim)
+            # set ticks
+            self._set_xticks(self.axs, self.use_ticks)
+            self._set_yticks(self.axs, self.use_ticks)
+
+            # set tickers & despine
+            self._set_y_ticker(self.axs, self.y_dec)
+            self._set_x_ticker(self.axs, self.x_dec)
+            self._despine(self.axs)
 
 class LazyPlot(Defaults):
     """LazyPlot
@@ -314,62 +655,11 @@ class LazyPlot(Defaults):
         Error data with the same length/shape as the input timeseries, by default None. Can be either a numpy.ndarray for 1 timeseries, or a list of numpy.ndarrays for multiple timeseries
     error_alpha: float, optional
         Opacity level for error shadings, by default 0.3
-    x_label: str, optional
-        Label of x-axis, by default None
-    y_label: str, optional
-        Label of y-axis, by default None
-    labels: str, list, optional
-        String (if 1 timeseries) or list (with the length of `ts`) of colors, by default None. Labels for the timeseries to be used in the legend
-    title: str, dict, optional
-        String of dictionary collecting the following keys representing information about the title:
-        >>> title = {
-        >>>     'title' "some title",       # title text
-        >>>     'color': 'k',               # color (default = 'k')
-        >>>     'fontweight': "bold"}       # fontweight (default = 'normal'), can be any of the matplotib fontweight options (e.g., 'italic', 'bold', 'normal' etc.)
-    color: str, list, optional
-        String (if 1 timeseries) or list (with the length of `ts`) of colors, by default None. If nothing is specified, we'll use `cmap` to create a color palette
+
     cmap: str, optional
         Color palette to use for colors if no individual colors are specified, by default 'viridis'
     figsize: tuple, optional
-        Figure dimensions as per usual matplotlib conventions, by default (30,5)
-    save_as: str, optional
-        Save the plot, by default None. If you want to use figures in Inkscape, save them as PDFs to retain high resolution
-    font_size: int, optional
-        Font size of titles and axis labels, by default 12
-    add_hline: dict, optional
-        Dictionary for a horizontal line through the plot, by default None. Collects the following items:
-        >>> add_hline = {
-        >>>     'pos' 0,       # position
-        >>>     'color': 'k',  # color
-        >>>     'lw': 1,       # linewidth
-        >>>     'ls': '--'}    # linestyle
-        You can get the settings above by specifying *add_hline='default'*. Now also accepts *add_hline='mean'* for single inputs
-    add_vline: [type], optional
-        Dictionary for a vertical line through the plot, by default None. Same keys as `add_hline`
-    line_width: int, list, optional
-        Line widths for either all graphs (then *int*) or a *list* with the number of elements as requested graphs, default = 1.
-    axs: <AxesSubplot:>, optional
-        Matplotlib axis to store the figure on
-    y_lim: list, optional
-        List for `axs.set_ylim`
-    x_lim: list, optional
-        List for `axs.set_xlim`
-    set_xlim_zero: bool, optional
-        Reduces the space between y-axis and start of the plot. Is set before sns.despine. Default = False
-    label_size: int, optional
-        Set the font size of the labels (i.e., axes). Default = 10
-    tick_width: float, optional
-        Set the thickness of the ticks. Larger value means thicker tick. Default = 0.5 (thin'ish)
-    tick_length: int, optional
-        Set the length of the ticks. Larger values mean longer ticks. Default = 7 (long'ish)
-    axis_width: float, optional
-        Set the thickness of the spines of the plot. Larger values mean thicker spines. Default = 0.5 (thin'ish)
-    sns_trim: bool, optional
-        If `True`, limit spines to the smallest and largest major tick on each non-despined axis. Maps to `sns.despine(trim=sns_trim)`
-    sns_offset: int, optional
-        Offset in the origin of the plot. Maps to `sns.despine(offset=sns_offset)`. Default is 10
-    sns_bottom: bool, optional
-        Also remove the bottom (x) spine of the plot
+        Figure dimensions as per usual matplotlib conventions, by default (25,5)
     markers: str, list, optional
         Use markers during plotting. If `ts` is a list, a list of similar length should be specified. If one array in `ts` should not have markers, use `None`. E.g., if `len(ts) == 3`, and we want only the first timecourse to have markers use: `markers=['.',None,None]
     markersize: str, list, optional
@@ -422,92 +712,54 @@ class LazyPlot(Defaults):
         xx=None,
         error=None,
         error_alpha=0.3,
-        x_label=None,
-        y_label=None,
-        title=None,
-        xkcd=False,
-        color=None,
-        figsize=(30, 5),
+        figsize=(25,5),
         cmap='viridis',
-        save_as=None,
         labels=None,
-        add_hline=None,
-        add_vline=None,
-        axs=None,
-        y_lim=None,
-        x_lim=None,
         markers=None,
         markersize=None,
-        x_ticks=None,
-        y_ticks=None,
         plot_alpha=None,
         **kwargs):
 
-        self.array              = ts
-        self.xx                 = xx
-        self.error              = error
-        self.error_alpha        = error_alpha
-        self.x_label            = x_label
-        self.y_label            = y_label
-        self.title              = title
-        self.xkcd               = xkcd
-        self.plot_alpha         = plot_alpha
-        self.color              = color
-        self.figsize            = figsize
-        self.cmap               = cmap
-        self.save_as            = save_as
-        self.labels             = labels
-        self.add_hline          = add_hline
-        self.add_vline          = add_vline
-        self.axs                = axs
-        self.y_lim              = y_lim
-        self.x_lim              = x_lim
-        self.markers            = markers
-        self.markersize         = markersize
-        self.x_ticks            = x_ticks
-        self.y_ticks            = y_ticks
+        self.array = ts
+        self.xx = xx
+        self.error = error
+        self.error_alpha = error_alpha
+        self.plot_alpha = plot_alpha
+        self.figsize = figsize
+        self.cmap = cmap
+        self.labels = labels
+        self.markers = markers
+        self.markersize = markersize
 
         super().__init__()
         self.__dict__.update(kwargs)
         self.update_rc(self.fontname)
 
+        # plot
         if self.xkcd:
             with plt.xkcd():
                 self.plot()
         else:
             self.plot()
-        
-        if self.save_as:
-            if isinstance(self.save_as, list):
-                for ii in self.save_as:
-                    plt.savefig(
-                        ii, 
-                        transparent=True, 
-                        dpi=300, 
-                        bbox_inches='tight')
-            elif isinstance(self.save_as, str):
-                plt.savefig(
-                    self.save_as, 
-                    transparent=True, 
-                    dpi=300, 
-                    bbox_inches='tight')
-            else:
-                raise ValueError(f"Unknown input '{self.save_as}' for 'save_as'")
+
+        # save
+        self._save_figure(self.save_as)
 
     def plot(self):
+        """main plotting function"""
 
-        if self.axs == None:
-            _, axs = plt.subplots(figsize=self.figsize)
-        else:
-            axs = self.axs
+        # set figure axis
+        self._set_figure_axs()
 
+        # sort out color
         if isinstance(self.array, np.ndarray):
             self.array = [self.array]
             if not self.color:
                 self.color = sns.color_palette(self.cmap, 1)[0]
             else:
                 self.color = [self.color]
-            
+        
+        # check if alpha's match nr of elements in array
         if isinstance(self.array, list):
 
             if not isinstance(self.plot_alpha, list):
@@ -549,6 +801,10 @@ class LazyPlot(Defaults):
                         
             for idx,el in enumerate(self.array):
                 
+                # squeeze dimensions
+                if el.ndim > 1:
+                    el = el.squeeze()
+
                 # decide on line-width
                 if isinstance(self.line_width, list):
                     if len(self.line_width) != len(self.array):
@@ -589,7 +845,7 @@ class LazyPlot(Defaults):
                     lbl = None
 
                 # plot
-                axs.plot(
+                self.axs.plot(
                     x, 
                     el, 
                     color=self.color_list[idx], 
@@ -601,206 +857,74 @@ class LazyPlot(Defaults):
                     alpha=self.plot_alpha[idx])
 
                 # plot shaded error bars
-                if isinstance(self.error, (list,np.ndarray)):
-                    yerr = self.error[idx]
-                    if np.isscalar(yerr) or len(yerr) == len(el):
-                        ymin = el - yerr
-                        ymax = el + yerr
-                    elif len(yerr) == 2:
-                        ymin, ymax = yerr
-                    axs.fill_between(x, ymax, ymin, color=self.color_list[idx], alpha=self.error_alpha)
+                if isinstance(self.error, (int,float,list,np.ndarray)):
+                    self._set_shaded_error(
+                        x=x,
+                        ax=self.axs,
+                        tc=el,
+                        yerr=self.error,
+                        color=self.color_list[idx],
+                        alpha=self.error_alpha
+                    )
 
         # axis labels and titles
-        if isinstance(self.labels, (list,np.ndarray)):
-            axs.legend(
-                frameon=False, 
-                fontsize=self.label_size)
+        self._set_legend_labels(self.axs, labels=self.labels)
 
-        if self.x_label:
-            axs.set_xlabel(
-                self.x_label, 
-                fontname=self.fontname, 
-                fontsize=self.font_size)
+        # set x-label
+        self._set_xlabel(self.axs, self.x_label)
 
-        if self.y_label:
-            axs.set_ylabel(
-                self.y_label, 
-                fontname=self.fontname, 
-                fontsize=self.font_size)
+        # set x-label
+        self._set_ylabel(self.axs, self.y_label)
 
-        if isinstance(self.title, (str,dict)):
-            default_dict = {
-                'color': 'k', 
-                'fontweight': 'normal'}
-
-            if isinstance(self.title, str):
-                self.title_dict = {"title": self.title}
-            elif isinstance(self.title, dict):
-                self.title_dict = self.title.copy()
-            else:
-                raise ValueError(f"title input must be a string or dictionary, not {type(self.title)}: '{self.title}'")
-            
-            # add default keys if they're missing in dictionary
-            for key in list(default_dict.keys()):
-                if key not in list(self.title_dict.keys()):
-                    self.title_dict[key] = default_dict[key]
-
-            axs.set_title(
-                self.title_dict["title"],
-                color=self.title_dict["color"] ,
-                fontweight=self.title_dict["fontweight"],
-                fontname=self.fontname, 
-                fontsize=self.font_size,
-                pad=self.pad_title)
-
-        axs.tick_params(
-            width=self.tick_width, 
-            length=self.tick_length,
-            labelsize=self.label_size)
-
-        for axis in ['top', 'bottom', 'left', 'right']:
-            axs.spines[axis].set_linewidth(self.axis_width)
+        # set title
+        self._set_title(self.axs, self.title)
         
+        # set tick params
+        self._set_tick_params(self.axs)
+    
+        # set spine widths
+        self._set_spine_width(self.axs)
+
         # give priority to specify x-lims rather than seaborn's xlim
         if not self.x_lim:
             if isinstance(self.xlim_left, (float,int)):
-                axs.set_xlim(left=self.xlim_left)
+                self.axs.set_xlim(left=self.xlim_left)
             else:
-                axs.set_xlim(left=x[0])
+                self.axs.set_xlim(left=x[0])
 
             if self.xlim_right:
-                axs.set_xlim(right=self.xlim_right)
+                self.axs.set_xlim(right=self.xlim_right)
             else:
-                axs.set_xlim(right=x[-1]) 
+                self.axs.set_xlim(right=x[-1]) 
 
         else:
-            axs.set_xlim(self.x_lim)
+            self.axs.set_xlim(self.x_lim)
 
         if not self.y_lim:
             if isinstance(self.ylim_bottom, (float,int)):
-                axs.set_ylim(bottom=self.ylim_bottom)
+                self.axs.set_ylim(bottom=self.ylim_bottom)
             
             if self.ylim_top:
-                axs.set_ylim(top=self.ylim_top)
+                self.axs.set_ylim(top=self.ylim_top)
         else:
-            axs.set_ylim(self.y_lim)      
+            self.axs.set_ylim(self.y_lim)      
 
-        # despine the axis
-        if isinstance(self.x_ticks, list):
-            axs.set_xticks(self.x_ticks)
-
-        if isinstance(self.y_ticks, list):
-            axs.set_yticks(self.y_ticks)
-     
-        old_xlim = axs.get_xlim()[-1]
-        old_ylim = axs.get_ylim()
-        sns.despine(
-            offset=self.sns_offset, 
-            trim=self.sns_trim, 
-            bottom=self.sns_bottom)
-
-        # correct for axis shortening induced by trimming with sns.despine
-        set_xlim = 1
-        set_ylim = 1
-        if self.sns_trim:
-            set_xlim = x[-1]/old_xlim
-            
-            if len(self.array) > 1:
-                y_max = np.amax(np.array(self.array))
-            else:
-                y_max = max(self.array)
-
-            set_ylim = y_max/old_ylim[1]
-
-        # defaults for ax?lines
-        default_dict = {
-            'color': 'k', 
-            'ls': 'dashed', 
-            'lw': 0.5}
+        # set ticks
+        self._set_xticks(self.axs, self.x_ticks)
+        self._set_yticks(self.axs, self.y_ticks)
         
-        # add vertical lines
-        add_vline = True
-        if self.add_vline == "default":
-            self.add_vline = {'pos': 0}
-        elif isinstance(self.add_vline, int) or isinstance(self.add_vline, list) or isinstance(self.add_vline, np.ndarray):
-            self.add_vline = {"pos": self.add_vline}
-        elif isinstance(self.add_vline, dict):
-            add_vline = True            
-        else:
-            add_vline = False
+        # draw horizontal/vertical lines with ax?line
+        self._add_line(ax=self.axs)
 
-        if add_vline:
-            for key in list(default_dict.keys()):
-                if key not in list(self.add_vline.keys()):
-                    self.add_vline[key] = default_dict[key]
-
-            if isinstance(self.add_vline['pos'], list) or isinstance(self.add_vline['pos'], np.ndarray):
-                for ix,line in enumerate(self.add_vline['pos']):
-                    if isinstance(self.add_vline['color'], list):
-                        color = self.add_vline['color'][ix]
-                    else:
-                        color = self.add_vline['color']
-
-                    axs.axvline(
-                        line, 
-                        color=color, 
-                        lw=self.add_vline['lw'], 
-                        ls=self.add_vline['ls'],
-                        ymax=set_ylim)
-            else:
-                axs.axvline(
-                    self.add_vline['pos'], 
-                    color=self.add_vline['color'],
-                    lw=self.add_vline['lw'], 
-                    ls=self.add_vline['ls'],
-                    ymax=set_ylim)
-
-        add_hline = True
-        if self.add_hline == "default":
-            self.add_hline = {'pos': 0}
-        elif self.add_hline == "mean" or self.add_hline == "average":
-            if isinstance(self.array, list):
-                if len(self.array) > 1:
-                    raise ValueError("This option can't be used with multiple inputs..")
-                
-            self.add_hline = {'pos': np.array(self.array).mean()}
-        elif isinstance(self.add_hline, int) or isinstance(self.add_hline, list) or isinstance(self.add_hline, np.ndarray) or isinstance(self.add_hline, float):
-            self.add_hline = {"pos": self.add_hline}
-        elif isinstance(self.add_hline, dict):
-            add_hline = True
-        else:
-            add_hline = False
-
-        if add_hline:
-            for key in list(default_dict.keys()):
-                if key not in list(self.add_hline.keys()):
-                    self.add_hline[key] = default_dict[key]
-
-            if isinstance(self.add_hline['pos'], list) or isinstance(self.add_hline['pos'], np.ndarray):
-                for ix,line in enumerate(self.add_hline['pos']):
-                    if isinstance(self.add_hline['color'], list):
-                        color = self.add_hline['color'][ix]
-                    else:
-                        color = self.add_hline['color']
-
-                    axs.axhline(
-                        line,
-                        color=color, 
-                        lw=self.add_hline['lw'], 
-                        ls=self.add_hline['ls'],
-                        xmax=set_xlim)
-            else:
-                axs.axhline(
-                    self.add_hline['pos'], 
-                    color=self.add_hline['color'],
-                    lw=self.add_hline['lw'], 
-                    ls=self.add_hline['ls'],
-                    xmax=set_xlim)
+        # set tickers & despine
+        self._set_y_ticker(self.axs, self.y_dec)
+        self._set_x_ticker(self.axs, self.x_dec)
+        self._despine(self.axs)
 
 class LazyCorr(Defaults):
     """LazyCorr
 
-    Wrapper around seaborn's regplot. Plot data and a linear regression model fit.
+    Wrapper around seaborn's regplot. Plot data and a linear regression model fit. In addition to creating the plot, you can also run a regression or correlation using pingouin by setting the corresponding argument to `True`.
 
     Parameters
     ----------
@@ -808,97 +932,94 @@ class LazyCorr(Defaults):
         First variable to include in regression
     y: np.ndarray, list
         Second variable to include in regression
-    x_label: str, optional
-        Label of x-axis, by default None
-    y_label: str, optional
-        Label of y-axis, by default None
-    title: str, optional
-        Plot title, by default None
-    xkcd: bool, optional
-        Plot the figre in XKCD-style (cartoon), by default False
     color: str, list, optional
         String representing a color, by default "#ccccccc"
     figsize: tuple, optional
-        Figure dimensions as per usual matplotlib conventions, by default (30,5)
-    save_as: str, optional
-        Save the plot, by default None. If you want to use figures in Inkscape, save them as PDFs to retain high resolution
-    font_size: int, optional
-        Font size of titles and axis labels, by default 12
+        Figure dimensions as per usual matplotlib conventions, by default (8,8)
     axs: <AxesSubplot:>, optional
         Matplotlib axis to store the figure on
+    correlation: bool, optional
+        Run a correlation between `x` and `y`. The result is stored in `self.correlation_result`
+    regression: bool, optional
+        Run a regression between `x` and `y`. The result is stored in `self.regression_result`
+    scatter_kwargs: dict, optional
+        Additional options passed on to the `scatter` function from matplotlib
+    stat_kwargs: dict, optional
+        Options passed on to pingouin's stats functions
 
-    Returns
+    Example
     ----------
-    <linescanning.plotting.LazyCorr> object
-        figure with the regression + confidence intervals for the given variables
+    >>> from linescanning import plotting
+    >>> import matplotlib.pyplot as plt
+    
+    >>> # vanilla version; here, the regression fit has the same color as the dots.
+    >>> fig,axs = plt.subplots(figsize=(7,7))
+    >>> plotting.LazyCorr(
+    >>>     x_data, 
+    >>>     y_data, 
+    >>>     axs=axs,
+    >>>     x_label="add xlabel",
+    >>>     y_label="add ylabel")
+
+    >>> # more exotic version: color each dot differently
+    >>> from linescanning import utils
+    >>> #
+    >>> fig,axs = plt.subplots(figsize=(7,7))
+    >>> #
+    >>> # create color map between red and blue; return as list
+    >>> colors = utils.make_between_cm(["r","b], as_list=True, N=len(y_data))
+    >>> for ix,val in enumerate(y_data):
+    >>>     axs.plot(x_data[ix], val, 'o', color=colors[ix], alpha=0.6)   
+    >>> #
+    >>> #add the regression fit 
+    >>> plotting.LazyCorr(
+    >>>     x_data, 
+    >>>     y_data, 
+    >>>     axs=axs,
+    >>>     add_points=False, # turn off points; we've already plotted them
+    >>>     x_label="add xlabel",
+    >>>     y_label="add ylabel")
+
+    Notes
+    ----------
+    see documentation of :class:`linescanning.plotting.Defaults()` for formatting options        
     """    
 
     def __init__(
         self,
         x, 
         y, 
-        color="#cccccc", 
-        axs=None, 
-        title=None,
-        x_label=None, 
-        y_label=None, 
-        figsize=(8,8),
-        xkcd=False,
-        sns_trim=True,
-        y_lim=None,
-        x_lim=None,                 
-        save_as=None,
-        x_ticks: list=None,
-        y_ticks: list=None,        
-        points=True,
+        color: str="#cccccc", 
+        figsize: tuple=(7,7),      
+        points: bool=True,
         label: str=None,
-        scatter_kwargs={},
+        scatter_kwargs: dict={},
         stat_kwargs: dict={},
         color_by: Union[list,np.ndarray]=None,
         regression: bool=False,
         correlation: bool=False,
         **kwargs):
 
+        # init default plotter class
+        super().__init__(**kwargs)
+
         self.x              = x
         self.y              = y
-        self.axs            = axs
-        self.x_label        = x_label
-        self.y_label        = y_label
-        self.xkcd           = xkcd
-        self.sns_trim       = sns_trim
         self.color          = color
-        self.figsize        = figsize     
-        self.title          = title
-        self.y_lim          = y_lim
-        self.x_lim          = x_lim        
-        self.save_as        = save_as
+        self.figsize        = figsize
         self.points         = points
-        self.scatter_kwargs = scatter_kwargs
-        self.x_ticks        = x_ticks
-        self.y_ticks        = y_ticks
         self.label          = label
+        self.scatter_kwargs = scatter_kwargs
+        self.stat_kwargs    = stat_kwargs
         self.color_by       = color_by
         self.regression     = regression
         self.correlation    = correlation
-        self.stat_kwargs    = stat_kwargs
-
-        # init default plotter class
-        super().__init__(**kwargs)
 
         if self.xkcd:
             with plt.xkcd():
                 self.plot()
         else:
             self.plot()
-
-        if self.save_as:
-            if isinstance(self.save_as, list):
-                for ii in self.save_as:
-                    plt.savefig(ii, transparent=True, dpi=300, bbox_inches='tight')
-            elif isinstance(self.save_as, str):
-                plt.savefig(self.save_as, transparent=True, dpi=300, bbox_inches='tight')
-            else:
-                raise ValueError(f"Unknown input '{self.save_as}' for 'save_as'")
 
         # run quick regression with pingouin
         if self.regression:
@@ -907,6 +1028,9 @@ class LazyCorr(Defaults):
         # run quick correlation with pingouin
         if self.correlation:
             self._run_correlation()            
+
+        # save
+        self._save_figure(self.save_as)
 
     def _run_regression(self):
         
@@ -939,10 +1063,8 @@ class LazyCorr(Defaults):
 
     def plot(self):
 
-        if self.axs == None:
-            _, self.axs = plt.subplots(figsize=self.figsize)
-        else:
-            self.axs = self.axs        
+        # set figure axis
+        self._set_figure_axs()       
 
         # c-arguments clashes with "color" argument if you pass it to sns.regplot in "scatter_kws"; hence this solution
         if isinstance(self.color_by, (list, np.ndarray)):
@@ -958,7 +1080,7 @@ class LazyCorr(Defaults):
                 self.cbar.set_label(self.scatter_kwargs["label"], fontsize=self.label_size)            
             
             # sort out ticks
-            self._set_tick_width(self.cbar.ax)
+            self._set_tick_params(self.cbar.ax)
             self._set_spine_width(self.cbar.ax)
 
             # remove outside edge from colorbar
@@ -968,6 +1090,7 @@ class LazyCorr(Defaults):
             self.points = False
             self.scatter_kwargs = {}
 
+        self.kde_color = utils.make_between_cm(self.color,self.color,as_list=True)
         sns.regplot(
             x=self.x, 
             y=self.y, 
@@ -987,7 +1110,7 @@ class LazyCorr(Defaults):
 
         # sort out ticks
         self._set_spine_width(self.axs)
-        self._set_tick_width(self.axs)
+        self._set_tick_params(self.axs)
 
         for lbl,func in zip(
             [self.x_ticks, self.y_ticks],
@@ -996,48 +1119,18 @@ class LazyCorr(Defaults):
             if isinstance(lbl, list):
                 func(self.axs, lbl)
 
-        # if isinstance(self.x_label, str):
-        #     self._set_xlabel(self.axs, self.x_label)
-
-        # if isinstance(self.y_label, str):
-        #     self._set_ylabel(self.axs, self.y_label)            
-
-        # if isinstance(self.title, str):
-        #     self._set_xlabel(self.axs, self.x_label)
-
-            # self.axs.set_xlabel(self.x_label, fontsize=self.font_size)
-
-        # # if isinstance(self.y_label, str):
-        # #     self.axs.set_ylabel(self.y_label, fontsize=self.font_size)
-
-        # # if self.title:
-        # #     self.axs.set_title(self.title, fontsize=self.font_size)
-
-        # self.axs.tick_params(
-        #     width=self.tick_width, 
-        #     length=self.tick_length,
-        #     labelsize=self.label_size)
-
-        # for axis in ['top', 'bottom', 'left', 'right']:
-        #     self.axs.spines[axis].set_linewidth(self.axis_width)
-
-        for lim,func in zip([self.x_lim, self.y_lim], [self._set_xlim, self._set_ylim]):
+        for lim,func in zip(
+            [self.x_lim, self.y_lim], 
+            [self._set_xlim, self._set_ylim]):
             if lim:
                 func(self.axs, lim)
 
-        # if self.x_lim:
-        #     self.axs.set_xlim(self.x_lim)
+        # draw horizontal/vertical lines with ax?line
+        self._add_line(ax=self.axs)
 
-        # if self.y_lim:
-        #     self.axs.set_ylim(self.y_lim)
-
-        # if isinstance(self.x_ticks, list):
-        #     self.axs.set_xticks(self.x_ticks)
-
-        # if isinstance(self.y_ticks, list):
-        #     self.axs.set_yticks(self.y_ticks)  
-
-        # sns.despine(offset=self.sns_offset, trim=self.sns_trim)
+        # set tickers & despine
+        self._set_y_ticker(self.axs, self.y_dec)
+        self._set_x_ticker(self.axs, self.x_dec)
         self._despine(self.axs)
 
 class LazyBar():
@@ -1058,28 +1151,6 @@ class LazyBar():
         custom labels that can be used when `x` denotes a column name in dataframe `data`. The replacing labels should have the same length as the labels that are being overwritten.
     axs: <AxesSubplot:>, optional
         Subplot axis to put the plot on, by default None
-    sns_ori: str, optional
-        Orientation of the bars, can either be horizontal ('h') or vertical ('v'), by default 'h'
-    sns_rot: int, float, optional
-        Angle of rotation for `labels`, by default None
-    palette: list, sns.palettes._ColorPalette, optional
-        Color scheme to use for the bars if you have categorical data, by default None
-    cmap: str, optional
-        Colormap to use if you didn't specify `palette`, by default "inferno"
-    save_as: str, optional
-        Filename to save the image, by default None
-    add_labels: bool, optional
-        Boolean flag to actually set the labels if specified with `labels`, by default False
-    lim: list, optional
-        `[x,y]` limits, by default None
-    ticks: list, optional
-        List of ticks that can be related to `lim` or not, by default None
-    x_label2: str, optional
-        Label for the x-axis, by default None. Different that `labels`, which are the labels representing the categories in `data`
-    y_label2: str, optional
-        Label for the y-axis, by default None
-    title2: str, optional
-        Title for the plot, by default None
     add_points: bool, optional
         Add the actual datapoints rather than just the bars, by default False. Though default is `False`
     points_color: str, tuple, optional
@@ -1106,6 +1177,8 @@ class LazyBar():
         Scaling factor for `fancy_aspect`, by default 4 (which works well for data where the max value is ~50). Use higher values (e.g., 6) if your data range is large
     bar_legend: bool, optional
         Legend for the bars, rather than points, by default False. The functionality of these interchangeable legends (`bar_legend` and `points_legend`) is quite tricky, so user discretion is advised.
+    strip_kw, dict, optional
+        Additional kwargs passed on to seaborn's stripplot. Several factors are being set via regular arguments in the function, such as `dodge`, `palette`, `color`, and `hue`.
 
     Example
     ----------
@@ -1127,6 +1200,10 @@ class LazyBar():
     >>>     lim=[800,1600],
     >>>     fancy=True,
     >>>     fancy_denom=6)
+
+    Notes
+    ----------
+    see documentation of :class:`linescanning.plotting.Defaults()` for formatting options
     """
     
     def __init__(
@@ -1134,56 +1211,41 @@ class LazyBar():
         data: pd.DataFrame=None,
         x: Union[str,np.ndarray]=None, 
         y: Union[str,np.ndarray]=None, 
-        axs=None,
-        sns_ori: str='h', 
         labels: list=None,
-        sns_rot: Union[int,float]=None,
         palette: Union[list,sns.palettes._ColorPalette]=None,
         cmap: str="inferno",
-        save_as: str=None,
-        title: str=None,
         hue: str=None,
         figsize=(4,8),
         add_labels: bool=False,
-        add_axis: bool=True,
         lim: list=None,
         ticks: list=None,
-        x_label2: str=None,
-        y_label2: str=None,
-        title2: str=None,
         add_points: bool=False,
         points_color: Union[str,tuple]=None,
         points_palette: Union[list,sns.palettes._ColorPalette]=None,
         points_cmap: str="viridis",
         points_legend: bool=False,
         points_alpha: float=1,
-        error: str="sem",
+        error: str="se",
         fancy: bool=False,
         fancy_rounding: float=0.15,
         fancy_pad: float=-0.004,
         fancy_aspect: float=None,
         fancy_denom: int=4,
         bar_legend: bool=False,
+        strip_kw: dict={},
         **kwargs):
-
 
         self.data               = data
         self.x                  = x
         self.y                  = y
         self.hue                = hue
         self.labels             = labels
-        self.sns_ori            = sns_ori
-        self.axs                = axs
-        self.sns_rot            = sns_rot
         self.palette            = palette
         self.cmap               = cmap
         self.add_labels         = add_labels
         self.lim                = lim
         self.ticks              = ticks
         self.bar_legend         = bar_legend
-        self.x_label2           = x_label2
-        self.y_label2           = y_label2
-        self.title2             = title2
         self.add_points         = add_points
         self.points_color       = points_color
         self.points_palette     = points_palette
@@ -1197,38 +1259,37 @@ class LazyBar():
         self.fancy_aspect       = fancy_aspect
         self.fancy_denom        = fancy_denom
         self.figsize            = figsize
+        self.strip_kw           = strip_kw
         self.kw_defaults = Defaults()
 
         # avoid that these kwargs are passed down to matplotlib.bar.. Throws errors
         ignore_kwargs = [
-            "x_label",
-            "y_label",
-            "add_hline",
-            "add_vline",
-            "y_lim",
             "trim_left",
             "trim_bottom",
             "points_hue",
             "points_alpha",
             "bbox_to_anchor",
-            "figsize",
             "fancy",
             "fancy_rounding",
             "fancy_pad",
             "fancy_aspect",
             "fancy_denom",
             "font_name",
-            "x_ticks",
-            "y_ticks",
             "bar_legend",
-            "figsize",
             "labels"
+            "strip_kw"
         ]
 
         kw_sns = {}
         for ii in kwargs:
-            if ii not in list(self.kw_defaults.__dict__.keys())+ignore_kwargs:
+            # filter out non-ls kwargs
+            if ii not in self.kw_defaults.ls_kwargs+ignore_kwargs:
                 kw_sns[ii] = kwargs[ii]
+            else:
+                # overwrite ls-kwargs
+                if ii in self.kw_defaults.ls_kwargs:
+                    if not getattr(self.kw_defaults, ii) == kwargs[ii]:
+                        setattr(self.kw_defaults, ii, kwargs[ii])
 
         self.__dict__.update(**self.kw_defaults.__dict__)
         self.__dict__.update(**kwargs)
@@ -1243,19 +1304,13 @@ class LazyBar():
         else:
             self.plot(**kw_sns)
         
-        if isinstance(save_as, str):
-            plt.savefig(
-                save_as, 
-                facecolor="white", 
-                dpi=300, 
-                bbox_inches='tight')
+        # save
+        self.kw_defaults._save_figure(self.save_as)
 
     def plot(self, **kw_sns):
 
-        if self.axs == None:
-            _, axs = plt.subplots(figsize=self.figsize)
-        else:
-            axs = self.axs
+        # set figure axis
+        self.kw_defaults._set_figure_axs(figsize=self.figsize)   
 
         # construct dataframe from loose inputs
         if isinstance(self.y, (np.ndarray,list)):
@@ -1292,13 +1347,12 @@ class LazyBar():
         else:
             raise ValueError(f"sns_ori must be 'v' or 'h', not '{self.sns_ori}'")
         
-        if "color" in list(kw_sns.keys()):
-            if isinstance(kw_sns["color"], (str,tuple)):
+        if isinstance(self.color, (str,tuple,list)):
+            if isinstance(self.color, (str,tuple)):
                 self.palette = None
                 self.cmap = None
-                self.color = kw_sns["color"]
-            elif isinstance(kw_sns["color"], list):
-                self.palette = sns.color_palette(palette=kw_sns["color"])
+            elif isinstance(self.color, list):
+                self.palette = sns.color_palette(palette=self.color)
                 self.color = None
         else:
             self.color = None
@@ -1308,55 +1362,19 @@ class LazyBar():
             if not isinstance(self.palette, sns.palettes._ColorPalette):
                 # self.palette = sns.color_palette(self.cmap, self.data.shape[0])
                 self.palette = self.cmap
-                
-        # check if we can do sem
-        self.sem = None
-        self.ci = None
-        if isinstance(self.error, str):
-            
-            # check if nr_samples in y > 1
-            if self.data[yy].shape[0] > 1:
-                if self.error in ["sem","std"]:
-                    self.ci = None
-                    if isinstance(self.data, pd.DataFrame):
-
-                        # filter out relevant colums
-                        if isinstance(self.hue, str):
-                            self.data = self.data[[self.x,self.y,self.hue]]
-                        else:
-                            self.data = self.data[[self.x,self.y]]
-
-                        # get relevant error
-                        if self.error == "sem":
-                            if isinstance(self.hue, str):
-                                self.sem = self.data.groupby([self.hue,self.x]).sem()[self.y].values
-                                n_x = len(np.unique(self.data[self.x].values))
-                                n_h = len(np.unique(self.data[self.hue].values))
-                                self.sem = self.sem.reshape(n_h,n_x)
-                            else:
-                                self.sem = self.data.groupby(self.x).sem()[self.y].values
-                        elif self.error == "std":
-                            if isinstance(self.hue, str):
-                                self.sem = self.data.groupby([self.hue,self.x]).std()[self.y].values
-                                n_x = len(np.unique(self.data[self.x].values))
-                                n_h = len(np.unique(self.data[self.hue].values))
-                                self.sem = self.sem.reshape(n_h,n_x)
-                            else:
-                                self.sem = self.data.groupby(self.x).std()[self.y].values
         
         self.ff = sns.barplot(
             data=self.data,
             x=xx, 
             y=yy, 
-            ax=axs, 
+            ax=self.axs, 
             orient=self.sns_ori,
-            ci=self.ci,
+            errorbar=self.error,
             hue=self.hue,
             **dict(
                 kw_sns,
                 color=self.color,
-                palette=self.palette,
-                yerr=self.sem
+                palette=self.palette
             ))
 
         multi_strip = False
@@ -1396,7 +1414,9 @@ class LazyBar():
                                 hue=self.hue,
                                 dodge=False, 
                                 palette=[color] * 2,
-                                ax=self.ff)
+                                ax=self.ff,
+                                **self.strip_kw
+                            )
                 else:
                     multi_strip = True
                     sns.stripplot(
@@ -1408,7 +1428,8 @@ class LazyBar():
                         ax=self.ff,
                         color=self.points_color,
                         palette=self.points_palette,
-                        alpha=self.points_alpha
+                        alpha=self.points_alpha,
+                        **self.strip_kw
                     )                                
             else:
                 sns.stripplot(
@@ -1420,79 +1441,67 @@ class LazyBar():
                     ax=self.ff,
                     color=self.points_color,
                     palette=self.points_palette,
-                    alpha=self.points_alpha
+                    alpha=self.points_alpha,
+                    **self.strip_kw
                 )
 
-        if self.bar_legend:
-            if isinstance(self.hue, str):
+        # sort out legend
+        if self.bar_legend or self.points_legend:
+            
+            self.add_legend = True
 
-                # find categorical handles
-                handles,labels = self.ff.get_legend_handles_labels()
+            # filter out handles that correspond to labels
+            self.legend_kw = {}
+            for key,val in zip(
+                ["fontsize","handletextpad","frameon"],
+                [self.label_size,self.legend_handletext,False]):
+                self.legend_kw[key] = val
 
-                # find indices of categorical handles in list
-                cc = self.data[self.hue].values
-                indexes = np.unique(cc, return_index=True)[1]
-                cond = [cc[index] for index in sorted(indexes)]
-                
-                if multi_strip:
-                    handles = handles[-len(cond):]
-                    labels = labels[-len(cond):]
+            if isinstance(self.bbox_to_anchor, tuple):
+                self.legend_kw["bbox_to_anchor"] = self.bbox_to_anchor
 
-                # filter out handles that correspond to labels
-                if isinstance(self.bbox_to_anchor, tuple):
-                    self.ff.legend(
-                        handles,
-                        labels,
-                        frameon=False, 
-                        fontsize=self.label_size,
-                        bbox_to_anchor=self.bbox_to_anchor,
-                        handletextpad=self.legend_handletext)
-                else:
-                    self.ff.legend(
-                        handles,
-                        labels,
-                        frameon=False, 
-                        fontsize=self.label_size,
-                        handletextpad=self.legend_handletext)
+            # get handles
+            handles,labels = self.ff.get_legend_handles_labels()
+            
+            # bar legend
+            if self.bar_legend:    
+
+                # do some more exotic stuff to disentangle coloring from bars and hue
+                if isinstance(self.hue, str):
+
+                    # find categorical handles
+                    handles,labels = self.ff.get_legend_handles_labels()
+                    # find indices of categorical handles in list
+                    cc = self.data[self.hue].values
+                    indexes = np.unique(cc, return_index=True)[1]
+                    cond = [cc[index] for index in sorted(indexes)]
+                    
+                    if multi_strip:
+                        handles = handles[-len(cond):]
+                        labels = labels[-len(cond):]                       
 
             else:
+                if not self.add_points:
+                    self.add_legend = False
 
-                if isinstance(self.bbox_to_anchor, tuple):
-                    self.ff.legend(
-                        frameon=False,
-                        fontsize=self.label_size,
-                        bbox_to_anchor=self.bbox_to_anchor,
-                        handletextpad=self.legend_handletext)
-                else:
-                    self.ff.legend(
-                        frameon=False,
-                        fontsize=self.label_size,
-                        handletextpad=self.legend_handletext)  
         else:
-            if self.points_legend:
-                if self.add_points:
-                    if isinstance(self.bbox_to_anchor, tuple):
-                        self.ff.legend(
-                            frameon=False,
-                            fontsize=self.label_size,
-                            bbox_to_anchor=self.bbox_to_anchor,
-                            handletextpad=self.legend_handletext)
-                    else:
-                        self.ff.legend(
-                            frameon=False,
-                            fontsize=self.label_size,
-                            handletextpad=self.legend_handletext)                        
+            self.add_legend = False
 
-            else:
-                self.ff.legend([],[], frameon=False)
-        
-        self.ff.tick_params(
-            width=self.tick_width, 
-            length=self.tick_length,
-            labelsize=self.label_size)
+        # fill in legend
+        if self.add_legend:
+            self.ff.legend(
+                handles,
+                labels,
+                **self.legend_kw
+            )
+        else:
+            self.ff.legend([],[], frameon=False)
 
-        for axis in ['top', 'bottom', 'left', 'right']:
-            self.ff.spines[axis].set_linewidth(self.axis_width)
+        # set tick params
+        self.kw_defaults._set_tick_params(self.ff)
+
+        # set spine widths
+        self.kw_defaults._set_spine_width(self.ff)
 
         if not self.add_labels:
             if self.sns_ori == 'h':
@@ -1502,7 +1511,7 @@ class LazyBar():
             else:
                 raise ValueError(f"sns_ori must be 'v' or 'h', not '{self.sns_ori}'")
         elif isinstance(self.add_labels,list):
-            self.ff.set_xlabel(self.add_labels)
+            self.kw_defaults._set_xlabel(self.ff, self.add_labels)
 
         if isinstance(self.sns_rot, (int,float)):
             if self.sns_ori == 'h':
@@ -1512,21 +1521,11 @@ class LazyBar():
             else:
                 raise ValueError(f"sns_ori must be 'v' or 'h', not '{self.sns_ori}'")
 
-        if isinstance(self.lim, list):
-            if self.sns_ori == 'h':
-                self.ff.set_xlim(self.lim)
-            elif self.sns_ori == "v":
-                self.ff.set_ylim(self.lim)
-            else:
-                raise ValueError(f"sns_ori must be 'v' or 'h', not '{self.sns_ori}'")     
-        
-        if isinstance(self.ticks, list):
-            if self.sns_ori == 'h':
-                self.ff.set_xticks(self.ticks)
-            elif self.sns_ori == "v":
-                self.ff.set_yticks(self.ticks)
-            else:
-                raise ValueError(f"sns_ori must be 'v' or 'h', not '{self.sns_ori}'")
+        # set limits depending on orientation
+        self.kw_defaults._set_bar_lim(self.ff, self.lim)
+
+        # set ticks depending on orientation
+        self.kw_defaults._set_bar_ticks(self.ff, self.ticks)
 
         # from: https://stackoverflow.com/a/61569240
         if self.fancy:
@@ -1585,24 +1584,17 @@ class LazyBar():
             for patch in new_patches:
                 self.ff.add_patch(patch)
 
-        if isinstance(self.x, str) and not isinstance(self.x_label2, str):
+        # set xlabel to none of nothing is specified
+        if isinstance(self.x, str) and not isinstance(self.x_label, str):
             self.ff.set(xlabel=None)
 
-        if isinstance(self.y, str) and not isinstance(self.y_label2, str):
+        if isinstance(self.y, str) and not isinstance(self.y_label, str):
             self.ff.set(ylabel=None)            
 
-        if self.x_label2:
-            self.ff.set_xlabel(
-                self.x_label2, 
-                fontname=self.fontname, 
-                fontsize=self.font_size)
+        self.kw_defaults._set_xlabel(self.ff, self.x_label)
+        self.kw_defaults._set_ylabel(self.ff, self.y_label)
 
-        if self.y_label2:
-            self.ff.set_ylabel(
-                self.y_label2, 
-                fontname=self.fontname,
-                fontsize=self.font_size)
-
+        # set these explicitly; remove left axis is orientation = horizontal | remove bottom axis if orientation is vertical
         if hasattr(self, "trim_left"):
             trim_left = self.trim_left
         else:
@@ -1613,19 +1605,20 @@ class LazyBar():
         else:
             trim_bottom = False
 
-        sns.despine(
-            offset=self.sns_offset, 
-            trim=self.sns_trim,
-            left=trim_left, 
-            bottom=trim_bottom, 
-            ax=self.ff)
+        # draw horizontal/vertical lines with ax?line
+        self.kw_defaults._add_line(ax=self.ff)
 
-        if self.title2:
-            self.ff.set_title(
-                self.title2, 
-                fontname=self.fontname, 
-                fontsize=self.font_size,
-                pad=self.pad_title)
+        # set tickers & despine
+        self.kw_defaults._set_y_ticker(self.ff, self.y_dec)
+        self.kw_defaults._set_x_ticker(self.ff, self.x_dec)
+        self.kw_defaults._despine(
+            self.ff,
+            left=trim_left,
+            bottom=trim_bottom
+        )
+
+        # set title
+        self.kw_defaults._set_title(self.ff, self.title)
 
 
 class LazyHist(Defaults):
@@ -1635,36 +1628,45 @@ class LazyHist(Defaults):
 
     Parameters
     ----------
-    data: numpy.ndarray, pandas.DataFrame
-        Input for histogram. Can be either numpy array or pandas dataframe. In case of the latter, `x` and `y` need to be column names to put the correct data on the axes.
-    save_as: str, optional
-        file path to save the image (*.pdf is recommended for quality and compatibility with Inkscape)
-    axs: <AxesSubplot:>, optional
-        Matplotlib axis to store the figure on
-    cmap: str, optional
-        Colormap for imshow; accepts output from :func:`linescanning.utils.make_binary_cm`. Defaults to 'magma'
-    alpha: float, optional
-        Opacity for imshow
-    xkcd: bool, optional
-        Plot in cartoon-format
-    label_size: int, optional
-        Set the font size of the labels (i.e., axes). Default = 10
-    tick_width: float, optional
-        Set the thickness of the ticks. Larger value means thicker tick. Default = 0.5 (thin'ish)
-    tick_length: int, optional
-        Set the length of the ticks. Larger values mean longer ticks. Default = 7 (long'ish)
-    axis_width: float, optional
-        Set the thickness of the spines of the plot. Larger values mean thicker spines. Default = 0.5 (thin'ish)
-    sns_trim: bool, optional
-        If `True`, limit spines to the smallest and largest major tick on each non-despined axis. Maps to `sns.despine(trim=sns_trim)`
-    sns_offset: int, optional
-        Offset in the origin of the plot. Maps to `sns.despine(offset=sns_offset)`. Default is 10
-    line_width: float, optional
-        Width of the outer border of the visual field if `cmap` is not *viridis* or *magma* (these color maps are quite default, and do not require an extra border like :func:`linescanning.utils.make_binary_cm`-objects do). Default is 0.5.
+    data: numpy.ndarray
+        Input data for histogram
+    kde: bool, optional
+        Add kernel density plot to histogram with seaborn (https://seaborn.pydata.org/generated/seaborn.kdeplot.html). Default is False
+    hist: bool, optional
+        Add histogram to plot. Default is True
+    fill: bool, optional
+        Fill the area below the kde plot. Default is False
+    bins: str, optional
+        Set bins for histogram; default = "auto"
+    kde_kwargs: dict, optional
+        Additional arguments passed on the seaborn's `kde_plot`
+    hist_kwargs: dict, optional
+        Additional arguments passed on to matplotlib's `hist` fuction
 
     Returns
     ----------
     matplotlib.pyplot plot
+
+    Example
+    ----------
+    >>> from linescanning import plotting
+    >>> import matplotlib.pyplot as plt
+    >>> fig,axs = plt.subplots(figsize=(7,7))
+    >>> plotting.LazyHist(
+    >>>     y_data,
+    >>>     axs=axs,
+    >>>     kde=True,
+    >>>     hist=True,
+    >>>     fill=False,
+    >>>     y_label2="add y_label",
+    >>>     x_label2="add x_label",
+    >>>     hist_kwargs={"alpha": 0.4},
+    >>>     kde_kwargs={"linewidth": 4}
+    >>> )
+
+    Notes
+    ----------
+    see documentation of :class:`linescanning.plotting.Defaults()` for formatting options
     """
 
     def __init__(
@@ -1672,10 +1674,6 @@ class LazyHist(Defaults):
         data, 
         x=None,
         y=None,
-        save_as=None, 
-        axs=None, 
-        xkcd=False,
-        title=None,
         figsize=(8,8),
         kde=False,
         hist=True,
@@ -1684,27 +1682,20 @@ class LazyHist(Defaults):
         kde_kwargs={},
         hist_kwargs={},
         color="#cccccc",
-        x_ticks: list=None,
-        y_ticks: list=None,
-        x_label2: str=None,
-        y_label2: str=None,
-        title2: str=None,
-        return_obj: bool=False,
-        x_lim: list=None,
-        y_lim: list=None,
         fancy: bool=False,
         fancy_rounding: float=0.15,
         fancy_pad: float=-0.004,
         fancy_aspect: float=None,
         **kwargs):
         
+        super().__init__()
+        self.__dict__.update(kwargs)
+        self.update_rc(self.fontname)
+
+        # read regular arguments
         self.data           = data
         self.x              = x
         self.y              = y
-        self.save_as        = save_as
-        self.axs            = axs
-        self.xkcd           = xkcd
-        self.title          = title
         self.figsize        = figsize
         self.kde            = kde
         self.kde_kwargs     = kde_kwargs
@@ -1712,25 +1703,13 @@ class LazyHist(Defaults):
         self.hist           = hist
         self.bins           = bins
         self.fill           = fill
-        self.x_label2       = x_label2
-        self.y_label2       = y_label2
-        self.title2         = title2
-        self.x_ticks        = x_ticks
-        self.y_ticks        = y_ticks
         self.color          = color
-        self.return_obj     = return_obj
-        self.x_lim          = x_lim
-        self.y_lim          = y_lim
         self.kwargs         = kwargs
         self.fancy          = fancy
         self.fancy_rounding = fancy_rounding
         self.fancy_pad      = fancy_pad
         self.fancy_aspect   = fancy_aspect        
-
-        super().__init__()
-        self.__dict__.update(kwargs)
-        self.__dict__.update(self.kde_kwargs)
-        self.update_rc(self.fontname)
+        # self.__dict__.update(self.kde_kwargs)
 
         if self.xkcd:
             with plt.xkcd():
@@ -1738,22 +1717,19 @@ class LazyHist(Defaults):
         else:
             self.plot()
 
-        # if self.kde:
-        #     self.kde = self.return_kde()
+        if self.kde:
+            self.kde_ = self.return_kde()
 
-        if self.save_as:
-            if isinstance(self.save_as, list):
-                for ii in self.save_as:
-                    plt.savefig(ii, transparent=True, dpi=300, bbox_inches='tight')
-            elif isinstance(self.save_as, str):
-                plt.savefig(self.save_as, transparent=True, dpi=300, bbox_inches='tight')
-            else:
-                raise ValueError(f"Unknown input '{self.save_as}' for 'save_as'")
+        # save
+        self._save_figure(self.save_as)
 
+    def return_kde(self):
+        return self.ff.get_lines()[0].get_data()
+    
     def plot(self):
 
-        if self.axs == None:
-            _,self.axs = plt.subplots(figsize=self.figsize)
+        # set figure axis
+        self._set_figure_axs()   
 
         if self.hist:
             self.vals, self.bins, self.patches = self.axs.hist(
@@ -1793,13 +1769,18 @@ class LazyHist(Defaults):
 
         if self.kde:
             
+            # turn off legend by default
+            if not "legend" in list(self.kde_kwargs):
+                self.kde_kwargs["legend"] = False
+
+            self.kde_color = utils.make_between_cm(self.color,self.color,as_list=True)
             self.ff = sns.kdeplot(
                 data=self.data,
                 x=self.x,
                 y=self.y,
                 ax=self.axs,
                 fill=self.fill,
-                color=self.color,
+                palette=self.kde_color, # can't get color to work?
                 **self.kde_kwargs
             )
 
@@ -1809,51 +1790,30 @@ class LazyHist(Defaults):
         else:
             self.active_axs = self.axs
 
-        # axis labels and titles
-        if self.title:
-            self.active_axs.set_title(
-                self.title, 
-                fontname=self.fontname, 
-                fontsize=self.font_size)                    
+        # set titles
+        self._set_title(self.active_axs, self.title)
         
-        self.active_axs.tick_params(
-            width=self.tick_width, 
-            length=self.tick_length,
-            labelsize=self.label_size)
+        # set tick params/axis width
+        self._set_tick_params(self.active_axs)
+        self._set_spine_width(self.active_axs)
 
-        for axis in ['top', 'bottom', 'left', 'right']:
-            self.active_axs.spines[axis].set_linewidth(self.axis_width)
-
-        # give priority to specify x-lims rather than seaborn's xlim
-        if isinstance(self.x_lim, list):
-            self.active_axs.set_xlim(self.x_lim)
+        # set limits
+        self._set_xlim(self.active_axs, self.x_lim)
+        self._set_ylim(self.active_axs, self.y_lim)
         
-        if isinstance(self.y_lim, list):
-            self.active_axs.set_ylim(self.y_lim)   
+        # set ticks
+        self._set_xticks(self.active_axs, self.x_ticks)
+        self._set_yticks(self.active_axs, self.y_ticks)        
 
-        if isinstance(self.x_ticks, list):
-            self.active_axs.set_xticks(self.x_ticks)
-
-        if isinstance(self.y_ticks, list):
-            self.active_axs.set_yticks(self.y_ticks)            
-
-        if not isinstance(self.x_label2, str):
+        # set axis labels
+        if not isinstance(self.x_label, str):
             self.active_axs.set(xlabel=None)
 
-        if  not isinstance(self.y_label2, str):
+        if  not isinstance(self.y_label, str):
             self.active_axs.set(ylabel=None)            
 
-        if self.x_label2:
-            self.active_axs.set_xlabel(
-                self.x_label2, 
-                fontname=self.fontname, 
-                fontsize=self.font_size)
-
-        if self.y_label2:
-            self.active_axs.set_ylabel(
-                self.y_label2, 
-                fontname=self.fontname,
-                fontsize=self.font_size)
+        self._set_xlabel(self.active_axs, self.x_label)
+        self._set_ylabel(self.active_axs, self.y_label)
 
         if hasattr(self, "trim_left"):
             trim_left = self.trim_left
@@ -1864,33 +1824,22 @@ class LazyHist(Defaults):
             trim_bottom = self.kwargs["trim_bottom"]
         else:
             trim_bottom = False
+        
+        self._despine(
+            self.active_axs,
+            left=trim_left,
+            bottom=trim_bottom
+        )
 
-        sns.despine(
-            offset=self.sns_offset, 
-            trim=self.sns_trim,
-            left=trim_left, 
-            bottom=trim_bottom, 
-            ax=self.active_axs)
-
-        if self.title2:
-            self.active_axs.set_title(
-                self.title2, 
-                fontname=self.fontname, 
-                fontsize=self.font_size,
-                pad=self.pad_title)
-
-    def return_kde(self):
-        return self.ff.get_lines()[0].get_data()
+        # set title
+        self._set_title(self.active_axs, self.title)
 
 def conform_ax_to_obj(
     ax,
     obj=None,
-    title=None,
-    x_label=None,
-    y_label=None,
     **lazy_args):
 
-    """
+    """conform_ax_to_obj
 
     Function to conform any plot to the aesthetics of this plotting module. Can be used when a plot is created with functions other than :class:`linescanning.plotting.LazyPlot`, :class:`linescanning.plotting.LazyCorr`, :class:`linescanning.plotting.LazyHist`, or any other function specified in this file. Assumes `ax` is a `matplotlib.axes._subplots.AxesSubplot` object, and `obj` a `linescanning.plotting.Lazy*`-object.
 
@@ -1900,12 +1849,6 @@ def conform_ax_to_obj(
         input axis that needs to be modified
     obj: linescanning.plotting.Lazy*
         linecanning-specified plotting object containing the information with which `ax` will be conformed
-    title: str
-        overwrite any existing `title` in `ax`
-    x_label: str
-        overwrite any existing `x_label` in `ax`
-    y_label: str
-        overwrite any existing `y_label` in `ax`
     **lazy_args: dict, optional
         other elements defined in :class:`linescanning.plotting.Defaults`, such as `font_size`, `label_size`, or `axis_width`. Overwrites elements in `obj`, if passed
 
@@ -1926,55 +1869,58 @@ def conform_ax_to_obj(
     >>> ax = plotting.conform_ax_to_obj(ax,pl)
     """
     
+    # check if Lazy* object was passed on
     if obj == None:
         obj = Defaults()
 
-    # update with lazy_args
+    # update with lazy_args | do separate
     if len(lazy_args) > 0:
         for key,val in lazy_args.items():
             setattr(obj,key,val)
 
-    if not isinstance(title, str):
-        title = ax.get_title()
+    # try to read some stuff from the passed axis
+    if not isinstance(obj.title, str):
+        obj.title = ax.get_title()
 
-    if not isinstance(y_label, str):
-        y_label = ax.get_ylabel()
+    if not isinstance(obj.y_label, str):
+        obj.y_label = ax.get_ylabel()
 
-    if not isinstance(x_label, str):
-        x_label = ax.get_xlabel()           
+    if not isinstance(obj.x_label, str):
+        obj.x_label = ax.get_xlabel()           
 
-    if isinstance(title, str):
-        ax.set_title(
-        title,
-        fontname=obj.fontname,
-        fontsize=obj.font_size)
-    
-    if isinstance(y_label, str):
-        ax.set_ylabel(
-            y_label,
-            fontname=obj.fontname,
-            fontsize=obj.font_size)
+    # format labels and titles
+    for lbl,func in zip(
+        [obj.x_label, obj.y_label, obj.title],
+        [obj._set_xlabel, obj._set_ylabel, obj._set_title]):
 
-    if isinstance(x_label, str):
-        ax.set_xlabel(
-            x_label,
-            fontname=obj.fontname,
-            fontsize=obj.font_size)        
+        if isinstance(lbl, str):
+            func(ax, lbl)
 
-    ax.tick_params(
-        width=obj.tick_width, 
-        length=obj.tick_length,
-        labelsize=obj.label_size)
+    # format ticks
+    obj._set_spine_width(ax)
+    obj._set_tick_params(ax)
 
-    for axis in ['top', 'bottom', 'left', 'right']:
-        ax.spines[axis].set_linewidth(obj.axis_width)
+    for lbl,func in zip(
+        [obj.x_ticks, obj.y_ticks],
+        [obj._set_xticks, obj._set_yticks]):
 
-    sns.despine(
-        offset=obj.sns_offset, 
-        trim=obj.sns_trim,
-        left=False, 
-        bottom=False, 
-        ax=ax)
+        if isinstance(lbl, list):
+            func(ax, lbl)
+
+    # format limits
+    for lim,func in zip(
+        [obj.x_lim, obj.y_lim], 
+        [obj._set_xlim, obj._set_ylim]):
+        if lim:
+            func(ax, lim)
+
+    # draw horizontal/vertical lines with ax?line
+    obj._add_line(ax=ax)
+
+    # set tickers & despine
+    obj._set_y_ticker(ax, obj.y_dec)
+    obj._set_x_ticker(ax, obj.x_dec)
+    obj._despine(ax)
 
     return ax
 
@@ -2066,19 +2012,13 @@ class LazyColorbar(Defaults):
         text.set_font_properties(font)
 
         # fix ticks
-        self.axs.tick_params(
-            width=self.tick_width, 
-            length=self.tick_length,
-            labelsize=self.label_size)        
+        self._set_tick_params(self.axs)   
 
         # turn off frame
         self.axs.set_frame_on(False)
 
-        if isinstance(self.save_as, str):
-            self.fig.savefig(
-                self.save_as,
-                facecolor="white",
-                bbox_inches="tight")
+        # save
+        self._save_figure(self.save_as)
 
     @staticmethod
     def colormap_ticks(
@@ -2117,13 +2057,25 @@ class LazyColorbar(Defaults):
         new_manager.canvas.figure = self.fig
         self.fig.set_canvas(new_manager.canvas)
 
-def fig_annot(fig, y=1.01, x0_corr=0, x_corr=-0.09, fontsize=28):
+def fig_annot(
+    fig, 
+    axs=None, 
+    y=1.01, 
+    x0_corr=0, 
+    x_corr=-0.09, 
+    fontsize=28,
+    **kwargs):
 
     # get figure letters
     alphabet = list(string.ascii_uppercase)
 
+    if isinstance(axs, list):
+        ax_list = axs
+    else:
+        ax_list = fig.axes
+        
     # make annotations
-    for ix,ax in enumerate(fig.axes):
+    for ix,ax in enumerate(ax_list):
         bbox = ax.get_window_extent().transformed(fig.dpi_scale_trans.inverted())
         if ix == 0:
             move_frac = x0_corr/bbox.width
@@ -2132,8 +2084,16 @@ def fig_annot(fig, y=1.01, x0_corr=0, x_corr=-0.09, fontsize=28):
 
         pos = move_frac
 
+        if isinstance(y, list):
+            if len(y) != len(ax_list):
+                raise ValueError(f"List with y-values must match list with axes. y contains {len(y)} elements, while {len(ax_list)} axes are specified")
+            y_pos = y[ix]
+        else:
+            y_pos = y
+
         ax.annotate(
             alphabet[ix], 
-            (pos,y), 
+            (pos,y_pos), 
             fontsize=fontsize, 
-            xycoords="axes fraction")
+            xycoords="axes fraction",
+            **kwargs)
