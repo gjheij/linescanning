@@ -1238,7 +1238,7 @@ class LazyBar():
         palette: Union[list,sns.palettes._ColorPalette]=None,
         cmap: str="inferno",
         hue: str=None,
-        figsize=(4,8),
+        figsize=(4,7),
         add_labels: bool=False,
         lim: list=None,
         ticks: list=None,
@@ -1704,7 +1704,7 @@ class LazyHist(Defaults):
         data, 
         x=None,
         y=None,
-        figsize=(8,8),
+        figsize=(7,7),
         kde=False,
         hist=True,
         bins="auto",
@@ -1756,6 +1756,13 @@ class LazyHist(Defaults):
     def return_kde(self):
         return self.ff.get_lines()[0].get_data()
     
+    def force_kde_color(self):
+        if "color" in list(self.kde_kwargs.keys()):
+            color = self.kde_kwargs["color"]
+        else:
+            color = self.color
+        self.ff.get_lines()[0].set_color(color)
+
     def plot(self):
 
         # set figure axis
@@ -1809,9 +1816,11 @@ class LazyHist(Defaults):
                 y=self.y,
                 ax=self.axs,
                 fill=self.fill,
-                color=self.color,
                 **self.kde_kwargs
             )
+
+            # the color argument is very unstable for some reason..
+            self.force_kde_color()
 
         # there's no self.ff if kde=False
         if hasattr(self, "ff"):
