@@ -2396,7 +2396,7 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
 
                 fbase = self.subject
                 if self.model != None:
-                    fbase += f'_{self.model}'
+                    fbase += f'_model-{self.model}'
 
                 self.prf_bestvertex = opj(self.cx_dir, self.subject, f'{fbase}_desc-best_vertices.csv')
 
@@ -2557,4 +2557,32 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
         if not hasattr(self, "pyc"):
             self.open_pycortex(**kwargs)
 
-        self.pyc.save_all(*args, **kwargs)          
+        self.pyc.save_all(*args, **kwargs)     
+
+def smooth_scalars(
+    surf=None, 
+    data=None, 
+    subject=None,
+    **kwargs):
+
+    if not isinstance(surf, SurfaceCalc):
+        surf = SurfaceCalc(subject=subject)
+
+    lh_idc = surf.lh_surf_data[0].shape[0]
+    data_sm = []
+    for hemi,surface in zip(
+        ["lh","rh"],
+        [surf.lh_surf,surf.rh_surf]):
+
+        # get hemi-specific data
+        if hemi == "lh":
+            data_h = data[:lh_idc]
+        else:
+            data_h = data[lh_idc:]
+
+        sm = surface.smooth(data_h, **kwargs)
+        data_sm.append(sm)
+    
+    data_sm = np.concatenate(data_sm)
+    
+    return data_sm             
