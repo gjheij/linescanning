@@ -7,7 +7,8 @@ import numpy as np
 import os
 from pathlib import Path
 import pandas as pd
-from scipy import io, stats
+import pickle
+from scipy import io
 from time import strftime
 from uuid import uuid4
 import warnings
@@ -64,7 +65,8 @@ class SetAttributes():
         self.exp_attributes = [
             "df_onsets",
             "df_rts",
-            "df_accuracy"
+            "df_accuracy",
+            "df_responses",
         ]        
 
         # store ParseFuncFile attributes
@@ -819,6 +821,9 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
         invoked_from_func=False,
         button_duration=1,
         response_window=3,
+        merge=True,
+        resp_as_cov=False,
+        key_press=["b"],
         **kwargs):
 
         self.tsv_file                       = tsv_file
@@ -840,6 +845,9 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
         self.invoked_from_func              = invoked_from_func
         self.button_duration                = button_duration
         self.response_window                = response_window
+        self.merge                          = merge
+        self.resp_as_cov                    = resp_as_cov
+        self.key_press                      = key_press
         
         # filter kwargs
         tmp_kwargs = filter_kwargs(
@@ -939,6 +947,12 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
                 except:
                     pass
 
+                # check if we got responses (only if button == False)
+                try:
+                    self.df_responses.append(self.get_responses(index=False))
+                except:
+                    pass                
+
             # concatemate df
             self.df_onsets = pd.concat(self.df_onsets).set_index(self.onset_index)
 
@@ -954,9 +968,26 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
             except:
                 pass
 
+            # accuracy
+            try:
+                self.df_responses = pd.concat(self.df_responses).set_index(self.onset_index)
+            except:
+                pass            
+
         # get events per run
         self.events_per_run = self.events_per_run()
 
+        # check if we should merge responses with onsets
+        if self.merge:
+            if len(self.df_responses) > 0:
+                
+                self.merged = pd.concat([self.df_onsets,self.df_responses]).sort_values(["subject","run","onset"])
+                
+                # keep pure onsets too
+                self.df_onsets_pure = self.df_onsets.copy()
+
+                # set merged to new df_onsets
+                self.df_onsets = self.merged.copy()
 
     def events_per_run(self):
         n_runs = np.unique(self.df_onsets.reset_index()['run'].values)
@@ -1000,35 +1031,53 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
             self.durations = self.trimmed['duration'].values[...,np.newaxis]
 
         self.condition = self.trimmed['condition'].values[..., np.newaxis]
-        if self.verbose:
-            print(f" 1st 't' @{round(self.start_time,2)}s")
+        utils.verbose(f" 1st 't' @{round(self.start_time,2)}s", self.verbose)
         
-        # add button presses
-        if self.button:
+        # get dataframe with responses
+        self.response_df = self.data.loc[(self.data['event_type'] == "response") & (self.data['response'] != 'space')]
 
-            # get dataframe with responses
-            self.response_df = self.data.loc[(self.data['event_type'] == "response") & (self.data['response'] != 'space')]
+        # filter out button responses before first trigger
+        self.response_df = utils.select_from_df(self.response_df, expression=f"onset > {self.start_time}")
 
-            # filter out button responses before first trigger
-            self.response_df = utils.select_from_df(self.response_df, expression=f"onset > {self.start_time}")
-            
+        self.nr_resp = self.response_df.shape[0]
+        utils.verbose(f" Extracting {self.key_press} button(s)", self.verbose)
+
+        # loop through them
+        self.button_df = []
+        
+        self.single_button = True
+        if len(self.key_press) > 1:
+            self.single_button = False
+
+        for button in self.key_press:
+
             # get the onset times
             self.response_times = self.response_df['onset'].values[...,np.newaxis]
 
-            # stack onset times
-            self.onset_times = np.vstack([self.onset_times, self.response_times])
+            # store responses in separate dataframe
+            self.response_times -= (self.start_time + delete_time)
 
-            # make a condition column
-            self.response_condition = self.response_df['event_type'].values[...,np.newaxis]
+            # decide name
+            if self.single_button:
+                ev_name = "response"
+            else:
+                ev_name = button
 
-            # stack it onto existing condition array
-            self.condition = np.vstack([self.condition, self.response_condition])
+            # make into dataframe
+            tmp = pd.DataFrame(self.response_times, columns=["onset"])
+            tmp["event_type"] = ev_name
 
-            # set response duration to 1
-            if not skip_duration:
-                self.resp_durations = np.full_like(self.response_times, self.button_duration)
-                self.durations = np.concatenate([self.durations, self.resp_durations], axis=0)
-        
+            self.tmp_df = self.index_onset(
+                tmp, 
+                task=task,
+                subject=self.sub, 
+                run=run)
+
+            self.button_df.append(self.tmp_df)
+
+        if len(self.button_df) > 0:
+            self.button_df = pd.concat(self.button_df)
+
         # check if we should include other events
         if isinstance(self.add_events, str):
             self.add_events = [self.add_events]
@@ -1068,7 +1117,7 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
         self.onset = self.onset[self.onset[:,0].argsort()]
 
         # correct for start time of experiment and deleted time due to removal of inital volumes
-        self.onset[:, 0] = self.onset[:, 0] - (self.start_time + delete_time)
+        self.onset[:, 0] = self.onset[:, 0]-(self.start_time + delete_time)
 
         if self.verbose:
             print(f" Cutting {round(self.start_time + delete_time,2)}s from onsets")
@@ -1077,23 +1126,15 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
                 print(f" Avg duration = {round(self.durations.mean(),2)}s")
 
         # make dataframe
-        if skip_duration:
-            columns = ['onset', 'event_type']
-        else:
-            columns = ['onset', 'event_type', 'duration']
-            
-        self.onset_df = self.index_onset(
-            self.onset, 
-            task=task,
-            columns=columns, 
-            subject=self.sub, 
-            run=run)
+        columns = ['onset', 'event_type']
+        if not skip_duration:
+            columns += ['duration']
 
         # check if we should do reaction times
         if self.RTs:
             if not isinstance(self.RT_relative_to, str):
                 raise ValueError(f"Need a reference column to calculate reaction times (RTs), not '{self.RT_relative_to}'")
-            
+
             # get response dataframe
             self.response_df = self.data.loc[(self.data['event_type'] == "response") & (self.data['response'] != 'space')]
             
@@ -1110,6 +1151,7 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
             self.unique_targets = np.unique(self.target_df["trial_nr"].values)
             self.n_targets = self.unique_targets.shape[0]
             self.n_responses = len(np.unique(self.response_df["trial_nr"].values))
+            
             for trial in self.unique_targets:
 
                 # get target onset
@@ -1159,7 +1201,11 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
             #   d-prime=0 is considered as pure guessing.
             #   d-prime=1 is considered as good measure of signal sensitivity/detectability.
             #   d-prime=2 is considered as awesome.
-            self.sdt_ = utils.SDT(self.n_hits,self.n_miss,self.n_fa,self.n_cr)
+            self.sdt_ = utils.SDT(
+                self.n_hits,
+                self.n_miss,
+                self.n_fa,
+                self.n_cr)
 
             if hasattr(self, 'sdt_'):
                 utils.verbose(f" Hits:\t{round(self.sdt_['hit'],2)}\t({self.n_hits}/{self.n_targets})", self.verbose)
@@ -1169,7 +1215,104 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
             
             # parse into dataframe
             self.accuracy_df = self.index_accuracy(self.sdt_, subject=self.sub, run=run)
-            self.rts_df = self.index_rts(self.rts, columns=["RTs"], subject=self.sub, run=run)
+            self.rts_df = self.array_to_df(
+                self.rts, 
+                columns=["RTs"], 
+                subject=self.sub, 
+                run=run,
+                key="RTs")
+
+            # keep track of response during trial
+            self.response_during_trial = np.full((self.n_trials),-1)
+            self.cov_times = []
+            for stim in range(self.n_trials):
+
+                # get onset info
+                self.trial_onset = self.trimmed.iloc[stim]
+
+                # set default response time to stimulus onset
+                append_time = self.trial_onset.onset
+
+                # look if there's an actual response to stimulus
+                trial = self.trial_onset.trial_nr
+                if trial in self.unique_targets:
+                    trial_targ = self.target_df.loc[(self.target_df["trial_nr"] == trial)]
+                    targ_onset = trial_targ[self.RT_relative_to].values[0]
+
+                    # check if there's a response within window regardless of whether response occured in trial ID
+                    resp = self.response_df.query(f"{targ_onset} < onset < {targ_onset+self.response_window}")
+
+                    # response during trial
+                    if len(resp) > 0:
+                        resp_time = resp["onset"].values[0]
+                        self.response_during_trial[stim] = 1        
+                        append_time = resp_time
+
+                self.cov_times.append(append_time)
+
+            # for stimuli without responses, we'll create a dummy onset time consisting of the response time of the closest button press DURING stimulus relative to the onset of stimulus
+            for stim in range(self.n_trials):
+                
+                # we have -1 for stimuli without response time
+                if self.response_during_trial[stim] < 0:
+                    
+                    # find closest trial with button press
+                    closest_trial = utils.find_nearest(self.response_during_trial[stim:], 1)[0]
+                    closest_trial += stim
+
+                    # get reaction time of this stim
+                    trial_onset = self.trimmed.iloc[closest_trial].onset
+                    resp_onset = self.cov_times[closest_trial]
+                    rt = resp_onset-trial_onset
+
+                    # deal with button presses BEFORE stimulus onset
+                    if rt == 0:
+                        # invert array for last element
+                        closest_trial = utils.find_nearest(self.response_during_trial[::-1][-stim:], 1)[0]
+                        closest_trial = (stim-closest_trial)-1
+
+                        # get reaction time of this stim
+                        trial_onset = self.trimmed.iloc[closest_trial].onset
+                        resp_onset = self.cov_times[closest_trial]
+                        rt = resp_onset-trial_onset
+
+                    if rt == 0:
+                        raise ValueError("RT=0, something odd's going on here")
+
+                    # print(f" stim #{stim}\tClosest trial WITH response = {closest_trial}: {round(trial_onset,2)}\t| BPR relative to stim onset = {round(rt,2)}")
+
+                    # shift mock response onset with this RT
+                    # print(f"Adding {rt} to trial #{stim+1}")
+                    self.cov_times[stim] += rt
+
+            # convert list to array and correct for start time and deleted volumes
+            self.cov_times = np.array(self.cov_times)
+            self.cov_times -= (self.start_time + delete_time)
+
+            # create dataframe
+            self.cov_df = pd.DataFrame(
+                {
+                    "onset": self.cov_times,
+                    "cov": self.response_during_trial
+                }
+            )
+
+            for key,val in zip(
+                ["event_type","subject","run"],
+                ["response",self.sub,run]):
+                self.cov_df[key] = val
+
+        # inset onsets
+        self.onset_df = self.index_onset(
+            self.onset, 
+            task=task,
+            columns=columns, 
+            subject=self.sub, 
+            run=run)
+
+        # add response covariate column  THIS IS A SHORTCUT FOR NOW!
+        if self.resp_as_cov:
+            self.onset_df["cov"] = 1 #self.response_during_trial
 
     def index_onset(
         self,
@@ -1180,8 +1323,10 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
         task=None,
         set_index=False):
         
-        if columns == None:
+        if isinstance(array,dict):
             df = pd.DataFrame(array, index=[0])
+        elif isinstance(array, pd.DataFrame):
+            df = array.copy()
         else:
             df = pd.DataFrame(array, columns=columns)
             
@@ -1208,16 +1353,22 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
             return df        
 
     @staticmethod
-    def index_rts(array, columns=None, subject=1, run=1, set_index=False):
+    def array_to_df(
+        array, 
+        columns=None, 
+        subject=1,
+        key="RTs", 
+        run=1, 
+        set_index=False):
         
-        if columns == None:
+        if isinstance(array, dict):
             df = pd.DataFrame(array)
         else:
             df = pd.DataFrame(array, columns=columns)
             
-        df['subject']   = subject
-        df['run']       = run
-        df['RTs']       = df['RTs'].astype(float)
+        df['subject'] = subject
+        df['run'] = run
+        df[key] = df[key].astype(float)
 
         if set_index:
             return df.set_index(['subject', 'run'])
@@ -1264,13 +1415,27 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
         else:
             return self.accuracy_df             
 
+    def get_responses(self, index=False):
+        """Return the indexed DataFrame containing reaction times"""
+
+        if self.resp_as_cov:
+            ret_df = self.cov_df.copy()
+        else:
+            ret_df = self.button_df.copy()
+
+        if index:
+            return ret_df.set_index(['subject', 'run'])
+        else:
+            return ret_df  
+
     def onsets_to_fsl(
         self, 
         fmt='3-column', 
         amplitude=1, 
         duration=None,
         output_dir=None,
-        output_base=None):
+        output_base=None,
+        from_event=True):
 
         """onsets_to_fsl
 
@@ -1288,6 +1453,8 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
             path to output name for text file(s)
         output_base: str
             basename for output file(s); should include full path. '<_task-{task}>_run-{run}_ev-{ev}.txt' will be appended
+        from_event: bool
+            take the event name as specified in the onset dataframe. By default, this is true. In some cases where your events consists of float numbers, it's sometimes easier to number them consecutively. In that case, specify `from_event=False`
 
         Returns
         ----------
@@ -1328,6 +1495,12 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
                         for ix, ev in enumerate(events_per_run):
 
                             onsets_per_event = utils.select_from_df(onsets_per_run, expression=f"event_type = {events_per_run[ix]}")
+                            
+                            if from_event:
+                                ev_tag = f"ev-{ev}"
+                            else:
+                                ev_tag = f"ev-{ix+1}"
+
                             if output_base == None:
                                 if not isinstance(output_dir, str):
                                     if isinstance(self.tsv_file, list):
@@ -1343,9 +1516,10 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
                                 if not os.path.exists(outdir):
                                     os.makedirs(outdir, exist_ok=True)
 
-                                fname = opj(outdir, f"task-{task}_run-{run}_ev-{ev}.txt")
+
+                                fname = opj(outdir, f"task-{task}_run-{run}_{ev_tag}.txt")
                             else:
-                                fname = f"{output_base}_task-{task}_run-{run}_ev-{ev}.txt"
+                                fname = f"{output_base}_task-{task}_run-{run}_{ev_tag}.txt"
 
                             # fetch the onsets
                             event_onsets = onsets_per_event['onset'].values[..., np.newaxis]
@@ -1377,6 +1551,12 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
                     for ix, ev in enumerate(events_per_run):
 
                         onsets_per_event = utils.select_from_df(onsets_per_run, expression=f"event_type = {events_per_run[ix]}")
+
+                        if from_event:
+                            ev_tag = f"ev-{ev}"
+                        else:
+                            ev_tag = f"ev-{ix+1}"
+                        
                         if output_base == None:
                             if not isinstance(output_dir, str):
                                 if isinstance(self.tsv_file, list):
@@ -1388,9 +1568,9 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
                             else:
                                 outdir = output_dir
 
-                            fname = opj(outdir, f"ev-{ev}_run-{run}.txt")
+                            fname = opj(outdir, f"{ev_tag}_run-{run}.txt")
                         else:
-                            fname = f"{output_base}_run-{run}_ev-{ev}.txt"
+                            fname = f"{output_base}_run-{run}_{ev_tag}.txt"
 
                         # fetch the onsets
                         event_onsets = onsets_per_event['onset'].values[..., np.newaxis]
@@ -2113,6 +2293,7 @@ Functional data preprocessing
         # BASIC DATA LOADING
 
         # Load in datasets with tag "wcsmtSNR"
+        self.stop_process = False
         if isinstance(func_file, str):
             if func_file.endswith("mat"):
 
@@ -2163,98 +2344,59 @@ Functional data preprocessing
                 else:
                     self.ts_magnitude = fdata.copy().T
 
+            elif func_file.endswith("pkl"):
+                with open(func_file, 'rb') as handle:
+                    df = pickle.load(handle)
+                    setattr(self, f"data_{self.standardization}_df", df)
+                    setattr(self, f"data_raw_df", df)
+
+                self.stop_process = True
         elif isinstance(func_file, np.ndarray):
             self.ts_magnitude = func_file.copy()
             
         else:
             raise NotImplementedError(f"Input type {type(func_file)} not supported")
 
-        # check baseline
-        if not self.psc_nilearn:
-            if self.baseline_units == "seconds" or self.baseline_units == "s" or self.baseline_units == "sec":
-                baseline_vols_old = int(np.round(baseline*self.fs, 0))
-                if self.verbose:
-                    print(
-                        f" Baseline is {baseline} seconds, or {baseline_vols_old} TRs")
+        if not self.stop_process:
+            # check baseline
+            if not self.psc_nilearn:
+                if self.baseline_units == "seconds" or self.baseline_units == "s" or self.baseline_units == "sec":
+                    baseline_vols_old = int(np.round(baseline*self.fs, 0))
+                    if self.verbose:
+                        print(
+                            f" Baseline is {baseline} seconds, or {baseline_vols_old} TRs")
+                else:
+                    baseline_vols_old = baseline
+                    if self.verbose:
+                        print(f" Baseline is {baseline} TRs")
+
+                # correct for deleted samples
+                baseline_vols = baseline_vols_old-self.deleted_first_timepoints
+                txt = f" (also cut from baseline (was {baseline_vols_old}, now {baseline_vols} TRs)"
             else:
-                baseline_vols_old = baseline
-                if self.verbose:
-                    print(f" Baseline is {baseline} TRs")
+                txt = ""
+                baseline_vols = 0
 
-            # correct for deleted samples
-            baseline_vols = baseline_vols_old-self.deleted_first_timepoints
-            txt = f" (also cut from baseline (was {baseline_vols_old}, now {baseline_vols} TRs)"
-        else:
-            txt = ""
-            baseline_vols = 0
-
-        # trim beginning and end
-        if deleted_last_timepoints != 0:
-            self.desc_trim = f""" {deleted_first_timepoints} were removed from the beginning of the functional data."""
-            self.ts_corrected = self.ts_magnitude[:,deleted_first_timepoints:-deleted_last_timepoints]
-        else:
-            self.desc_trim = ""
-            self.ts_corrected = self.ts_magnitude[:,deleted_first_timepoints:]
-
-        if self.verbose:
-            print(f" Cutting {deleted_first_timepoints} volumes from beginning{txt} | {deleted_last_timepoints} volumes from end")
-
-        self.vox_cols = [f'vox {x}' for x in range(self.ts_corrected.shape[0])]
-
-        #----------------------------------------------------------------------------------------------------------------------------------------------------
-        # STANDARDIZATION OF UNFILTERED DATA & CREATE DATAFRAMES
-
-        # dataframe of raw, unfiltered data
-        self.data_raw = self.ts_corrected.copy()
-        self.data_raw_df = self.index_func(
-            self.data_raw, 
-            columns=self.vox_cols, 
-            subject=self.sub, 
-            task=task,
-            run=run, 
-            TR=self.TR,
-            set_index=True)
-
-        # dataframe of unfiltered PSC-data
-        self.data_psc = utils.percent_change(
-            self.data_raw, 
-            1, 
-            baseline=baseline_vols,
-            nilearn=self.psc_nilearn)
-
-        self.data_psc_df = self.index_func(
-            self.data_psc,
-            columns=self.vox_cols, 
-            subject=self.sub,
-            task=task,
-            run=run, 
-            TR=self.TR, 
-            set_index=True)
-
-        # dataframe of unfiltered z-scored data
-        self.data_zscore = _standardize(self.data_raw.T, standardize='zscore').T
-        self.data_zscore_df = self.index_func(
-            self.data_zscore,
-            columns=self.vox_cols, 
-            subject=self.sub, 
-            task=task,
-            run=run, 
-            TR=self.TR,
-            set_index=True)
-
-        #----------------------------------------------------------------------------------------------------------------------------------------------------
-        # HIGH PASS FILTER
-        self.clean_tag = None
-        if self.filter_strategy != "raw":
-
-            self.desc_filt = f"""DCT-high pass filter [removes low frequencies <{self.lb} Hz] was applied. """
+            # trim beginning and end
+            if deleted_last_timepoints != 0:
+                self.desc_trim = f""" {deleted_first_timepoints} were removed from the beginning of the functional data."""
+                self.ts_corrected = self.ts_magnitude[:,deleted_first_timepoints:-deleted_last_timepoints]
+            else:
+                self.desc_trim = ""
+                self.ts_corrected = self.ts_magnitude[:,deleted_first_timepoints:]
 
             if self.verbose:
-                print(f" DCT-high pass filter [removes low frequencies <{self.lb} Hz] to correct low-frequency drifts.")
+                print(f" Cutting {deleted_first_timepoints} volumes from beginning{txt} | {deleted_last_timepoints} volumes from end")
 
-            self.hp_raw, self._cosine_drift = preproc.highpass_dct(self.data_raw, self.lb, TR=self.TR)
-            self.hp_raw_df = self.index_func(
-                self.hp_raw,
+            self.vox_cols = [f'vox {x}' for x in range(self.ts_corrected.shape[0])]
+
+            #----------------------------------------------------------------------------------------------------------------------------------------------------
+            # STANDARDIZATION OF UNFILTERED DATA & CREATE DATAFRAMES
+
+            # dataframe of raw, unfiltered data
+            self.data_raw = self.ts_corrected.copy()
+            self.data_raw_df = self.index_func(
+                self.data_raw, 
                 columns=self.vox_cols, 
                 subject=self.sub, 
                 task=task,
@@ -2262,103 +2404,46 @@ Functional data preprocessing
                 TR=self.TR,
                 set_index=True)
 
-            # dataframe of high-passed PSC-data (set NaN to 0)
-            self.hp_psc = np.nan_to_num(utils.percent_change(
-                self.hp_raw,
+            # dataframe of unfiltered PSC-data
+            self.data_psc = utils.percent_change(
+                self.data_raw, 
                 1, 
                 baseline=baseline_vols,
-                nilearn=self.psc_nilearn))
-                
-            self.hp_psc_df = self.index_func(
-                self.hp_psc,
+                nilearn=self.psc_nilearn)
+
+            self.data_psc_df = self.index_func(
+                self.data_psc,
                 columns=self.vox_cols, 
                 subject=self.sub,
-                run=run, 
                 task=task,
+                run=run, 
                 TR=self.TR, 
                 set_index=True)
 
-            # dataframe of high-passed z-scored data
-            self.hp_zscore = _standardize(self.hp_raw.T, standardize='zscore').T
-            self.hp_zscore_df = self.index_func(
-                self.hp_zscore,
+            # dataframe of unfiltered z-scored data
+            self.data_zscore = _standardize(self.data_raw.T, standardize='zscore').T
+            self.data_zscore_df = self.index_func(
+                self.data_zscore,
                 columns=self.vox_cols, 
                 subject=self.sub, 
+                task=task,
                 run=run, 
                 TR=self.TR,
-                task=task,
                 set_index=True)
 
-            # save SD and Mean so we can go from zscore back to original
-            self.zscore_SD = self.hp_raw.std(axis=-1, keepdims=True)
-            self.zscore_M = self.hp_raw.mean(axis=-1, keepdims=True)
-
-            # don't save figures if report=False
-            if self.report:
-                save_as = self.lsprep_figures
-            else:
-                save_as = None
-
             #----------------------------------------------------------------------------------------------------------------------------------------------------
-            # ACOMPCOR AFTER HIGH-PASS FILTERING
-            if acompcor:
+            # HIGH PASS FILTER
+            self.clean_tag = None
+            if self.filter_strategy != "raw":
 
-                self.desc_filt += f"""Data was then z-scored and fed into a custom implementation of `aCompCor` 
-(https://github.com/gjheij/linescanning/blob/main/linescanning/preproc.py), which is tailored for line-scanning data: """
+                self.desc_filt = f"""DCT-high pass filter [removes low frequencies <{self.lb} Hz] was applied. """
 
-                # do some checks beforehand
-                if reference_slice != None:
-                    if self.use_bids:
-                        bids_comps = utils.split_bids_components(reference_slice)
-                        setattr(self, "target_session", bids_comps['ses'])
-                        setattr(self, "subject", f"sub-{bids_comps['sub']}")
-                    else:
-                        assert hasattr(self, "target_session"), f"Please specify a target_session with 'target_session=<int>'"
-                        assert hasattr(self, "subject"), f"Please specify a subject with 'target_session=<int>'"
+                if self.verbose:
+                    print(f" DCT-high pass filter [removes low frequencies <{self.lb} Hz] to correct low-frequency drifts.")
 
-                # check the transformations inputs
-                assert hasattr(self, "ses1_2_ls"), f"Please specify a transformation matrix mapping FreeSurfer to ses-{self.target_session}"
-
-                if hasattr(self, "run_2_run"):
-                    if isinstance(self.run_2_run, list):
-                        run_trafo =  utils.get_file_from_substring(f"to-run{self.run}", self.run_2_run)
-                        self.trafos = [self.ses1_2_ls, run_trafo]
-                    else:
-                        if self.run_2_run != None:
-                            self.trafos = [self.ses1_2_ls, self.run_2_run]
-                        else:
-                            self.trafos = [self.ses1_2_ls]
-                else:
-                    self.trafos = self.ses1_2_ls            
-
-                # run acompcor
-                self.run_acompcor(
-                    run=run,
-                    task=task,
-                    ses=self.target_session,
-                    save_as=save_as,
-                    shift=shift,
-                    **dict(
-                        kwargs,
-                        ref_slice=reference_slice))
-                
-                self.clean_tag = "acompcor"
-                self.clean_data = self.acomp.acomp_data
-
-                if self.ica:
-                    raise TypeError("ICA cannot be used in conjunction with aCompCor. Please set 'ica=False'")
-
-            if self.ica:
-                if acompcor:
-                    raise TypeError("aCompCor cannot be used in conjunction with ICA. Please set 'acompcor=False'")
-
-                self.run_ica(task=task, save_as=save_as)
-                self.clean_tag = "ica"
-                self.clean_data = self.ica_obj.ica_data
-
-            if hasattr(self, "clean_data"):
-                self.tmp_df = self.index_func(
-                    self.clean_data,
+                self.hp_raw, self._cosine_drift = preproc.highpass_dct(self.data_raw, self.lb, TR=self.TR)
+                self.hp_raw_df = self.index_func(
+                    self.hp_raw,
                     columns=self.vox_cols, 
                     subject=self.sub, 
                     task=task,
@@ -2366,100 +2451,204 @@ Functional data preprocessing
                     TR=self.TR,
                     set_index=True)
 
-                setattr(self, f"hp_{self.clean_tag}_df", self.tmp_df)
-                
-                # multiply by SD and add mean
-                self.tmp_raw = (self.clean_data * self.zscore_SD) + self.zscore_M
-                setattr(self, f"hp_{self.clean_tag}_raw", self.tmp_raw)
-
-                self.tmp_raw_df = self.index_func(
-                    self.tmp_raw,
-                    columns=self.vox_cols, 
-                    subject=self.sub, 
-                    task=task,
-                    run=run, 
-                    TR=self.TR,
-                    set_index=True)
-
-                setattr(self, f"hp_{self.clean_tag}_raw_df", self.tmp_raw)
-
-                # make percent signal
-                self.hp_tmp_psc = np.nan_to_num(utils.percent_change(
-                    self.tmp_raw,
+                # dataframe of high-passed PSC-data (set NaN to 0)
+                self.hp_psc = np.nan_to_num(utils.percent_change(
+                    self.hp_raw,
                     1, 
                     baseline=baseline_vols,
                     nilearn=self.psc_nilearn))
-
-                setattr(self, f"hp_{self.clean_tag}_psc", self.hp_tmp_psc)
-
-                self.hp_tmp_psc_df = self.index_func(
-                    self.hp_tmp_psc,
+                    
+                self.hp_psc_df = self.index_func(
+                    self.hp_psc,
                     columns=self.vox_cols, 
-                    subject=self.sub, 
-                    task=task,
-                    run=run, 
-                    TR=self.TR,
-                    set_index=True)            
-                
-                setattr(self, f"hp_{self.clean_tag}_psc_df", self.hp_tmp_psc_df)
-
-                if self.clean_tag == "acompcor":
-                    self.desc_filt += self.acomp.__desc__
-                elif self.clean_tag == "ica":
-                    self.desc_filt += self.ica_obj.__desc__
-
-                self.desc_filt += f"""
-Output from {self.clean_tag} was then converted back to un-zscored data by multipying by the standard deviation and adding the mean back. """
-
-            #----------------------------------------------------------------------------------------------------------------------------------------------------
-            # LOW PASS FILTER
-            if "lp" in self.filter_strategy:
-
-                self.desc_filt += f"""
-The data was then low-pass filtered using a Savitsky-Golay filter [removes high frequences] (window={self.window_size}, order={self.poly_order}). """
-
-                if acompcor or self.ica:
-                    info = f" Using {self.clean_tag}-data for low-pass filtering"
-                    data_for_filtering = self.get_data(index=True, filter_strategy="hp", dtype=self.standardization, acompcor=acompcor, ica=self.ica).T.values
-                    out_attr = f"lp_{self.clean_tag}_{self.standardization}"
-                elif hasattr(self, f"hp_{self.standardization}"):
-                    info = " Using high-pass filtered data for low-pass filtering"
-                    data_for_filtering = getattr(self, f"hp_{self.standardization}")
-                    out_attr = f"lp_{self.standardization}"
-                else:
-                    info = " Using unfiltered/un-aCompCor'ed data for low-pass filtering"
-                    data_for_filtering = getattr(self, f"data_{self.standardization}")
-                    out_attr = f"lp_data_{self.standardization}"
-
-                utils.verbose(info, self.verbose)
-                utils.verbose(f" Savitsky-Golay low-pass filter [removes high frequences] (window={self.window_size}, order={self.poly_order})", self.verbose)
-
-                tmp_filtered = preproc.lowpass_savgol(data_for_filtering, window_length=self.window_size, polyorder=self.poly_order)
-
-                tmp_filtered_df = self.index_func(
-                    tmp_filtered,
-                    columns=self.vox_cols,
                     subject=self.sub,
+                    run=run, 
                     task=task,
-                    run=run,
-                    TR=self.TR,
+                    TR=self.TR, 
                     set_index=True)
 
-                setattr(self, out_attr, tmp_filtered.copy())
-                setattr(self, f'{out_attr}_df', tmp_filtered_df.copy())
+                # dataframe of high-passed z-scored data
+                self.hp_zscore = _standardize(self.hp_raw.T, standardize='zscore').T
+                self.hp_zscore_df = self.index_func(
+                    self.hp_zscore,
+                    columns=self.vox_cols, 
+                    subject=self.sub, 
+                    run=run, 
+                    TR=self.TR,
+                    task=task,
+                    set_index=True)
 
-        else:
-            self.desc_filt = ""
-            self.clean_tag = None
+                # save SD and Mean so we can go from zscore back to original
+                self.zscore_SD = self.hp_raw.std(axis=-1, keepdims=True)
+                self.zscore_M = self.hp_raw.mean(axis=-1, keepdims=True)
 
-        # get basic qualities
-        self.basic_qa(
-            self.ts_corrected, 
-            run=run, 
-            make_figure=True)
+                # don't save figures if report=False
+                if self.report:
+                    save_as = self.lsprep_figures
+                else:
+                    save_as = None
 
-        # final
-        self.desc_func = self.func_pre_desc + self.desc_trim + self.desc_filt
+                #----------------------------------------------------------------------------------------------------------------------------------------------------
+                # ACOMPCOR AFTER HIGH-PASS FILTERING
+                if acompcor:
+
+                    self.desc_filt += f"""Data was then z-scored and fed into a custom implementation of `aCompCor` 
+(https://github.com/gjheij/linescanning/blob/main/linescanning/preproc.py), which is tailored for line-scanning data: """
+
+                    # do some checks beforehand
+                    if reference_slice != None:
+                        if self.use_bids:
+                            bids_comps = utils.split_bids_components(reference_slice)
+                            setattr(self, "target_session", bids_comps['ses'])
+                            setattr(self, "subject", f"sub-{bids_comps['sub']}")
+                        else:
+                            assert hasattr(self, "target_session"), f"Please specify a target_session with 'target_session=<int>'"
+                            assert hasattr(self, "subject"), f"Please specify a subject with 'target_session=<int>'"
+
+                    # check the transformations inputs
+                    assert hasattr(self, "ses1_2_ls"), f"Please specify a transformation matrix mapping FreeSurfer to ses-{self.target_session}"
+
+                    if hasattr(self, "run_2_run"):
+                        if isinstance(self.run_2_run, list):
+                            run_trafo =  utils.get_file_from_substring(f"to-run{self.run}", self.run_2_run)
+                            self.trafos = [self.ses1_2_ls, run_trafo]
+                        else:
+                            if self.run_2_run != None:
+                                self.trafos = [self.ses1_2_ls, self.run_2_run]
+                            else:
+                                self.trafos = [self.ses1_2_ls]
+                    else:
+                        self.trafos = self.ses1_2_ls            
+
+                    # run acompcor
+                    self.run_acompcor(
+                        run=run,
+                        task=task,
+                        ses=self.target_session,
+                        save_as=save_as,
+                        shift=shift,
+                        **dict(
+                            kwargs,
+                            ref_slice=reference_slice))
+                    
+                    self.clean_tag = "acompcor"
+                    self.clean_data = self.acomp.acomp_data
+
+                    if self.ica:
+                        raise TypeError("ICA cannot be used in conjunction with aCompCor. Please set 'ica=False'")
+
+                if self.ica:
+                    if acompcor:
+                        raise TypeError("aCompCor cannot be used in conjunction with ICA. Please set 'acompcor=False'")
+
+                    self.run_ica(task=task, save_as=save_as)
+                    self.clean_tag = "ica"
+                    self.clean_data = self.ica_obj.ica_data
+
+                if hasattr(self, "clean_data"):
+                    self.tmp_df = self.index_func(
+                        self.clean_data,
+                        columns=self.vox_cols, 
+                        subject=self.sub, 
+                        task=task,
+                        run=run, 
+                        TR=self.TR,
+                        set_index=True)
+
+                    setattr(self, f"hp_{self.clean_tag}_df", self.tmp_df)
+                    
+                    # multiply by SD and add mean
+                    self.tmp_raw = (self.clean_data * self.zscore_SD) + self.zscore_M
+                    setattr(self, f"hp_{self.clean_tag}_raw", self.tmp_raw)
+
+                    self.tmp_raw_df = self.index_func(
+                        self.tmp_raw,
+                        columns=self.vox_cols, 
+                        subject=self.sub, 
+                        task=task,
+                        run=run, 
+                        TR=self.TR,
+                        set_index=True)
+
+                    setattr(self, f"hp_{self.clean_tag}_raw_df", self.tmp_raw)
+
+                    # make percent signal
+                    self.hp_tmp_psc = np.nan_to_num(utils.percent_change(
+                        self.tmp_raw,
+                        1, 
+                        baseline=baseline_vols,
+                        nilearn=self.psc_nilearn))
+
+                    setattr(self, f"hp_{self.clean_tag}_psc", self.hp_tmp_psc)
+
+                    self.hp_tmp_psc_df = self.index_func(
+                        self.hp_tmp_psc,
+                        columns=self.vox_cols, 
+                        subject=self.sub, 
+                        task=task,
+                        run=run, 
+                        TR=self.TR,
+                        set_index=True)            
+                    
+                    setattr(self, f"hp_{self.clean_tag}_psc_df", self.hp_tmp_psc_df)
+
+                    if self.clean_tag == "acompcor":
+                        self.desc_filt += self.acomp.__desc__
+                    elif self.clean_tag == "ica":
+                        self.desc_filt += self.ica_obj.__desc__
+
+                    self.desc_filt += f"""
+Output from {self.clean_tag} was then converted back to un-zscored data by multipying by the standard deviation and adding the mean back. """
+
+                #----------------------------------------------------------------------------------------------------------------------------------------------------
+                # LOW PASS FILTER
+                if "lp" in self.filter_strategy:
+
+                    self.desc_filt += f"""
+The data was then low-pass filtered using a Savitsky-Golay filter [removes high frequences] (window={self.window_size}, order={self.poly_order}). """
+
+                    if acompcor or self.ica:
+                        info = f" Using {self.clean_tag}-data for low-pass filtering"
+                        data_for_filtering = self.get_data(index=True, filter_strategy="hp", dtype=self.standardization, acompcor=acompcor, ica=self.ica).T.values
+                        out_attr = f"lp_{self.clean_tag}_{self.standardization}"
+                    elif hasattr(self, f"hp_{self.standardization}"):
+                        info = " Using high-pass filtered data for low-pass filtering"
+                        data_for_filtering = getattr(self, f"hp_{self.standardization}")
+                        out_attr = f"lp_{self.standardization}"
+                    else:
+                        info = " Using unfiltered/un-aCompCor'ed data for low-pass filtering"
+                        data_for_filtering = getattr(self, f"data_{self.standardization}")
+                        out_attr = f"lp_data_{self.standardization}"
+
+                    utils.verbose(info, self.verbose)
+                    utils.verbose(f" Savitsky-Golay low-pass filter [removes high frequences] (window={self.window_size}, order={self.poly_order})", self.verbose)
+
+                    tmp_filtered = preproc.lowpass_savgol(data_for_filtering, window_length=self.window_size, polyorder=self.poly_order)
+
+                    tmp_filtered_df = self.index_func(
+                        tmp_filtered,
+                        columns=self.vox_cols,
+                        subject=self.sub,
+                        task=task,
+                        run=run,
+                        TR=self.TR,
+                        set_index=True)
+
+                    setattr(self, out_attr, tmp_filtered.copy())
+                    setattr(self, f'{out_attr}_df', tmp_filtered_df.copy())
+
+            else:
+                self.desc_filt = ""
+                self.clean_tag = None
+
+            # get basic qualities
+            self.basic_qa(
+                self.ts_corrected, 
+                run=run, 
+                make_figure=True)
+
+            # final
+            self.desc_func = self.func_pre_desc + self.desc_trim + self.desc_filt
 
     def to_nifti(self, func, fname=None):
         
