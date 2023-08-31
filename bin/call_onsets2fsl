@@ -31,10 +31,12 @@ Parameters
   -o|--out    output directory containing the topup'ed data. Easiest is to give the fMRIPrep fol-
               der, it will be formatted accordingly automatically. Defaults to <input_dir>/events
   --verbose   turn on verbose
-
+  --ix        take number of ev as output name, rather than actual event name. This can be useful
+              in cases where your events consist of long float numbers
 Example
 ----------
 >>> call_onsets2fsl --in $DIR_DATA_HOME/sub-001/ses-2
+>>> call_onsets2fsl --in $DIR_DATA_HOME/sub-001/ses-2 --ix
 
 ---------------------------------------------------------------------------------------------------
 """
@@ -48,9 +50,10 @@ Example
     exclude = None
     add_search = None
     button_duration = 1
+    from_event = True
 
     try:
-        opts = getopt.getopt(argv,"hi:o:",["help", "in=", "out=", "verbose", "button", "maxdepth=", "exclude=", "filters=", "duration=", "button_duration="])[0]
+        opts = getopt.getopt(argv,"hi:o:",["help", "in=", "out=", "verbose", "button", "maxdepth=", "exclude=", "filters=", "duration=", "button_duration=","ix"])[0]
     except getopt.GetoptError:
         print("ERROR while reading arguments; did you specify an illegal argument?")
         print(main.__doc__)
@@ -78,6 +81,8 @@ Example
             add_search = arg            
         elif opt in ("--button_duration"):
             button_duration = float(arg)  
+        elif opt in ("--ix"):
+            from_event = False
         
     if len(argv) < 1:
         print(main.__doc__)
@@ -123,7 +128,8 @@ Example
     # save as 3 column format
     exp_.onsets_to_fsl(
         output_dir=outputdir,
-        duration=duration)
+        duration=duration,
+        from_event=from_event)
     
 if __name__ == "__main__":
     main(sys.argv[1:])
