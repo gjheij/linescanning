@@ -26,7 +26,7 @@ def correct_angle(x, verbose=False, only_angles=True):
         if <only_angles> is set to False, it additionally returns an "X" or "Y", which specifies around which axis (X or Y) the angle with the z-axis is to be used
     """
 
-    if isinstance(x, np.ndarray) or isinstance(x, list):
+    if isinstance(x, (np.ndarray,list)):
 
         scanner_angles = np.zeros((3,))
 
@@ -207,15 +207,16 @@ def correct_angle(x, verbose=False, only_angles=True):
             elif 45 <= x[2] <= 90:
                 
                 # 2) these angles are a bit tricky. Here is means that the foldover direction is changed too
-                scanner_angles[2] = x[2]-90
+                scanner_angles[2] = 90-x[2]
             elif 90 <= x[2] <= 180:
                 # 3) such angles would mean we have a vector pointing in the opposite direction of case 1). We simply subtract
                 #    it from 180 degrees
                 scanner_angles[2] = 180-x[2]
-                flip = True
+                # flip = True
 
             # check if we should have the opposite angle of the one we got.
             if 45 <= scanner_angles[2] <= 90:
+                
                 # this means we got the angle proximal to the vector and Z-axis. We need to opposite one
                 scanner_angles[2] = 90-scanner_angles[2]
 

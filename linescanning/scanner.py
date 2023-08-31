@@ -76,54 +76,78 @@ class Scanner(object):
         if hasattr(self.pycortex, 'infofile'):
          
             # assuming I got an infofile dataframe from utils.VertexInfo
-            self.normals    = self.pycortex.get('normal')
+            self.normals = self.pycortex.get('normal')
             self.ctx_coords = self.pycortex.get('position')
-            self.vertices   = self.pycortex.get('index')
+            self.vertices = self.pycortex.get('index')
 
         else:
             # assuming I got entire dataframe from CalcBestVertex
-            self.normals    = {"lh": self.pycortex.lh_normal,
-                               "rh": self.pycortex.rh_normal}
+            self.normals = {
+                "lh": self.pycortex.lh_normal,
+                "rh": self.pycortex.rh_normal
+            }
 
-            self.ctx_coords = {"lh": self.pycortex.lh_best_vertex_coord,
-                               "rh": self.pycortex.rh_best_vertex_coord}
+            self.ctx_coords = {
+                "lh": self.pycortex.lh_best_vertex_coord,
+                "rh": self.pycortex.rh_best_vertex_coord
+            }
 
-            self.vertices   = {"lh": self.pycortex.lh_best_vertex,
-                               "rh": self.pycortex.rh_best_vertex}
-
+            self.vertices   = {
+                "lh": self.pycortex.lh_best_vertex,
+                "rh": self.pycortex.rh_best_vertex
+            }
+        
+        # set default anatomies
         self.fs_orig = self.ref_anat
         self.fs_raw = opj(fs_dir, self.subject, 'mri', 'rawavg.mgz')
 
         print("Account for offset induced by pycortex")
         # correct Pycortex coordinate with 'surfmove' to get TKR coordinate
         tkr = transform.ctx2tkr(self.subject,coord=self.ctx_coords.values())
-        self.tkr_coords = {'lh': tkr[0],'rh': tkr[1]}
+        self.tkr_coords = {
+            'lh': tkr[0],
+            'rh': tkr[1]
+        }
 
         print("Convert FreeSurfer TKR to Freesurfer")
         # convert TKR coordinate to FS coordinate
         fs = transform.tkr2fs(self.subject,coord=[self.tkr_coords['lh'], self.tkr_coords['rh']], fs_dir=fs_dir)
-        self.fs_coords = {'lh': fs[0],'rh': fs[1]}
+        self.fs_coords = {
+            'lh': fs[0],
+            'rh': fs[1]
+        }
 
         # convert FS directly to session 2
-        self.fs_chicken = {'lh': utils.make_chicken_csv(self.fs_coords['lh'], output_file=opj(os.path.dirname(self.fs_raw), f"{self.subject}_space-fs_hemi-L_vert-{self.vertices['lh']}_desc-lps.csv")),
-                           'rh': utils.make_chicken_csv(self.fs_coords['rh'], output_file=opj(os.path.dirname(self.fs_raw), f"{self.subject}_space-fs_hemi-R_vert-{self.vertices['rh']}_desc-lps.csv"))}
+        self.fs_chicken = {
+            'lh': utils.make_chicken_csv(self.fs_coords['lh'], output_file=opj(os.path.dirname(self.fs_raw), f"{self.subject}_space-fs_hemi-L_vert-{self.vertices['lh']}_desc-lps.csv")),
+            'rh': utils.make_chicken_csv(self.fs_coords['rh'], output_file=opj(os.path.dirname(self.fs_raw), f"{self.subject}_space-fs_hemi-R_vert-{self.vertices['rh']}_desc-lps.csv"))
+        }
         
         if self.fs2ses != "identity":
             print(f"Convert FreeSurfer straight to session {ses}")
-            self.ses2_chicken = {'lh': transform.ants_applytopoints(self.fs_chicken['lh'], utils.replace_string(self.fs_chicken['lh'], "space-fs", f"space-ses{ses}"), self.fs2ses),
-                                 'rh': transform.ants_applytopoints(self.fs_chicken['rh'], utils.replace_string(self.fs_chicken['rh'], "space-fs", f"space-ses{ses}"), self.fs2ses)}
+            self.ses2_chicken = {
+                'lh': transform.ants_applytopoints(self.fs_chicken['lh'], utils.replace_string(self.fs_chicken['lh'], "space-fs", f"space-ses{ses}"), self.fs2ses),
+                'rh': transform.ants_applytopoints(self.fs_chicken['rh'], utils.replace_string(self.fs_chicken['rh'], "space-fs", f"space-ses{ses}"), self.fs2ses)
+            }
         else:
             print(f"Identity-matrix was specified, using existing chicken files")
             self.ses2_chicken = self.fs_chicken.copy()
 
-        self.ses2_ras = {'lh': utils.read_chicken_csv(self.ses2_chicken['lh'], return_type="ras"),
-                         'rh': utils.read_chicken_csv(self.ses2_chicken['rh'], return_type="ras")}
+        # get coordinate in ses-2 (RAS/LPS/VOX convention)
+        self.ses2_ras = {
+            'lh': utils.read_chicken_csv(self.ses2_chicken['lh'], return_type="ras"),
+            'rh': utils.read_chicken_csv(self.ses2_chicken['rh'], return_type="ras")
+        }
 
-        self.ses2_lps = {'lh': utils.read_chicken_csv(self.ses2_chicken['lh']),
-                         'rh': utils.read_chicken_csv(self.ses2_chicken['rh'])}                        
+        self.ses2_lps = {
+            'lh': utils.read_chicken_csv(self.ses2_chicken['lh']),
+            'rh': utils.read_chicken_csv(self.ses2_chicken['rh'])
+        } 
 
-        self.ses2_vox = {'lh': self.to_vox(self.ses2_ras['lh'], self.new_anat),
-                         'rh': self.to_vox(self.ses2_ras['rh'], self.new_anat)}
+        self.ses2_vox = {
+            'lh': self.to_vox(self.ses2_ras['lh'], self.new_anat),
+            'rh': self.to_vox(self.ses2_ras['rh'], self.new_anat)
+        }
 
         # warp the normal vector (= IN RAS SPACE!!)
         if self.fs2ses != None:
@@ -137,8 +161,10 @@ class Scanner(object):
 
         # session 1 angles are relative to RAS-axis ([1,0,0],[0,1,0],[0,0,1])
         #
-        self.ses1_angles_raw = {'lh': planning.normal2angle(self.normals['lh'], system="RAS", unit="rad"),
-                                'rh': planning.normal2angle(self.normals['rh'], system="RAS", unit="rad")}
+        self.ses1_angles_raw = {
+            'lh': planning.normal2angle(self.normals['lh'], system="RAS", unit="rad"),
+            'rh': planning.normal2angle(self.normals['rh'], system="RAS", unit="rad")
+        }
 
         if debug:
             print(f"Session 1 normal: {self.normals['lh']}")
@@ -155,9 +181,10 @@ class Scanner(object):
         # See: https://www.youtube.com/watch?v=vVPwQgoSG2g
         for ii in ['lh','rh']:
             # now get the angles for all axes in radians so we can push the vector to the XY-plane with the Z-angle            
-            self.ses1_angles_raw[ii][:2] = planning.normal2angle(self.normals[ii][:2]*np.sin(self.normals[ii][-1]), 
-                                                                 system="RAS", 
-                                                                 return_axis=['x','y'])
+            self.ses1_angles_raw[ii][:2] = planning.normal2angle(
+                self.normals[ii][:2]*np.sin(self.normals[ii][-1]), 
+                system="RAS", 
+                return_axis=['x','y'])
 
             # convert the z-angle to degrees
             self.ses1_angles_raw[ii][-1] = self.ses1_angles_raw[ii][-1] * (180/np.pi)
@@ -167,18 +194,24 @@ class Scanner(object):
                     print(f"Coplanar angles 1: {self.ses1_angles_raw['lh']}")
 
         if hasattr(self, 'ses1_angles_raw'):
-            self.ses1_angles_corr = {'lh': planning.correct_angle(self.ses1_angles_raw['lh']),
-                                     'rh': planning.correct_angle(self.ses1_angles_raw['rh'])}
+            self.ses1_angles_corr = {
+                'lh': planning.correct_angle(self.ses1_angles_raw['lh']),
+                'rh': planning.correct_angle(self.ses1_angles_raw['rh'])
+            }
 
         if hasattr(self, 'warped_normals'):
 
             # convert the vector to LPS too
-            self.warped_normals_lps = {'lh': transform.ras2lps(self.warped_normals['lh']),
-                                       'rh': transform.ras2lps(self.warped_normals['rh'])}
+            self.warped_normals_lps = {
+                'lh': transform.ras2lps(self.warped_normals['lh']),
+                'rh': transform.ras2lps(self.warped_normals['rh'])
+            }
 
             # now get the angles for all axes in radians so we can push the vector to the XY-plane with the Z-angle
-            self.ses2_angles_nonCoPlanar = {'lh': planning.normal2angle(self.warped_normals_lps['lh'], system="LPS", unit="rad"),
-                                            'rh': planning.normal2angle(self.warped_normals_lps['rh'], system="LPS", unit="rad")}
+            self.ses2_angles_nonCoPlanar = {
+                'lh': planning.normal2angle(self.warped_normals_lps['lh'], system="LPS", unit="rad"),
+                'rh': planning.normal2angle(self.warped_normals_lps['rh'], system="LPS", unit="rad")
+            }
 
             if debug:
                 print(f"Warped normal LPS {self.warped_normals_lps['lh']}")
@@ -206,9 +239,10 @@ class Scanner(object):
                     vector = self.warped_normals_lps[ii].copy()
 
                     vector_xy = np.array((*vector[:2],0))*np.sin(self.ses2_angles_nonCoPlanar[ii][-1])
-                    self.ses2_angles_raw[ii][:2] = planning.normal2angle(vector_xy, 
-                                                                         system="LPS", 
-                                                                         return_axis=['x','y'])
+                    self.ses2_angles_raw[ii][:2] = planning.normal2angle(
+                        vector_xy, 
+                        system="LPS", 
+                        return_axis=['x','y'])
                     
                     # vector_yz = np.array((0,*vector[-2:]))*np.sin(self.ses2_angles_nonCoPlanar[ii][1])
                     # self.ses2_angles_raw[ii][-1] = normal2angle(vector_yz, 
@@ -227,23 +261,36 @@ class Scanner(object):
             # turn on verbose for left hemisphere
             # turn OFF 'only_angles' to also know what z-axis angle means
             print(f"Angles in:  {self.ses2_angles_raw['lh']}")
-            self.ses2_angles_corr = {'lh': planning.correct_angle(self.ses2_angles_raw['lh'], 
-                                                                  verbose=True, 
-                                                                  only_angles=False),
-                                     'rh': planning.correct_angle(self.ses2_angles_raw['rh'], 
-                                                                  only_angles=False)}
+            self.ses2_angles_corr = {
+                'lh': planning.correct_angle(
+                    self.ses2_angles_raw['lh'], 
+                    verbose=True, 
+                    only_angles=False
+                ),
+                'rh': planning.correct_angle(
+                    self.ses2_angles_raw['rh'], 
+                    only_angles=False
+                )
+            }
+            
             print(f"Angles out: {list(self.ses2_angles_corr['lh'])}")
 
         if hasattr(self, 'ses2_angles_corr'):
             print("Fetch console settings") 
-            self.foldover = {'lh': planning.get_console_settings(self.ses2_angles_corr['lh'][0], 
-                                                                 "left", 
-                                                                 self.vertices['lh'],
-                                                                 z_axis_meaning=self.ses2_angles_corr['lh'][1]),
-                             'rh': planning.get_console_settings(self.ses2_angles_corr['rh'][0],
-                                                                 "right", 
-                                                                 self.vertices['rh'],
-                                                                 z_axis_meaning=self.ses2_angles_corr['rh'][1])}
+            self.foldover = {
+                'lh': planning.get_console_settings(
+                    self.ses2_angles_corr['lh'][0], 
+                    "left", 
+                    self.vertices['lh'],
+                    z_axis_meaning=self.ses2_angles_corr['lh'][1]
+                ),
+                'rh': planning.get_console_settings(
+                    self.ses2_angles_corr['rh'][0],
+                    "right", 
+                    self.vertices['rh'],
+                    z_axis_meaning=self.ses2_angles_corr['rh'][1]
+                )
+            }
             print("Done")
             
         if hasattr(self, 'hemi') and self.hemi != None:
