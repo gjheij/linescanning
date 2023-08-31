@@ -1064,6 +1064,7 @@ if [[ $? -eq 0 ]]; then
     ${verb_flag} \
     ${SGE_QUEUE} \
     ${FSL_FLAG} \
+    ${jobs_flag} \
     ${INPUT_DIR} ${DIR_DATA_DERIV}/ants
 
   if [[ $? -ne 0 ]]; then
@@ -1104,6 +1105,7 @@ if [[ $? -eq 0 ]]; then
     ${verb_flag} \
     ${SGE_QUEUE} \
     ${FSL_FLAG} \
+    ${jobs_flag} \
     ${INPUT_DIR} ${DIR_DATA_DERIV}/ants mni
 
   if [[ $? -ne 0 ]]; then

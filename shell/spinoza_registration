@@ -78,8 +78,10 @@ verb_flag=""
 FSL_FMT=0
 verb=0
 fsl_flag=""
+n_cpu=1
+
 # Check for subject flag
-while getopts :-:ocs:n:q: argument
+while getopts :-:ocs:n:q:j: argument
 do
   case ${argument} in
     -)
@@ -119,6 +121,8 @@ do
           ;;
     o)  OW=1
           ;;
+    j)  n_cpu=${OPTARG}
+          ;;           
     q)  SGE_QUEUE=${OPTARG}
           ;;             
   esac
@@ -263,13 +267,14 @@ for subID in ${search}; do
           else
             QUEUE=${SGE_QUEUE_LONG}
           fi           
-          job="qsub -q ${QUEUE} -wd ${DIR_LOGS} -N reg_${sub_id} ${DIR_SCRIPTS}/bin/call_antsregistration"
+          job_name="reg_${sub_id}"
+          job="qsub -q ${QUEUE} -wd ${DIR_LOGS} -pe smp ${n_cpu} -N ${job_name} ${DIR_SCRIPTS}/bin/call_antsregistration --verbose"
         else
           job="call_antsregistration"
         fi
 
         echo "Registering $(basename ${moving}) to $(basename ${fixed}) [${reg_type}]"
-        cmd="${job} ${fsl_flag} ${verb_flag} ${reg_type} ${fixed} ${moving} ${output_dir}/${base}_${ext}"
+        cmd="${job} ${fsl_flag} ${verb_flag} ${reg_type} -j ${n_cpu} ${fixed} ${moving} ${output_dir}/${base}_${ext}"
 
         if [[ ${verb} -eq 1 ]]; then
           echo
@@ -291,7 +296,7 @@ for subID in ${search}; do
           echo "Waiting to check qstat.."
           sleep 10
 
-          wait_for_qsub "reg_${sub_id}"
+          wait_for_qsub "${job_name}"
           if [[ $? -ne 0 ]]; then
             echo "ERROR in `basename ${0}`: wait_for_qsub exited with non-zero status"
             exit 1

@@ -57,6 +57,7 @@ Flagged arguments:
                 done. So for 3 stages, it defaults to '4x2x1', down to '1' for 1 stage. Format must 
                 be identical to the examples above, so values separated by 'x', without spaces, 
                 with the number of values corresponding to the number of stages to perform            
+  -j <cores>    number of cores to use; default = 1
   --<interp>    interpolation type: 'lin' (linear), 'nn' (NearestNeighbor), mul (MultiLabel), gau 
                 (Gaussian), bspl<order>, cws (CosineWindowedSinc), wws (WelchWindowedSinc), hws 
                 (HammingWindowedSinc), lws (LanczosWindowedSinc), gen (GenericLabel); default = 'nn'
@@ -66,6 +67,8 @@ Flagged arguments:
   --rigid       use rigid-body registration
   --affine      use affine registration
   --syn         use SyN-diffeomorphic registration
+  --as          run affine+SyN registration
+  --ras         run rigid+affine+SyN [default if '--syn' is specified]
   --histo       maps to '--use-histogram-matching', sets it to True
   --no_collapse maps to '--collapse-output-transforms', sets it to False (default = True). safest 
                 bet is to keep --collapse-output-transforms to 1 so you always get the same output 
@@ -114,7 +117,10 @@ smooth=""
 gradient_step=0.1
 fsl_fmt=0
 open_itk=0
-while getopts :-:vi:t:x:n:s:c:r:g: argument
+n_cpu=1
+as=0
+ras=1
+while getopts :-:vi:t:x:n:s:c:r:g:j: argument
 do
   case ${argument} in
     -)
@@ -206,7 +212,15 @@ do
           ;;   
         itk)
           open_itk=1
-          ;;                    
+          ;;           
+        as)
+          as=1
+          ras=0
+          ;;    
+        ras)
+          ras=1
+          as=0
+          ;;                           
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}"
@@ -227,12 +241,19 @@ do
     r)  shrink=${OPTARG}
           ;;            
     g)  gradient_step=${OPTARG}
-          ;;                                    
+          ;;     
+    j)  n_cpu=${OPTARG}
+          ;;                                              
     v)  VERBOSE="--verbose 1"
         VERB=1
           ;;              
   esac
 done
+
+# set number of cores to use
+export ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=${n_cpu}
+
+echo "number of threads: ${ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS}"
 
 # function to derive the convergence, smoothing, shrinking parameters.
 function check_stage_inputs {
@@ -479,30 +500,52 @@ ${MASK} \
 --output [${OUT}] \
 --use-histogram-matching ${use_hist} \
 ${winsorize_flag} \
---collapse-output-transforms ${collapse_output}"""
+--collapse-output-transforms ${collapse_output} """
 
-# add individual stages
-if [[ ${TYPE,,} == "rigid" ]]; then
-  cmd+=""" --transform Rigid[${gradient_step}] \
+function rigid_ {
+  cmd=""" --transform Rigid[${gradient_step}] \
 --metric ${metric}[${FIXED},${MOVING},1,${val},Regular,0.25] \
 --convergence [${converg},1e-6,10] \
 --shrink-factors ${shrink} \
 --smoothing-sigmas ${smooth}vox"""
 
-elif [[ ${TYPE,,} == "affine" ]]; then
-  cmd+=""" --transform Affine[${gradient_step}] \
+  echo $cmd
+}
+
+function affine_ {
+  cmd=""" --transform Affine[${gradient_step}] \
 --metric ${metric}[${FIXED},${MOVING},1,${val},Regular,0.25] \
 --convergence [${converg},1e-6,10] \
 --shrink-factors ${shrink} \
 --smoothing-sigmas ${smooth}vox"""
 
-elif [[ ${TYPE,,} == "syn" ]]; then
-  cmd+=""" --transform SyN[${gradient_step},3,0] \
+  echo $cmd
+}
+
+function syn_ {
+  cmd=""" --transform SyN[${gradient_step},3,0] \
 --metric CC[${FIXED},${MOVING},1,4] \
 --convergence [${converg},1e-6,10] \
 --shrink-factors ${shrink} \
 --smoothing-sigmas ${smooth}vox"""
 
+  echo $cmd
+}
+
+# add individual stages
+if [[ ${TYPE,,} == "rigid" ]]; then
+  cmd+=" `rigid_`"
+elif [[ ${TYPE,,} == "affine" ]]; then
+  cmd+=" `affine_`"
+elif [[ ${TYPE,,} == "syn" ]]; then
+  if [[ ${ras} -eq 1 ]]; then
+    cmd+=" `rigid_`"
+    cmd+=" `affine_`"
+    cmd+=" `syn_`"
+  elif [[ ${as} -eq 1 ]]; then
+    cmd+=" `affine_`"
+    cmd+=" `syn_`"
+  fi
 else
   echo "Unknown registration type \"${TYPE}\" specified"
   Usage >&2
@@ -579,3 +622,6 @@ if [[ ${open_itk} -eq 1 ]]; then
   echo "Opening ITK-Snap. Load \"${OUT}genaff.mat\""
   itksnap -g ${FIXED} -o ${MOVING}
 fi
+
+# reset threads
+export ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=1
