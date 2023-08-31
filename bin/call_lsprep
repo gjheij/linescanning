@@ -36,6 +36,8 @@ Parameters
   --ses_trafo       transformation matrix from ses-1 to line-scanning session (defaults to 'ses{ses}
                     _rec-motion1' in DIR_DATA_DERIV/pycortex/<subject>/transforms)
   --filter_pca      cut off frequency for PCA components; default is 0.2Hz (~breathing frequency)
+  --first           delete number of volumes from beginning (default = 0)
+  --last            delete number of volumes from the end (default = 0)
   --tr              set repetition time (default is 0.105)
   --window          window length for low-pass filtering. Default is 7 TRs
   --poly_order      order of polynomial for low-pass filtering. Default is 3
@@ -86,10 +88,13 @@ Example
     force_acompcor  = False
     button_press    = True
     overwrite       = False
+    del_first       = 0
+    del_last        = 0
+    bsl_length      = 24
 
     # long options without argument: https://stackoverflow.com/a/54170513
     try:
-        opts = getopt.getopt(argv,"qgvh:b:d:n:r:o:f:l:i:s:c:",["help", "subject=", "bids_dir=", "session=", "ses_trafo=", "output_dir=", "filter_pca=", "run=", "no_report", "verbose", "no_acompcor", "tr=", "overwrite", "ow", "shift=","lp", "no_button", "n_comps=", "window=", "poly_order=", "ica"])[0]
+        opts = getopt.getopt(argv,"qgvh:b:d:n:r:o:f:l:i:s:c:",["help", "subject=", "bids_dir=", "session=", "ses_trafo=", "output_dir=", "filter_pca=", "run=", "no_report", "verbose", "no_acompcor", "tr=", "overwrite", "ow", "shift=","lp", "no_button", "n_comps=", "window=", "poly_order=", "ica", "first=", "last=", "bsl"])[0]
     except getopt.GetoptError:
         print("ERROR while handling arguments.. Did you specify an 'illegal' argument..?")
         print(main.__doc__)
@@ -131,6 +136,12 @@ Example
             button_press = False
         elif opt in ("--tr"):
             t_r = float(arg)
+        elif opt in ("--first"):
+            del_first = int(arg)            
+        elif opt in ("--last"):
+            del_last = int(arg)            
+        elif opt in ("--bsl"):            
+            bsl_length = float(arg)            
         elif opt in ("--lp"):
             filter_strat = "lp"
         elif opt in ("--window"):
@@ -277,7 +288,10 @@ Example
         report=make_report,
         poly_order=poly_order,
         window_size=window_length,
-        verbose=verbose)
+        verbose=verbose,
+        deleted_first_timepoints=del_first,
+        deleted_last_timepoints=del_last,
+        baseline=bsl_length)
 
     # save h5 if needed; filename will be derived from inputs
     obj_.to_hdf(overwrite=overwrite)
