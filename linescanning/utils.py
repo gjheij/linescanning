@@ -21,6 +21,9 @@ opj = os.path.join
 pd.options.mode.chained_assignment = None # disable warning thrown by string2float
 warnings.filterwarnings("ignore")
 
+def normalize(data):
+    return (data-np.min(data))/(np.max(data)-np.min(data))
+
 def verbose(msg, verbose, flush=True, **kwargs):
     if verbose:
         print(msg, flush=flush, **kwargs)
@@ -461,6 +464,17 @@ def match_lists_on(ref_list, search_list, matcher="run"):
 
     return new_list
 
+def get_unique_ids(df, id=None):
+    try:
+        df = df.reset_index()
+    except:
+        pass
+
+    try:
+        return list(np.unique(df[id].values))  
+    except Exception as e:
+        raise RuntimeError(f"Could not find '{id}' in {list(df.columns)}")
+    
 def get_file_from_substring(filt, path, return_msg='error', exclude=None):
     """get_file_from_substring
 
@@ -1031,6 +1045,25 @@ def select_from_df(df, expression="run = 1", index=True, indices=None, match_exa
     See https://linescanning.readthedocs.io/en/latest/examples/nideconv.html for an example of how to use this function (do ctrl+F and enter "select_from_df").
     """    
 
+    # not the biggest fan of a function within a function, but this allows easier translation of expressions/operators
+    def sort_expressions(expression):
+        expr_ = expression.split()
+        if len(expr_)>3:
+            for ix,i in enumerate(expr_):
+                try:
+                    _ = str2operator(i)
+                    break
+                except:
+                    pass
+
+            col1 = " ".join(expr_[:ix])
+            val1 = " ".join(expr_[(ix+1):])
+            operator1 = expr_[ix]
+        else:
+            col1,operator1,val1 = expr_
+
+        return col1,operator1,val1
+    
     if expression == "ribbon":
         
         if isinstance(indices, tuple):
@@ -1076,7 +1109,10 @@ def select_from_df(df, expression="run = 1", index=True, indices=None, match_exa
 
             if len(expressions) == 1:
 
-                col1,operator1,val1 = expressions[0].split()
+                # find operator index
+                col1,operator1,val1 = sort_expressions(expressions[0])
+
+                # convert to operator function
                 ops1 = str2operator(operator1)
                 
                 # use dtype of whatever dtype the colum is
@@ -1084,8 +1120,8 @@ def select_from_df(df, expression="run = 1", index=True, indices=None, match_exa
                 sub_df = sub_df.loc[ops1(sub_df[col1], search_value[0])]
                 
             if len(expressions) == 2:
-                col1,operator1,val1 = expressions[0].split()
-                col2,operator2,val2 = expressions[1].split()
+                col1,operator1,val1 = sort_expressions(expressions[0])
+                col2,operator2,val2 = sort_expressions(expressions[1])
 
                 main_ops = str2operator(operators[0])
                 ops1 = str2operator(operator1)
@@ -1356,10 +1392,11 @@ def find_intersection(xx, curve1, curve2):
 
     first_line = geometry.LineString(np.column_stack((xx, curve1)))
     second_line = geometry.LineString(np.column_stack((xx, curve2)))
-    intersection = first_line.intersection(second_line)
+    geom = first_line.intersection(second_line)
 
     try:
-        x_coord, y_coord = geometry.LineString(intersection).xy[0]
+        x,y = list(geom.geoms)[0].xy
+        x_coord,y_coord = x[0],y[0]
     except:
         raise ValueError("Could not find intersection between curves..")
 
@@ -1530,7 +1567,7 @@ class FindFiles():
         if isinstance(maxdepth, int):
             start = 0
 
-        for root, dirs, files in os.walk(directory):
+        for root, dirs, files in os.walk(directory, followlinks=True):
 
             for basename in files:
                 if fnmatch.fnmatch(basename, pattern):
