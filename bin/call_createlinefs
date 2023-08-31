@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from linescanning.utils import color, get_file_from_substring
+from linescanning.utils import color, get_file_from_substring, reverse_sign
 from linescanning import scanner,optimal
 import sys, getopt
 import os
@@ -106,17 +106,30 @@ Example:
     if line_ctx == None:
         line_ctx = opj(os.environ['CTX'], subject, 'line_pycortex.csv')
 
-    # this scan object will do everyting
-    scan = scanner.Scanner(
-        optimal.target_vertex(
+        # get target vertex
+        targ = optimal.TargetVertex(
             subject,
-            deriv=os.environ.get("DIR_DATA_DERIV"),
-            out=line_ctx),
-        fs_dir=os.environ['FS'], 
+            out=line_ctx,
+            deriv=os.environ.get("DIR_DATA_DERIV")
+        )
+
+    # get target vertex
+    targ = optimal.TargetVertex(
+        subject,
+        out=line_ctx,
+        deriv=os.environ.get("DIR_DATA_DERIV")
+    )
+    
+    # calculate angles
+    scan = scanner.Scanner(
+        targ,
+        fs_dir=os.environ.get("FS"), 
         new_anat=anat2, 
         fs2ses='identity', 
-        hemi=hemi,ses='fs', 
-        print_to_console=False)
+        hemi=hemi,
+        ses='fs', 
+        print_to_console=False
+    )
 
     tkr_coords = scan.tkr_coords[hemi]
     fold = scan.foldover[hemi]
@@ -124,17 +137,29 @@ Example:
     # if orientation is sagittal, we need to first get the beam into sagittal plane, then use the
     # rotation angles from there. E.g., if FH-angle = -2.67, we first enter 90, then subtract
     # 2.67 from that, giving an angle of 87.33 in FH/SI direction
+    flip = False
     if fold['value'][0].lower() == "sagittal":
         txt = "Orientation is {sag}; first enter 90 in FH/SI-direction".format(sag=color.BOLD + color.RED + fold['value'][0] + color.END)
     else:
         txt = "Orientation is {sag}".format(sag=color.BOLD + color.RED + fold['value'][0] + color.END)
+        flip = True
+
+    # LR is useless for FreeView
+    if fold['value'][4] == 0:
+        ap_angle = fold['value'][3]
+    else:
+        ap_angle = fold['value'][4]
     
+    # encoding is different for FreeView/scanner in coronal orientation
+    if flip:
+        ap_angle = reverse_sign(ap_angle)
+
     print("\n---------------------------------------------------------------------------------------------------")
     print("Enter the following angles (in this order!!):")
     print(txt)
     print(f" FH: {round(fold['value'][5],2)}")
-    print(f" AP: {round(fold['value'][4],2)}")
-    print(f" LR: {round(fold['value'][3],2)}")
+    print(f" AP: {round(ap_angle,2)}")
+    print(f" LR: 0")
     print("\nEnter the following translation:")
     print(f" LR: {round(tkr_coords[0],2)}")
     print(f" AP: {round(tkr_coords[1],2)}")
