@@ -18,7 +18,7 @@ class Defaults():
     pad_title: int
         Set the distance between the title and the plot. Default = 20
     title_size: int
-        Set the font size of titles. Default = 22
+        Set the font size of titles. Default = 22; you can set it equal to font_size (or any other size) by specifying "font_size". 
     font_size: int
         Set the font size of axis labels/titles. Default = 18
     label_size: int
@@ -144,7 +144,8 @@ class Defaults():
             "dpi",
             "figure_background_color",
             "bbox_inches",
-            "fontname"
+            "fontname",
+            "legend_kwargs"
         ]
 
         self.pad_title = 20
@@ -167,7 +168,7 @@ class Defaults():
         self.xlim_left = None
         self.xlim_right = None
         self.set_xlim_zero = False
-        self.legend_handletext = 0.05
+        self.legend_handletext = 0.25
         self.x_label = None
         self.y_label = None
         self.title = None
@@ -186,6 +187,7 @@ class Defaults():
         self.figure_background_color = "white"
         self.bbox_inches = "tight"
         self.fontname = None
+        self.legend_kwargs = {}
         
 
         # update kwargs
@@ -200,7 +202,7 @@ class Defaults():
 
         # update font widely
         self.update_rc(self.fontname)
-            
+
     def update_rc(self, font):
         """update font"""
         plt.rcParams.update({'font.family': font})
@@ -245,6 +247,10 @@ class Defaults():
     def _set_title(self, ax, title, **kwargs):
         """set title of plot"""
 
+        if isinstance(self.title_size, str):
+            if hasattr(self, self.title_size):
+                self.title_size = getattr(self, self.title_size)
+                
         if isinstance(title, (str,dict)):
             default_dict = {
                 'color': 'k', 
@@ -298,12 +304,25 @@ class Defaults():
     @staticmethod
     def _set_xticks(ax, ticks):
         """set x-ticks"""
-        if isinstance(ticks, list):
+        if isinstance(ticks, (pd.Series,pd.DataFrame)):
+            ticks = ticks.values
+
+        if isinstance(ticks, np.ndarray):
+            ticks = [float(i) for i in ticks]
+
+        if isinstance(ticks, (list)):
             ax.set_xticks(ticks)
 
     @staticmethod
     def _set_yticks(ax, ticks):
         """set y-ticks"""
+
+        if isinstance(ticks, (pd.Series,pd.DataFrame)):
+            ticks = ticks.values
+
+        if isinstance(ticks, np.ndarray):
+            ticks = [float(i) for i in ticks]
+
         if isinstance(ticks, list):
             ax.set_yticks(ticks)
 
@@ -353,25 +372,73 @@ class Defaults():
         yerr: np.ndarray=None,
         **kwargs):
 
-        if np.isscalar(yerr) or len(yerr) == len(tc):
-            ymin = tc - yerr
-            ymax = tc + yerr
-        elif len(yerr) == 2:
-            ymin, ymax = yerr
+        if isinstance(yerr, (int,float,list,np.ndarray)):
+            if np.isscalar(yerr) or len(yerr) == len(tc):
+                if not np.isscalar(yerr):
+                    if all([np.isnan(i) for i in yerr]):
+                        raise TypeError(f"Error contains only NaNs")
+                ymin = tc - yerr
+                ymax = tc + yerr
+            elif len(yerr) == 2:
+                ymin, ymax = yerr
+            
+            ax.fill_between(
+                x, 
+                ymax, 
+                ymin, 
+                **kwargs)
 
-        ax.fill_between(
-            x, 
-            ymax, 
-            ymin, 
+    def _draw_errorbar(
+        self, 
+        x: np.ndarray=None,
+        y: np.ndarray=None,
+        ax: mpl.axes._axes.Axes=None, 
+        yerr: np.ndarray=None,
+        xerr: np.ndarray=None,
+        **kwargs):
+
+        # set bunch of defaults
+        if not "linewidth" in list(kwargs.keys()) and not "lw" in list(kwargs.keys()):
+            kwargs["lw"] = self.line_width
+        
+        if not "color" in list(kwargs.keys()):
+            kwargs["ecolor"] = "k"
+
+        if not "zorder" in list(kwargs.keys()):
+            kwargs["zorder"] = 0
+
+        if not "linestyle" in list(kwargs.keys()) and not "ls" in list(kwargs.keys()):
+            kwargs["ls"] = "None"            
+        
+        if isinstance(x, (pd.Series,pd.DataFrame)):
+            x = x.values
+        
+        if isinstance(y, (pd.Series,pd.DataFrame)):
+            y = y.values
+
+        if isinstance(yerr, (pd.Series,pd.DataFrame)):
+            yerr = yerr.values
+
+        if isinstance(xerr, (pd.Series,pd.DataFrame)):
+            xerr = xerr.values
+
+        ax.errorbar(
+            x,
+            y,
+            yerr=yerr,
+            xerr=xerr,
             **kwargs)
-
-    def _set_legend_labels(self, ax, labels=None, **kwargs):
+        
+    def _set_legend_labels(self, ax, labels=None):
         if isinstance(labels, (list,np.ndarray)):
+            if not "font_size" in list(self.legend_kwargs.keys()) and not "fontsize" in list(self.legend_kwargs.keys()):
+                self.legend_kwargs["fontsize"] = self.label_size
+                
             ax.legend(
                 frameon=False, 
-                fontsize=self.label_size,
-                fontname=self.fontname
-                **kwargs)        
+                handletextpad=self.legend_handletext,
+                **self.legend_kwargs,
+            )        
 
     def _save_as(self, save_as, **kwargs):
         """simple save function"""
@@ -681,9 +748,15 @@ class LazyPlot(Defaults):
     figsize: tuple, optional
         Figure dimensions as per usual matplotlib conventions, by default (25,5)
     markers: str, list, optional
-        Use markers during plotting. If `ts` is a list, a list of similar length should be specified. If one array in `ts` should not have markers, use `None`. E.g., if `len(ts) == 3`, and we want only the first timecourse to have markers use: `markers=['.',None,None]
+        Use markers during plotting. A single option will be applied to all elements in `ts`. A separate list for each element of `ts` is also accepted. If one array in `ts` should not have markers, use `None`. E.g., if `len(ts) == 3`, and we want only the first timecourse to have markers use: `markers=['.',None,None]
     markersize: str, list, optional
-        Specify marker sizes during plotting. If `ts` is a list, a list of similar length should be specified. If one array in `ts` should not have markers, use `None`. E.g., if `len(ts) == 3`, and we want only the first timecourse to have markers use: `markers=['.',None,None]
+        Specify marker sizes during plotting. A single option will be applied to all elements in `ts`. A separate list for each element of `ts` is also accepted. If one array in `ts` should not have markers, use `None`. E.g., if `len(ts) == 3`, and we want only the first timecourse to have markers use: `markers=['.',None,None]
+    markerfc: str, list, optional
+        Specify marker facecolor during plotting. A single option will be applied to all elements in `ts`. A separate list for each element of `ts` is also accepted     
+    markerec: str, list, optional
+        Specify marker edgecolor during plotting. A single option will be applied to all elements in `ts`. A separate list for each element of `ts` is also accepted
+    plot_kw: dict, optional
+        Further plotting options passed to `matplotlib.pyplot.plot`, such as `markerfacecolor` (removes fill from markers, leaving only the edges), and `markeredgewidth` (sets the width of the marker outline). These options are passed to **every** elements in `ts`.
     x_ticks: list, optional
         Locations where to put the ticks on the x-axis
     y_ticks: list, optional
@@ -732,12 +805,15 @@ class LazyPlot(Defaults):
         xx=None,
         error=None,
         error_alpha=0.3,
-        figsize=(25,5),
+        figsize=(14,4),
         cmap='viridis',
         labels=None,
         markers=None,
         markersize=None,
+        markerfc=None,
+        markerec=None,
         plot_alpha=None,
+        plot_kw={},
         **kwargs):
 
         self.array = ts
@@ -750,6 +826,9 @@ class LazyPlot(Defaults):
         self.labels = labels
         self.markers = markers
         self.markersize = markersize
+        self.markerfc = markerfc
+        self.markerec = markerec
+        self.plot_kw = plot_kw
 
         super().__init__()
         self.__dict__.update(kwargs)
@@ -797,10 +876,37 @@ class LazyPlot(Defaults):
                 if self.markers == None:
                     self.markers = [None for ii in range(len(self.array))]
                 else:
-                    self.markers = [self.markers]
+                    self.markers = [self.markers for _ in range(len(self.array))]
 
-                if len(self.markers) != len(self.array):
-                    raise ValueError(f"Marker list ({len(self.markers)}) does not match length of data list ({len(self.array)})")
+            if len(self.markers) != len(self.array):
+                raise ValueError(f"Marker list ({len(self.markers)}) does not match length of data list ({len(self.array)})")
+            
+            self.fix_error = True
+            if not isinstance(self.error, (int,float,np.ndarray,list)):
+                self.fix_error = False
+
+            if not isinstance(self.error, list):
+                if not isinstance(self.error, (int,float,np.ndarray,list)):
+                    self.error = [None for ii in range(len(self.array))]
+                elif isinstance(self.error, (int,float)):
+                    self.error = [self.error for ii in range(len(self.array))]
+                else:
+                    self.error = [self.error]
+
+            # filter out all NaNs
+            if self.fix_error:
+                self.tmp_error = [None for ii in range(len(self.array))]
+                for ix,err in enumerate(self.error):
+                    if isinstance(err, (int,float)):
+                        self.tmp_error[ix] = err
+                    else:
+                        if not all([np.isnan(i) for i in err]):
+                            self.tmp_error[ix] = err
+
+                self.error = self.tmp_error.copy()
+
+                if len(self.error) != len(self.array):
+                    raise ValueError(f"Error list ({len(self.error)}) does not match length of data list ({len(self.array)})")                
 
             if not isinstance(self.markersize, list):
                 if self.markersize == None:
@@ -849,24 +955,40 @@ class LazyPlot(Defaults):
 
                 # decide on x-axis
                 if not isinstance(self.xx, (np.ndarray,list,range, pd.DataFrame, pd.Series)):
-                    x = np.arange(0, len(el))
+                    self.t_ = np.arange(0, len(el))
                 else:
                     # range has no copy attribute
                     if isinstance(self.xx, range):
-                        x = self.xx
+                        self.t_ = self.xx
                     elif isinstance(self.xx, (pd.DataFrame,pd.Series)):
-                        x = self.xx.values
+                        self.t_ = self.xx.values
                     else:
-                        x = self.xx.copy()
+                        self.t_ = self.xx.copy()
 
                 if isinstance(self.labels, (list,np.ndarray)):
                     lbl = self.labels[idx]
                 else:
                     lbl = None
 
+                if isinstance(self.markerec, (list,str)):
+                    if isinstance(self.markerec, list):
+                        use_ec = self.markerec[idx]
+                    else:
+                        use_ec = self.markerec
+
+                    self.plot_kw["markeredgecolor"] = use_ec
+
+                if isinstance(self.markerfc, (list,str)):
+                    if isinstance(self.markerfc, list):
+                        use_fc = self.markerfc[idx]
+                    else:
+                        use_fc = self.markerfc
+
+                    self.plot_kw["markerfacecolor"] = use_fc
+
                 # plot
                 self.axs.plot(
-                    x, 
+                    self.t_, 
                     el, 
                     color=self.color_list[idx], 
                     label=lbl, 
@@ -874,18 +996,18 @@ class LazyPlot(Defaults):
                     ls=use_style,
                     marker=self.markers[idx],
                     markersize=self.markersize[idx],
-                    alpha=self.plot_alpha[idx])
+                    alpha=self.plot_alpha[idx],
+                    **self.plot_kw)
 
                 # plot shaded error bars
-                if isinstance(self.error, (int,float,list,np.ndarray)):
-                    self._set_shaded_error(
-                        x=x,
-                        ax=self.axs,
-                        tc=el,
-                        yerr=self.error,
-                        color=self.color_list[idx],
-                        alpha=self.error_alpha
-                    )
+                self._set_shaded_error(
+                    x=self.t_,
+                    ax=self.axs,
+                    tc=el,
+                    yerr=self.error[idx],
+                    color=self.color_list[idx],
+                    alpha=self.error_alpha
+                )
 
         # axis labels and titles
         self._set_legend_labels(self.axs, labels=self.labels)
@@ -910,12 +1032,12 @@ class LazyPlot(Defaults):
             if isinstance(self.xlim_left, (float,int)):
                 self.axs.set_xlim(left=self.xlim_left)
             else:
-                self.axs.set_xlim(left=x[0])
+                self.axs.set_xlim(left=self.t_[0])
 
             if self.xlim_right:
                 self.axs.set_xlim(right=self.xlim_right)
             else:
-                self.axs.set_xlim(right=x[-1]) 
+                self.axs.set_xlim(right=self.t_[-1]) 
 
         else:
             self.axs.set_xlim(self.x_lim)
@@ -948,12 +1070,17 @@ class LazyCorr(Defaults):
 
     Parameters
     ----------
-    x: np.ndarray, list
-        First variable to include in regression
-    y: np.ndarray, list
-        Second variable to include in regression
+    data: pd.DataFrame, optional
+        Input DataFrame. In this case, use strings representing column names for `x`, `y`, and `color_by`. Internally, the dataframe is parsed into arrays so that it's compatible with matplotlib's scatter-/ color-by functions
+    x: str, np.ndarray, list
+        First variable to include in plot/regression. Can be a list/array representing data, or a column name from `data`
+    y: str, np.ndarray, list
+        Second variable to include in plot/regression. Can be a list/array representing data, or a column name from `data`
+    color_by: str, np.ndarray, list
+        Color the points according to a separate array. Can be a list/array representing data, or a column name from `data`. Default color map for this is 'viridis', and can be changed by passing arguments to `scatter_kwargs`
+
     color: str, list, optional
-        String representing a color, by default "#ccccccc"
+        String representing a color, by default "#ccccccc" to color the regression fit
     figsize: tuple, optional
         Figure dimensions as per usual matplotlib conventions, by default (8,8)
     axs: <AxesSubplot:>, optional
@@ -963,9 +1090,14 @@ class LazyCorr(Defaults):
     regression: bool, optional
         Run a regression between `x` and `y`. The result is stored in `self.regression_result`
     scatter_kwargs: dict, optional
-        Additional options passed on to the `scatter` function from matplotlib
+        Additional options passed on to the `scatter` function from matplotlib. Set colorbar to nothing by passing:
+
+>>> scatter_kwargs={"cbar": False}
+
     stat_kwargs: dict, optional
         Options passed on to pingouin's stats functions
+    reg_kwargs: dict, optional
+        Options passed on the seaborn's regplot
 
     Example
     ----------
@@ -1002,13 +1134,14 @@ class LazyCorr(Defaults):
 
     Notes
     ----------
-    see documentation of :class:`linescanning.plotting.Defaults()` for formatting options        
+    see documentation of :class:`linescanning.plotting.Defaults()` for formatting options
     """    
 
     def __init__(
         self,
         x, 
         y, 
+        data: pd.DataFrame=None,
         color: str="#cccccc", 
         figsize: tuple=(7,7),      
         points: bool=True,
@@ -1018,11 +1151,14 @@ class LazyCorr(Defaults):
         color_by: Union[list,np.ndarray]=None,
         regression: bool=False,
         correlation: bool=False,
+        reg_kwargs: dict={},
+        error_kwargs: dict={},
         **kwargs):
 
         # init default plotter class
         super().__init__(**kwargs)
 
+        self.data           = data
         self.x              = x
         self.y              = y
         self.color          = color
@@ -1034,6 +1170,8 @@ class LazyCorr(Defaults):
         self.color_by       = color_by
         self.regression     = regression
         self.correlation    = correlation
+        self.reg_kwargs     = reg_kwargs
+        self.error_kwargs   = error_kwargs
 
         if self.xkcd:
             with plt.xkcd():
@@ -1086,32 +1224,81 @@ class LazyCorr(Defaults):
         # set figure axis
         self._set_figure_axs()       
 
+        # sort out stuff if input is data
+        if isinstance(self.data, pd.DataFrame):
+            
+            # can reset index on dataframe without index, to try-except
+            try:
+                self.data = self.data.reset_index()
+            except:
+                pass
+
+            self.x = self.data[self.x].values
+            self.y = self.data[self.y].values
+
+            if isinstance(self.color_by, str):
+                self.color_by = self.data[self.color_by].values.astype(float)
+
+            self.data = None
+
+        for e in [self.x,self.y]:
+
+            # convert list to array
+            if isinstance(e, list):
+                e = np.array(e)
+
+            # enforce float
+            e = e.astype(float)
+
         # c-arguments clashes with "color" argument if you pass it to sns.regplot in "scatter_kws"; hence this solution
-        if isinstance(self.color_by, (list, np.ndarray)):
+        if isinstance(self.color_by, (list, np.ndarray, pd.DataFrame, pd.Series)):
+
+            # get array
+            if isinstance(self.color_by, (pd.DataFrame,pd.Series)):
+                self.color_by = self.color_by.values
+
+            # remove cbar from kwargs
+            if "cbar" in list(self.scatter_kwargs.keys()):
+                add_cbar = self.scatter_kwargs["cbar"]
+                _ = self.scatter_kwargs.pop("cbar")
+            else:
+                add_cbar = True
+
             points = self.axs.scatter(
                 self.x,
                 self.y, 
                 c=self.color_by, 
                 **self.scatter_kwargs)
-            
-            # set colorbar
-            self.cbar = plt.colorbar(points)
-            if "label" in list(self.scatter_kwargs.keys()):
-                self.cbar.set_label(
-                    self.scatter_kwargs["label"], 
-                    fontsize=self.label_size,
-                    fontname=self.fontname)            
-            
-            # sort out ticks
-            self._set_tick_params(self.cbar.ax)
-            self._set_spine_width(self.cbar.ax)
 
-            # remove outside edge from colorbar
-            self.cbar.ax.set_frame_on(False)
+            # set colorbar
+            if add_cbar:
+                self.cbar = plt.colorbar(points)
+                if "label" in list(self.scatter_kwargs.keys()):
+                    self.cbar.set_label(
+                        self.scatter_kwargs["label"], 
+                        fontsize=self.font_size,
+                        fontname=self.fontname)            
+                
+                # sort out ticks
+                self._set_tick_params(self.cbar.ax)
+                self._set_spine_width(self.cbar.ax)
+
+                self._set_y_ticker(self.cbar.ax, self.y_dec)
+
+                # remove outside edge from colorbar
+                self.cbar.ax.set_frame_on(False)
 
             # set stuff to false/empty for sns.regplot
             self.points = False
             self.scatter_kwargs = {}
+
+        # draw scatter error if desired
+        self._draw_errorbar(
+            x=self.x,
+            y=self.y,
+            ax=self.axs,
+            **self.error_kwargs
+        )
 
         self.kde_color = utils.make_between_cm(self.color,self.color,as_list=True)
         sns.regplot(
@@ -1121,7 +1308,8 @@ class LazyCorr(Defaults):
             ax=self.axs,
             scatter=self.points,
             label=self.label,
-            scatter_kws=self.scatter_kwargs)
+            scatter_kws=self.scatter_kwargs,
+            **self.reg_kwargs)
 
         # set labels and titles
         for lbl,func in zip(
@@ -1138,9 +1326,7 @@ class LazyCorr(Defaults):
         for lbl,func in zip(
             [self.x_ticks, self.y_ticks],
             [self._set_xticks, self._set_yticks]):
-
-            if isinstance(lbl, list):
-                func(self.axs, lbl)
+            func(self.axs, lbl)
 
         for lim,func in zip(
             [self.x_lim, self.y_lim], 
@@ -1960,13 +2146,12 @@ def conform_ax_to_obj(
     obj._set_x_ticker(ax, obj.x_dec)
     obj._despine(ax)
 
-    return ax
+    return ax,obj
 
 class LazyColorbar(Defaults):
 
     def __init__(
         self,
-        axs=None,
         cmap="magma_r",
         txt=None,
         vmin=0,
@@ -1981,7 +2166,6 @@ class LazyColorbar(Defaults):
         cm_decimal=3,
         **kwargs):
 
-        self.axs = axs
         self.cmap = cmap
         self.txt = txt
         self.vmin = vmin
@@ -1995,7 +2179,11 @@ class LazyColorbar(Defaults):
         self.cm_nr = cm_nr
         self.cm_decimal = cm_decimal
 
-        super().__init__()
+        super().__init__(**kwargs)
+
+        # set figure axis
+        self._set_figure_axs() 
+
         self.__dict__.update(kwargs)
         self.update_rc(self.fontname)
 
@@ -2102,10 +2290,14 @@ def fig_annot(
     x0_corr=0, 
     x_corr=-0.09, 
     fontsize=28,
+    lower=False,
     **kwargs):
 
     # get figure letters
-    alphabet = list(string.ascii_uppercase)
+    if lower:
+        alphabet = list(string.ascii_lowercase)
+    else:
+        alphabet = list(string.ascii_uppercase)
 
     if isinstance(axs, list):
         ax_list = axs
