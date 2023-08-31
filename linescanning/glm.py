@@ -266,6 +266,7 @@ class GenericGLM():
         copes=None,
         plot_full_only=False,
         plot_full=False,
+        add_intercept=True,
         save_as=None):
 
         self.nilearn_method = nilearn_method
@@ -350,6 +351,7 @@ class GenericGLM():
                 copes=self.copes,
                 plot_full_only=self.plot_full_only,
                 plot_full=self.plot_full,
+                add_intercept=add_intercept,
                 save_as=self.save_as)
 
     def plot_contrast_matrix(self, save_as=None):
@@ -427,8 +429,9 @@ def spm_hrf(osf=1, TR=0.105, dispersion=False, derivative=False, time_length=25)
 def make_stimulus_vector(
     onset_df, 
     scan_length=None, 
+    cov_as_ampl=None,
     TR=0.105, 
-    osf=None, 
+    osf=1, 
     type='event', 
     block_length=None, 
     amplitude=None):
@@ -497,6 +500,11 @@ def make_stimulus_vector(
     except:
         raise ValueError('Could not extract condition names; are you sure you formatted the dataframe correctly?')
 
+    # check if we should use covariate as amplitude
+    if isinstance(cov_as_ampl, (bool,list)):
+        if isinstance(cov_as_ampl, bool):
+            cov_as_ampl = [cov_as_ampl for _ in names_cond]
+
     # check if we got multiple amplitudes
     if isinstance(amplitude, np.ndarray):
         ampl_array = amplitude
@@ -508,30 +516,42 @@ def make_stimulus_vector(
     # loop through unique conditions
     stim_vectors = {}
     for idx,condition in enumerate(names_cond):
-
-        if isinstance(ampl_array, np.ndarray):
-            if ampl_array.shape[0] == names_cond.shape[0]:
-                ampl = amplitude[idx]
-                print(f"Amplitude for event '{names_cond[idx]}' = {round(ampl,2)}")
+        
+        tmp_onsets = utils.select_from_df(onset_df, expression=f"event_type = {condition}")
+        set_ampl = True
+        if isinstance(cov_as_ampl, list):
+            if cov_as_ampl[idx]:
+                if "cov" in list(tmp_onsets.columns):
+                    ampl = tmp_onsets["cov"].values
+                    set_ampl = False
+        
+        if set_ampl:
+            if isinstance(ampl_array, np.ndarray):
+                if ampl_array.shape[0] == names_cond.shape[0]:
+                    ampl = amplitude[idx]
+                    print(f"Amplitude for event '{names_cond[idx]}' = {round(ampl,2)}")
+                else:
+                    raise ValueError(f"Nr of amplitudes ({ampl_array.shape[0]}) does not match number of conditions ({names_cond.shape[0]})")
             else:
-                raise ValueError(f"Nr of amplitudes ({ampl_array.shape[0]}) does not match number of conditions ({names_cond.shape[0]})")
-        else:
-            ampl = 1
+                ampl = 1
 
         Y = np.zeros(int((scan_length*osf)))
         if type == "event":
-            for rr, ii in enumerate(onset_df['onset']):
-                if onset_df['event_type'][rr] == condition:
-                    try:
-                        Y[int((ii*osf)/TR)] = ampl
-                    except:
-                        warnings.warn(f"Warning: could not include event {rr} with t = {ii}. Probably experiment continued after functional acquisition")
+            for rr, ii in enumerate(tmp_onsets['onset']):
+                try:
+                    if isinstance(ampl, (list,np.ndarray)):
+                        use_ampl = ampl[rr]
+                    else:
+                        use_ampl = ampl
+
+                    Y[int((ii*osf)/TR)] = use_ampl
+                except:
+                    warnings.warn(f"Warning: could not include event {rr} with t = {ii}. Probably experiment continued after functional acquisition")
                         
         elif type == 'block':
 
-            for rr, ii in enumerate(onset_df['onset']):
-                if onset_df['event_type'][rr] == condition:
-                    Y[int((ii*osf)/TR):int(((ii+block_length)*osf)/TR)] = ampl
+            for rr, ii in enumerate(tmp_onsets['onset']):
+                Y[int((ii*osf)/TR):int(((ii+block_length)*osf)/TR)] = ampl
 
         else:
             raise ValueError(f"Event must be 'event' or 'block', not '{type}'")
@@ -590,6 +610,7 @@ def define_hrf(
         hrf = [np.squeeze(hrf)]
 
     else:
+        osf /= TR
         dt = 1/osf
         time_points = np.linspace(0, 25, np.rint(float(25)/dt).astype(int))
         hrf = [double_gamma(time_points, lag=6)]
@@ -603,6 +624,7 @@ def convolve_hrf(
     osf=1,
     make_figure=False, 
     xkcd=False,
+    time=None,
     *args,
     **kwargs):
 
@@ -646,7 +668,15 @@ def convolve_hrf(
     >>> convolved_stim_vector_left = convolve_hrf(hrf_custom, stims) # no figure
     """
 
-    def plot(stim_v, hrf, convolved, osf=1, xkcd=False, **kwargs):
+    def plot(
+        stim_v, 
+        hrf, 
+        convolved, 
+        osf=1, 
+        ev=None,
+        xkcd=False, 
+        time=time,
+        **kwargs):
 
         fig = plt.figure(figsize=(20,6))
         gs = fig.add_gridspec(2, 2, width_ratios=[20, 10], hspace=0.7)
@@ -654,30 +684,32 @@ def convolve_hrf(
         if isinstance(hrf, np.ndarray):
             hrf = [hrf]
 
+        if stim_v.min() < 0:
+            y_lim = [-1,1]
+            y_ticks = [-1,0,1]
+        else:
+            y_lim = [-0.5,1]
+            y_ticks = [0,1]
+
         ax0 = fig.add_subplot(gs[0,0])
         LazyPlot(
             stim_v, 
             color="#B1BDBD", 
             axs=ax0,
-            title="Events",
-            y_lim=[-.5, 1], 
+            title=f"Events ('{ev}')",
+            y_lim=y_lim, 
             x_label='scan volumes (* osf)',
             y_label='magnitude (a.u.)', 
             xkcd=xkcd,
             font_size=16,
+            y_ticks=y_ticks,
             *args,
             **kwargs)
         
-        # check if we got derivatives; if so, select first element (= standard HRF)
-        if isinstance(convolved, list):
-            convolved = np.array(convolved)
-        
-        if convolved.shape[-1] > 1:
-            convolved = convolved[:,0]
-
+        # print(list(convolved.T)[0].shape)
         ax1 = fig.add_subplot(gs[1, 0])
         LazyPlot(
-            convolved,
+            list(convolved.T),
             axs=ax1,
             title="Convolved stimulus-vector",
             x_label='scan volumes (* osf)',
@@ -686,13 +718,22 @@ def convolve_hrf(
             **kwargs)
         
         ax2 = fig.add_subplot(gs[:, 1])
-        time_axis = list(((np.arange(0,hrf[0].shape[0]))/osf)*TR)
+        if not isinstance(time, (list,np.ndarray)):
+            time = list(((np.arange(0,hrf[0].shape[0]))/osf)*TR)
+        
+        labels = [
+            "HRF",
+            "1st derivative",
+            "2nd derivative"
+        ]
+
         LazyPlot(
             hrf,
-            xx=time_axis,
+            xx=time,
             axs=ax2,
             title="HRF", 
             x_label='Time (s)',
+            labels=labels[:len(hrf)],
             *args,
             **kwargs)
 
@@ -735,6 +776,8 @@ def convolve_hrf(
                                 hrfs, 
                                 convolved_stim_vector[event], 
                                 osf=osf,
+                                ev=event,
+                                time=time,
                                 *args, 
                                 **kwargs)
                     else:
@@ -742,6 +785,8 @@ def convolve_hrf(
                             stim_v[event], 
                             hrfs, 
                             convolved_stim_vector[event], 
+                            ev=event,
+                            time=time,
                             osf=osf,
                             *args,
                             **kwargs)
@@ -863,6 +908,7 @@ def fit_first_level(
     cmap='inferno', 
     plot_full_only=False,
     plot_full=False,
+    add_intercept=True,
     **kwargs):
 
     """fit_first_level
@@ -916,14 +962,15 @@ def fit_first_level(
             stim_vector = stim_vector[:data.shape[0],:]
 
         # create design matrix with intercept
-        intercept = np.ones((data.shape[0], 1))
-        intercept_df = pd.DataFrame(intercept, columns=['intercept'])
-        X_matrix = pd.concat([intercept_df, stim_vector], axis=1)
+        if add_intercept:
+            intercept = np.ones((data.shape[0], 1))
+            intercept_df = pd.DataFrame(intercept, columns=['intercept'])
+            X_matrix = pd.concat([intercept_df, stim_vector], axis=1)
+        else:
+            X_matrix = pd.DataFrame(stim_vector, axis=1)
     else:
         # everything should be ready to go if 'first_level_matrix' was used
         X_matrix = stim_vector.copy()
-        intercept = np.ones((data.shape[0], 1))
-
         if data.ndim == 1:
             data = data[:, np.newaxis]
 
@@ -1208,6 +1255,9 @@ class Posthoc(Defaults):
         """
         self.test = test
 
+        if "within" in list(kwargs.keys()):
+            raise ValueError(f"Drawing significance bars gets too complicated with 'within' variable")
+            
         # internalize data
         if "data" in list(kwargs.keys()):
             self.data = kwargs["data"]
@@ -1322,7 +1372,7 @@ class Posthoc(Defaults):
             if isinstance(txt, str):
                 A = self.posthoc_sorted["A"].iloc[contr]
                 B = self.posthoc_sorted["B"].iloc[contr]
-
+                
                 x1 = np.where(self.conditions == A)[0][0]
                 x2 = np.where(self.conditions == B)[0][0]
 
