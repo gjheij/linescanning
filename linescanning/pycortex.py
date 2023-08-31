@@ -358,6 +358,11 @@ class SavePycortexViews():
         cm_decimals: int=2,
         cm_nr: int=5,
         viewer: bool=True,
+        clicker: str="vertex",
+        prf_file: str=None,
+        dm: str=None,
+        model: str=None,
+        func_data: Union[str,np.ndarray]=None,
         **kwargs):
 
         self.tmp_dict = data_dict
@@ -383,7 +388,12 @@ class SavePycortexViews():
         self.cm_width = cm_width
         self.cm_nr = cm_nr
         self.cm_decimals = cm_decimals
+        self.clicker = clicker
         self.viewer = viewer
+        self.prf_file = prf_file
+        self.dm = dm
+        self.model = model
+        self.func_data = func_data
 
         if not isinstance(self.subject, str):
             raise ValueError("Please specify the subject ID as per pycortex' filestore naming")
@@ -480,7 +490,41 @@ class SavePycortexViews():
         self.view[self.data_name]['camera.Save image.Height'] = self.size[1]
 
         if self.viewer:
-            self.js_handle = cortex.webgl.show(self.data_dict, pickerfun=self.clicker_function)
+            if isinstance(self.clicker, str):
+                if self.clicker == "vertex":
+                    clicker_func = self.clicker_function
+                elif self.clicker == "plot":
+                    clicker_func = self.clicker_plot
+
+                    if isinstance(self.prf_file, str):
+                        # try to read model- from the filename
+                        if not isinstance(self.model, str):
+                            try:
+                                self.comps = utils.split_bids_components(self.prf_file)
+                            except:
+                                self.comps = []
+                            
+                            if "model" in self.comps:
+                                self.model = self.comps["model"]
+
+                        self.prf_obj = prf.pRFmodelFitting(
+                            self.func_data,
+                            design_matrix=self.dm,
+                            model=self.model,
+                            **kwargs
+                        )
+
+                        self.prf_obj.load_params(
+                            self.prf_file, 
+                            model=self.model,
+                            stage="iter")
+
+                else:
+                    raise ValueError(f"clicker must be one of 'vertex' (just prints vertex to terminal) or 'plot' (plots position in visual space), not '{self.clicker}'")
+            else:
+                clicker_func = None
+                
+            self.js_handle = cortex.webgl.show(self.data_dict, pickerfun=clicker_func)
             # self.js_handle = cortex.webgl.show(self.data_dict)
             self.params_to_save = list(self.data_dict.keys())
             self.set_view()
@@ -489,9 +533,7 @@ class SavePycortexViews():
         self,
         voxel,
         hemi,
-        vertex, 
-        prf_file=None,
-        model=None):
+        vertex):
 
         #translate javascript indeing to python
         lctm, rctm = cortex.utils.get_ctmmap(self.subject, method='mg2', level=9)
@@ -506,6 +548,46 @@ class SavePycortexViews():
         #         prf_file,
 
         #     )
+
+    def clicker_plot(
+        self,
+        voxel,
+        hemi,
+        vertex):
+
+        #translate javascript indeing to python
+        lctm, rctm = cortex.utils.get_ctmmap(self.subject, method='mg2', level=9)
+        if hemi == 'left':
+            index = lctm[int(vertex)]
+        else:
+            index = len(lctm)+rctm[int(vertex)]
+
+        # # create figure
+        # plt.ion()
+        # self.fig = plt.figure(constrained_layout=True, figsize=(15,5))
+        # gs = self.fig.add_gridspec(ncols=2, width_ratios=[10,20])
+        # ax1 = self.fig.add_subplot(gs[0])
+        # ax2 = self.fig.add_subplot(gs[1])
+
+
+        # # pass on axes as arg
+        # pars,prf_,_,_ = self.prf_obj.plot_vox(
+        #     vox_nr=index,
+        #     axs=[ax1,ax2],
+        #     model=self.model,
+        #     title="pars"
+        # )
+
+        pars,prf_,_,_ = self.prf_obj.plot_vox(
+            vox_nr=index,
+            # axs=[ax1,ax2],
+            model=self.model,
+            title="pars",
+            save_as=opj(os.path.dirname(self.prf_file), f"{self.subject}_desc-clicker_plot.pdf")
+        )        
+
+        # ax2.imshow(prf_, cmap="magma")
+        print(f"index {index}: {pars}")
 
         return
     def to_static(self, *args, **kwargs):
@@ -769,7 +851,19 @@ class Vertex2D_fix():
 
         if not isinstance(self.subject, str):
             raise ValueError("Please specify the subject ID as per pycortex' filestore naming")
+
+        self.ctx_path = opj(cortex.database.default_filestore, self.subject)
+        if not os.path.exists(self.ctx_path):
+            # import subject from freesurfer (will have the same names)
+            cortex.freesurfer.import_subj(
+                fs_subject=self.subject,
+                cx_subject=self.subject,
+                freesurfer_subject_dir=os.environ.get("SUBJECTS_DIR"),
+                whitematter_surf='smoothwm')
         
+        # reload database after import
+        cortex.db.reload_subjects()
+
         #this provides a nice workaround for pycortex opacity issues, at the cost of interactivity    
         # Get curvature
         self.curv = cortex.db.get_surfinfo(self.subject)
