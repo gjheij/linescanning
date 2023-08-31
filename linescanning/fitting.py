@@ -4,11 +4,15 @@ from . import (
     utils)
 import lmfit
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 import nideconv as nd
 import numpy as np
 import pandas as pd
 import seaborn as sns
 from typing import Union
+from scipy.optimize import minimize
+from joblib import Parallel, delayed
+from sklearn import metrics
 
 class CurveFitter():
     """CurveFitter
@@ -158,7 +162,7 @@ class NideconvFitter():
     fit_type: str, optional
         Type of minimization strategy to employ, by default "ols". Should be 'ols' or 'ridge' (though the latter isn't implemented properly yet)
     n_regressors: int, optional
-        Number of regressors to use, by default 9
+        Number of regressors to use, by default 9; set `n_regressors="tr"` to synchronize the number of regressors with the TR
     add_intercept: bool, optional
         Fit the intercept, by default False
     verbose: bool, optional
@@ -167,6 +171,8 @@ class NideconvFitter():
         If ple are  in the onset dataframe, we can lump the events together and consider all onset times as 1 event, by default False
     interval: list, optional
         Interval to fit the regressors over, by default [0,12]
+    covariates: dict, optional
+        dictionary of covariates for each of the events in onsets. That is, the keys are the names of the covariates, the values are 1D numpy arrays of length identical to onsets; these are the covariate values of each of the events in onsets.
 
     Example
     ----------
@@ -231,6 +237,8 @@ class NideconvFitter():
         interval=[0,12], 
         osf=20,
         fit=True,
+        covariates=None,
+        conf_intercept=True,
         **kwargs):
 
         self.func               = func
@@ -248,6 +256,18 @@ class NideconvFitter():
         self.concatenate_runs   = concatenate_runs
         self.osf                = osf
         self.do_fit             = fit
+        self.covariates         = covariates
+        self.conf_icpt          = conf_intercept
+
+        self.allowed_basis_sets = [
+            "fir",
+            "fourier",
+            "dct",
+            "legendre",
+            "canonical_hrf",
+            "canonical_hrf_with_time_derivative",
+            "canonical_hrf_with_time_derivative_dispersion"
+        ]
 
         if self.lump_events:
             self.lumped_onsets = self.onsets.copy().reset_index()
@@ -257,11 +277,26 @@ class NideconvFitter():
         else:
             self.used_onsets = self.onsets.copy()        
         
+        if self.basis_sets not in self.allowed_basis_sets:
+            raise ValueError(f"Unrecognized basis set '{self.basis_sets}'. Must be one of {self.allowed_basis_sets}")
+        else:
+            if self.basis_sets == "canonical_hrf":
+                self.n_regressors = 1
+            elif self.basis_sets == "canonical_hrf_with_time_derivative":
+                self.n_regressors = 2
+            elif self.basis_sets == "canonical_hrf_with_time_derivative_dispersion":
+                self.n_regressors = 3
+            else:
+                # set 1 regressor per TR
+                if isinstance(self.n_regressors, str):
+                    self.n_regressors = round(((self.interval[1]+abs(self.interval[0])))/self.TR)        
+        
         # update kwargs
         self.__dict__.update(kwargs)
 
         # get the model
-        self.define_model()
+        if self.fit_type == "ols":
+            self.define_model()
 
         # specify the events
         self.define_events()
@@ -287,8 +322,58 @@ class NideconvFitter():
         if not hasattr(self, "axis_width"):
             self.axis_width = self.plotting_defaults.axis_width
 
+    def get_event_predictions_from_fitter(self, fitter):
+
+        ev_pred = []
+        for ev in self.cond:
+            X_stim = fitter.X.xs(ev, axis=1, drop_level=False)
+            betas = utils.select_from_df(fitter.betas, expression=f"event type = {ev}")
+            pred = X_stim.dot(betas).reset_index()
+            pred.rename(columns={"time": "t"}, inplace=True) 
+
+            pred["event_type"] = ev
+            ev_pred.append(pred)
+
+        ev_pred = pd.concat(ev_pred, ignore_index=True)    
+        return ev_pred
+        
+    def get_predictions_per_event(self):
+        
+        # also get the predictions
+        if self.fit_type == "ols":
+            self.fitters = self.model._get_response_fitters()
+
+        # loop through runs
+        self.predictions = []
+        self.ev_predictions = []
+        for run in range(self.fitters.shape[0]):
+
+            # full model predictions
+            run_fitter = self.fitters.iloc[run]
+            preds = run_fitter.predict_from_design_matrix()
+            
+            # overwrite colums
+            preds.columns = self.tc_condition.columns
+
+            # append
+            self.predictions.append(preds)
+
+            # event-specific predictions
+            ev_pred = self.get_event_predictions_from_fitter(run_fitter)
+            ev_pred["run"] = run+1
+
+            self.ev_predictions.append(ev_pred)
+
+        # concatenate and index
+        self.predictions = pd.concat(self.predictions)
+        self.predictions.index = self.func.index
+        self.ev_predictions = pd.concat(self.ev_predictions).set_index(["event_type","run","t"])
+
     def timecourses_condition(self):
 
+        if not isinstance(self.covariates, str):
+            self.covariates = "intercept"
+            
         # get the condition-wise timecourses
         if self.fit_type == "ols":
             # averaged runs
@@ -296,60 +381,31 @@ class NideconvFitter():
 
             # full timecourses of subjects
             self.tc_subjects = self.model.get_timecourses()
-            self.obj_grouped = self.tc_subjects.groupby(level=["subject", "event type", "covariate", "time"])
-            
-            # get the standard error of mean & standard deviation
-            self.tc_sem = self.obj_grouped.sem()
-            self.tc_std = self.obj_grouped.std()
-            self.tc_mean = self.obj_grouped.mean()
+        else:
+            self.tc_condition = self.tc_subjects.groupby(level=['event type', 'covariate', 'time']).mean()
 
-            # rename 'event type' to 'event_type'
-            tmp = self.tc_sem.reset_index().rename(columns={"event type": "event_type"})
-            self.tc_sem = tmp.set_index(["subject", "event_type", "covariate",  "time"])
-            
-            tmp = self.tc_std.reset_index().rename(columns={"event type": "event_type"})
-            self.tc_std = tmp.set_index(["subject", "event_type", "covariate", "time"])
+            self.fitters = self.sub_df.copy()
 
-            tmp = self.tc_mean.reset_index().rename(columns={"event type": "event_type"})
-            self.tc_mean = tmp.set_index(["subject", "event_type", "covariate", "time"])            
+        # get some more info
+        self.obj_grouped = self.tc_subjects.groupby(level=["subject", "event type", "covariate", "time"])
+        
+        # get the standard error of mean & standard deviation
+        self.tc_sem = self.obj_grouped.sem()
+        self.tc_std = self.obj_grouped.std()
+        self.tc_mean = self.obj_grouped.mean()
 
-            self.sem_condition = self.tc_sem.groupby(level=["event_type", "covariate", "time"]).mean()
+        # rename 'event type' to 'event_type'
+        tmp = self.tc_sem.reset_index().rename(columns={"event type": "event_type"})
+        self.tc_sem = tmp.set_index(["subject", "event_type", "covariate",  "time"])
+        
+        tmp = self.tc_std.reset_index().rename(columns={"event type": "event_type"})
+        self.tc_std = tmp.set_index(["subject", "event_type", "covariate", "time"])
 
-            self.std_condition = self.tc_std.groupby(level=["event_type", "covariate", "time"]).mean()
+        tmp = self.tc_mean.reset_index().rename(columns={"event type": "event_type"})
+        self.tc_mean = tmp.set_index(["subject", "event_type", "covariate", "time"])            
 
-            # get r2
-            self.rsq_ = self.model.get_rsq()
-
-            # also get the predictions
-            self.fitters = self.model._get_response_fitters()
-
-            # loop through runs
-            self.predictions = []
-            for run in range(self.fitters.shape[0]):
-                preds = self.fitters.iloc[run].predict_from_design_matrix()
-                
-                # overwrite colums
-                preds.columns = self.tc_condition.columns
-
-                # append
-                self.predictions.append(preds)
-
-            # concatenate and index
-            self.predictions = pd.concat(self.predictions)
-            self.predictions.index = self.func.index
-
-        elif self.fit_type == "ridge":
-            # here we need to stitch stuff back together
-            if not hasattr(self, 'ridge_models'):
-                raise ValueError("Ridge regression not yet performed")
-
-            tc  = []
-            rsq = []
-            for vox in list(self.ridge_models.keys()):
-                tc.append(self.ridge_models[vox].get_timecourses())
-                rsq.append(self.ridge_models[vox].get_rsq())
-            self.tc_condition = pd.concat(tc, axis=1)
-            self.rsq_ = pd.concat(rsq, axis=1)
+        self.sem_condition = self.tc_sem.groupby(level=["event_type", "covariate", "time"]).mean()
+        self.std_condition = self.tc_std.groupby(level=["event_type", "covariate", "time"]).mean()
             
         # rename 'event type' to 'event_type' so it's compatible with utils.select_from_df
         tmp = self.tc_condition.reset_index().rename(columns={"event type": "event_type"})
@@ -358,6 +414,18 @@ class NideconvFitter():
         # set time axis
         self.time = self.tc_condition.groupby(['time']).mean().reset_index()['time'].values
 
+        # get r2
+        try:
+            self.rsq_ = self.model.get_rsq()
+        except:
+            pass
+            
+        # get predictions
+        if self.fit_type == "ols":
+            self.get_predictions_per_event()
+        else:
+            self.ev_predictions = self.sub_ev_df.copy()
+        
     def define_model(self, **kwargs):
 
         self.model = nd.GroupResponseFitter(
@@ -365,9 +433,9 @@ class NideconvFitter():
             self.used_onsets,
             input_sample_rate=self.fs,
             confounds=self.confounds, 
-            add_intercept=self.add_intercept,
             concatenate_runs=self.concatenate_runs,
             oversample_design_matrix=self.osf,
+            add_intercept=self.conf_icpt,
             **kwargs)
     
     def add_event(self, *args, **kwargs):
@@ -375,7 +443,7 @@ class NideconvFitter():
 
     def define_events(self):
         
-        utils.verbose(f"Selected '{self.basis_sets}'-basis sets", self.verbose)
+        utils.verbose(f"Selected '{self.basis_sets}'-basis sets (with {self.n_regressors} regressors)", self.verbose)
 
         # define events
         self.cond = self.used_onsets.reset_index().event_type.unique()
@@ -383,54 +451,193 @@ class NideconvFitter():
         self.cond = np.array(sorted([event for event in self.cond if event != 'nan']))
 
         # add events to model
-        for event in self.cond:
-            utils.verbose(f"Adding event '{event}' to model", self.verbose)
-            
-            self.model.add_event(
-                str(event), 
-                basis_set=self.basis_sets,
-                n_regressors=self.n_regressors, 
-                interval=self.interval)
+        if self.fit_type.lower() == "ols":
+            for ix,event in enumerate(self.cond):
+                utils.verbose(f"Adding event '{event}' to model", self.verbose)
 
-    def make_onsets_for_ridge(self):
-        return self.used_onsets.reset_index().drop(['subject', 'run'], axis=1).set_index('event_type').loc['stim'].onset
+                if isinstance(self.covariates, list):
+                    cov = self.covariates[ix]
+                else:
+                    cov = self.covariates
+
+                if isinstance(self.add_intercept, list):
+                    icpt = self.add_intercept[ix]
+                else:
+                    icpt = self.add_intercept
+
+                self.model.add_event(
+                    str(event), 
+                    basis_set=self.basis_sets,
+                    n_regressors=self.n_regressors, 
+                    interval=self.interval,
+                    add_intercept=icpt,
+                    covariates=cov)
+                
+        else:
+            
+            utils.verbose(f"Setting up models ridge-regression", self.verbose)
+
+            # get subjects
+            try:
+                self.sub_ids = utils.get_unique_ids(self.func, id="subject")
+            except:
+                self.sub_ids = [1]
+
+            self.do_fit = True
+            self.sub_df = []
+            self.sub_ev_df = []
+            self.tc_subjects = []
+            for sub in self.sub_ids:
+
+                try:
+                    self.run_ids = [int(i) for i in utils.get_unique_ids(self.func, id="run")]
+                    self.run_df = []
+                    self.run_pred_ev_df = []
+                    self.run_prof_ev_df = []
+                    set_indices = ["subject","run"]
+                    set_ev_idc = ["event_type","run","t"]
+                    set_prof_idc = ["subject","run","event type","covariate","time"]
+                except:
+                    self.run_ids = [None]
+                    self.run_df = None
+                    self.run_pred_ev_df = None
+                    self.run_prof_ev_df = None
+                    set_indices = ["subject"]
+                    set_ev_idc = ["event_type","t"]
+                    set_prof_idc = ["subject","event type","covariate","time"]
+
+                # loop through runs, if available
+                for run in self.run_ids:
+                    
+                    # loop trough voxels (ridge only works for 1d data)
+                    self.vox_df = []
+                    self.ev_predictions = []
+                    self.vox_prof = []
+                    for ix, col in enumerate(list(self.func.columns)):
+                        
+                        # select single voxel timecourse from main DataFrame
+                        if isinstance(run, int):
+                            self.vox_signal = pd.DataFrame(utils.select_from_df(self.func[col], expression=f"run = {run}")[col])
+                        else:
+                            self.vox_signal = pd.DataFrame(self.func[col])
+
+                        # make response fitter
+                        if isinstance(self.covariates, list):
+                            cov = self.covariates[ix]
+                        else:
+                            cov = self.covariates
+
+                        self.rf = self.make_response_fitter(self.vox_signal, run=run, cov=cov)
+
+                        # fit immediately; makes life easier
+                        if self.do_fit:
+                            self.rf.fit(type="ridge")
+
+                            # HRF profiles
+                            self.vox_prof.append(self.rf.get_timecourses().reset_index())
+
+                            # timecourse predictions
+                            self.ev_pred = self.get_event_predictions_from_fitter(self.rf)
+                            self.ev_predictions.append(self.ev_pred)
+
+                        self.rf_df = pd.DataFrame({col: self.rf}, index=[0])
+                        self.vox_df.append(self.rf_df)
+                    
+                    self.vox_df = pd.concat(self.vox_df, axis=1)
+
+                    if len(self.ev_predictions)>0:
+                        self.ev_predictions = pd.concat(self.ev_predictions, axis=1)
+
+                    if len(self.vox_prof)>0:
+                        self.vox_prof = pd.concat(self.vox_prof, axis=1)
+
+                    if isinstance(run, int):
+                        self.vox_df["run"] = run
+                        self.run_df.append(self.vox_df)
+
+                        if isinstance(self.ev_predictions, pd.DataFrame):
+                            self.ev_predictions["run"] = run
+                            self.run_pred_ev_df.append(self.ev_predictions)
+
+                        if isinstance(self.vox_prof, pd.DataFrame):
+                            self.vox_prof["run"] = run
+                            self.run_prof_ev_df.append(self.vox_prof)                            
+
+                    else:
+                        self.vox_df["subject"] = sub
+                        self.sub_df.append(self.vox_df)
+                        
+                        if isinstance(self.ev_predictions, pd.DataFrame):
+                            self.sub_ev_df.append(self.ev_predictions)
+
+                        if isinstance(self.vox_prof, pd.DataFrame):
+                            self.vox_prof["subject"] = sub
+                            self.tc_subjects.append(self.vox_prof)
+
+                if isinstance(self.run_df, list):
+                    self.run_df = pd.concat(self.run_df)    
+                    self.run_df["subject"] = sub
+                    self.sub_df.append(self.run_df)
+
+                if isinstance(self.run_pred_ev_df, list):
+                    self.run_pred_ev_df = pd.concat(self.run_pred_ev_df)
+                    self.sub_ev_df.append(self.run_pred_ev_df)
+
+                if isinstance(self.run_prof_ev_df, list):
+                    self.run_prof_ev_df = pd.concat(self.run_prof_ev_df)
+                    self.run_prof_ev_df["subject"] = sub
+                    self.tc_subjects.append(self.run_prof_ev_df)                    
+
+            self.sub_df = pd.concat(self.sub_df).set_index(set_indices)
+
+            if len(self.sub_ev_df)>0:
+                self.sub_ev_df = pd.concat(self.sub_ev_df)
+                self.sub_ev_df.set_index(set_ev_idc, inplace=True)
+
+            if len(self.tc_subjects)>0:
+                self.tc_subjects = pd.concat(self.tc_subjects)
+                self.tc_subjects.set_index(set_prof_idc, inplace=True)                
+
+    def make_response_fitter(self, data, run=None, cov=None):
+
+        # specify voxel-specific model
+        model = nd.ResponseFitter(
+            input_signal=data, 
+            sample_rate=self.fs,
+            add_intercept=self.conf_icpt,
+            oversample_design_matrix=self.osf
+        )
+
+        # get onsets
+        [
+            model.add_event(
+                str(i),
+                onsets=self.make_onsets_for_response_fitter(i, run=run),
+                basis_set=self.basis_sets,
+                n_regressors=self.n_regressors,
+                interval=self.interval,
+                covariates=cov
+            ) for i in self.cond
+        ]
+
+        return model
+    
+    def make_onsets_for_response_fitter(self, i, run=None):
+        select_from_onsets = self.used_onsets.copy()
+        if isinstance(run, int):
+            select_from_onsets = utils.select_from_df(select_from_onsets, expression=f"run = {run}")
+            drop_idcs = ["subject","run"]
+        else:
+            drop_idcs = ["subject"]
+        
+        return select_from_onsets.reset_index().drop(drop_idcs, axis=1).set_index('event_type').loc[i].onset
 
     def fit(self):
 
+        # fitting
         utils.verbose(f"Fitting with '{self.fit_type}' minimization", self.verbose)
-
-        if self.fit_type.lower() == "ridge":
-            # raise NotImplementedError("Ridge regression doesn't work with 2D-data yet, use 'ols' instead")
-            
-            # format the onsets properly
-            vox_onsets = self.make_onsets_for_ridge()
-            
-            self.ridge_models = {}
-            for ix, signal in enumerate(self.func.columns):
-                
-                # select single voxel timecourse from main DataFrame
-                vox_signal = utils.select_from_df(self.func, expression='ribbon', indices=[ix,ix+1])
-                
-                # specify voxel-specific model
-                vox_model = nd.ResponseFitter(input_signal=vox_signal, sample_rate=self.fs)
-
-                [vox_model.add_event(
-                    str(i),
-                    onsets=vox_onsets,
-                    basis_set=self.basis_sets,
-                    n_regressors=self.n_regressors,
-                    interval=self.interval) for i in self.cond]
-
-                vox_model.fit(type='ridge')
-                self.ridge_models[ix] = vox_model
-
-        elif self.fit_type.lower() == "ols":
-
-            # fitting
+        if self.fit_type.lower() == "ols":
             self.model.fit(type=self.fit_type)
-
-        else:
-            raise ValueError(f"Unrecognized minimizer '{self.fit_type}'; must be 'ols' or 'ridge'")
         
         utils.verbose("Done", self.verbose)
 
@@ -552,7 +759,10 @@ class NideconvFitter():
             self.timecourses_condition()
 
         # average across runs
-        self.avg_across_runs = self.tc_condition.groupby(["event_type", "time"]).mean()
+        self.tc_df = utils.select_from_df(self.tc_condition, expression=f"covariate = {self.covariates}")
+
+        # average across runs
+        self.avg_across_runs = self.tc_df.groupby(["event_type", "time"]).mean()
 
         if not isinstance(events, (list,np.ndarray)):
             events = self.cond
@@ -578,7 +788,9 @@ class NideconvFitter():
 
         # reorder base on indices again
         if isinstance(self.event_indices, list):
-            for tt,gg in zip(["avg","sem","std"],[self.event_avg,self.event_sem,self.event_std]):
+            for tt,gg in zip(
+                ["avg","sem","std"],
+                [self.event_avg,self.event_sem,self.event_std]):
                 reordered = [gg[i] for i in self.event_indices]
                 setattr(self, f"event_{tt}", reordered)
 
@@ -596,7 +808,7 @@ class NideconvFitter():
         elif error_type == "std":
             self.use_error = self.event_std.copy()
         else:
-            raise ValueError(f"Error type must be 'sem' or 'std', not {error_type}")
+            self.use_error = None
         
         # plot
         plotter = plotting.LazyPlot(
@@ -629,15 +841,15 @@ class NideconvFitter():
             left, bottom, width, height = inset_ttp
             ax2 = axs.inset_axes([left, bottom, width, height])
             self.plot_ttp(
+                df=self.avg_across_runs_voxels,
                 axs=ax2, 
                 hrf_axs=axs, 
                 ttp_labels=ttp_labels, 
                 ttp_lines=ttp_lines,
-                **dict(
-                    kwargs,
-                    font_size=self.font_size,
-                    label_size=self.label_size,
-                    sns_offset=2))
+                font_size=self.font_size,
+                label_size=self.label_size,
+                sns_offset=2
+            )
 
         if fwhm:
 
@@ -654,7 +866,7 @@ class NideconvFitter():
             left, bottom, width, height = inset_fwhm
             ax2 = axs.inset_axes([left, bottom, width, height])
             self.plot_fwhm(
-                self.event_avg, 
+                df=self.avg_across_runs_voxels, 
                 axs=ax2, 
                 hrf_axs=axs, 
                 fwhm_labels=fwhm_labels, 
@@ -673,123 +885,145 @@ class NideconvFitter():
 
     def plot_ttp(
         self, 
+        df=None,
         axs=None, 
         hrf_axs=None, 
         ttp_lines=False, 
         ttp_labels=None, 
         figsize=(8,8), 
         ttp_ori='h', 
+        split="event_type",
         **kwargs):
 
+        if not isinstance(axs, mpl.axes._axes.Axes):
+            _,axs = plt.subplots(figsize=figsize)
+
+        # unstack series | assume split is on event_type
+        if isinstance(df, pd.Series):
+            df = pd.DataFrame(df).unstack(level=split)
+            x_lbl = split
+            x_data = self.cond
+        else:
+            x_lbl = "vox"
+            x_data = list(df.columns)
+
+        self.df_pars = HRFMetrics(df).return_metrics()
+        self.df_pars[x_lbl] = x_data
+
+        # decide on color based on split
         if not hasattr(self, "color"):
             if not hasattr(self, "cmap"):
                 cmap = "viridis"
             else:
                 cmap = self.cmap
-            colors = sns.color_palette(cmap, len(self.cond))
+            colors = sns.color_palette(cmap, self.df_pars.shape[0])
         else:
             colors = self.color
 
-        if axs == None:
-            _,axs = plt.subplots(figsize=figsize)
-
-        # get time-to-peak and index | parse out idxmax as it returns a tuple by default
-        self.df_peaks = self.avg_across_runs_voxels.groupby(level=0, sort=False).agg(['idxmax','max'],axis=1).reset_index()
-        self.df_peaks["idxmax"] = [self.df_peaks["idxmax"][ii][1] for ii in range(self.df_peaks.shape[0])]
-
         if ttp_lines:
             # heights need to be adjusted for by axis length 
+            if not isinstance(hrf_axs, mpl.axes._axes.Axes):
+                raise ValueError(f"Need an axes-object containing HRF profiles to draw lines on")
+            
             ylim = hrf_axs.get_ylim()
             tot = sum(list(np.abs(ylim)))
             start = (0-ylim[0])/tot
-            for ix,ii in enumerate(self.df_peaks["idxmax"].values):
+
+            for ix,ii in enumerate(self.df_pars["time_to_peak"].values):
                 hrf_axs.axvline(
                     ii, 
                     ymin=start, 
-                    ymax=self.df_peaks["max"][ix]/tot+start, 
+                    ymax=self.df_pars["magnitude"].values[ix]/tot+start, 
                     color=colors[ix], 
-                    linewidth=0.5)
+                    linewidth=0.5)        
         
         self.ttp_plot = plotting.LazyBar(
-            data=self.df_peaks,
-            x="event_type",
-            y="idxmax",
+            data=self.df_pars,
+            x=x_lbl,
+            y="time_to_peak",
             labels=ttp_labels,
             sns_ori=ttp_ori,
             axs=axs,
             error=None,
-            **dict(
-                kwargs,
-                font_size=self.font_size,
-                label_size=self.label_size))          
-
-
+            **kwargs
+        )   
+        
     def plot_fwhm(
         self, 
-        hrfs, 
+        df,
         axs=None, 
         hrf_axs=None, 
         fwhm_lines=False, 
         fwhm_labels=None, 
+        split="event_type",
         figsize=(8,8), 
         fwhm_ori='v', 
         **kwargs):
 
+        if axs == None:
+            fig, axs = plt.subplots(figsize=figsize)
+
+        # unstack series | assume split is on event_type
+        if isinstance(df, pd.Series):
+            df = pd.DataFrame(df).unstack(level=split)
+            x_lbl = split
+            x_data = self.cond
+        else:
+            x_lbl = "vox"
+            x_data = list(df.columns)
+
+        self.df_pars = HRFMetrics(df).return_metrics()
+        self.df_pars[x_lbl] = x_data
+
+        # decide on color based on split
         if not hasattr(self, "color"):
             if not hasattr(self, "cmap"):
                 cmap = "viridis"
             else:
                 cmap = self.cmap
-            colors = sns.color_palette(cmap, len(self.cond))
+            colors = sns.color_palette(cmap, self.df_pars.shape[0])
         else:
             colors = self.color
-
-        if axs == None:
-            fig, axs = plt.subplots(figsize=figsize)
-
-        # get fwhm
-        fwhm_objs = []
-        for hrf in hrfs:
-            fwhm_objs.append(FWHM(self.time, hrf))
 
         if fwhm_lines:
             # heights need to be adjusted for by axis length 
             xlim = hrf_axs.get_xlim()
             tot = sum(list(np.abs(xlim)))
-            for ix, ii in enumerate(fwhm_objs):
-                start = (ii.hmx[0]-xlim[0])/tot
+            for ix, ii in enumerate(self.df_pars["fwhm"].values):
+                start = (self.df_pars["half_rise_time"].values[ix]-xlim[0])/tot
+                half_m = self.df_pars["half_max"].values[ix]
                 hrf_axs.axhline(
-                    ii.half_max, 
+                    half_m, 
                     xmin=start, 
-                    xmax=start+ii.fwhm/tot, 
+                    xmax=start+ii/tot, 
                     color=colors[ix], 
                     linewidth=0.5)
 
-        self.y_fwhm = [i.fwhm for i in fwhm_objs]
         self.fwhm_labels = fwhm_labels
         self.fwhm_plot = plotting.LazyBar(
-            x=self.fwhm_labels,
-            y=self.y_fwhm,
+            data=self.df_pars,
+            x=x_lbl,
+            y="fwhm",
             palette=colors,
             sns_ori=fwhm_ori,
             axs=axs,
             error=None,
-            **dict(
-                kwargs,
-                font_size=self.font_size,
-                label_size=self.label_size))          
+            **kwargs)          
 
     def plot_average_per_voxel(
         self, 
         add_offset: bool=True, 
         axs=None, 
         n_cols: int=4, 
-        wspace: float=0, 
+        fig_kwargs: dict={}, 
         figsize: tuple=None, 
         make_figure: bool=True, 
         labels: list=None, 
         save_as: str=None, 
         sharey: bool=False, 
+        skip_x: list=None,
+        skip_y: list=None,
+        title: list=None,
         **kwargs):
 
         """plot_average_per_voxel
@@ -828,7 +1062,6 @@ class NideconvFitter():
         >>>     label_size=16,
         >>>     sharey=True)
         """
-        self.__dict__.update(kwargs)
 
         if not hasattr(self, "tc_condition"):
             self.timecourses_condition()
@@ -837,16 +1070,20 @@ class NideconvFitter():
         cols_id = np.arange(0, len(cols))
         if n_cols != None:
 
-            # initiate figure
-            if len(cols) > 10:
-                raise Exception(f"{len(cols)} were requested. Maximum number of plots is set to 30")
+            if isinstance(axs, (list,np.ndarray)):
+                if len(axs) != len(cols):
+                    raise ValueError(f"For this option {len(cols)} axes are required, {len(axs)} were specified")
+            else:
+                # initiate figure
+                if len(cols) > 10:
+                    raise Exception(f"{len(cols)} were requested. Maximum number of plots is set to 30")
 
-            n_rows = int(np.ceil(len(cols) / n_cols))
-            if not isinstance(figsize, tuple):
-                figsize = (24,5*n_rows)
+                n_rows = int(np.ceil(len(cols) / n_cols))
+                if not isinstance(figsize, tuple):
+                    figsize = (24,5*n_rows)
 
-            fig = plt.figure(figsize=figsize)
-            gs = fig.add_gridspec(n_rows, n_cols, wspace=wspace)
+                fig = plt.figure(figsize=figsize, constrained_layout=True)
+                gs = fig.add_gridspec(n_rows, n_cols, **fig_kwargs)
         else:
             if not isinstance(figsize, tuple):
                 figsize = (8,8)
@@ -895,7 +1132,7 @@ class NideconvFitter():
                 vox_data = [self.arr_voxels_in_event[ii,0,:] for ii in range(self.arr_voxels_in_event.shape[0])]
                 vox_error = [self.arr_error_in_event[ii, 0, :] for ii in range(self.arr_voxels_in_event.shape[0])]
                 
-                if axs != None:
+                if isinstance(axs, mpl.axes._axes.Axes):
                     self.pl = plotting.LazyPlot(
                         vox_data,
                         xx=self.time,
@@ -915,7 +1152,13 @@ class NideconvFitter():
                         **kwargs)                    
             else:
                 for ix, col in enumerate(cols):
-                    axs = fig.add_subplot(gs[ix])
+                    if isinstance(axs, (np.ndarray,list)):
+                        ax = axs[ix]
+                        new_axs = True
+                    else:
+                        new_axs = False
+                        ax = fig.add_subplot(gs[ix])
+
                     if ix == 0:
                         label = labels
                     else:
@@ -928,24 +1171,45 @@ class NideconvFitter():
                         ylim = [np.nanmin(bottom), np.nanmax(top)]
                     else:
                         ylim = None
+                    
+                    if isinstance(title, (str,list)):
+                        if isinstance(title, str):
+                            title = [title for _ in cols]
+                        
+                        add_title = title[ix]
+                    else:
+                        add_title = col
 
                     self.pl = plotting.LazyPlot(
                         vox_data,
                         xx=self.time,
                         error=vox_error,
-                        axs=axs,
+                        axs=ax,
                         labels=label,
                         add_hline='default',
                         y_lim=ylim,
-                        title=col,
+                        title=add_title,
                         **kwargs)
 
-                    if ix in cols_id[::n_cols]:
-                        axs.set_ylabel("Magnitude (%change)", fontsize=self.font_size)
-                    
-                    if ix in np.arange(n_rows*n_cols)[-n_cols:]:
-                        axs.set_xlabel("Time (s)", fontsize=self.font_size)
-        
+                    if not new_axs:
+                        if ix in cols_id[::n_cols]:
+                            ax.set_ylabel("Magnitude (%change)", fontsize=self.font_size)
+                        
+                        if ix in np.arange(n_rows*n_cols)[-n_cols:]:
+                            ax.set_xlabel("Time (s)", fontsize=self.font_size)
+                    else:
+                        if not isinstance(skip_x, list):
+                            skip_x = [False for _ in cols]
+                        
+                        if not isinstance(skip_y, list):
+                            skip_y = [False for _ in cols]
+
+                        if not skip_x[ix]:
+                            ax.set_xlabel("Time (s)", fontsize=self.font_size)
+                        
+                        if not skip_y[ix]:
+                            ax.set_ylabel("Magnitude (%change)", fontsize=self.font_size)
+
                 plt.tight_layout()
 
         if save_as:
@@ -1151,23 +1415,673 @@ class NideconvFitter():
                 if save_as:
                     fig.savefig(save_as, dpi=300, bbox_inches='tight')
 
+def fwhm_lines(
+    fwhm_list,
+    axs,
+    cmap="viridis",
+    color=None,
+    **kwargs):
+
+    if not isinstance(fwhm_list, list):
+        fwhm_list = [fwhm_list]
+
+    # heights need to be adjusted for by axis length
+    if not isinstance(color,(str,tuple)):
+        colors = sns.color_palette(cmap, len(fwhm_list))
+    else:
+        colors = [color for _ in range(len(fwhm_list))]
+
+    xlim = axs.get_xlim()
+    tot = sum(list(np.abs(xlim)))
+    for ix, ii in enumerate(fwhm_list):
+        start = (ii.hmx[0]-xlim[0])/tot
+        axs.axhline(
+            ii.half_max, 
+            xmin=start, 
+            xmax=start+ii.fwhm/tot, 
+            color=colors[ix], 
+            linewidth=0.5,
+            **kwargs)
+
+class HRFMetrics():
+
+    def __init__(
+        self,
+        hrf,
+        TR=None,
+        force_pos=False,
+        force_neg=False):
+
+        self.hrf = hrf
+        self.TR = TR
+        self.force_pos = force_pos
+        self.force_neg = force_neg
+        self._get_metrics(
+            TR=self.TR, 
+            force_pos=self.force_pos,
+            force_neg=self.force_neg)
+
+    def return_metrics(self):
+        return self.metrics
+    
+    @staticmethod
+    def _check_negative(hrf, force_pos=False, force_neg=False):
+        # check if positive or negative is largest
+        if abs(hrf.min(axis=0).values) > hrf.max(axis=0).values:
+            negative = True
+        else:
+            negative = False
+
+        if force_pos:
+            negative = False
+        
+        if force_neg:
+            negative = True
+        return negative
+    
+    def _get_metrics(
+        self, 
+        TR=None,
+        force_pos=False,
+        force_neg=False):
+
+        hrf = self._verify_input(self.hrf, TR=TR)
+
+        if not isinstance(force_neg, list):
+            force_neg = [force_neg for _ in list(hrf.columns)]
+
+        if not isinstance(force_pos, list):
+            force_pos = [force_pos for _ in list(hrf.columns)]
+        
+        # print(force_pos)
+        self.metrics = []
+        self.fwhm_objs = []
+        for ix,col in enumerate(list(hrf.columns)):
+            pars,fwhm_ = self._get_single_hrf_metrics(
+                hrf[col],
+                TR=self.TR,
+                force_pos=force_pos[ix],
+                force_neg=force_neg[ix])
+            
+            self.metrics.append(pars)
+            self.fwhm_objs.append(fwhm_)
+
+        if len(self.metrics) > 0:
+            self.metrics = pd.concat(self.metrics)
+
+    @staticmethod
+    def _get_time(hrf):
+        try:
+            tmp_df = hrf.reset_index()
+        except:
+            tmp_df = hrf.copy()
+
+        try:
+            return tmp_df["time"].values
+        except:
+            try:
+                return tmp_df["t"].values
+            except:
+                raise ValueError("Could not find time dimension. Dataframe should contain 't' or 'time' column..")
+    
+    @classmethod
+    def _verify_input(self, hrf, TR=None):
+        if isinstance(hrf, np.ndarray):
+            if hrf.ndim > 1:
+                hrf = hrf.squeeze()
+            
+            if not isinstance(TR, (int,float)):
+                raise ValueError(f"Please specify repetition time of this acquisition to construct time axis")
+            
+            time_axis = list(np.arange(0,hrf.shape[0])*TR)
+            hrf = pd.DataFrame({"voxel": hrf})
+            hrf["time"] = time_axis
+            hrf = hrf.set_index(["time"])
+
+        elif isinstance(hrf, pd.Series):
+            hrf = pd.DataFrame(hrf)
+
+        return hrf
+
+    @classmethod
+    def _get_riseslope(self, hrf, force_pos=False, force_neg=False):
+
+        # fetch time stamps
+        time = self._get_time(hrf)
+
+        # check negative:
+        negative = self._check_negative(
+            hrf, 
+            force_neg=force_neg,
+            force_pos=force_pos)
+
+        # find slope corresponding to amplitude
+        mag = self._get_amplitude(
+            hrf, 
+            force_pos=force_pos,
+            force_neg=force_neg)
+
+        # limit search to where index of highest amplitude
+        diff = np.diff(hrf.values.squeeze()[:mag["t_ix"]])/np.diff(time[:mag["t_ix"]])
+
+        # find minimum/maximum depending on whether HRF is negative or not
+        if not force_pos:
+            if negative:
+                val = np.array([np.amin(diff)])
+            else:
+                val = np.array([np.amax(diff)])
+        else:
+            val = np.array([np.amax(diff)])
+
+        val_ix = utils.find_nearest(diff,val)[0]
+        val_t = time[val_ix]
+        return val,val_t
+    
+    @classmethod
+    def _get_amplitude(self, hrf, force_pos=False, force_neg=False):
+
+        # fetch time stamps
+        time = self._get_time(hrf)
+
+        # check negative:
+        negative = self._check_negative(
+            hrf, 
+            force_neg=force_neg,
+            force_pos=force_pos)
+
+        if not force_pos:
+            if negative:
+                mag_tmp = hrf.min(axis=0).values
+            else:
+                mag_tmp = hrf.max(axis=0).values
+        else:
+            mag_tmp = hrf.max(axis=0).values
+
+        mag_ix = utils.find_nearest(hrf.values.squeeze(), mag_tmp)[0]
+
+        return {
+            "amplitude": mag_tmp,
+            "t": time[mag_ix],
+            "t_ix": mag_ix
+        }
+
+    @classmethod    
+    def _get_fwhm(
+        self,
+        hrf,
+        force_pos=False, 
+        force_neg=False):
+
+        # fetch time stamps
+        time = self._get_time(hrf)
+
+        # check negative:
+        negative = self._check_negative(
+            hrf, 
+            force_neg=force_neg,
+            force_pos=force_pos)
+
+        # check time stamps
+        if time.shape[0] != hrf.values.shape[0]:
+            raise ValueError(f"Shape of time dimension ({time.shape[0]}) does not match dimension of HRF ({hrf.values.shape[0]})")
+        
+        # get amplitude of HRF
+        mag = self._get_amplitude(
+            hrf, 
+            force_pos=force_pos,
+            force_neg=force_neg)
+
+        # define index period around magnitude; add 20% to avoid FWHM errors
+        end_ix = mag["t_ix"]+mag["t_ix"]
+        end_ix += int(end_ix*0.2)
+
+        # get fwhm around max amplitude
+        fwhm_val = FWHM(
+            time[:end_ix], 
+            hrf.values[:end_ix], 
+            negative=negative)
+
+        return {
+            "fwhm": fwhm_val.fwhm,
+            "half_rise": fwhm_val.hmx[0],
+            "half_max": fwhm_val.half_max,
+            "obj": fwhm_val
+        }
+            
+    def _get_single_hrf_metrics(
+        self, 
+        hrf, 
+        TR=None, 
+        force_pos=False,
+        force_neg=False):
+
+        # verify input type
+        hrf = self._verify_input(hrf, TR=TR)
+
+        # get magnitude and amplitude
+        mag = self._get_amplitude(
+            hrf, 
+            force_pos=force_pos, 
+            force_neg=force_neg)
+
+        # fwhm
+        fwhm_obj = self._get_fwhm(
+            hrf, 
+            force_pos=force_pos, 
+            force_neg=force_neg)
+
+        # rise slope
+        rise_tmp, rise_t = self._get_riseslope(
+            hrf, 
+            force_pos=force_pos, 
+            force_neg=force_neg)
+                
+        df = pd.DataFrame(
+            {
+                "magnitude": mag["amplitude"], 
+                "magnitude_ix": mag["t_ix"], 
+                "fwhm": fwhm_obj["fwhm"], 
+                "time_to_peak": mag["t"],
+                "half_rise_time": fwhm_obj["half_rise"],
+                "half_max": fwhm_obj["half_max"],
+                "rise_slope": rise_tmp,
+                "rise_slope_t": rise_t
+            }
+        )
+
+        return df,fwhm_obj
+
 class FWHM():
 
-    def __init__(self, x, hrf):
+    def __init__(self, x, hrf, negative=False):
         
-        self.x          = x
-        self.hrf        = hrf
-        self.hmx        = self.half_max_x(self.x,self.hrf)
-        self.fwhm       = self.hmx[1] - self.hmx[0]
-        self.half_max   = max(hrf)/2
+        self.x = x
+        self.hrf = hrf
+        self.negative = negative
+
+        try:
+            self.hmx = self.half_max_x(self.x,self.hrf)
+            self.fwhm = self.hmx[1] - self.hmx[0]
+            
+            if self.negative:
+                self.half_max = min(hrf)/2
+            else:
+                self.half_max = max(hrf)/2
+        except:
+            self.hmx = [np.nan,np.nan]
+            self.fwhm = np.nan
     
     def lin_interp(self, x, y, i, half):
         return x[i] + (x[i+1] - x[i]) * ((half - y[i]) / (y[i+1] - y[i]))
 
     def half_max_x(self, x, y):
-        half = max(y)/2.0
+
+        if not self.negative:
+            half = max(y)/2.0
+        else:
+            half = min(y)/2.0
+            
         signs = np.sign(np.add(y, -half))
         zero_crossings = (signs[0:-2] != signs[1:-1])
         zero_crossings_i = np.where(zero_crossings)[0]
         return [self.lin_interp(x, y, zero_crossings_i[0], half),
                 self.lin_interp(x, y, zero_crossings_i[1], half)]
+
+def error_function(
+    parameters,
+    args,
+    data,
+    objective_function):
+
+    """
+    Parameters
+    ----------
+    parameters : list or ndarray
+        A tuple of values representing a model setting.
+    args : dictionary
+        Extra arguments to `objective_function` beyond those in `parameters`.
+    data : ndarray
+       The actual, measured time-series against which the model is fit.
+    objective_function : callable
+        The objective function that takes `parameters` and `args` and
+        produces a model time-series.
+
+    Returns
+    -------
+    error : float
+        The residual sum of squared errors between the prediction and data.
+    """
+    return np.nan_to_num(np.sum((data - objective_function(parameters, **args))**2), nan=1e12)
+    #return 1-np.nan_to_num(pearsonr(data,np.nan_to_num(objective_function(*list(parameters), **args)[0]))[0])
+
+def double_gamma_with_d(a1,a2,b1,b2,c,d1,d2,x=None, negative=False):    
+    
+    # correct for negative onsets
+    if x[0]<0:
+        x-=x[0]
+
+    if not negative:
+        y = (x/(d1))**a1 * np.exp(-(x-d1)/b1) - c*(x/(d2))**a2 * np.exp(-(x-d2)/b2)
+    else:
+        y = (x/(d1))**a1 * -np.exp(-(x-d1)/b1) - c*(x/(d2))**a2 * -np.exp(-(x-d2)/b2)        
+
+    y[x < 0] = 0
+    
+    return y
+
+def make_prediction(
+    parameters,
+    onsets=None,
+    scan_length=None,
+    TR=1.32,
+    osf=100,
+    cov_as_ampl=None,
+    negative=False,
+    interval=[0,25]
+    ):
+
+    # this correction is needed to get the HRF in the correct time domain
+    dt = 1/(osf/TR)
+
+    time_points = np.linspace(*interval, np.rint(float(interval[-1])/dt).astype(int))
+    hrf = [double_gamma_with_d(
+        *parameters,
+        x=time_points,
+        negative=negative)]
+
+    ev_ = glm.make_stimulus_vector(
+        onsets, 
+        scan_length=scan_length, 
+        TR=TR, 
+        osf=osf,
+        cov_as_ampl=cov_as_ampl
+    )
+
+    ev_conv = glm.convolve_hrf(
+        hrf, 
+        ev_, 
+        TR=TR,
+        osf=osf,
+        time=time_points,
+        # make_figure=True
+    )
+    
+    ev_conv_rs = glm.resample_stim_vector(ev_conv, scan_length)
+    key = list(ev_conv_rs.keys())[0]
+    
+    return ev_conv_rs[key].squeeze()    
+    
+def iterative_search(
+    data,
+    onsets,
+    starting_params=[6,12,0.9,0.9,0.35,5.4,10.8],
+    bounds=None,
+    constraints=None,
+    cov_as_ampl=None,
+    TR=1.32,
+    osf=100,
+    interval=[0,25],
+    xtol=1e-4,
+    ftol=1e-4):
+    """iterative_search
+
+    Im actually using this function..
+
+    Parameters
+    ----------
+    data: _type_
+        _description_
+    onsets: _type_
+        _description_
+    starting_params: list, optional
+        _description_, by default [6,12,0.9,0.9,0.35,5.4,10.8]
+    bounds: _type_, optional
+        _description_, by default None
+    constraints: _type_, optional
+        _description_, by default None
+    cov_as_ampl: _type_, optional
+        _description_, by default None
+    TR: float, optional
+        _description_, by default 1.32
+    osf: int, optional
+        _description_, by default 100
+    interval: list, optional
+        _description_, by default [0,25]
+    xtol: _type_, optional
+        _description_, by default 1e-4
+    ftol: _type_, optional
+        _description_, by default 1e-4
+
+    Returns
+    ----------
+    _type_
+        _description_
+
+    Example
+    ----------
+    >>> 
+    """
+    # data = (voxels,time)
+    if data.ndim > 1:
+        data = data.squeeze()
+
+    scan_length = data.shape[0]
+
+    # args
+    args = {
+        "onsets": onsets,
+        "scan_length": scan_length,
+        "cov_as_ampl": cov_as_ampl,
+        "TR": TR,
+        "osf": osf,
+        "interval": interval
+    }
+    
+    # run for both negative and positive; return parameters of best r2
+
+    res = {}
+    for lbl,np in zip(["pos","neg"],[False,True]):
+        res[lbl] = {}
+        args["negative"] = np
+        output = minimize(
+            error_function, 
+            starting_params, 
+            args=(
+                args, 
+                data,
+                make_prediction),
+            method='trust-constr',
+            bounds=bounds,
+            tol=ftol,
+            options=dict(xtol=xtol)
+        )   
+
+        pred = make_prediction(
+            output['x'],
+            **args
+        )
+
+        res[lbl]["pars"] = output['x']
+        res[lbl]["r2"] = metrics.r2_score(data,pred)  
+
+    r2_pos = res["pos"]["r2"]
+    r2_neg = res["neg"]["r2"]
+    if r2_pos>r2_neg:
+        return res["pos"]["pars"],"pos"
+    else:
+        return res["neg"]["pars"],"neg"
+    
+    # return starting_params, "pos"
+    
+class FitHRFparams():
+
+    def __init__(
+        self,
+        data,
+        onsets,
+        verbose=False,
+        TR=1.32,
+        osf=100,
+        starting_params=[6,12,0.9,0.9,0.35,5.4,10.8],
+        n_jobs=1,
+        bounds=None,
+        constraints=None,
+        resample_to_shape=None,
+        xtol=1e-4,
+        ftol=1e-4,
+        cov_as_ampl=None,
+        interval=[0,25],
+        read_index=False,
+        **kwargs):
+
+        self.data = data
+        self.onsets = onsets
+        self.verbose = verbose
+        self.TR = TR
+        self.osf = osf
+        self.interval = interval
+        self.starting_params = starting_params
+        self.n_jobs = n_jobs
+        self.bounds = bounds
+        self.constraints = constraints
+        self.xtol = xtol
+        self.ftol = ftol
+        self.cov_as_ampl = cov_as_ampl
+        self.resample_to_shape = resample_to_shape
+        self.read_index = read_index
+
+        # set default bounds that can be updated with kwargs
+        if not isinstance(self.bounds, list):
+            self.bounds = [
+                (4,8),
+                (10,14),
+                (0.8,1.2),
+                (0.8,1.2),
+                (0,0.5),
+                (0,10),
+                (5,15)
+            ]
+
+        self.__dict__.update(kwargs)
+    
+    def iterative_fit(self):
+
+        # data = (voxels,time)
+        if self.data.ndim < 2:
+            self.data = self.data[np.newaxis,...]
+    
+        # self.tmp_results = Parallel(self.n_jobs, verbose=self.verbose)(
+        #     delayed(iterative_search)(
+        #         self.data[i,:],
+        #         self.onsets,
+        #         starting_params=self.starting_params,
+        #         TR=self.TR,
+        #         bounds=self.bounds,
+        #         constraints=self.constraints,
+        #         xtol=self.xtol,
+        #         ftol=self.ftol,
+        #         cov_as_ampl=self.cov_as_ampl
+        #     ) for i in range(self.data.shape[0])
+        # )
+
+
+        # # parse into array
+        # self.iterative_search_params = np.array([self.tmp_results[i][0] for i in range(self.data.shape[0])])
+        # self.prof_sign = [self.tmp_results[i][1] for i in range(self.data.shape[0])]
+
+        self.iterative_search_params = np.array(self.starting_params)[np.newaxis,...]
+        self.prof_sign = None
+
+        self.force_neg = [False for _ in range(self.data.shape[0])]
+        self.force_pos = [True for _ in range(self.data.shape[0])]
+
+        if isinstance(self.prof_sign, list):
+            for ix,el in enumerate(self.prof_sign):
+                if el == "neg":
+                    self.force_neg[ix] = True
+                    self.force_pos[ix] = False
+
+        # also immediately create profiles
+        self.profiles_from_parameters(
+            resample_to_shape=self.resample_to_shape, 
+            negative=self.prof_sign,
+            read_index=self.read_index)
+
+        self.hrf_pars = HRFMetrics(
+            self.hrf_profiles,
+            force_neg=self.force_neg,
+            force_pos=self.force_pos
+        ).return_metrics()
+        
+    def profiles_from_parameters(self, resample_to_shape=None, negative=None, read_index=False):
+
+        assert hasattr(self, "iterative_search_params"), "No parameters found, please run iterative_fit()"
+
+        dt = 1/self.osf
+        time_points = np.linspace(*self.interval, np.rint(float(self.interval[-1])/dt).astype(int))
+    
+        hrfs = []
+        preds = []
+        pars = []
+        for i in range(self.iterative_search_params.shape[0]):
+            neg = False
+            if isinstance(negative, list):
+                if negative[i] in ["negative","neg"]:
+                    neg = True
+
+            pars = list(self.iterative_search_params[i,:])
+            hrf = double_gamma_with_d(*pars,x=time_points, negative=neg)
+
+            pred = make_prediction(
+                pars,
+                onsets=self.onsets,
+                scan_length=self.data.shape[1],
+                TR=self.TR,
+                osf=self.osf,
+                cov_as_ampl=self.cov_as_ampl,
+                interval=self.interval,
+                negative=neg
+                )
+
+            # resample to specified length
+            if isinstance(resample_to_shape, int):
+                hrf = glm.resample_stim_vector(hrf, resample_to_shape)
+
+            hrfs.append(hrf)
+            preds.append(pred)
+
+        hrf_profiles = np.array(hrfs)
+        predictions = np.array(preds)
+
+        if isinstance(resample_to_shape, int):
+            time_points = np.linspace(*self.interval, num=resample_to_shape)
+
+        self.hrf_profiles = pd.DataFrame(hrf_profiles.T)
+        self.hrf_profiles["time"] = time_points
+        self.predictions = pd.DataFrame(predictions.T)
+        self.predictions["t"] = list(np.arange(0,self.data.shape[1])*self.TR)
+
+        # read indices from onset dataframe
+        self.prof_indices = ["time"]
+        self.pred_indices = ["t"]
+
+        self.custom_indices = []
+        for el in ["subject","run","event_type"]:
+            try:
+                el_in_df = utils.get_unique_ids(self.onsets, id=el)
+            except:
+                el_in_df = None
+        
+            if isinstance(el_in_df, list):
+                self.custom_indices.append(el)
+
+                for df in [self.hrf_profiles,self.predictions]:
+                    df[el] = el_in_df[0]
+
+        if len(self.custom_indices)>0:
+            self.prof_indices = self.custom_indices+self.prof_indices
+            self.pred_indices = self.custom_indices+self.pred_indices
+
+        self.hrf_profiles = self.hrf_profiles.set_index(self.prof_indices)
+        self.predictions = self.predictions.set_index(self.pred_indices)        
+    
