@@ -104,11 +104,22 @@ Usage:
         cx_dir = opj(deriv, 'pycortex')
         prf_dir = opj(deriv, 'prf', subject, f'ses-{prf_ses}')
 
-    # this scan object will do everyting
-    scanner.Scanner(optimal.TargetVertex(subject,
-                                          out=line_fn,
-                                          deriv=deriv),
-                    fs_dir=fs_dir, new_anat=anat2, fs2ses=affine, hemi=hemi,ses=new_ses)
+    # get target vertex
+    targ = optimal.TargetVertex(
+        subject,
+        out=line_fn,
+        deriv=deriv
+    )
+    
+    # calculate angles
+    scanner.Scanner(
+        targ,
+        fs_dir=fs_dir, 
+        new_anat=anat2, 
+        fs2ses=affine, 
+        hemi=hemi,
+        ses=new_ses
+    )
 
 if __name__ == "__main__":
     main(sys.argv[1:])

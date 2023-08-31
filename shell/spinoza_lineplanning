@@ -120,9 +120,7 @@ if [[ ! -f ${anat_session1} ]]; then
   fi
 
 else
-
   echo "Session 1 input                    = ['`basename ${anat_session1}`']"
-
 fi
 
 # double double check
@@ -192,17 +190,16 @@ fi
 line_orientation_file=${ctxfile}
 if [[ -f ${genaff} ]] || [[ ${genaff} == "identity" ]]; then
 
-  # call_mrconsole \
-  #   -s ${subject} \
-  #   -q 1 \
-  #   -n ${session} \
-  #   -d ${DIR_DATA_DERIV} \
-  #   --ses2 ${anat_session2} \
-  #   -a ${genaff} \
-  #   -h ${hemi} \
-  #   -l ${line_orientation_file}
-
-  cmd="call_mrconsole -s ${subject} -q 1 -n ${session} -d ${DIR_DATA_DERIV} --ses2 ${anat_session2} -a ${genaff} -h ${hemi} -l ${line_orientation_file}"
+  cmd="""call_mrconsole \
+    -s ${subject} \
+    -q 1 \
+    -n ${session} \
+    -d ${DIR_DATA_DERIV} \
+    --ses2 ${anat_session2} \
+    -a ${genaff} \
+    -h ${hemi} \
+    -l ${line_orientation_file}
+  """
   exec $cmd
 
   if [[ $? != 0 ]]; then
@@ -218,10 +215,14 @@ else
 fi
 
 # overwrite file earlier created with call_fs_to_ses2 or something
-if [ -d ${DIR_DATA_DERIV}/pycortex/${subject}/transforms ]; then
-  if [[ ${genaff} != "identity" ]]; then
-    cp ${genaff} ${DIR_DATA_DERIV}/pycortex/${subject}/transform
-  fi
+ctx_dir=${DIR_DATA_DERIV}/pycortex/${subject}/transforms
+if [ ! -d ${ctx_dir} ]; then
+  mkdir -p ${ctx_dir}
+fi
+
+# copy from-fs_to-ses to pycortex directory for later reference
+if [[ ${genaff} != "identity" ]]; then
+  cp ${genaff} ${ctx_dir} 2>/dev/null
 fi
 
 #-----------------------------------------------------------------------------
