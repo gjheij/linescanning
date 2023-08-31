@@ -1,0 +1,96 @@
+#!/usr/bin/env python
+#$ -j Y
+#$ -cwd
+#$ -V
+
+import mkl
+mkl.set_num_threads=1
+
+from linescanning import utils
+import os
+import sys
+import getopt
+import numpy as np
+import nibabel as nb
+
+opj = os.path.join
+
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_maskstat
+
+I have encountered cases where very bright spots close to the coil with 0 variance resulted in large
+z-statistics. This obscures real activation, so this script takes the filtered_func_data.nii.gz file
+and sets voxels with no variance to 0 in the statistical images.
+
+Parameters
+----------         
+  -f|--feat     1st-level FEAT directory to mask stats from
+  --tstat       mask the t-stats instead of the zstats
+
+Example
+----------
+>>> call_maskstat --feat $DIR_DATA_DERIV/feat/level1/sub-001/ses-1/run1.feat
+---------------------------------------------------------------------------------------------------
+"""
+
+    ft_dir = None
+    stat_type = "zstat"
+    
+    try:
+        opts = getopt.getopt(argv,"hf:",["help", "feat=", "tstat"])[0]
+    except getopt.GetoptError:
+        print("ERROR while reading arguments; did you specify an illegal argument?")
+        print(main.__doc__)
+        sys.exit(2)
+    
+    for opt, arg in opts:
+        if opt in ('-h', '--help'):
+            print(main.__doc__)
+            sys.exit()
+        elif opt in ("-f", "--feat"):
+            ft_dir = os.path.abspath(arg)  
+        elif opt in ("--tstats","--tstat"):
+            stat_type = "tstat"
+
+    if len(argv) < 1:
+        print(main.__doc__)
+        sys.exit()
+
+    # fetch all stat files
+    stat_files = utils.get_file_from_substring([stat_type,".nii.gz"], opj(ft_dir, "stats"), exclude="space")
+
+    if not isinstance(stat_files, (str,list)):
+        raise ValueError(f"No files found")
+    else:
+        if isinstance(stat_files, str):
+            stat_files = [stat_files]
+
+    # find filtered_func
+    func = opj(ft_dir, "filtered_func_data.nii.gz")
+    func_data = nb.load(func).get_fdata()
+    func_var = np.var(func_data, axis=-1)
+
+    # loop
+    for stat in stat_files:
+        
+        # get id
+        stat_id = os.path.basename(stat).split(".")[0][-1]
+
+        # load stat image and create empty image
+        niimg_stat = nb.load(stat)
+        data_stat = niimg_stat.get_fdata()
+        new_stat = np.zeros_like(data_stat)
+
+        # insert stat values if variance>0 in func
+        new_stat[func_var>0] = data_stat[func_var>0]
+
+        # save
+        fname = opj(os.path.dirname(stat), f"{stat_type}{stat_id}_desc-var_masked.nii.gz")
+        nb.Nifti1Image(new_stat, affine=niimg_stat.affine, header=niimg_stat.header).to_filename(fname)
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
