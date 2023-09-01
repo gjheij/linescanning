@@ -284,9 +284,7 @@ if [[ ${DCM_FIX} -eq 0 ]]; then
   fi
 
   ## Multi-slice files
-  motion_img=`find -L "${tmp_dir}" -type f \( -name "*motion*" -and -name "*.nii.gz" \) 2>/dev/null`
-  IFS=$'\n' motion_img=($(sort <<<"${motion_img[*]}"))
-  unset IFS    
+  motion_img=`find -L "${tmp_dir}" -type f \( -name "*motion*" -and -name "*.nii.gz" \) | sort 2>/dev/null`  
 
   echo " Relocating multi-slice file (${#motion_img[@]})"
   for i in ${motion_img[@]}; do
@@ -312,11 +310,7 @@ if [[ ${DCM_FIX} -eq 0 ]]; then
 
   #---------------------------------------------------------------------------------------------------------
   # Single-slice
-  slice_img=`find -L "${tmp_dir}" -type f \( -name "*1slice*" -and -not -name "*space*" -and -name "*anat*" -and -name "*.nii.gz" \) 2>/dev/null`
-  
-  # sort array (https://stackoverflow.com/questions/7442417/how-to-sort-an-array-in-bash)
-  IFS=$'\n' slice_img=($(sort <<<"${slice_img[*]}"))
-  unset IFS   
+  slice_img=`find -L "${tmp_dir}" -type f \( -name "*1slice*" -and -not -name "*space*" -and -name "*anat*" -and -name "*.nii.gz" \) | sort 2>/dev/null`
 
   # add counter in case run-X does not occur in file     
   count=0
@@ -359,11 +353,7 @@ if [[ ${DCM_FIX} -eq 0 ]]; then
   
   #---------------------------------------------------------------------------------------------------------
   ## bold files
-  bold_files=`find -L "${input_dir}" -type f \( -name "*bold_*" -and -name "*.lab" \) 2>/dev/null`
-
-  # sort array (https://stackoverflow.com/questions/7442417/how-to-sort-an-array-in-bash)
-  IFS=$'\n' bold_files=($(sort <<<"${bold_files[*]}"))
-  unset IFS    
+  bold_files=`find -L "${input_dir}" -type f \( -name "*bold_*" -and -name "*.lab" \) | sort 2>/dev/null`
 
   count=0
   if [[ ! -z ${bold_files} ]]; then
@@ -679,16 +669,13 @@ if [[ ! -z ${bold_files[@]} ]]; then
                 echo "  WARNING: assuming PE-direction for ${image^^}=\"${ph_dir}\", please check if this is correct or put \"export PE_DIR_BOLD=value\" in setup file or use on of '--ap','--pa','--lr', or '--rl' flags"
                 call_json ${json_bids} PhaseEncodingDirection ${ph_dir}
               fi 
-            fi
-                            
+            fi     
           fi
         fi
       else
         echo "  $(basename ${ff}) exists"
       fi
-
     done
-
   done
 
   # check nr fmaps & funcs to fix IntendedFor
@@ -705,13 +692,17 @@ if [[ ! -z ${bold_files[@]} ]]; then
   done
 
   if [[ ${#funcs} -ne ${#fmaps} ]]; then
+    
     # add all funcs to IntendedFor
     if [[ ${#fmaps[@]} -eq 1 && ${#funcs[@]} -gt 1 ]]; then
+      
       # we have 1 FMAP for all bolds
       echo "Received one FMAP file for all BOLD files; fixing IntendedFor"
       func_list=""; ct=0; for f in ${funcs[@]}; do ((ct++)); if [[ ${ct} -eq ${#funcs[@]} ]]; then add_="${f}"; else add_="${f},"; fi; func_list+=${add_}; done
       call_json ${fmaps[0]} IntendedFor "${func_list}"
+    
     elif [[ `expr ${#funcs[@]} / ${#fmaps[@]}` -eq 2 ]]; then
+      
       # we have twice the nr of BOLDs vs FMAPs
       echo "Received an FMAP file for every 2 BOLD files; fixing IntendedFor"
       
@@ -732,139 +723,139 @@ if [[ ! -z ${bold_files[@]} ]]; then
       echo "WARNING: got ${#funcs[@]} BOLD files and ${#fmaps[@]} FMAP files. I can only deal with 1 FMAP for all BOLD, an FMAP per BOLD, or `expr ${#funcs[@]} / ${#fmaps[@]}` FMAP files (an FMAP for every X BOLD files)"
     fi
   fi
-  
-  #---------------------------------------------------------------------------------------------------------
-  # check for event files
-  if [[ -z ${runs} ]]; then
-    tsv_files=(`find -L "${input_dir}" -type f \( -name "*.tsv*" \) 2>/dev/null`)
-  else
-    if [[ ${#n_runs[@]} -gt 1 ]]; then
-      tsv_files=()
-      for r in ${n_runs[@]}; do
-        run_f=`find -L "${input_dir}" -type f \( -name "*run-${r}*" -and -name "*.tsv" \) 2>/dev/null`
-        tsv_files+=(${run_f})
-      done
-    else
-      tsv_files=`find -L "${input_dir}" -type f \( -name "*run-${n_runs}*" -and -name "*.tsv" \) 2>/dev/null`
-    fi
-  fi
+fi
 
-  if [[ ! -z ${tsv_files} ]]; then
+#---------------------------------------------------------------------------------------------------------
+# check for event files
+if [[ -z ${runs} ]]; then
+  tsv_files=(`find -L "${input_dir}" -type f \( -name "*.tsv*" \) | sort 2>/dev/null`)
+else
+  if [[ ${#n_runs[@]} -gt 1 ]]; then
+    tsv_files=()
+    for r in ${n_runs[@]}; do
+      run_f=`find -L "${input_dir}" -type f \( -name "*run-${r}*" -and -name "*.tsv" \) 2>/dev/null`
+      tsv_files+=(${run_f})
+    done
+  else
+    tsv_files=`find -L "${input_dir}" -type f \( -name "*run-${n_runs}*" -and -name "*.tsv" \) 2>/dev/null`
+  fi
+fi
+
+if [[ ! -z ${tsv_files} ]]; then
+  
+  if [[ ! -d ${bids_dir}/func ]]; then
+    mkdir -p ${bids_dir}/func
+  fi
+  echo " Found ${#tsv_files[@]} event file(s)"    
+
+  count=0
+  for file in ${tsv_files[@]}; do
     
-    if [[ ! -d ${bids_dir}/func ]]; then
-      mkdir -p ${bids_dir}/func
+    # add counter in case file does not contain run-X id
+    ((count++))
+
+    # fetch task
+    task=`get_id ${file} task`
+
+    # fetch run
+    run=`get_id ${file} run`
+    if [[ -z ${run} ]]; then
+      run=${count}
+    fi              
+
+    bids_tsv=${bids_dir}/func/${base}_task-${task}_run-${run}_events.tsv
+    if [[ ! -f ${bids_tsv} || ${OW} -eq 1 ]]; then
+      echo "  renaming tsv-file to `basename ${bids_tsv}`"
+      cp ${file} ${bids_tsv}
     fi
-    echo "Found ${#tsv_files[@]} event file(s)"    
+  done
+fi
 
-    count=0
-    for file in ${tsv_files[@]}; do
-      
-      # add counter in case file does not contain run-X id
-      ((count++))
-
-      # fetch task
-      task=`get_id ${file} task`
-
-      # fetch run
-      run=`get_id ${file} run`
-      if [[ -z ${run} ]]; then
-        run=${count}
-      fi              
-
-      bids_tsv=${bids_dir}/func/${base}_task-${task}_run-${run}_events.tsv
-      if [[ ! -f ${bids_tsv} || ${OW} -eq 1 ]]; then
-        echo " renaming tsv-file to `basename ${bids_tsv}`"
-        cp ${file} ${bids_tsv}
-      fi
+#---------------------------------------------------------------------------------------------------------
+# check for eyetracker files
+if [[ -z ${runs} ]]; then
+  edf_files=(`find -L "${input_dir}" -type f \( -name "*.edf*" \) 2>/dev/null`)
+else
+  if [[ ${#n_runs[@]} -gt 1 ]]; then
+    edf_files=()
+    for r in ${n_runs[@]}; do
+      run_f=`find -L "${input_dir}" -type f \( -name "*run-${r}*" -and -name "*.edf" \) 2>/dev/null`
+      edf_files+=(${run_f})
     done
-  fi
-
-  #---------------------------------------------------------------------------------------------------------
-  # check for eyetracker files
-  if [[ -z ${runs} ]]; then
-    edf_files=(`find -L "${input_dir}" -type f \( -name "*.edf*" \) 2>/dev/null`)
   else
-    if [[ ${#n_runs[@]} -gt 1 ]]; then
-      edf_files=()
-      for r in ${n_runs[@]}; do
-        run_f=`find -L "${input_dir}" -type f \( -name "*run-${r}*" -and -name "*.edf" \) 2>/dev/null`
-        edf_files+=(${run_f})
-      done
-    else
-      edf_files=`find -L "${input_dir}" -type f \( -name "*.edf*" \) 2>/dev/null`
-    fi
+    edf_files=`find -L "${input_dir}" -type f \( -name "*.edf*" \) 2>/dev/null`
+  fi
+fi
+
+
+if [[ ! -z ${edf_files} ]]; then
+
+  if [[ ! -d ${bids_dir}/func ]]; then
+    mkdir -p ${bids_dir}/func
   fi
 
-  
-  if [[ ! -z ${edf_files} ]]; then
+  echo " Found ${#edf_files[@]} eyetracker file(s)"    
 
-    if [[ ! -d ${bids_dir}/func ]]; then
-      mkdir -p ${bids_dir}/func
+  count=0
+  for file in ${edf_files[@]}; do
+    
+    # add counter in case file does not contain run-X id
+    ((count++))
+
+    # fetch task
+    task=`get_id ${file} task`
+    if [[ ${task} == "prf" ]]; then
+      task="pRF"
     fi
 
-    echo "Found ${#edf_files[@]} eyetracker file(s)"    
+    # fetch run
+    run=`get_id ${file} run`
+    if [[ ${run} -eq 0 ]]; then
+      run=${count}
+    fi
 
-    count=0
-    for file in ${edf_files[@]}; do
-      
-      # add counter in case file does not contain run-X id
-      ((count++))
+    bids_edf=${bids_dir}/func/${base}_task-${task}_run-${run}_eye.edf
+    if [[ ! -f ${bids_edf} || ${OW} -eq 1 ]]; then
+      echo "  renaming edf-file to `basename ${bids_edf}`"
+      cp ${file} ${bids_edf}
+    fi              
+  done
+fi          
 
-      # fetch task
-      task=`get_id ${file} task`
-      if [[ ${task} == "prf" ]]; then
-        task="pRF"
-      fi
+#---------------------------------------------------------------------------------------------------------
+# check for physio files
+phys=(`find -L "${input_dir}" -type f \( -name "SCANPHYS*" -and -name "*bold_*.log" \) 2>/dev/null`)
+if [[ ! -z ${phys} ]]; then
 
-      # fetch run
-      run=`get_id ${file} run`
-      if [[ ${run} -eq 0 ]]; then
-        run=${count}
-      fi
+  echo " Found physio file(s)"
+  if [[ ! -d ${bids_dir}/physio ]]; then
+    mkdir -p ${bids_dir}/physio
+  fi            
 
-      bids_edf=${bids_dir}/func/${base}_task-${task}_run-${run}_eye.edf
-      if [[ ! -f ${bids_edf} || ${OW} -eq 1 ]]; then
-        echo " renaming edf-file to `basename ${bids_edf}`"
-        cp ${file} ${bids_edf}
-      fi              
-    done
-  fi          
+  count=0
+  for file in ${phys[@]}; do
+    
+    # add counter in case file does not contain run-X id
+    ((count++))
 
-  #---------------------------------------------------------------------------------------------------------
-  # check for physio files
-  phys=(`find -L "${input_dir}" -type f \( -name "SCANPHYS*" -and -name "*bold_*.log" \) 2>/dev/null`)
-  if [[ ! -z ${phys} ]]; then
+    # fetch task
+    task=`get_id ${file} task`
+    if [[ ${task} == "prf" ]]; then
+      task="pRF"
+    fi
 
-    echo "Found physio file(s)"
-    if [[ ! -d ${bids_dir}/physio ]]; then
-      mkdir -p ${bids_dir}/physio
-    fi            
+    # fetch run
+    run=`get_id ${file} run`
+    if [[ ${run} -eq 0 ]]; then
+      run=${count}
+    fi           
 
-    count=0
-    for file in ${phys[@]}; do
-      
-      # add counter in case file does not contain run-X id
-      ((count++))
-
-      # fetch task
-      task=`get_id ${file} task`
-      if [[ ${task} == "prf" ]]; then
-        task="pRF"
-      fi
-
-      # fetch run
-      run=`get_id ${file} run`
-      if [[ ${run} -eq 0 ]]; then
-        run=${count}
-      fi           
-
-      bids_phys=${bids_dir}/physio/${base}_task-${task}_run-${run}_physio.log
-      if [[ ! -f ${bids_phys} ]]; then
-        echo " renaming physio-file to `basename ${bids_phys}`"
-        cp ${file} ${bids_phys}
-      fi              
-    done
-  fi
+    bids_phys=${bids_dir}/physio/${base}_task-${task}_run-${run}_physio.log
+    if [[ ! -f ${bids_phys} ]]; then
+      echo "  renaming physio-file to `basename ${bids_phys}`"
+      cp ${file} ${bids_phys}
+    fi              
+  done
 fi
 echo "Done"
 
