@@ -230,7 +230,7 @@ for subID in ${search}; do
       nr_anat=`ls -l ${bids_dir}/anat | grep "total" | cut -d' ' -f2`
       nr_func=`ls -l ${bids_dir}/func | grep "total" | cut -d' ' -f2`
       if [ ${nr_anat} -ne 0 ] && [ ${nr_func} -ne 0 ]; then
-        echo "${msg}; use \"master -m 02 -o\" to overwrite"
+        echo "${msg}; use \"master -m 02a --ow\" to overwrite"
         echo " anat = ${nr_anat} | func = ${nr_func}"
         continue
       fi
@@ -316,7 +316,7 @@ for subID in ${search}; do
           -i ${input_dir} -o ${output_dir} -b ${bids_dir} -n ${base} ${RUNS}
           
       else
-        echo "${msg}; use \"master -m 02 --ow\" or \"master -m 02 --full\" to overwrite"
+        echo "${msg}; use \"master -m 02a --ow\" (re-runs bidsification) or \"master -m 02a --full\" (also re-runs conversion) to overwrite"
       fi
     fi
   else
