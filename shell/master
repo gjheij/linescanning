@@ -23,6 +23,7 @@ DEBUG=""                  # spinoza_linerecon
 NORDIC=""                 # spinoza_linerecon
 OW=""                     # multiple (overwrite mode)
 verb_flag=""              # multiple (turn on verboses)
+aparc_flag=""             # spinoza_bestvertex
 FREEVIEW=""               # spinoza_bestvertex
 VERT=""                   # spinoza_bestvertex
 SRF_FLAG=""               # spinoza_bestvertex
@@ -96,7 +97,7 @@ t_specified=0             # keep track when t-flag is specified or --func is use
 
 # use long options in bash:
 # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options
-declare -a array=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv" "--no_fit" "--fmriprep" "--fprep" "--v1" "--v2" "--save_grid" "--debug" "--no_nordic" "--dcm_fix" "--ow" "--no_bounds" "--no_tsnr" "--mag" "--no_highres" "--xopts-use" "--xopts-clean" "--xopts-overwrite" "--take-avg-tr" "--force_exec" "--no_t2" "--merge_ses" "--fsaverage" "--fsnative" "--ap" "--pa" "--lr" "--rl" "--no_lpi" "--anat_only" "--func_only" "--no_boldref" "--gauss" "--dog" "--css" "--norm" "--no_srf" "--srf_file" "--gallery" "--abc" "--abd" "--manual" "--ctx" "--func" "--help" "--ofsl" "--clean" "--fd" "--fetch_fsl" "--anat" "--no_epi" "--no_manual")
+declare -a array=("--no_bbr" "--local" "--ups" "--no_biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv" "--no_fit" "--fmriprep" "--fprep" "--v1" "--v2" "--save_grid" "--debug" "--no_nordic" "--dcm_fix" "--ow" "--no_bounds" "--no_tsnr" "--mag" "--no_highres" "--xopts-use" "--xopts-clean" "--xopts-overwrite" "--take-avg-tr" "--force_exec" "--no_t2" "--merge_ses" "--fsaverage" "--fsnative" "--ap" "--pa" "--lr" "--rl" "--no_lpi" "--anat_only" "--func_only" "--no_boldref" "--gauss" "--dog" "--css" "--norm" "--no_srf" "--srf_file" "--gallery" "--abc" "--abd" "--manual" "--ctx" "--func" "--help" "--ofsl" "--clean" "--fd" "--fetch_fsl" "--anat" "--no_epi" "--no_manual" "--aparc")
 
 # sort options array
 IFS=$'\n' opts=($(sort <<<"${array[*]}"))
@@ -360,7 +361,10 @@ do
           ;;  
         no_manual)
           MAN_FLAG="--no_manual"
-          ;;            
+          ;;   
+        aparc)
+          aparc_flag="--aparc"
+          ;;                      
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             for ii in ${opts[@]}; do echo " ${ii}"; done
@@ -539,6 +543,8 @@ Arguments:
   --anat            Used for:
                     - spinoza_denoising: overwrite PYBEST_SPACE to use T1w-space for denoi-
                       sing
+  --aparc           use ROIs from ?h.aparc.annot atlas. Hit 'master -m 18 --help' to see which ROIs
+                    are included
   --bgfs            use L-BGFS minimization for both the Gaussian as well as the extended model (e.g.,
                     DoG, CSS, or DN). By default, we'll use trust-constr minimization for both. It's
                     recommended to at least to Gaussian fitting with trust-constr, and potential ex-
@@ -1718,6 +1724,7 @@ if [[ $? -eq 0 ]]; then
     ${SRF_FILE} \
     ${EPI_FILE} \
     ${GALLERY_FLAG} \
+    ${aparc_flag} \
     ${SELECTION_FLAG} \
     ${MAN_EPI} \
     ${EPI_FILE} \

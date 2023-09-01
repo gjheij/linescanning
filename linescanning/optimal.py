@@ -104,6 +104,8 @@ class SurfaceCalc(object):
         `FreeSurfer` directory (default = SUBJECTS_DIR)
     fs_label: str, optional
         ROI-name to extract the vertex from as per ROIs created with `FreeSurfer`. Default is V1_exvivo.thresh
+    aparc: bool, optional
+        if True, `fs_label` is an ROI in the ?h.aparc.annot file (FreeSurfer atlas)
 
     Example
     ----------
@@ -114,15 +116,25 @@ class SurfaceCalc(object):
     Embedded in :class:`linescanning.optimal.CalcBestVertex`, so if you can also just call that class and you won't have to run the command in "usage"
     """
 
-    def __init__(self, subject=None, fs_dir=None, fs_label="V1_exvivo.thresh"):
-
-        """Initialize object"""
+    def __init__(
+        self, 
+        subject=None, 
+        fs_dir=None, 
+        fs_label="V1_exvivo.thresh",
+        aparc=False):
 
         # print(" Perform surface operations")
         self.subject = subject
         self.ctx_path = opj(cortex.database.default_filestore, self.subject)
 
         # check if we need to reload kernel to activate changes to filestore
+        if os.environ.get("PROJECT") not in self.ctx_path:
+            os.system('call_ctxfilestore update')
+            import importlib
+            importlib.reload(cortex)
+
+        # double check:
+        self.ctx_path = opj(cortex.database.default_filestore, self.subject)
         if os.environ.get("PROJECT") not in self.ctx_path:
             raise TypeError(f"Project '{os.environ.get('PROJECT')}' not found in '{self.ctx_path}'. This can happen if you changed the filestore, but haven't reloaded the kernel. Use 'call_ctxfilestore' to set the filestore (and reload window if running from VSCode)")
             
@@ -160,19 +172,15 @@ class SurfaceCalc(object):
 
         # try:
         setattr(self, 'roi_label', fs_label.replace('.', '_'))
-        if not fs_label.endswith('.gii'):
-            make_mask = True
-            tmp = self.read_fs_label(subject=self.subject, fs_dir=self.fs_dir, fs_label=fs_label, hemi="both")
+        make_mask = False
+        if not aparc:
+            if not fs_label.endswith('.gii'):
+                make_mask = True
+                tmp = self.read_fs_label(subject=self.subject, fs_dir=self.fs_dir, fs_label=fs_label, hemi="both")
+            else:
+                tmp = self.read_gii_label()
         else:
-            make_mask = False
-            tmp = {}
-            for ii in ['lh', 'rh']:
-                gifti = dataset.ParseGiftiFile(opj(fs_dir, subject, 'label', f"{ii}.{fs_label}"), set_tr=1)
-
-                if gifti.data.ndim > 1:
-                    tmp[ii] = np.squeeze(gifti.data, axis=0)
-                else:
-                    tmp[ii] = gifti.data.copy()
+            tmp = self.read_aparc_label()
 
         setattr(self, f'lh_{self.roi_label}', tmp['lh'])
         setattr(self, f'rh_{self.roi_label}', tmp['rh'])
@@ -193,6 +201,41 @@ class SurfaceCalc(object):
                 self.whole_roi,
                 subject=subject)
 
+    def read_gii_label(self):
+        tmp = {}
+        for ii in ['lh', 'rh']:
+            gifti = dataset.ParseGiftiFile(opj(self.fs_dir, self.subject, 'label', f"{ii}.{self.fs_label}"), set_tr=1)
+
+            if gifti.data.ndim > 1:
+                tmp[ii] = np.squeeze(gifti.data, axis=0)
+            else:
+                tmp[ii] = gifti.data.copy()
+
+        return tmp
+
+    def read_aparc_label(self):
+
+        # read aparc.annot
+        self.aparc_data = self.read_fs_annot(self.subject, fs_annot="aparc")
+        
+        tmp = {}
+        for ii in ['lh', 'rh']:
+            
+            # get data
+            self.aparc_hemi = self.aparc_data[ii][0]
+
+            # initialize empty array
+            self.empty = np.full_like(self.aparc_hemi, np.nan)
+
+            # get index of specified ROI in list | hemi doesn't matter here
+            for ix,i in enumerate(self.aparc_data[ii][2]):
+                if self.fs_label.encode() in i:
+                    break
+
+            tmp[ii] = (self.aparc_hemi == ix).astype(int)
+
+        return tmp
+        
     def smooth_surfs(self, kernel=10, nr_iter=1):
         """smooth_surfs
 
@@ -410,6 +453,7 @@ class Neighbours(SurfaceCalc):
         fs_label:str="V1_exvivo.thresh",
         hemi:str="lh",
         verbose:bool=False,
+        aparc:bool=False,
         **kwargs):
 
         self.subject = subject
@@ -417,6 +461,7 @@ class Neighbours(SurfaceCalc):
         self.fs_label = fs_label
         self.hemi = hemi
         self.verbose = verbose
+        self.aparc = aparc
         self.__dict__.update(kwargs)
 
         # pycortex path will be read from 'filestore' key in options.cfg file from pycortex
@@ -445,7 +490,8 @@ class Neighbours(SurfaceCalc):
             super().__init__(
                 subject=self.subject, 
                 fs_dir=self.fs_dir,
-                fs_label=self.fs_label)
+                fs_label=self.fs_label,
+                aparc=self.aparc)
 
         if isinstance(self.fs_label, str):
             self.create_subsurface()
@@ -878,7 +924,8 @@ class CalcBestVertex():
         epi_space="fsnative",
         model="gauss",
         fs_label="V1_exvivo.thresh",
-        verbose=False):
+        verbose=False,
+        aparc=False):
 
         # read arguments
         self.subject    = subject
@@ -890,6 +937,7 @@ class CalcBestVertex():
         self.fs_label   = fs_label
         self.model      = model
         self.verbose    = verbose
+        self.aparc      = aparc
 
         # set EPI=True if a file/array is specified
         if isinstance(self.epi_file, (np.ndarray, str, bool)):
@@ -908,7 +956,8 @@ class CalcBestVertex():
             subject=self.subject, 
             fs_dir=self.fs_dir, 
             fs_label=self.fs_label,
-            verbose=self.verbose)
+            verbose=self.verbose,
+            aparc=self.aparc)
 
         if self.prf_file != None:
             self.prf_dir = os.path.dirname(self.prf_file)
@@ -1397,8 +1446,8 @@ class CalcBestVertex():
         self.lh_prf = self.joint_mask[:self.surface.lh_surf_data[0].shape[0]]
         self.rh_prf = self.joint_mask[self.surface.lh_surf_data[0].shape[0]:]
         
-        if not "V1_" in self.fs_label:
-            self.joint_mask[self.joint_mask < 1] = np.nan
+        # if not "V1_" in self.fs_label:
+        #     self.joint_mask[self.joint_mask < 1] = np.nan
         
         self.joint_mask_v = pycortex.Vertex2D_fix(
             self.joint_mask,
@@ -1994,7 +2043,9 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
         Method of selection the best vertex. By default `None`, entailing we'll go for vertex surviving all criteria and has minimum curvature. Can also be 'manual', meaning we'll open FreeView, allowing you to select a vertex manually
     open_with: str, optional
         if `selection="manual"`, we can either open a viewer with FreeView (defualt, as it open a volumetric view too), but can also be `ctx` to open a Pycortex webgl instance
-        
+    aparc: bool, optional         
+        specified `roi` is part of the aparc.annot file (e.g., "b'lateralorbitofrontal'"). Default = False
+
     Returns
     ---------
     str
@@ -2031,7 +2082,8 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
         srf=False,
         verbose=True,
         selection=None,
-        open_with="fs"):
+        open_with="fs",
+        aparc=False):
 
         self.subject = subject
         self.deriv = deriv
@@ -2048,6 +2100,7 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
         self.verbose = verbose
         self.selection = selection
         self.open_with = open_with
+        self.aparc = aparc
 
         # check if we can read DIR_DATA_DERIV if necessary
         if not self.deriv:
@@ -2124,7 +2177,8 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
                 use_epi=self.use_epi,
                 fs_label=self.roi,
                 model=self.model,
-                verbose=self.verbose)
+                verbose=self.verbose,
+                aparc=self.aparc)
 
             if self.use_epi & self.use_prf:
                 utils.verbose("Also initialize CollectSubject object", self.verbose)
@@ -2219,7 +2273,7 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
                                 setattr(self, f"{col}_val", thr)
 
                     else:
-                        for ii in ["x","y","size","ecc","r2","pol"]:
+                        for ii in ["x","y","size","ecc","r2","pol","a","b","c","d"]:
                             setattr(self, f"{ii}_val", 0)
 
                     if hasattr(self, 'surface'):
@@ -2280,9 +2334,10 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
                         setattr(self, f"{r}_best_vert_mask", (getattr(self.surface, f'{r}_surf_data')[1] == [self.vert[i]]).sum(0))
 
                     self.data_dict = {}
-                    if hasattr(self.prf, "prf_data_dict"):
-                        for key,val in self.prf.prf_data_dict.items():
-                            self.data_dict[key] = val                        
+                    if hasattr(self, "prf"):
+                        if hasattr(self.prf, "prf_data_dict"):
+                            for key,val in self.prf.prf_data_dict.items():
+                                self.data_dict[key] = val                        
 
                 # check if we found a vertex for both hemispheres; if not, go to criteria
                 if isinstance(self.lh_best_vert_mask, np.ndarray) and isinstance(self.rh_best_vert_mask, np.ndarray):
@@ -2390,47 +2445,47 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
 
             #----------------------------------------------------------------------------------------------------------------
             # Get pRF-parameters from best vertices
+            if isinstance(self.prf_file, str):
+                if os.path.exists(self.prf_file):
+                    self.prf_data = prf.read_par_file(self.prf_file)
 
-            if os.path.exists(self.prf_file):
-                self.prf_data = prf.read_par_file(self.prf_file)
+                    fbase = self.subject
+                    if self.model != None:
+                        fbase += f'_model-{self.model}'
 
-                fbase = self.subject
-                if self.model != None:
-                    fbase += f'_model-{self.model}'
+                    self.prf_bestvertex = opj(self.cx_dir, self.subject, f'{fbase}_desc-best_vertices.csv')
 
-                self.prf_bestvertex = opj(self.cx_dir, self.subject, f'{fbase}_desc-best_vertices.csv')
+                    # print(prf_right)
+                    # print(prf_left)
+                    lh_df = self.prf.df_prf.iloc[self.lh_best_vertex,:]
+                    rh_df = self.prf.df_prf.iloc[self.surface.lh_surf_data[0].shape[0]+self.rh_best_vertex,:]
 
-                # print(prf_right)
-                # print(prf_left)
-                lh_df = self.prf.df_prf.iloc[self.lh_best_vertex,:]
-                rh_df = self.prf.df_prf.iloc[self.surface.lh_surf_data[0].shape[0]+self.rh_best_vertex,:]
+                    self.dd_dict = {}
+                    # write existing pRF parameters to dictionary
+                    for ii in list(lh_df.keys()):
+                        self.dd_dict[ii] = [lh_df[ii],rh_df[ii]]
 
-                self.dd_dict = {}
-                # write existing pRF parameters to dictionary
-                for ii in list(lh_df.keys()):
-                    self.dd_dict[ii] = [lh_df[ii],rh_df[ii]]
+                    # add custom stuff
+                    self.dd_dict["index"]    = [lh_df.name,rh_df.name]
+                    self.dd_dict["position"] = [self.lh_best_vertex_coord, self.rh_best_vertex_coord]
+                    self.dd_dict["normal"]   = [self.lh_normal, self.rh_normal]
+                    self.dd_dict["hemi"]     = ["L","R"]
 
-                # add custom stuff
-                self.dd_dict["index"]    = [lh_df.name,rh_df.name]
-                self.dd_dict["position"] = [self.lh_best_vertex_coord, self.rh_best_vertex_coord]
-                self.dd_dict["normal"]   = [self.lh_normal, self.rh_normal]
-                self.dd_dict["hemi"]     = ["L","R"]
+                    # we should have stimulus sizes if srf=True
+                    if self.srf:
+                        try:
+                            self.dd_dict["stim_sizes"] = [np.array([getattr(self, f"{i}_stim_size_activation"), getattr(self, f"{i}_stim_size_suppression")]) for i in ["lh","rh"]]
 
-                # we should have stimulus sizes if srf=True
-                if self.srf:
-                    try:
-                        self.dd_dict["stim_sizes"] = [np.array([getattr(self, f"{i}_stim_size_activation"), getattr(self, f"{i}_stim_size_suppression")]) for i in ["lh","rh"]]
+                            self.dd_dict["stim_betas"] = [np.array([getattr(self, f"{i}_max_suppression"), getattr(self, f"{i}_max_activation")]) for i in ["lh","rh"]]                    
+                        except:
+                            pass
 
-                        self.dd_dict["stim_betas"] = [np.array([getattr(self, f"{i}_max_suppression"), getattr(self, f"{i}_max_activation")]) for i in ["lh","rh"]]                    
-                    except:
-                        pass
+                    self.final_df = pd.DataFrame(self.dd_dict)
 
-                self.final_df = pd.DataFrame(self.dd_dict)
-
-                if isinstance(self.out, str):
-                    self.final_df.to_csv(self.prf_bestvertex, index=False)
-                    utils.verbose(f" writing {self.prf_bestvertex}", self.verbose)
-                    # utils.verbose(f"Now run 'call_sizeresponse -s {self.subject} --verbose {v1_flag}' to obtain DN-parameters", self.verbose)
+                    if isinstance(self.out, str):
+                        self.final_df.to_csv(self.prf_bestvertex, index=False)
+                        utils.verbose(f" writing {self.prf_bestvertex}", self.verbose)
+                        # utils.verbose(f"Now run 'call_sizeresponse -s {self.subject} --verbose {v1_flag}' to obtain DN-parameters", self.verbose)
 
             utils.verbose("Done", self.verbose)
 

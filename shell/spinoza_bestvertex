@@ -25,6 +25,43 @@ Args:
                   tex1.csv) so that a new line_pycortex.csv-file is created. Given that the original
                   file is NOT deleted, I consider this a soft-overwrite mode. You can always manual-
                   ly delete unwanted/unused files or use '--full' to remove the file.
+  --aparc         specified ROI is part of the 'aparc.annot' atlas [default = False]. It is wise to 
+                  use this function in combination with '--manual' to select a vertex from this ROI.
+                  Available ROIs in this atlas are:
+                    'caudalanteriorcingulate'
+                    'caudalmiddlefrontal'
+                    'corpuscallosum'
+                    'cuneus'
+                    'entorhinal'
+                    'fusiform'
+                    'inferiorparietal'
+                    'inferiortemporal'
+                    'isthmuscingulate'
+                    'lateraloccipital'
+                    'lateralorbitofrontal'
+                    'lingual'
+                    'medialorbitofrontal'
+                    'middletemporal'
+                    'parahippocampal'
+                    'paracentral'
+                    'parsopercularis'
+                    'parsorbitalis'
+                    'parstriangularis'
+                    'pericalcarine'
+                    'postcentral'
+                    'posteriorcingulate'
+                    'precentral'
+                    'precuneus'
+                    'rostralanteriorcingulate'
+                    'rostralmiddlefrontal'
+                    'superiorfrontal'
+                    'superiorparietal'
+                    'superiortemporal'
+                    'supramarginal'
+                    'frontalpole'
+                    'temporalpole'
+                    'transversetemporal'
+                    'insula'
   --full          full overwrite mode
   --no_freeview   prevent FreeView from opening while verifying the location. ONLY do this if you
                   already know the position. Generally only used for debugging purposes.
@@ -85,6 +122,7 @@ USAGE
 #-----------------------------------------------------------------------------
 # Deal with arguments
 OW=0
+aparc_flag=""
 fv_flag=""
 task="${TASK_SES1[0]}"
 model="gauss"
@@ -114,6 +152,9 @@ do
         grid)
           stage="grid"
           ;;
+        aparc)
+          aparc_flag="--aparc"
+          ;;          
         npy)
           prf_ext="npy"
           ;;       
@@ -189,6 +230,7 @@ if [[ $# -lt 2 ]] ; then
   Usage >&2
   exit 1
 fi
+
 
 # this deals with the fact that we might have flags before positional arguments
 BASE=${@:$OPTIND:1}
@@ -278,7 +320,6 @@ for subID in ${search}; do
 
     echo
     echo "**************************************** Processing ${sub_name} ***************************************"
-    echo "Creating `basename ${line_orientation_file}` file"
     
     # set the call_pycortex2 '-v' flag  if we want manually selected vertices
     if [[ ! -z ${vert} ]]; then
@@ -286,6 +327,7 @@ for subID in ${search}; do
     fi
 
     epi_flag=""
+    pars_flag=""
     # use the --use-prf flag if the roi = V1. Otherwise exclude pRFs in the selecting of the vertex
     if [[ ${roi} != "V1_exvivo.thresh" ]] && [[ ${roi} != "V2_exvivo.thresh" ]] && [[ ${roi} != "V1_custom" ]]; then
       use_prfs=""
@@ -313,6 +355,8 @@ for subID in ${search}; do
       if [[ -z ${pars} ]]; then
         echo "Could not find pRF file with \"model-${model}\", \"stage-${stage}\", \"task-${task}\", and \"*prf_params.${prf_ext}\"${txt} in \"${prf_dir}\""
         continue
+      else
+        pars_flag="-p ${pars}"
       fi
 
       if [[ ${srf_file} -eq 1 ]]; then
@@ -335,12 +379,12 @@ for subID in ${search}; do
       fi
     fi
 
-    call_targetvertex \
+    cmd="""call_targetvertex \
       -s ${sub_name} \
       -d ${DERIV} \
       -r ${roi} \
       -o ${line_orientation_file} \
-      -p ${pars} \
+      ${pars_flag} \
       ${epi_flag} \
       ${fv_flag} \
       ${man_verts} \
@@ -350,7 +394,11 @@ for subID in ${search}; do
       ${gallery_flag} \
       ${selection} \
       ${open_with} \
-      ${epi_file_flag}
+      ${epi_file_flag} \
+      ${aparc_flag}"""
+    
+    echo ${cmd}
+    exec ${cmd}
 
     if [[ $? != 0 ]]; then
       echo

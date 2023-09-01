@@ -49,6 +49,8 @@ Parameters
     --manual        use manual selection of vertices using Freeview/pycortex
     --ctx           open pycortex viewer for vertex selection if '--manual' is specified. Default 
                     is FreeView because it also open a volumetric view
+    --aparc         specified ROI is part of the aparc.annot file (e.g., "lateralorbitofrontal").
+                    Use 'master -m 18 --help' to see which ROIs are included
 
 Returns
 ----------
@@ -94,9 +96,10 @@ Notes
     selection   = None
     open_with   = "fs"
     epi_file    = None
+    is_aparc    = False
 
     try:
-        opts = getopt.getopt(argv,"fuhd:s:t:r:o:b:v:m:n:p:",["help", "deriv=", "sub=", "roi=", "out=", "vert=", "use-prf", "no-freeview", "prf_file=", "use-epi", "srf", "srf_file=", "gallery", "manual", "ctx", "epi_file="])[0]
+        opts = getopt.getopt(argv,"fuhd:s:t:r:o:b:v:m:n:p:",["help", "deriv=", "sub=", "roi=", "out=", "vert=", "use-prf", "no-freeview", "prf_file=", "use-epi", "srf", "srf_file=", "gallery", "manual", "ctx", "epi_file=", "aparc"])[0]
     except getopt.GetoptError:
         print("ERROR IN ARGUMENT HANDLING!")
         print(main.__doc__)
@@ -135,7 +138,9 @@ Notes
         elif opt in ("--manual"):
             selection = "manual"
         elif opt in ("--ctx"):
-            open_with = "ctx"            
+            open_with = "ctx"        
+        elif opt in ("--aparc"):
+            is_aparc = True
 
     if len(argv) < 1:
         print("\nNEED AT LEAST A SUBJECT ID")
@@ -149,7 +154,7 @@ Notes
             verts = np.array(ast.literal_eval(verts))
         except:
             raise ValueError(f"You used '{verts}'. Make sure to use '[x,y,z]' (comma-separated and no spaces)")
-    
+
     targ_obj = optimal.TargetVertex(
         subject,
         prf_file=prf_file,
@@ -164,7 +169,8 @@ Notes
         srf=srf_flag,
         srf_file=srf_file,
         selection=selection,
-        open_with=open_with)
+        open_with=open_with,
+        aparc=is_aparc)
 
     if gallery:
 
