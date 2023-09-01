@@ -176,6 +176,7 @@ if [[ ! -f ${genaff} ]] && [[ ${genaff} != "identity" ]]; then
   # enter bash ${DIR_SCRIPTS}/bin/call_antsregistration.sh for help
   echo "Register FS (orig.mgz) to session ${session}"
   call_antsregistration \
+    -j 10 \
     ${anat_session2} \
     ${anat_session1} \
     $(dirname ${genaff})/$(basename ${genaff} genaff.mat) 
