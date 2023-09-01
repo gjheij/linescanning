@@ -139,7 +139,229 @@ class CurveFitter():
     
     def third_order(x, a, b, c, d):
 	    return (a * x) + (b * x**2) + (c * x**3) + d
+
+class ParameterFitter():
+
+    def __init__(self, data, onsets, TR=0.105):
+
+        self.data = data
+        self.onsets = onsets
+        self.TR = TR
+
+        # prepare data
+        self.prepare_data()
+        self.prepare_onsets()
+
+        # get info about dataframe
+        self.run_ids = None            
+        self.sub_ids = None
+        if isinstance(self.data, pd.DataFrame):
+            try:
+                self.sub_ids = utils.get_unique_ids(self.data, id="subject")
+            except:
+                pass
+
+            try:
+                self.run_ids = utils.get_unique_ids(self.data, id="run")
+            except:
+                pass
+
+        # get events
+        self.evs = utils.get_unique_ids(self.onsets, id="event_type")
+    
+    def _get_timepoints(self):
+        return list(np.arange(0,self.data.shape[0])*self.TR)
+
+    def prepare_onsets(self):
         
+        # store copy of original data
+        self.orig_onsets = self.onsets.copy()
+        
+        # put in dataframe
+        if isinstance(self.onsets, np.ndarray):
+            self.onsets = pd.DataFrame(self.onsets, columns=["onsets"])
+        else:
+            try:
+                self.onsets = self.onsets.reset_index()
+            except:
+                pass
+            
+        # format dataframe with subject, run, and t
+        self.onset_index = [
+            "subject",
+            "run",
+            "event_type"
+        ]
+
+        for key,val in zip(self.onset_index, [1,1,"stim"]):
+            if not key in list(self.onsets.columns):
+                self.onsets[key] = val
+
+        self.onsets.set_index(self.onset_index, inplace=True)   
+
+    def prepare_data(self):
+        
+        # store copy of original data
+        self.orig_data = self.data.copy()
+        
+        # put in dataframe
+        self.time = self._get_timepoints()
+        if isinstance(self.data, np.ndarray):
+            self.data = pd.DataFrame(self.data)
+        else:
+            try:
+                self.data = self.data.reset_index()
+            except:
+                pass
+            
+        # format dataframe with subject, run, and t
+        self.final_index = [
+            "subject",
+            "run",
+            "t"
+        ]
+
+        for key,val in zip(self.final_index, [1,1,self.time]):
+            if not key in list(self.data.columns):
+                self.data[key] = val
+
+        self.data.set_index(self.final_index, inplace=True)            
+
+    @staticmethod
+    def single_response_fitter(
+        data,
+        onsets,
+        TR=0.105,
+        **kwargs):
+
+        cl_fit = FitHRFparams(
+            data,
+            onsets,
+            TR=TR,
+            **kwargs
+        )
+
+        cl_fit.iterative_fit()
+
+        return cl_fit
+    
+    @staticmethod
+    def _set_dict():
+        ddict = {}
+        for el in ["predictions","profiles","pars"]:
+            ddict[el] = []
+
+        return ddict
+    
+    @staticmethod
+    def _concat_dict(ddict):
+        new_dict = {}
+        for key,val in ddict.items():
+            if len(val)>0:
+                new_dict[key] = pd.concat(val)
+
+        return new_dict    
+
+    def fit(self, **kwargs):
+
+        self.ddict_sub = self._set_dict()
+
+        # loop through subject
+        for sub in self.sub_ids:
+            
+            print(f"Fitting '{sub}'")
+            # get subject specific onsets
+            self.sub_onsets = utils.select_from_df(self.onsets, expression=f"subject = {sub}")
+            self.ddict_run = self._set_dict()
+            for run in self.run_ids:
+                
+                print(f" run-'{run}'")
+                # subject and run specific data
+                self.func = utils.select_from_df(
+                    self.data, expression=(
+                        f"subject = {sub}",
+                        "&",
+                        f"run = {run}"
+                    )
+                )                 
+                
+                # loop through events
+                self.ddict_ev = self._set_dict()
+                for ev in self.evs:
+                    
+                    print(f"  ev-'{ev}'")
+
+                    # run/event-specific onsets
+                    self.ons = utils.select_from_df(
+                        self.sub_onsets, expression=(
+                            f"run = {run}",
+                            "&",
+                            f"event_type = {ev}"
+                        )
+                    )
+
+                    # do fit
+                    self.rf = self.single_response_fitter(
+                        self.func.T.values,
+                        self.ons,
+                        TR=self.TR,
+                        **kwargs
+                    )
+
+                    # get profiles and full timecourse predictions
+                    tmp = self.rf.hrf_profiles.copy().reset_index()
+                    pr = self.rf.predictions.copy().reset_index()
+                    tmp["run"] = run
+                    pr["run"] = run       
+
+                    # finalize dataframe with proper formatting
+                    df = tmp.set_index(["run","time"]).groupby(["time"]).mean().reset_index()
+                    df["covariate"],df["event_type"] = "intercept",ev
+                    pr["event_type"] = ev
+
+                    # get metrics
+                    try:
+                        pars_ = HRFMetrics(df.set_index(["event_type","covariate","time"])).return_metrics()
+                        pars_["event_type"] = ev
+                    except Exception as e:
+                        raise RuntimeError(f"Caught exception while dealing with '{sub}', 'event = {ev}': {e}")  
+
+                    try:
+                        df = df.reset_index(drop=True)
+                    except:
+                        pass
+
+                    # append
+                    self.ddict_ev["predictions"].append(pr)
+                    self.ddict_ev["profiles"].append(df)
+                    self.ddict_ev["pars"].append(pars_)
+
+                # concatenate all evs
+                self.ddict_ev = self._concat_dict(self.ddict_ev)
+
+                # set run id and append to run dict
+                for key,val in self.ddict_ev.items():
+                    self.ddict_ev[key]['run'] = run
+                    self.ddict_run[key].append(val)
+
+            # concatenate all runs
+            self.ddict_run = self._concat_dict(self.ddict_run)
+
+            # set run id and append to run dict
+            for key,val in self.ddict_run.items():
+                self.ddict_run[key]['subject'] = sub
+                self.ddict_sub[key].append(val)
+
+        # concatenate all subjects
+        self.ddict_sub = self._concat_dict(self.ddict_sub)
+
+        # set final outputs
+        self.tc_subjects = self.ddict_sub["profiles"].set_index(["subject","run","event_type","covariate","time"])
+        self.tc_condition = self.tc_subjects.groupby(level=['event_type', 'covariate', 'time']).mean()
+
+        self.ev_predictions = self.ddict_sub["predictions"].set_index(["subject","run","event_type","t"])
+        self.ev_parameters = self.ddict_sub["pars"].set_index(["subject","run", "event_type"])
+
 class NideconvFitter():
     """NideconvFitter
 
@@ -1879,39 +2101,39 @@ def iterative_search(
     
     # run for both negative and positive; return parameters of best r2
 
-    res = {}
-    for lbl,np in zip(["pos","neg"],[False,True]):
-        res[lbl] = {}
-        args["negative"] = np
-        output = minimize(
-            error_function, 
-            starting_params, 
-            args=(
-                args, 
-                data,
-                make_prediction),
-            method='trust-constr',
-            bounds=bounds,
-            tol=ftol,
-            options=dict(xtol=xtol)
-        )   
+    # res = {}
+    # for lbl,np in zip(["pos","neg"],[False,True]):
+    #     res[lbl] = {}
+    #     args["negative"] = np
+    #     output = minimize(
+    #         error_function, 
+    #         starting_params, 
+    #         args=(
+    #             args, 
+    #             data,
+    #             make_prediction),
+    #         method='trust-constr',
+    #         bounds=bounds,
+    #         tol=ftol,
+    #         options=dict(xtol=xtol)
+    #     )   
 
-        pred = make_prediction(
-            output['x'],
-            **args
-        )
+    #     pred = make_prediction(
+    #         output['x'],
+    #         **args
+    #     )
 
-        res[lbl]["pars"] = output['x']
-        res[lbl]["r2"] = metrics.r2_score(data,pred)  
+    #     res[lbl]["pars"] = output['x']
+    #     res[lbl]["r2"] = metrics.r2_score(data,pred)  
 
-    r2_pos = res["pos"]["r2"]
-    r2_neg = res["neg"]["r2"]
-    if r2_pos>r2_neg:
-        return res["pos"]["pars"],"pos"
-    else:
-        return res["neg"]["pars"],"neg"
+    # r2_pos = res["pos"]["r2"]
+    # r2_neg = res["neg"]["r2"]
+    # if r2_pos>r2_neg:
+    #     return res["pos"]["pars"],"pos"
+    # else:
+    #     return res["neg"]["pars"],"neg"
     
-    # return starting_params, "pos"
+    return starting_params, "pos"
     
 class FitHRFparams():
 
@@ -1970,27 +2192,27 @@ class FitHRFparams():
         if self.data.ndim < 2:
             self.data = self.data[np.newaxis,...]
     
-        # self.tmp_results = Parallel(self.n_jobs, verbose=self.verbose)(
-        #     delayed(iterative_search)(
-        #         self.data[i,:],
-        #         self.onsets,
-        #         starting_params=self.starting_params,
-        #         TR=self.TR,
-        #         bounds=self.bounds,
-        #         constraints=self.constraints,
-        #         xtol=self.xtol,
-        #         ftol=self.ftol,
-        #         cov_as_ampl=self.cov_as_ampl
-        #     ) for i in range(self.data.shape[0])
-        # )
+        self.tmp_results = Parallel(self.n_jobs, verbose=self.verbose)(
+            delayed(iterative_search)(
+                self.data[i,:],
+                self.onsets,
+                starting_params=self.starting_params,
+                TR=self.TR,
+                bounds=self.bounds,
+                constraints=self.constraints,
+                xtol=self.xtol,
+                ftol=self.ftol,
+                cov_as_ampl=self.cov_as_ampl
+            ) for i in range(self.data.shape[0])
+        )
 
 
-        # # parse into array
-        # self.iterative_search_params = np.array([self.tmp_results[i][0] for i in range(self.data.shape[0])])
-        # self.prof_sign = [self.tmp_results[i][1] for i in range(self.data.shape[0])]
+        # parse into array
+        self.iterative_search_params = np.array([self.tmp_results[i][0] for i in range(self.data.shape[0])])
+        self.prof_sign = [self.tmp_results[i][1] for i in range(self.data.shape[0])]
 
-        self.iterative_search_params = np.array(self.starting_params)[np.newaxis,...]
-        self.prof_sign = None
+        # self.iterative_search_params = np.array(self.starting_params)[np.newaxis,...]
+        # self.prof_sign = None
 
         self.force_neg = [False for _ in range(self.data.shape[0])]
         self.force_pos = [True for _ in range(self.data.shape[0])]
