@@ -1106,7 +1106,7 @@ class CalcBestVertex():
             for par,val in zip(
                 ["r2","size","ecc","polar angle"],
                 [self.r2_thresh,self.size_thresh,self.ecc_thresh,self.polar_thresh]):
-                if isinstance(val, list):
+                if isinstance(val, (list,tuple)):
                     self.criteria[par] = [float(i) for i in val]
                 else:
                     self.criteria[par] = float(val)
