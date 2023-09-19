@@ -775,8 +775,8 @@ class pRFCalc():
             if "model" in list(self.comps.keys()):
                 self.model = self.comps["model"]
             else:
-                self.model = "gauss"           
-            
+                self.model = "gauss"
+        
         # create output string from input file if we found BIDS components
         self.out_ = ""
         for el in list(self.comps.keys()):
@@ -2363,10 +2363,15 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
 
                             if not self.srf:
                                 # print parameters and make plot
-                                os.system(f"call_prfinfo -s {self.subject} -v {vertex} --{tag} --{self.model} -p {self.prf_file} --plot {v1_flag}")
+                                cmd =f"call_prfinfo -s {self.subject} -v {vertex} --{tag} --{self.model} -p {self.prf_file} --plot {v1_flag}"
+                                print(cmd)
+                                os.system(cmd)
                             else:
                                 # print parameters
-                                os.system(f"call_prfinfo -s {self.subject} -v {vertex} --{tag} --{self.model} -p {self.prf_file}")
+                                cmd = f"call_prfinfo -s {self.subject} -v {vertex} --{tag} --{self.model} -p {self.prf_file}"
+
+                                print(cmd)
+                                os.system(cmd)
 
                                 # compile output name for figures
                                 base = f"{self.subject}"
