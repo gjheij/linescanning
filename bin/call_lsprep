@@ -33,6 +33,7 @@ Parameters
   -b|--bids_dir     project root folder; defaults to DIR_DATA_HOME
   -o|--output_dir   output directory; defaults to DIR_DATA_DERIV/lsprep
   -c|--n_comps      number of components for ICA/PCA
+  --phase_onset     phase index which denotes stimulus onsets (default = 1, but can be 0 too)
   --ses_trafo       transformation matrix from ses-1 to line-scanning session (defaults to 'ses{ses}
                     _rec-motion1' in DIR_DATA_DERIV/pycortex/<subject>/transforms)
   --filter_pca      cut off frequency for PCA components; default is 0.2Hz (~breathing frequency)
@@ -91,10 +92,11 @@ Example
     del_first       = 0
     del_last        = 0
     bsl_length      = 24
+    phase_onset     = 0
 
     # long options without argument: https://stackoverflow.com/a/54170513
     try:
-        opts = getopt.getopt(argv,"qgvh:b:d:n:r:o:f:l:i:s:c:",["help", "subject=", "bids_dir=", "session=", "ses_trafo=", "output_dir=", "filter_pca=", "run=", "no_report", "verbose", "no_acompcor", "tr=", "overwrite", "ow", "shift=","lp", "no_button", "n_comps=", "window=", "poly_order=", "ica", "first=", "last=", "bsl"])[0]
+        opts = getopt.getopt(argv,"qgvh:b:d:n:r:o:f:l:i:s:c:",["help", "subject=", "bids_dir=", "session=", "ses_trafo=", "output_dir=", "filter_pca=", "run=", "no_report", "verbose", "no_acompcor", "tr=", "overwrite", "ow", "shift=","lp", "no_button", "n_comps=", "window=", "poly_order=", "ica", "first=", "last=", "bsl", "phase_onset="])[0]
     except getopt.GetoptError:
         print("ERROR while handling arguments.. Did you specify an 'illegal' argument..?")
         print(main.__doc__)
@@ -148,6 +150,8 @@ Example
             window_length = int(arg)
         elif opt in ("--poly_order"):
             poly_order = int(arg)
+        elif opt in ("--phase_onset"):
+            phase_onset = int(arg)            
         elif opt in ("--shift"):
             shift = arg
             if "," in shift:
@@ -291,7 +295,8 @@ Example
         verbose=verbose,
         deleted_first_timepoints=del_first,
         deleted_last_timepoints=del_last,
-        baseline=bsl_length)
+        baseline=bsl_length,
+        phase_onset=phase_onset)
 
     # save h5 if needed; filename will be derived from inputs
     obj_.to_hdf(overwrite=overwrite)
