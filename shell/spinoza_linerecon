@@ -168,10 +168,7 @@ for subID in ${search}; do
     fi
 
     # fetch and sort the lab-files
-    bold_files_unsorted=`find "${lab_func}" -maxdepth 1 -type f \( -name "*bold_*" -and -name "*.lab" \) 2>/dev/null`
-    IFS=$'\n' bold_files=($(sort <<<"${bold_files_unsorted[*]}"))
-    unset IFS
-
+    bold_files=(`find -L "${lab_func}" -maxdepth 1 -type f \( -name "*bold_*" -and -name "*.lab" \) | sort 2>/dev/null`)
     if [[ -z ${bold_files} ]]; then
       echo "${sub_name}: Could not find BOLD-data"
       continue
