@@ -169,6 +169,7 @@ Example
         # load object
         obj = prf.pRFmodelFitting(
             data.T,
+            model=model,
             design_matrix=design,
             verbose=verbose)
 
