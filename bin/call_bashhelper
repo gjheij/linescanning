@@ -1217,8 +1217,8 @@ function make_bias_script {
 # PHYSIO SCRIPT
 function make_physio_script {
 
-  if [[ $# -ne 7 ]]; then
-    echo "Received only ${#} arguments, need 7:"
+  if [[ $# -ne 8 ]]; then
+    echo "Received only ${#} arguments, need 8:"
     count=0; for ii in "${@}"; do ((count++)); echo " ${count}.) ${ii}"; done
     echo
     echo "---------------------------------------------------------------------------------------------------"
@@ -1234,6 +1234,7 @@ function make_physio_script {
     echo "  <volumes>   number of volumes in the functional run"
     echo "  <output>    directory+basename for output files (extensions will be appended)"
     echo "  <dummies>   number of dummy volumes"
+    echo "  <n_slices>  number of slices in the volume"
     echo "  <script>    script name"
     echo ""
     echo "Usage:"
@@ -1245,6 +1246,13 @@ function make_physio_script {
     echo
   else
 
+    ext=`fetch_extension ${2}`
+    if [[ ${ext,,} == "log" ]]; then
+      vendor="philips"
+    else
+      vendor="BIDS"
+    fi
+
     (
     echo "%-----------------------------------------------------------------------------"
     echo "% Created on `date`. Create PhysIO regressors from SCANPHYSLOG"
@@ -1252,14 +1260,14 @@ function make_physio_script {
     echo "clear;"
     echo "addpath(genpath('${1}'));"
     echo "matlabbatch{1}.spm.tools.physio.save_dir = {''};"
-    echo "matlabbatch{1}.spm.tools.physio.log_files.vendor = 'BIDS';"
+    echo "matlabbatch{1}.spm.tools.physio.log_files.vendor = '${vendor}';"
     echo "matlabbatch{1}.spm.tools.physio.log_files.cardiac = {'${2}'};"
     echo "matlabbatch{1}.spm.tools.physio.log_files.respiration = {'${2}'};"
     echo "matlabbatch{1}.spm.tools.physio.log_files.scan_timing = {''};"
     echo "matlabbatch{1}.spm.tools.physio.log_files.sampling_interval = [];"
     echo "matlabbatch{1}.spm.tools.physio.log_files.relative_start_acquisition = 0;"
     echo "matlabbatch{1}.spm.tools.physio.log_files.align_scan = 'first';"
-    echo "matlabbatch{1}.spm.tools.physio.scan_timing.sqpar.Nslices = 1;"
+    echo "matlabbatch{1}.spm.tools.physio.scan_timing.sqpar.Nslices = ${7};"
     echo "matlabbatch{1}.spm.tools.physio.scan_timing.sqpar.NslicesPerBeat = [];"
     echo "matlabbatch{1}.spm.tools.physio.scan_timing.sqpar.TR = ${3};"
     echo "matlabbatch{1}.spm.tools.physio.scan_timing.sqpar.Ndummies = ${6};"
@@ -1294,9 +1302,9 @@ function make_physio_script {
     echo "spm('defaults','fMRI')"
     echo "spm_jobman('run', matlabbatch);"
     echo "exit"
-    ) >> ${7}
+    ) >> ${8}
 
-    cat ${7} | grep -A0 "matlabbatch{" >> $(dirname ${7})/$(basename ${7} .m)_batch.m
+    cat ${8} | grep -A0 "matlabbatch{" >> $(dirname ${8})/$(basename ${8} .m)_batch.m
 
   fi
   

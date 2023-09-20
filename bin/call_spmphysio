@@ -15,17 +15,20 @@ call_spmphysio
 Create a text file with physiological regressors using the PhysIO toolbox as implemented in SPM12. 
 You will need to specify the path to the SCANPHYSLOG file of interest and the base name of the out-
 put (to which several extensions such as *.txt, *.mat, and *.ps will be added). If you setup is not 
-default, you can specify the path to SPM-directory containing the PhysIO-toolbox with the '-l' flag.
+default, you can specify the path to SPM-directory containing the PhysIO-toolbox with the '-s' flag.
 
 Args:
- -s <SPM_PATH>  path to SPM; should contain CAT12 in toolbox directory
- -t <TR>        set by default to 0.105; 'pixdim4' if func = *.nii.gz
- -v <VOLUMES>   nr of volumes; 'dim4' if func = *.nii.gz or 'shape[-1]' if *.mat
- -f <FUNC FILE> functional file that contains information about the number of runs
- -d <DUMMY VOL> number of dummy volumes before acquisition of actual data (1 dyn is typically 400 vols)
- -n             do not run PhysIO-toolbox, only 'scanphyslog2bids'
- <input file>   SCANPHYSLOG-file that you want to convert to text file
- <output image>	name of output image, including directory
+  -s <SPM_PATH>   path to SPM; should contain CAT12 in toolbox directory
+  -t <TR>         repetition time, set by default to 0.105; 'pixdim4' if func = *.nii.gz
+  -n <n_slices>   number of slices, set by default to 1; 'dim1' if func = *.nii.gz
+  -v <VOLUMES>    nr of volumes; 'dim4' if func = *.nii.gz or 'shape[-1]' if *.mat
+  -f <FUNC FILE>  functional file that contains information about the number of runs
+  -d <DUMMY VOL>  number of dummy volumes before acquisition of actual data (1 dyn is typically 400 vols)
+  --no_tapas      do not run PhysIO-toolbox, only 'scanphyslog2bids'
+  --no_bids       do not run 'scanphyslog2bids'
+  <input file>    SCANPHYSLOG-file that you want to convert to text file
+
+  <output image   name of output image, including directory
 
 Usage:
  call_spmphysio -t 2 -v 315 /path/scanphyslog.log /path/to/physio_regressors
@@ -43,14 +46,35 @@ if [[ $# -lt 1 ]] ; then
   exit 1
 fi
 
+N_SLICES=1
+RUN_MATLAB=1
+RUN_PHYS=1
 # Check for subject & session flags
-while getopts ns:f:t:v:d: argument
+while getopts :-:hs:f:t:v:d:n: argument
 do
   case ${argument} in
+    -)
+      case "${OPTARG}" in     
+        no_tapas)
+          RUN_MATLAB=0
+          ;;   
+        no_bids)
+          RUN_PHYS=0
+          ;;                   
+        *)
+          if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
+            Usage >&2
+            echo "Unknown option --${OPTARG}"
+            exit 1
+          fi
+          ;;
+      esac;;     
     s)  SPM=${OPTARG}
             ;;
     d)  DUMMY_VOLS=${OPTARG}
-            ;;            
+            ;;      
+    n)  N_SLICES=${OPTARG}
+            ;;                   
     f)  FUNC=${OPTARG}
             ;;            
     t)  TR=${OPTARG}
@@ -62,13 +86,6 @@ done
 
 INPUT=${@:$OPTIND:1}
 OUTPUT=${@:$OPTIND+1:1}
-
-# check for flag that turns off matlab
-if [[ "${@}" == *"-n"* ]]; then
-  RUN_MATLAB=0
-else
-  RUN_MATLAB=1
-fi
 
 #-----------------------------------------------------------------------------
 # Get bash helper functions
@@ -106,6 +123,7 @@ if [[ -z ${VOLS} ]]; then
       if [[ ${FUNC} == *".nii.gz"* ]]; then
         VOLS=`fslval ${FUNC} dim4`
         TR=`fslval ${FUNC} pixdim4`
+        N_SLICES=`fslval ${FUNC} dim1`
       elif [[ ${FUNC} == *".mat"* ]]; then
         VOLS=`python -c "from scipy.io import loadmat; k = loadmat('${FUNC}'); tag = list(k.keys())[-1]; print(k[tag].shape[-1])"`
       else
@@ -145,6 +163,11 @@ if [[ -f ${new_script} ]]; then
   rm -r ${new_script}
 fi
 
+new_batch=$(dirname ${OUTPUT})/spm_physio_batch.m
+if [[ -f ${new_batch} ]]; then
+  rm -r ${new_batch}
+fi
+
 if [[ ! -d $(dirname ${OUTPUT}) ]]; then
   mkdir -p $(dirname ${OUTPUT})
 fi
@@ -156,34 +179,82 @@ OUTPUT=`fetch_filepath ${OUTPUT}`
 
 #-----------------------------------------------------------------------------
 # Do some preprocessing with 'scanphyslog2bids' from Lukas Snoek:
-scanphyslog2bids \
-  --file ${INPUT} \
-  --tr ${TR} \
-  --ndyns ${VOLS} \
-  --sf 500 \
-  --triggermethod interpolate \
-  --outdir $(dirname ${INPUT}) \
-  --plottraces \
-  --plotalignment \
-  --derivdir $(dirname ${INPUT})  # for plots
+if [[ ${RUN_PHYS} -eq 1 ]]; then
+  scanphyslog2bids \
+    --file ${INPUT} \
+    --tr ${TR} \
+    --ndyns ${VOLS} \
+    --sf 496 \
+    --triggermethod interpolate \
+    --outdir $(dirname ${INPUT}) \
+    --plottraces \
+    --plotalignment \
+    --derivdir $(dirname ${INPUT})  # for plots
 
-# fetch the output from scanphyslog2bids
-PHYSIO_INPUT=$(dirname ${INPUT})/$(basename ${INPUT} .log).tsv.gz
+  if [[ $? -ne 0 ]]; then
+    echo "ERROR in `basename ${0}`: scanphyslog2bids exited with non-zero status"
+    exit 1
+  fi
 
+  # fetch the output from scanphyslog2bids
+  PHYSIO_INPUT=$(dirname ${INPUT})/$(basename ${INPUT} .log).tsv.gz
+  input_type="BIDS"
+else
+  input_type="RAW"
+  PHYSIO_INPUT=${INPUT}
+fi
+
+# echo input type
+echo "Input = ${input_type}: ${PHYSIO_INPUT}"
+
+#-----------------------------------------------------------------------------
+# Run TAPAS
 if [[ ${RUN_MATLAB} -eq 1 ]]; then
+
   # create the matlab script
-  make_physio_script ${SPM_PATH} ${PHYSIO_INPUT} ${TR} ${VOLS} ${OUTPUT} ${N_DUMMY} ${new_script}
+  make_physio_script ${SPM_PATH} ${PHYSIO_INPUT} ${TR} ${VOLS} ${OUTPUT} ${N_DUMMY} ${N_SLICES} ${new_script}
   if [[ $? -ne 0 ]]; then
     echo "ERROR in `basename ${0}`: make_physio_script exited with non-zero status"
     exit 1
   fi
 
   # execute the script with matlab
-  call_matlab ${new_script}
+  echo "Initializing TAPAS"
 
-  if [[ $? -ne 0 ]]; then
+  log_file=$(dirname ${OUTPUT})/physlog.txt
+  if [ -f ${log_file} ]; then
+    rm -r ${log_file} 2>/dev/null
+  fi
+
+  # run matlab
+  call_matlab ${new_script} >> ${log_file}
+
+  # check if matlab succeeded
+  ff=`cat ${log_file} | grep "Failed: TAPAS PhysIO Toolbox" | cut -d"." -f2 | xargs | sed 's/\r$//'`
+  if [[ ! -z ${ff} ]]; then
     echo "ERROR: matlab exited with non-zero status"
     exit 1
+  else
+    echo "TAPAS completed!"
+    if [[ -f ${OUTPUT}.tsv ]]; then
+
+      echo "Formatting output in human-readable csv-file"
+      # save final dataframe
+      PYTHON_CODE=$(cat <<END
+from linescanning import dataset;
+exp = dataset.ParsePhysioFile('${OUTPUT}.tsv', physio_mat='${OUTPUT}.mat', TR=${TR});
+exp.df_physio.to_csv('${OUTPUT}.csv');
+END
+  )
+      # run python code
+      python -c "$PYTHON_CODE"
+
+      # only keep newly created file
+      if [[ -f ${OUTPUT}.csv ]]; then
+        echo "Wrote ${OUTPUT}.csv"
+        rm -r ${OUTPUT}.tsv ${OUTPUT}.mat 2>/dev/null
+      fi
+    fi
   fi
 else
   echo "-n flag was specified; not running matlab"
