@@ -332,8 +332,7 @@ frequency range of {self.high_pass_pupil_f}-{self.low_pass_pupil_f}Hz. """
 
         for i, edf_file in enumerate(self.edfs):
 
-            if self.verbose:
-                print(f"Preprocessing {edf_file}")
+            utils.verbose(f"Preprocessing {edf_file}", self.verbose)
 
             self.run = i+1
             self.ses = None
@@ -861,7 +860,7 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
         # set attributes
         SetAttributes.__init__(self)
 
-        if self.edfs != None:
+        if self.edfs != None or hasattr(self, "h5_file"):
             ParseEyetrackerFile.__init__(
                 self,
                 self.edfs, 
@@ -873,8 +872,7 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
                 invoked_from_func=self.invoked_from_func,
                 **tmp_kwargs)
 
-        if self.verbose:
-            print("\nEXPTOOLS")
+        utils.verbose("\nEXPTOOLS", self.verbose)
 
         if isinstance(self.tsv_file, str):
             self.tsv_file = [self.tsv_file]
@@ -979,13 +977,23 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
 
         # check if we should merge responses with onsets
         if self.merge:
-            if len(self.df_responses) > 0:
-                
-                self.merged = pd.concat([self.df_onsets,self.df_responses]).sort_values(["subject","run","onset"])
-                
-                # keep pure onsets too
-                self.df_onsets_pure = self.df_onsets.copy()
+            # keep pure onsets too
+            self.df_onsets_pure = self.df_onsets.copy()
 
+            self.concat_list = [self.df_onsets]
+
+            # look for responses
+            if len(self.df_responses) > 0:
+                self.concat_list += [self.df_responses.copy()]
+
+            # look for blinks
+            if hasattr(self, "df_blinks"):
+                self.concat_list += [self.df_blinks.copy()]
+
+            # concatenate and sort
+            if len(self.concat_list)>0:
+                self.merged = pd.concat(self.concat_list).sort_values(["subject","run","onset"])
+                
                 # set merged to new df_onsets
                 self.df_onsets = self.merged.copy()
 
@@ -1010,8 +1018,7 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
         phase_onset=1, 
         duration=None):
 
-        if self.verbose:
-            print(f"Preprocessing {tsv_file}")
+        utils.verbose(f"Preprocessing {tsv_file}", self.verbose)
         with open(tsv_file) as f:
             self.data = pd.read_csv(f, delimiter='\t')
 
@@ -1121,11 +1128,9 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
         # correct for start time of experiment and deleted time due to removal of inital volumes
         self.onset[:, 0] = self.onset[:, 0]-(self.start_time + delete_time)
 
-        if self.verbose:
-            print(f" Cutting {round(self.start_time + delete_time,2)}s from onsets")
-
-            if not skip_duration:
-                print(f" Avg duration = {round(self.durations.mean(),2)}s")
+        utils.verbose(f" Cutting {round(self.start_time + delete_time,2)}s from onsets", self.verbose)
+        if not skip_duration:
+            utils.verbose(f" Avg duration = {round(self.durations.mean(),2)}s", self.verbose)
 
         # make dataframe
         columns = ['onset', 'event_type']
@@ -1689,7 +1694,7 @@ class ParsePhysioFile():
         self.verbose                    = verbose
         self.__dict__.update(kwargs)
 
-        print("\nPHYSIO")
+        utils.verbose("\nPHYSIO", self.verbose)
         
         self.physio_cols = [f'c_{i}' for i in range(self.orders[0])] + [f'r_{i}' for i in range(self.orders[1])] + [f'cr_{i}' for i in range(self.orders[2])]
 
@@ -1704,8 +1709,7 @@ class ParsePhysioFile():
             df_physio = []
             for run, func in enumerate(self.physio_file):
 
-                if self.verbose:
-                    print(f"Preprocessing {func}")
+                utils.verbose(f"Preprocessing {func}", self.verbose)
 
                 self.run = run+1
                 self.ses = None
@@ -1976,8 +1980,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
             if isinstance(self.ref_slice, str):
                 self.ref_slice = [self.ref_slice]
 
-        if self.verbose:
-            print("\nFUNCTIONAL")
+        utils.verbose("\nFUNCTIONAL", self.verbose)
 
         if isinstance(self.func_file, (str, np.ndarray)):
             self.func_file = [self.func_file]
@@ -2019,9 +2022,9 @@ Functional data preprocessing
                 
                 if self.verbose:
                     if isinstance(func, str):
-                        print(f"Preprocessing {func}")
+                        utils.verbose(f"Preprocessing {func}", self.verbose)
                     elif isinstance(func, np.ndarray):
-                        print(f"Preprocessing array {run_id+1} in list")
+                        utils.verbose(f"Preprocessing array {run_id+1} in list", self.verbose)
                         
                         # override use_bids. Can't be use with numpy arrays
                         self.use_bids = False
@@ -2197,7 +2200,7 @@ Functional data preprocessing
                 
                 # check if elements of list contain dataframes
                 if all(elem is None for elem in self.df_acomp):
-                    print("WARNING: aCompCor did not execute properly. All runs have 'None'")
+                    utils.verbose("WARNING: aCompCor did not execute properly. All runs have 'None'", True)
                 else:
                     try:
                         self.df_func_acomp = pd.concat(self.df_acomp).set_index(self.index_list)
@@ -2224,7 +2227,7 @@ Functional data preprocessing
                 
                 # check if elements of list contain dataframes
                 if all(elem is None for elem in self.df_ica):
-                    print("WARNING: ICA did not execute properly. All runs have 'None'")
+                    utils.verbose("WARNING: ICA did not execute properly. All runs have 'None'", True)
                 else:
                     try:
                         self.df_func_ica = pd.concat(self.df_ica).set_index(self.index_list)
@@ -2364,13 +2367,10 @@ Functional data preprocessing
             if not self.psc_nilearn:
                 if self.baseline_units == "seconds" or self.baseline_units == "s" or self.baseline_units == "sec":
                     baseline_vols_old = int(np.round(baseline*self.fs, 0))
-                    if self.verbose:
-                        print(
-                            f" Baseline is {baseline} seconds, or {baseline_vols_old} TRs")
+                    utils.verbose(f" Baseline is {baseline} seconds, or {baseline_vols_old} TRs", self.verbose)
                 else:
                     baseline_vols_old = baseline
-                    if self.verbose:
-                        print(f" Baseline is {baseline} TRs")
+                    utils.verbose(f" Baseline is {baseline} TRs", self.verbose)
 
                 # correct for deleted samples
                 baseline_vols = baseline_vols_old-self.deleted_first_timepoints
@@ -2387,9 +2387,7 @@ Functional data preprocessing
                 self.desc_trim = ""
                 self.ts_corrected = self.ts_magnitude[:,deleted_first_timepoints:]
 
-            if self.verbose:
-                print(f" Cutting {deleted_first_timepoints} volumes from beginning{txt} | {deleted_last_timepoints} volumes from end")
-
+            utils.verbose(f" Cutting {deleted_first_timepoints} volumes from beginning{txt} | {deleted_last_timepoints} volumes from end", self.verbose)
             self.vox_cols = [f'vox {x}' for x in range(self.ts_corrected.shape[0])]
 
             #----------------------------------------------------------------------------------------------------------------------------------------------------
@@ -2440,8 +2438,7 @@ Functional data preprocessing
 
                 self.desc_filt = f"""DCT-high pass filter [removes low frequencies <{self.lb} Hz] was applied. """
 
-                if self.verbose:
-                    print(f" DCT-high pass filter [removes low frequencies <{self.lb} Hz] to correct low-frequency drifts.")
+                utils.verbose(f" DCT-high pass filter [removes low frequencies <{self.lb} Hz] to correct low-frequency drifts.", self.verbose)
 
                 self.hp_raw, self._cosine_drift = preproc.highpass_dct(self.data_raw, self.lb, TR=self.TR)
                 self.hp_raw_df = self.index_func(
@@ -3010,8 +3007,7 @@ class Dataset(ParseFuncFile,SetAttributes):
         **kwargs):
 
         self.verbose = verbose
-        if self.verbose:
-            print("DATASET")
+        utils.verbose("DATASET", self.verbose)
         
         # set attributes
         SetAttributes.__init__(self)
@@ -3062,8 +3058,7 @@ class Dataset(ParseFuncFile,SetAttributes):
 
         if hasattr(self, attr):
             
-            if self.verbose:
-                print(f"Fetching dataframe from attribute '{attr}'")
+            utils.verbose(f"Fetching dataframe from attribute '{attr}'", self.verbose)
                 
             df = getattr(self, attr)
             if strip_index:
@@ -3071,7 +3066,7 @@ class Dataset(ParseFuncFile,SetAttributes):
             else:
                 return df
         else:
-            print(f"Could not find '{attr}' attribute")
+            utils.verbose(f"Could not find '{attr}' attribute", True)
             
     def fetch_onsets(self, strip_index=False, button=True):
         if hasattr(self, 'df_onsets'):
@@ -3087,7 +3082,7 @@ class Dataset(ParseFuncFile,SetAttributes):
             return df
 
         else:
-            print("No event-data was provided")
+            utils.verbose("No event-data was provided", True)
 
     def fetch_rts(self, strip_index=False):
         if hasattr(self, 'df_rts'):
@@ -3096,7 +3091,7 @@ class Dataset(ParseFuncFile,SetAttributes):
             else:
                 return self.df_rts
         else:
-            print("No reaction times were provided")            
+            utils.verbose("No reaction times were provided", True)
 
     def fetch_accuracy(self, strip_index=False):
         if hasattr(self, 'df_accuracy'):
@@ -3105,7 +3100,7 @@ class Dataset(ParseFuncFile,SetAttributes):
             else:
                 return self.df_accuracy
         else:
-            print("No accuracy measurements found")                 
+            utils.verbose("No accuracy measurements found", True)
 
     def fetch_physio(self, strip_index=False):
         if hasattr(self, 'df_physio'):
@@ -3114,7 +3109,7 @@ class Dataset(ParseFuncFile,SetAttributes):
             else:
                 return self.df_physio
         else:
-            print("No physio-data was provided")            
+            utils.verbose("No physio-data was provided", True)
 
     def fetch_trace(self, strip_index=False):
         if hasattr(self, 'df_space_func'):
@@ -3123,13 +3118,13 @@ class Dataset(ParseFuncFile,SetAttributes):
             else:
                 return self.df_space_func
         else:
-            print("No eyetracking-data was provided")
+            utils.verbose("No eyetracking-data was provided", True)
 
     def fetch_blinks(self, strip_index=False):
         if hasattr(self, 'blink_events'):
             return self.blink_events
         else:
-            print("No eyetracking-data was provided")
+            utils.verbose("No eyetracking-data was provided", True)
 
     def from_hdf(self, input_file=None):
 
@@ -3137,6 +3132,9 @@ class Dataset(ParseFuncFile,SetAttributes):
             raise ValueError("No output file specified")
         else:
             self.h5_file = input_file
+        
+        if not os.path.exists(self.h5_file):
+            raise FileNotFoundError(f"Could not find file: '{self.h5_file}'")
         
         utils.verbose(f"Reading from {self.h5_file}", self.verbose)
         hdf_store = pd.HDFStore(self.h5_file)
@@ -3222,9 +3220,7 @@ class Dataset(ParseFuncFile,SetAttributes):
                 else:
                     ref_img = self.func_file[file_counter]
                 
-                if self.verbose:
-                    print(f"Ref img = {ref_img}")
-
+                utils.verbose(f"Ref img = {ref_img}", self.verbose)
                 if isinstance(ref_img, nb.Nifti1Image):
                     ref_img = ref_img
                 elif isinstance(ref_img, str):
@@ -3240,28 +3236,21 @@ class Dataset(ParseFuncFile,SetAttributes):
                 aff = ref_img.affine
                 hdr = ref_img.header
 
-                if self.verbose:
-                    print(f"Ref shape = {dims}")
-                
+                utils.verbose(f"Ref shape = {dims}", self.verbose)
                 data_per_run = data_per_run.values
                 # time is initially first axis, so transpose
                 if data_per_run.shape[-1] != dims[-1]:
-                    if self.verbose:
-                        print(f"Data shape = {data_per_run.shape}; transposing..")
+                    utils.verbose(f"Data shape = {data_per_run.shape}; transposing..", self.verbose)
                     data_per_run = data_per_run.T
                 else:
-                    if self.verbose:
-                        print(f"Data shape = {data_per_run.shape}; all good..")
+                    utils.verbose(f"Data shape = {data_per_run.shape}; all good..", self.verbose)
 
-                if self.verbose:
-                    print(f"Final shape = {data_per_run.shape}")
+                utils.verbose(f"Final shape = {data_per_run.shape}", self.verbose)
 
                 # check if we have mask
                 if isinstance(mask, nb.Nifti1Image) or isinstance(mask, str) or isinstance(mask, list):
                     
-                    if self.verbose:
-                        print("Masking with given mask-object")
-
+                    utils.verbose("Masking with given mask-object", self.verbose)
                     if isinstance(mask, nb.Nifti1Image):
                         mask = mask
                     elif isinstance(mask, str):
@@ -3305,7 +3294,7 @@ class Dataset(ParseFuncFile,SetAttributes):
                     else:
                         fname = f"{fname}_run-{run}.nii.gz"
 
-                print(f"Writing {fname}")
+                utils.verbose(f"Writing {fname}", self.verbose)
                 nb.Nifti1Image(data_per_run, affine=aff, header=hdr).to_filename(fname)
 
                 file_counter += 1
