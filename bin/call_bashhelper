@@ -279,7 +279,7 @@ USAGE
 
   if [[ ${do_stuff} -eq 1 ]]; then
     for ii in ${pathOutput}/*.nii.gz; do
-      if [[ $(basename ${ii}) == *"_bold"* ]] || [[ $(basename ${ii}) == *"_epi"* ]]; then
+      if [[ $(basename ${ii}) == *"_bold"* || $(basename ${ii}) == *"_epi"* ]]; then
         # cross reference with par files in pathInput
         for par in ${pathInput}/*; do
           ext=`fetch_extension ${par}`
@@ -597,8 +597,13 @@ function fn_exists {
     func=${1}
     FN=`type -t ${func}`
     if [[ -z ${FN} ]]; then
-      echo "Didn't find ${func}"
-      exit 1
+      echo "Didn't find function \"${func}\""
+
+      if [[ ! -z ${2} ]]; then
+        if [[ ${2} -eq 1 ]]; then
+          exit 1
+        fi
+      fi
     fi
   fi
   

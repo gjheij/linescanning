@@ -44,7 +44,8 @@ Input options:
                       flag. This flag is mainly here because it can take some time with big files
                       which slows down debugging.
   --sge               submit individual subjects to cluster as call_parrec2nii can take a while..
-  
+  --phys              run only physiology conversion
+
 Example:
   spinoza_scanner2bids /path/to/project_root /path/to/your/project/sourcedata     # regular
   spinoza_scanner2bids -n 1/path/to/project_root /path/to/your/project/sourcedata # regular|ses-1
@@ -90,6 +91,7 @@ PROT_FLAG=""
 PE_FLAG=""
 SGE_FLAG=0
 DEBUG_MODE=0
+PHYS_FLAG=""
 while getopts :-:os:n:r:q: argument
 do
   case ${argument} in
@@ -127,6 +129,9 @@ do
         ow)
           OW="--ow"
           ;;  
+        phys)
+          PHYS_FLAG="--phys"
+          ;;           
         full)
           FULL_OW="--full"
           ;;  
@@ -270,12 +275,12 @@ for subID in ${search}; do
       continue
     else
   
-      if [[ ! -d ${bids_dir}/anat || ! -d ${bids_dir}/func || ! -z ${OW} ]]; then
+      if [[ ! -d ${bids_dir}/anat || ! -d ${bids_dir}/func || ! -z ${OW} || ${DEBUG_MODE} -eq 1 ]]; then
 
         if [[ ${DCM_FIX} -eq 1 ]]; then
           intro_txt="Regular session, but with call_parrec2nii fix for big PAR/REC files"
         else
-          intro_txt="Line-scanning session; using call_dcm2niix"
+          intro_txt="Exotic session (e.g., line-scanning); using call_dcm2niix"
         fi
 
 
@@ -303,9 +308,10 @@ for subID in ${search}; do
           echo " PROT_FLAG   = ${PROT_FLAG}"
           echo " PE_FLAG     = ${PE_FLAG}"
           echo " RUNS FLAG   = ${RUNS}"
+          echo " PHYS FLAG   = ${PHYS_FLAG}"
         fi
 
-        ${job} ${DIR_SCRIPTS}/bin/call_bids \
+        cmd="""${job} ${DIR_SCRIPTS}/bin/call_bids \
           ${SES_FLAG} \
           ${ADD_INV} \
           ${DCM_FIX} \
@@ -313,7 +319,16 @@ for subID in ${search}; do
           ${PROT_FLAG} \
           ${PE_FLAG} \
           ${OW} \
-          -i ${input_dir} -o ${output_dir} -b ${bids_dir} -n ${base} ${RUNS}
+          ${PHYS_FLAG} \
+          -i ${input_dir} -o ${output_dir} -b ${bids_dir} -n ${base} ${RUNS}"""
+
+        # echo command if running locally
+        if [[ ${SGE_FLAG} -eq 0 ]]; then
+          echo
+          echo ${cmd}
+        fi
+
+        ${cmd}
           
       else
         echo "${msg}; use \"master -m 02a --ow\" (re-runs bidsification) or \"master -m 02a --full\" (also re-runs conversion) to overwrite"

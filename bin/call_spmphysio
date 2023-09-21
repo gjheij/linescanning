@@ -26,6 +26,9 @@ Args:
   -d <DUMMY VOL>  number of dummy volumes before acquisition of actual data (1 dyn is typically 400 vols)
   --no_tapas      do not run PhysIO-toolbox, only 'scanphyslog2bids'
   --no_bids       do not run 'scanphyslog2bids'
+  --use_bids      index the final dataframe with BIDS-fields read from the filename. Maps onto 
+                  the 'use_bids='-flag in linescanning.dataset.ParsePhysioFile. Default = false
+  --no_plots      skip plots from scanphyslog2bids
   <input file>    SCANPHYSLOG-file that you want to convert to text file
 
   <output image   name of output image, including directory
@@ -49,6 +52,8 @@ fi
 N_SLICES=1
 RUN_MATLAB=1
 RUN_PHYS=1
+USE_BIDS=0
+MAKE_PLOTS="--plottraces --plotalignment"
 # Check for subject & session flags
 while getopts :-:hs:f:t:v:d:n: argument
 do
@@ -60,7 +65,13 @@ do
           ;;   
         no_bids)
           RUN_PHYS=0
-          ;;                   
+          ;;  
+        use_bids)
+          USE_BIDS=True
+          ;;     
+        no_plots)
+          MAKE_PLOTS=""
+          ;;                                      
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             Usage >&2
@@ -180,16 +191,20 @@ OUTPUT=`fetch_filepath ${OUTPUT}`
 #-----------------------------------------------------------------------------
 # Do some preprocessing with 'scanphyslog2bids' from Lukas Snoek:
 if [[ ${RUN_PHYS} -eq 1 ]]; then
-  scanphyslog2bids \
+
+  cmd="""scanphyslog2bids \
     --file ${INPUT} \
     --tr ${TR} \
     --ndyns ${VOLS} \
     --sf 496 \
     --triggermethod interpolate \
     --outdir $(dirname ${INPUT}) \
-    --plottraces \
-    --plotalignment \
-    --derivdir $(dirname ${INPUT})  # for plots
+    ${MAKE_PLOTS} \
+    --derivdir $(dirname ${INPUT})"""
+  
+  # echo and run
+  echo $cmd
+  ${cmd}
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in `basename ${0}`: scanphyslog2bids exited with non-zero status"
@@ -232,6 +247,7 @@ if [[ ${RUN_MATLAB} -eq 1 ]]; then
   # check if matlab succeeded
   ff=`cat ${log_file} | grep "Failed: TAPAS PhysIO Toolbox" | cut -d"." -f2 | xargs | sed 's/\r$//'`
   if [[ ! -z ${ff} ]]; then
+    mv ${log_file} $(dirname ${INPUT})/$(basename ${INPUT} .log)_error.log
     echo "ERROR: matlab exited with non-zero status"
     exit 1
   else
@@ -242,7 +258,7 @@ if [[ ${RUN_MATLAB} -eq 1 ]]; then
       # save final dataframe
       PYTHON_CODE=$(cat <<END
 from linescanning import dataset;
-exp = dataset.ParsePhysioFile('${OUTPUT}.tsv', physio_mat='${OUTPUT}.mat', TR=${TR});
+exp = dataset.ParsePhysioFile('${OUTPUT}.tsv', physio_mat='${OUTPUT}.mat', TR=${TR}, use_bids=${USE_BIDS}, verbose=False);
 exp.df_physio.to_csv('${OUTPUT}.csv');
 END
   )

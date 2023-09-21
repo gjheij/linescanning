@@ -76,18 +76,8 @@ if [[ $# -lt 1 ]] ; then
 fi
 
 #-----------------------------------------------------------------------------
-# Check if we have dcm2niix installed
-
-fn_exists()
-{
-  FN=`type -t $1`
-
-  if [[ -z ${FN} ]]; then
-    echo "Didn't find dcm2niix, please install (have a look at https://github.com/rordenlab/dcm2niix)"
-    echo "or specify the path to the function"
-    exit 1
-  fi
-}
+# Get bash helper functions
+source call_bashhelper
 
 # overwrite version?
 if [[ ${version} == "2019" ]]; then
@@ -102,7 +92,7 @@ else
   cmd="dcm2niix"
 fi
 
-fn_exists ${cmd}
+fn_exists ${cmd} 1
 
 #-----------------------------------------------------------------------------
 # Set default inputs/outputs
