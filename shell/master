@@ -1222,7 +1222,12 @@ if [[ $? -eq 0 ]]; then
   # find anatomy directory hierarchically
   INPUT_DIR=`find_hierarchical_anatomy 2`
   
-  ${job} spinoza_biassanlm ${SUBJECT} ${SESSION} ${NO_BIAS} ${INPUT_DIR} ${DIR_DATA_DERIV}/denoised
+  ${job} spinoza_biassanlm \
+    ${SUBJECT} \
+    ${SESSION} \
+    ${NO_BIAS} \
+    ${OW} \
+    ${INPUT_DIR} ${DIR_DATA_DERIV}/denoised
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in `basename ${0}`: spinoza_biassanlm exited with non-zero status"
