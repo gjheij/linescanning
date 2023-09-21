@@ -126,6 +126,7 @@ do
           ;;            
         phys)
           PHYS_ONLY=1
+          SES_TYPE="lines"
           ;;                                                                                                 
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then

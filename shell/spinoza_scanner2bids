@@ -131,6 +131,7 @@ do
           ;;  
         phys)
           PHYS_FLAG="--phys"
+          SES_TYPE="lines"
           ;;           
         full)
           FULL_OW="--full"
@@ -275,7 +276,7 @@ for subID in ${search}; do
       continue
     else
   
-      if [[ ! -d ${bids_dir}/anat || ! -d ${bids_dir}/func || ! -z ${OW} || ${DEBUG_MODE} -eq 1 ]]; then
+      if [[ ! -d ${bids_dir}/anat || ! -d ${bids_dir}/func || ! -z ${OW} || ${DEBUG_MODE} -eq 1 || ! -z ${PHYS_FLAG} ]]; then
 
         if [[ ${DCM_FIX} -eq 1 ]]; then
           intro_txt="Regular session, but with call_parrec2nii fix for big PAR/REC files"
