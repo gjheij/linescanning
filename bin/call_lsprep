@@ -207,7 +207,7 @@ Example
 
     func_files  = utils.get_file_from_substring(func_search, funcs, exclude="acq-3DEPI", return_msg=None)
     eye_files   = utils.get_file_from_substring(eye_search, funcs, return_msg=None)
-    tsv_files   = utils.get_file_from_substring(tsv_search, funcs, return_msg=None)
+    tsv_files   = utils.get_file_from_substring(tsv_search, funcs, exclude="acq-3DEPI", return_msg=None)
     ref_slices  = utils.get_file_from_substring(anat_search, anats, exclude="._", return_msg=None)
 
     # check which inputs are available, set to None otherwise
