@@ -79,7 +79,7 @@ if [[ ! -f ${MAN} ]]; then
   if [[ ! -d $(dirname ${MAN}) ]]; then
     mkdir -p $(dirname ${MAN})
   fi
-  echo "Creating `basename ${man}` with call_createimg"    
+  echo "Creating `basename ${MAN}` with call_createimg"    
   call_createimg ${REF} ${MAN}
 fi
 
