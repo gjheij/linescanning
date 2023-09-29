@@ -1316,7 +1316,7 @@ class LazyCorr(Defaults):
             [self.x_label, self.y_label, self.title],
             [self._set_xlabel, self._set_ylabel, self._set_title]):
 
-            if isinstance(lbl, str):
+            if isinstance(lbl, (str,dict)):
                 func(self.axs, lbl)
 
         # sort out ticks
@@ -1539,7 +1539,7 @@ class LazyBar():
             self.data = self.data.reset_index()
         except:
             pass
-
+            
         # check if we got custom labels
         if isinstance(self.labels, (np.ndarray,list)):
             self.data[self.x] = self.labels
@@ -2117,7 +2117,7 @@ def conform_ax_to_obj(
         [obj.x_label, obj.y_label, obj.title],
         [obj._set_xlabel, obj._set_ylabel, obj._set_title]):
 
-        if isinstance(lbl, str):
+        if isinstance(lbl, (str,dict)):
             func(ax, lbl)
 
     # format ticks
