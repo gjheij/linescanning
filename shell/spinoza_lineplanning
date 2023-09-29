@@ -154,15 +154,19 @@ if [[ ${session} -ne 1 ]]; then
 
   anat_session2=`find "${nifti}/nifti" -type f \( -name "*t${ttime}*" -and -name "*real*" -and -name "*.nii.gz" \) 2>/dev/null`
   if [[ -z ${anat_session2} ]]; then
-    echo "ERROR: Couldn't find low-res anatomy file, please specify correctly.."
-    exit 1
+
+    # look for fast 3D T1 (3DFFE)
+    anat_session2=`find "${nifti}/nifti" -type f \( -name "*3DFFE*" -and -name "*.nii.gz" \) 2>/dev/null`
+    if [[ -z ${anat_session2} ]]; then
+      echo "ERROR: Couldn't find low-res anatomy file, please specify correctly.."
+      exit 1
+    fi
   elif [ `echo ${anat_session2} | wc -w` -gt 1 ]; then
     echo "ERROR: Found more than 1 file, make sure only one file is specified for session 2 anatomy:"
     for i in ${anat_session2[@]}; do echo "  ${i}"; done
     exit 1
-  else
-    echo "Session ${session} input                    = ['`basename ${anat_session2}`']"
   fi
+  echo "Session ${session} input                    = ['`basename ${anat_session2}`']"
 
   #-----------------------------------------------------------------------------
   # Call ANTs registration with Rigid body transformation
@@ -201,7 +205,9 @@ if [[ -f ${genaff} ]] || [[ ${genaff} == "identity" ]]; then
     -h ${hemi} \
     -l ${line_orientation_file}
   """
-  exec $cmd
+
+  # run
+  ${cmd}
 
   if [[ $? != 0 ]]; then
     echo
