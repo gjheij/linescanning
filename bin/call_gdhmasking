@@ -193,9 +193,9 @@ if left to empty, it will look by default for the following files:
             try:
                 all_masks['dura_orig']              # if THAT also doesn't exist, run spinoza_createskullduramasks
             except:
-                print("Could not find any dura image. It's most like you don't have a T2w-image, so run spinoza_createskullduramasks (module 11)")
-                print("If you do have a T2-image, run spinoza_registration (module 6) and spinoza_sinusfrommni (module 7), to create a dura mask")
-                print("If you do not have INV2-images, but you do have a T2w and ran module 07, then copy the 'sinus_mni'-file as 'cat_dura'")
+                print("Could not find any dura image. It's most likely you don't have a T2w-image, so run spinoza_createskullduramasks (module 11)")
+                print(" - If you do have a T2-image, run spinoza_registration (module 6) and spinoza_sinusfrommni (module 7), to create a dura mask")
+                print(" - If you do not have INV2-images, but you do have a T2w and ran module 07, then copy the 'sinus_mni'-file as 'cat_dura'")
                 sys.exit(1)
 
     try:
