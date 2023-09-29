@@ -23,6 +23,8 @@ Args:
               an identity matrix for instance.
   <-o out>    output directory
   <-p prefix> use custom prefix rather than <subject>
+  <-x frac>   projection fraction to use for mri_vol2surf (default = 0.5; fiducial surface)
+  <-f fs dur> custom FreeSurfer directory; will overwrite SUBJECTS_DIR
   <-t trafo>  (list of) transformation file(s) to apply to get the data in FSNative space before
               sampling them to the surface. Should a format that is compatible with call_ants-
               applytransforms (comma-separated in order of application)
@@ -64,8 +66,9 @@ fi
 set_tr=0
 INT="--lin"
 VERB=0
+proj_frac=0.5
 # Check for subject & session flags
-while getopts :-:r:o:p:t:i: argument
+while getopts :-:r:o:p:t:i:f:x: argument
 do
   case ${argument} in
     -)
@@ -116,12 +119,16 @@ do
       esac;;    
     r)  reg_file=${OPTARG}
           ;;
+    x)  proj_frac=${OPTARG}
+          ;;          
     o)  out_dir=${OPTARG}
           ;;
     p)  prefix=${OPTARG}
           ;;
     t)  trafos=${OPTARG}
-          ;;        
+          ;; 
+    f)  fs_dir=${OPTARG}
+          ;;                  
     i)  invert="-i ${OPTARG}"
           ;;            
   esac
@@ -135,6 +142,13 @@ if [[ -z ${reg_file} ]]; then
   REG="--regheader ${SUBJECT}"
 else
   REG="--reg ${reg_file}"
+fi
+
+# overwrite SUBJECTS_DIR
+if [ ! -z ${fs_dir} ]; then
+  old_fs=${SUBJECTS_DIR}
+  export SUBJECTS_DIR=${fs_dir}
+  echo "New SUBJECTS_DIR: \"${SUBJECTS_DIR}\""
 fi
 
 if [[ -z ${out_dir} ]]; then
@@ -201,7 +215,7 @@ for ii in "lh" "rh"; do
 
   # project volume to subject-specific space
   fsnative=${fsnative_dir}/${PREF}_space-fsnative_${hemi}_${SUFFIX}.gii
-  mri_vol2surf --src ${INPUT} --out ${fsnative} ${REG} --hemi ${ii} --projfrac 0.5
+  mri_vol2surf --src ${INPUT} --out ${fsnative} ${REG} --hemi ${ii} --projfrac ${proj_frac}
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in `basename ${0}`: mri_vol2surf exited with non-zero status"
@@ -267,3 +281,7 @@ for space in 'fsnative' 'fsaverage'; do
 
 done
 
+# reset SUBJECTS_DIR
+if [ ! -z ${fs_dir} ]; then
+  export SUBJECTS_DIR=${old_fs}
+fi
