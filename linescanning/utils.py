@@ -16,6 +16,7 @@ from scipy import io, interpolate
 from shapely import geometry
 import subprocess
 import warnings
+import itertools
 
 opj = os.path.join
 pd.options.mode.chained_assignment = None # disable warning thrown by string2float
@@ -93,22 +94,26 @@ class color:
 
 def str2operator(ops):
 
-    if ops == "and" or ops == "&" or ops == "&&":
+    if ops in ["and","&","&&"]:
         return operator.and_
-    elif ops == "or" or ops == "|" or ops == "||":
+    elif ops in ["or","|","||"]:
         return operator.or_
-    elif ops == "is not" or ops == "!=":
+    elif ops in ["is not","!="]:
         return operator.ne
-    elif ops == "is" or ops == "==" or ops == "=":
+    elif ops in ["is","==","="]:
         return operator.eq
-    elif ops == "gt" or ops == ">":
+    elif ops in ["gt",">"]:
         return operator.gt
-    elif ops == "lt" or ops == "<":
+    elif ops in ["lt","<"]:
             return operator.lt
-    elif ops == "ge" or ops == ">=":
+    elif ops in ["ge",">="]:
         return operator.ge
-    elif ops == "le" or ops == "<=":
+    elif ops in ["le","<="]:
             return operator.le
+    elif ops in ["x","*"]:
+        return operator.mul
+    elif ops == "/":
+        return operator.truediv
     else:
         raise NotImplementedError()
 
@@ -464,14 +469,20 @@ def match_lists_on(ref_list, search_list, matcher="run"):
 
     return new_list
 
-def get_unique_ids(df, id=None):
+def get_unique_ids(df, id=None, sort=True):
     try:
         df = df.reset_index()
     except:
         pass
 
     try:
-        return list(np.unique(df[id].values))  
+        a = df[id].values
+        if not sort:
+            indexes = np.unique(a, return_index=True)[1]
+            return [a[index] for index in sorted(indexes)]
+        else:
+            return list(np.unique(a))
+        
     except Exception as e:
         raise RuntimeError(f"Could not find '{id}' in {list(df.columns)}")
     
@@ -1011,6 +1022,16 @@ def percent_change(ts, ax, nilearn=False, baseline=20):
         psc = ts_m-np.expand_dims(median_baseline,ax)
         
     return psc
+
+def unique_combinations(elements: list[str], l: int=2) -> list[tuple[str, str]]:
+    """
+    Precondition: `elements` does not contain duplicates.
+    Postcondition: Returns unique combinations of length 2 from `elements`.
+
+    >>> unique_combinations(["apple", "orange", "banana"])
+    [("apple", "orange"), ("apple", "banana"), ("orange", "banana")]
+    """
+    return list(itertools.combinations(elements, l))
 
 def select_from_df(df, expression="run = 1", index=True, indices=None, match_exact=True):
     """select_from_df
