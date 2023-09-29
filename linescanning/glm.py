@@ -737,6 +737,7 @@ def convolve_hrf(
             *args,
             **kwargs)
 
+    
     # check hrf input
     if isinstance(hrf, np.ndarray):
         hrfs = [hrf]
@@ -1214,19 +1215,17 @@ class Posthoc(Defaults):
     def __init__(self, **kwargs):
         # initialize plotting setting
         super().__init__(**kwargs)
-    
-    @classmethod
+        
     def sort_posthoc(self, df):
         """sort the output of posthoc tests based on distance so that the longest significance bar spans the largest distance"""
-        conditions = np.unique(np.array(list(df["A"].values)+list(df["B"].values)))
 
         distances = []
         for contr in range(df.shape[0]): 
             A = df["A"].iloc[contr]
             B = df["B"].iloc[contr]
 
-            x1 = np.where(conditions == A)[0][0]
-            x2 = np.where(conditions == B)[0][0]
+            x1 = self.conditions.index(A)
+            x2 = self.conditions.index(B)
 
             distances.append(abs(x2-x1))
         
@@ -1283,6 +1282,7 @@ class Posthoc(Defaults):
 
         # internalize all kwargs
         self.__dict__.update(kwargs)
+        self.conditions = utils.get_unique_ids(self.data, id=self.between, sort=False)
 
     def plot_bars(
         self, 
@@ -1335,7 +1335,6 @@ class Posthoc(Defaults):
             self.__dict__.update(kwargs)
 
         self.minmax = list(self.axs.get_ylim())
-        self.conditions = np.unique(self.data[self.between].values)
 
         # sort posthoc so that bars furthest away are on top (if significant)
         self.posthoc_sorted = self.sort_posthoc(self.posthoc)
@@ -1373,8 +1372,8 @@ class Posthoc(Defaults):
                 A = self.posthoc_sorted["A"].iloc[contr]
                 B = self.posthoc_sorted["B"].iloc[contr]
                 
-                x1 = np.where(self.conditions == A)[0][0]
-                x2 = np.where(self.conditions == B)[0][0]
+                x1 = self.conditions.index(A)
+                x2 = self.conditions.index(B)
 
                 diff = self.minmax[1]-self.minmax[0]
                 y,h,col =  (diff*self.y_pos)+self.minmax[0], diff*0.02, 'k'
@@ -1382,7 +1381,8 @@ class Posthoc(Defaults):
                     [x1,x1,x2,x2], 
                     [y,y+h,y+h,y], 
                     lw=self.tick_width, 
-                    c=col)
+                    c=col
+                )
 
                 x_txt = (x1+x2)*.5
                 y_txt = y+h*dist
@@ -1393,8 +1393,10 @@ class Posthoc(Defaults):
                     ha='center', 
                     va='bottom', 
                     color=col,
+                    fontname=self.fontname,
                     fontsize=f_size,
-                    style=style)
+                    style=style
+                )
 
                 # make subsequent bar lower than first
                 self.y_pos += self.line_separate_factor
