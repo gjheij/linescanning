@@ -27,16 +27,23 @@ Just give a path, and all tsv-files found will be convertedor a very select part
 Parameters
 ----------        
   -i|--in     subject-directory containing the files that need to be run through Topup. Defaults 
-              to DIR_DATA_HOME as per spinoza_setup
+              to DIR_DATA_HOME as per spinoza_setup; can also by a tsv-file
   -o|--out    output directory containing the topup'ed data. Easiest is to give the fMRIPrep fol-
               der, it will be formatted accordingly automatically. Defaults to <input_dir>/events
   --verbose   turn on verbose
   --ix        take number of ev as output name, rather than actual event name. This can be useful
               in cases where your events consist of long float numbers
+  --phase     flag to define the phase from which to extract the onset files. Usually, you have 
+              an experiment with 2 phases: stimulus (0) and inter-trial intervals (1). Sometimes 
+              these phases are swapped, so you can use this flag to tell the function which phase
+              was the stimulus onset
+
 Example
 ----------
 >>> call_onsets2fsl --in $DIR_DATA_HOME/sub-001/ses-2
 >>> call_onsets2fsl --in $DIR_DATA_HOME/sub-001/ses-2 --ix
+>>> call_onsets2fsl --in $DIR_DATA_HOME/sub-001/ses-2/sub-001_task-stim_run-1_events.tsv --phase_
+    onset 0
 
 ---------------------------------------------------------------------------------------------------
 """
@@ -51,9 +58,10 @@ Example
     add_search = None
     button_duration = 1
     from_event = True
+    phase_onset = 1
 
     try:
-        opts = getopt.getopt(argv,"hi:o:",["help", "in=", "out=", "verbose", "button", "maxdepth=", "exclude=", "filters=", "duration=", "button_duration=","ix"])[0]
+        opts = getopt.getopt(argv,"hi:o:",["help", "in=", "out=", "verbose", "button", "maxdepth=", "exclude=", "filters=", "duration=", "button_duration=","ix", "phase_onset="])[0]
     except getopt.GetoptError:
         print("ERROR while reading arguments; did you specify an illegal argument?")
         print(main.__doc__)
@@ -83,6 +91,8 @@ Example
             button_duration = float(arg)  
         elif opt in ("--ix"):
             from_event = False
+        elif opt in ("--phase_onset"):
+            phase_onset = int(arg)
         
     if len(argv) < 1:
         print(main.__doc__)
@@ -92,14 +102,6 @@ Example
     if not os.path.exists(inputdir):
         raise ValueError(f"Directory '{inputdir}' does not exist")
     
-    # set default output directory
-    if not isinstance(outputdir, str):
-        outputdir = opj(inputdir, "events")
-
-    # make directory
-    if not os.path.exists(outputdir):
-        os.makedirs(outputdir)
-    
     # parse out comma's
     if isinstance(add_search, str):
         if "," in add_search:
@@ -108,9 +110,28 @@ Example
     if isinstance(exclude, str):
         if "," in exclude:
             exclude = exclude.split(",")
+    
+    # check if input is file or directory
+    if os.path.isfile(inputdir):
+        inputdir = os.path.abspath(inputdir)
+        tsv_files = inputdir
 
-    # find all tsv- 
-    tsv_files = utils.FindFiles(inputdir, extension="tsv", exclude=exclude, filters=add_search).files
+        # set default output directory
+        if not isinstance(outputdir, str):
+            outputdir = opj(os.path.dirname(inputdir), "events")
+
+    else:
+
+        # set default output directory
+        if not isinstance(outputdir, str):
+            outputdir = opj(inputdir, "events")
+
+        # find all tsv- 
+        tsv_files = utils.FindFiles(inputdir, extension="tsv", exclude=exclude, filters=add_search).files
+
+    # make directory
+    if not os.path.exists(outputdir):
+        os.makedirs(outputdir)
 
     if isinstance(tsv_files, list):
         if len(tsv_files) < 1:
@@ -123,7 +144,9 @@ Example
         stim_duration=duration,
         verbose=verbose,
         button=add_button,
-        button_duration=button_duration)
+        button_duration=button_duration,
+        phase_onset=phase_onset
+    )
 
     # save as 3 column format
     exp_.onsets_to_fsl(
