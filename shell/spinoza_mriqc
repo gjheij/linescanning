@@ -24,7 +24,8 @@ Arguments:
   --anat_only     only include anatomical images in the process (default is everything it can find)
   --func_only     only include functional images in the process (default is everything it can find)  
   --fd            only get FD-timecourse file without initializing MRIqc
-  -s <subject>    subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
+  -s <subject>    subject ID (e.g., 01). Can also be comma-separated list: 01,02,05. use 'group' 
+                  if you want group statistics
   -n <session>    session ID (e.g., 1, 2, or none); If set, only data from this session will be 
                   used
   -j <cpus>       number of cores to use (default is 1)
@@ -131,22 +132,29 @@ for subID in ${search}; do
 
   # collect subject name
   if [[ ! -z ${sub} ]]; then
-    sub_name=${SUBJECT_PREFIX}${subID}
-    sub_id=${subID}
+    if [[ ${sub} != "group" ]]; then
+      sub_name=${SUBJECT_PREFIX}${subID}
+      sub_id=${subID}
+    else
+      sub_name="group"
+      sub_id="group"
+    fi
   else
     sub_name=$(basename ${subID})
     sub_id=`get_id ${sub_name} ${SUBJECT_PREFIX}`
   fi
 
-  if [[ ! -z ${ses} ]]; then
-    nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
-    base_path=${sub_name}/ses-${nr}
-    base=${sub_name}_ses-${nr}
-    ses_flag="-n ${ses}"
-  else
-    base_path=${sub_name}
-    base=${sub_name}
-    ses_flag=""
+  if [[ ${sub_name} != "group" ]]; then
+    if [[ ! -z ${ses} ]]; then
+      nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
+      base_path=${sub_name}/ses-${nr}
+      base=${sub_name}_ses-${nr}
+      ses_flag="-n ${ses}"
+    else
+      base_path=${sub_name}
+      base=${sub_name}
+      ses_flag=""
+    fi
   fi
 
   # set working directory
@@ -199,7 +207,7 @@ for subID in ${search}; do
     ${fd_flag}"""
 
   echo ${cmd}
-  eval ${cmd}
+  ${cmd}
 
   if [[ $? != 0 ]]; then
     echo "ERROR in `basename ${0}`: call_mriqc did not execute cleanly"
