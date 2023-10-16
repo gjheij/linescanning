@@ -332,7 +332,7 @@ class Defaults():
         if isinstance(lim, list):
             ax.set_ylim(lim)
         elif isinstance(lim, (int,float)):
-            ax.set_xlim(bottom=lim)
+            ax.set_ylim(top=lim)
             
     @staticmethod
     def _set_xlim(ax,lim):
@@ -954,7 +954,7 @@ class LazyPlot(Defaults):
                     use_style = "solid"                    
 
                 # decide on x-axis
-                if not isinstance(self.xx, (np.ndarray,list,range, pd.DataFrame, pd.Series)):
+                if not isinstance(self.xx, (np.ndarray,list,range,pd.DataFrame,pd.Series)):
                     self.t_ = np.arange(0, len(el))
                 else:
                     # range has no copy attribute
@@ -962,6 +962,12 @@ class LazyPlot(Defaults):
                         self.t_ = self.xx
                     elif isinstance(self.xx, (pd.DataFrame,pd.Series)):
                         self.t_ = self.xx.values
+                    elif isinstance(self.xx, list):
+                        # received array-specific list
+                        if len(self.xx) == len(self.array):
+                            self.t_ = self.xx[idx]
+                        else:
+                            self.t_ = self.xx
                     else:
                         self.t_ = self.xx.copy()
 
@@ -2103,7 +2109,7 @@ def conform_ax_to_obj(
             setattr(obj,key,val)
 
     # try to read some stuff from the passed axis
-    if not isinstance(obj.title, str):
+    if not isinstance(obj.title, (str,dict)):
         obj.title = ax.get_title()
 
     if not isinstance(obj.y_label, str):
