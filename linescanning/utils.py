@@ -1416,12 +1416,11 @@ def find_intersection(xx, curve1, curve2):
     geom = first_line.intersection(second_line)
 
     try:
-        x,y = list(geom.geoms)[0].xy
-        x_coord,y_coord = x[0],y[0]
+        coords = list(geom.geoms)
     except:
         raise ValueError("Could not find intersection between curves..")
 
-    return (x_coord, y_coord)
+    return [i.coords._coords for i in coords]
 
 
 def disassemble_fmriprep_wf(wf_path, subj_ID, prefix="sub-"):
