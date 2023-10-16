@@ -157,22 +157,35 @@ else
 fi
 
 if [[ ${RUN} -eq 1 ]]; then
+
+  # make_cat_script = in call_bashhelper
   make_cat_script ${SPM_PATH} ${in_file} ${MODE} ${new_script}
   
   # call_matlab = in call_bashhelper
   echo "Starting CAT12.."
-  call_matlab ${new_script}
 
-  if [[ $? -ne 0 ]]; then
-    echo "ERROR: matlab exited with non-zero status"
+  # store output in log file so we can check for errors
+  log_file=${OUTPUT}/catlog.txt
+  if [ -f ${log_file} ]; then
+    rm -r ${log_file} 2>/dev/null
+  fi
+
+  call_matlab ${new_script} >> ${log_file}
+
+  # check if matlab succeeded
+  ff=`cat ${log_file} | grep "Failed: CAT12: Segmentation" | cut -d"." -f2 | xargs | sed 's/\r$//'`
+  if [[ ! -z ${ff} ]]; then
+    mv ${log_file} $(dirname ${in_file})/$(basename ${in_file} .nii)_error.log
+    echo "ERROR in `basename ${0}`: matlab exited with non-zero status"
     exit 1
+  else
+    rm ${log_file} 2>/dev/null
   fi
 
   # check for error-directory
   if [[ -d $(dirname ${in_file})/err ]]; then
     echo "ERROR in `basename ${0}`: CAT12 encountered an error"
     rm -r $(dirname ${in_file})/err # info is in the report-file; delete this directory
-    continue
   fi
     
 else
