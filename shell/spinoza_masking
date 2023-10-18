@@ -193,12 +193,18 @@ for subID in ${search}; do
             ImageMath 3 ${TMP} TruncateImageIntensity ${MASKED} 0.01 0.99 256
 
             # fetch max value
-            MAX_VAL=`fslstats ${TMP} -R | cut -d" " -f2`
-            
-            # clip max intensity; this leaves the minimal values untouched (they should be zero already!) 
-            call_clipimage ${MASKED} ${MAX_VAL}
-            rm ${TMP} 2>/dev/null
+            MM=`fslstats ${TMP} -R`
+            min=`echo $MM | cut -d" " -f1`
+            max=`echo $MM | cut -d" " -f2`
 
+            # clip max intensity; this leaves the minimal values untouched (they should be zero already!) 
+            if [[ ${min} == "0.000000" ]]; then
+              mv ${TMP} ${MASKED}
+            else
+              call_clipimage ${MASKED} ${MAX_VAL}
+              rm ${TMP} 2>/dev/null
+            fi
+            
             # rescale clipped image
             echo "Rescaling masked image to [0,4095]"
             call_rescale ${MASKED} 0 4095 ${MASKED}
@@ -257,13 +263,9 @@ for subID in ${search}; do
         fi
 
       fi
-
       echo "Done"
-
     fi
-
   fi
-
 done
 
 # the dataset_description file is required by fMRIprep, so create a symlink to masked_<> directory to be able

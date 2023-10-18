@@ -290,7 +290,7 @@ Notes:
         tmp_file = opj(os.path.dirname(t1_file), "tmp_T1w.nii.gz")
         cmd = f"ImageMath 3 {tmp_file} TruncateImageIntensity {t1_file} 0 0.999 256"
         try:
-            print("Winsorizing image intensities [0,0.999] with 256 bins")
+            print("Truncating image intensities [0,0.999] with 256 bins")
             os.system(cmd)
 
             import subprocess
@@ -298,9 +298,14 @@ Notes:
             out_ = utils.string2float(subprocess.check_output(fsl_cmd, stderr=subprocess.STDOUT).decode())
             clip_value = out_[1]
 
-            print(f"Clipping original output at {clip_value}")
-            cmd = f"call_clipimage {t1_file} {clip_value}"
-            os.system(cmd)
+            # clip positive values if mininum value != 0
+            if out_[0] != 0:
+                print(f"Clipping original output at {clip_value}")
+                cmd = f"call_clipimage {t1_file} {clip_value}"
+                os.system(cmd)
+            else:
+                # minimum values are zero
+                os.rename(tmp_file, t1_file)
 
             # remove tmp file
             os.remove(tmp_file)
