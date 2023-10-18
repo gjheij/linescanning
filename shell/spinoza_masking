@@ -201,10 +201,10 @@ for subID in ${search}; do
             if [[ ${min} == "0.000000" ]]; then
               mv ${TMP} ${MASKED}
             else
-              call_clipimage ${MASKED} ${MAX_VAL}
+              call_clipimage ${MASKED} ${max}
               rm ${TMP} 2>/dev/null
             fi
-            
+
             # rescale clipped image
             echo "Rescaling masked image to [0,4095]"
             call_rescale ${MASKED} 0 4095 ${MASKED}
