@@ -3,8 +3,8 @@
 #---------------------------------------------------------------------------------------------------------
 # check if there's is a setup file containing the major paths and source it if it exists
 source ${SETUP_FILE}
-echo "Project         : ${PROJECT}"
+echo "Project home    : ${DIR_DATA_HOME}"
 echo "Nr acquisitions : ${#ACQ[@]} (${ACQ[@]})"
-echo "Output type     : ${DATA}"
-echo "Task ID ses-1   : ${TASK_SES1[@]}"
+echo "Anatomy type    : ${DATA}"
+echo "Task IDs        : ${TASK_SES1[@]}"
 echo "Subject prefix  : ${SUBJECT_PREFIX}"
