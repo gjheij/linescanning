@@ -176,7 +176,7 @@ for subID in ${search}; do
 
           # echo command
           echo ${cmd}
-          eval ${cmd}
+          ${cmd}
 
           if [[ $? != 0 ]]; then
             echo
@@ -189,7 +189,15 @@ for subID in ${search}; do
           if [[ ! -z ${MASKED} ]]; then
 
             # truncate image intensities
-            ImageMath 3 ${MASKED} TruncateImageIntensity ${MASKED} 0.01 0.99 256
+            TMP=$(dirname ${MASKED})/tmp_T1w.nii.gz
+            ImageMath 3 ${TMP} TruncateImageIntensity ${MASKED} 0.01 0.99 256
+
+            # fetch max value
+            MAX_VAL=`fslstats ${TMP} -R | cut -d" " -f2`
+            
+            # clip max intensity; this leaves the minimal values untouched (they should be zero already!) 
+            call_clipimage ${MASKED} ${MAX_VAL}
+            rm ${TMP} 2>/dev/null
 
             # rescale clipped image
             echo "Rescaling masked image to [0,4095]"
