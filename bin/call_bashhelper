@@ -1285,7 +1285,7 @@ function make_physio_script {
     echo "matlabbatch{1}.spm.tools.physio.preproc.cardiac.filter.no = struct([]);"
     echo "matlabbatch{1}.spm.tools.physio.preproc.cardiac.initial_cpulse_select.auto_matched.min = 0.4;"
     echo "matlabbatch{1}.spm.tools.physio.preproc.cardiac.initial_cpulse_select.auto_matched.file = 'initial_cpulse_kRpeakfile.mat';"
-    echo "matlabbatch{1}.spm.tools.physio.preproc.cardiac.initial_cpulse_select.auto_matched.max_heart_rate_bpm = 90;"
+    echo "matlabbatch{1}.spm.tools.physio.preproc.cardiac.initial_cpulse_select.auto_matched.max_heart_rate_bpm = 120;"
     echo "matlabbatch{1}.spm.tools.physio.preproc.cardiac.posthoc_cpulse_select.off = struct([]);"
     echo "matlabbatch{1}.spm.tools.physio.model.output_multiple_regressors = '${5}.tsv';"
     echo "matlabbatch{1}.spm.tools.physio.model.output_physio = '${5}.mat';"
