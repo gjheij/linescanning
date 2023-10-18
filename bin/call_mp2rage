@@ -50,6 +50,9 @@ Args:
                             softwares 
     -u|--ups                use UP-parameters; there's different MP2RAGE-parameters for universal 
                             pulses
+    --skip_bg               Skip background stuff (default = True)
+    --beta                  add beta factor to remove noise 
+                            see: https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0099676
 
 Optional args:
     Instead of an input directory, you can also specify the paths to the individual files. The files
@@ -93,9 +96,10 @@ Notes:
     ups         = False
     outputbase  = "sample_desc"
     do_stuff    = False
+    noise_beta  = None
 
     try:
-        opts = getopt.getopt(argv, "huci:o:b:", ["help", "inputdir=", "outputdir=", "outputbase=", "inv1=", "inv1ph=", "inv2=", "inv2ph=", "mask", "ups"])[0]
+        opts = getopt.getopt(argv, "huci:o:b:", ["help", "inputdir=", "outputdir=", "outputbase=", "inv1=", "inv1ph=", "inv2=", "inv2ph=", "mask", "ups", "beta=", "skip_bg"])[0]
     except getopt.GetoptError:
         print("ERROR while handling arguments; did you specify an illegal/non-defined argument?")
         print(main.__doc__)
@@ -115,6 +119,8 @@ Notes:
             outputbase = arg
         elif opt in ("-c", "--mask"):
             do_stuff = True
+        elif opt in ("--skip_bg"):
+            do_stuff = False            
         elif opt in ("--inv1"):
             inv1 = arg
         elif opt in ("--inv1ph"):
@@ -123,6 +129,8 @@ Notes:
             inv2 = arg
         elif opt in ("--inv2ph"):
             inv2ph = arg
+        elif opt in ("--beta"):
+            noise_beta = int(arg)
 
     if len(argv) < 3:
         print("NOT ENOUGH ARGUMENTS SPECIFIED")
@@ -182,8 +190,9 @@ Notes:
         inv1=select_fn[0],
         inv1ph=select_fn[1],
         inv2=select_fn[2],
-        inv2ph=select_fn[3]
-        )
+        inv2ph=select_fn[3],
+        beta=noise_beta
+    )
 
     # make output directory
     pathlib.Path(outputdir).mkdir(parents=True, exist_ok=True)
@@ -191,7 +200,8 @@ Notes:
     # Calculate and right multiparametric maps to outputdir
     OUTPUT = {
         't1w_uni': opj(outputdir, f'{outputbase}_T1w.nii.gz'),
-        't1map': opj(outputdir, f'{outputbase}_T1map.nii.gz')}
+        't1map': opj(outputdir, f'{outputbase}_T1map.nii.gz')
+    }
     
     # for json file
     TAG = ["MP2RAGE unified T1-weighted image", "MP2RAGE T1 map"]
@@ -205,7 +215,7 @@ Notes:
             tmp = getattr(mp2rage, p)
             data = np.nan_to_num(tmp.get_fdata())
             nb.Nifti1Image(
-                data.astype('float32'),
+                data.astype(int),
                 affine=tmp.affine, 
                 header=tmp.header).to_filename(OUTPUT[p])
             
@@ -234,7 +244,7 @@ Notes:
                 "EstimationSoftwareName": "pymp2rage",
                 "EstimationSoftwareVer": "v0.1",
                 "EstimationSoftwareLang": "python {}".format(platform.python_version()),
-                "EstimationSoftwareEnv": "{}".format(platform.platform())
+                "EstimationSoftwareEnv": "{}".format(platform.platform()),
             }
 
             with open(json_file, "w+") as file:
@@ -276,10 +286,25 @@ Notes:
         print("TIP: check the brain mask; if needed, edit it, remove T1w.nii.gz-file and re-run")
 
         # truncate image intensities
-        cmd = f"ImageMath 3 {OUTPUT['t1w_uni']} TruncateImageIntensity {OUTPUT['t1w_uni']} 0.01 0.999 256"
+        t1_file = OUTPUT['t1w_uni']
+        tmp_file = opj(os.path.dirname(t1_file), "tmp_T1w.nii.gz")
+        cmd = f"ImageMath 3 {tmp_file} TruncateImageIntensity {t1_file} 0 0.999 256"
         try:
-            print("Winsorizing image intensities [0.01,0.999] with 256 bins")
+            print("Winsorizing image intensities [0,0.999] with 256 bins")
             os.system(cmd)
+
+            import subprocess
+            fsl_cmd = ["fslstats", tmp_file, "-R"]
+            out_ = utils.string2float(subprocess.check_output(fsl_cmd, stderr=subprocess.STDOUT).decode())
+            clip_value = out_[1]
+
+            print(f"Clipping original output at {clip_value}")
+            cmd = f"call_clipimage {t1_file} {clip_value}"
+            os.system(cmd)
+
+            # remove tmp file
+            os.remove(tmp_file)
+
         except:
             print("Could not run 'ImageMath' to truncate image intensities. Check the contrast and use 'call_clipimage' if the image is too dark..")
 

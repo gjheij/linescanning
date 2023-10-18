@@ -93,11 +93,12 @@ use_t2_flag=""            # spinoza_freesurfer
 space_flag=""             # spinoza_denoising
 mod_flag=""               # spinoza_mriqc
 fd_flag=""                # spinoza_mriqc
+BG_FLAG=""                # spinoza_qmrimaps
 t_specified=0             # keep track when t-flag is specified or --func is used (alias for -t func)
 
 # use long options in bash:
 # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options
-declare -a array=("--no_bbr" "--local" "--ups" "--biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv" "--no_fit" "--fmriprep" "--fprep" "--v1" "--v2" "--save_grid" "--debug" "--no_nordic" "--dcm_fix" "--ow" "--no_bounds" "--no_tsnr" "--mag" "--no_highres" "--xopts-use" "--xopts-clean" "--xopts-overwrite" "--take-avg-tr" "--force_exec" "--no_t2" "--merge_ses" "--fsaverage" "--fsnative" "--ap" "--pa" "--lr" "--rl" "--no_lpi" "--anat_only" "--func_only" "--no_boldref" "--gauss" "--dog" "--css" "--norm" "--no_srf" "--srf_file" "--gallery" "--abc" "--abd" "--manual" "--ctx" "--func" "--help" "--ofsl" "--clean" "--fd" "--fetch_fsl" "--anat" "--no_epi" "--no_manual" "--aparc" "--phys")
+declare -a array=("--no_bbr" "--local" "--ups" "--biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv" "--no_fit" "--fmriprep" "--fprep" "--v1" "--v2" "--save_grid" "--debug" "--no_nordic" "--dcm_fix" "--ow" "--no_bounds" "--no_tsnr" "--mag" "--no_highres" "--xopts-use" "--xopts-clean" "--xopts-overwrite" "--take-avg-tr" "--force_exec" "--no_t2" "--merge_ses" "--fsaverage" "--fsnative" "--ap" "--pa" "--lr" "--rl" "--no_lpi" "--anat_only" "--func_only" "--no_boldref" "--gauss" "--dog" "--css" "--norm" "--no_srf" "--srf_file" "--gallery" "--abc" "--abd" "--manual" "--ctx" "--func" "--help" "--ofsl" "--clean" "--fd" "--fetch_fsl" "--anat" "--no_epi" "--no_manual" "--aparc" "--phys" "--skip_bg")
 
 # sort options array
 IFS=$'\n' opts=($(sort <<<"${array[*]}"))
@@ -367,7 +368,10 @@ do
           ;;       
         phys)
           phys_flag="--phys"
-          ;;                          
+          ;;
+        skip_bg)
+          BG_FLAG="--skip_bg"
+          ;;           
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             for ii in ${opts[@]}; do echo " ${ii}"; done
@@ -1029,6 +1033,7 @@ if [[ $? -eq 0 ]]; then
     ${OW} \
     ${UPs} \
     ${FULL_OW} \
+    ${BG_FLAG} \
     ${DIR_DATA_HOME} ${DIR_DATA_DERIV}/pymp2rage
 
   if [[ $? -ne 0 ]]; then
