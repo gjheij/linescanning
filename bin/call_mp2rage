@@ -190,8 +190,7 @@ Notes:
         inv1=select_fn[0],
         inv1ph=select_fn[1],
         inv2=select_fn[2],
-        inv2ph=select_fn[3],
-        beta=noise_beta
+        inv2ph=select_fn[3]
     )
 
     # make output directory
@@ -303,12 +302,12 @@ Notes:
                 print(f"Clipping original output at {clip_value}")
                 cmd = f"call_clipimage {t1_file} {clip_value}"
                 os.system(cmd)
+
+                # remove tmp file
+                os.remove(tmp_file)
             else:
                 # minimum values are zero
                 os.rename(tmp_file, t1_file)
-
-            # remove tmp file
-            os.remove(tmp_file)
 
         except:
             print("Could not run 'ImageMath' to truncate image intensities. Check the contrast and use 'call_clipimage' if the image is too dark..")
