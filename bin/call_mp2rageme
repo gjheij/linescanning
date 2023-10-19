@@ -337,10 +337,30 @@ Notes:
         print("TIP: check the brain mask; if needed, edit it, remove T1w.nii.gz-file and re-run")
 
         # truncate image intensities
-        cmd = f"ImageMath 3 {OUTPUT['t1w_uni']} TruncateImageIntensity {OUTPUT['t1w_uni']} 0.01 0.999 256"
+        t1_file = OUTPUT['t1w_uni']
+        tmp_file = opj(os.path.dirname(t1_file), "tmp_T1w.nii.gz")
+        cmd = f"ImageMath 3 {tmp_file} TruncateImageIntensity {t1_file} 0 0.999 256"
         try:
-            print("Winsorizing image intensities [0.01,0.999] with 256 bins")
+            print("Truncating image intensities [0,0.999] with 256 bins")
             os.system(cmd)
+
+            import subprocess
+            fsl_cmd = ["fslstats", tmp_file, "-R"]
+            out_ = utils.string2float(subprocess.check_output(fsl_cmd, stderr=subprocess.STDOUT).decode())
+            clip_value = out_[1]
+
+            # clip positive values if mininum value != 0
+            if out_[0] != 0:
+                print(f"Clipping original output at {clip_value}")
+                cmd = f"call_clipimage {t1_file} {clip_value}"
+                os.system(cmd)
+                
+                # remove tmp file
+                os.remove(tmp_file)
+            else:
+                # minimum values are zero
+                os.rename(tmp_file, t1_file)
+
         except:
             print("Could not run 'ImageMath' to truncate image intensities. Check the contrast and use 'call_clipimage' if the image is too dark..")
 
