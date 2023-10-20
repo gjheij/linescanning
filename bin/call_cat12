@@ -179,7 +179,7 @@ if [[ ${RUN} -eq 1 ]]; then
     echo "ERROR in `basename ${0}`: matlab exited with non-zero status"
     exit 1
   else
-    rm ${log_file} 2>/dev/null
+    mv ${log_file} $(dirname ${in_file})/$(basename ${in_file} .nii).log
   fi
 
   # check for error-directory
