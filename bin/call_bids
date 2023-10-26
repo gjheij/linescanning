@@ -26,6 +26,7 @@ Arguments:
   -o <output dir>     directory to store intermediate nifti files (defaults to <input dir>/nifti)
   -b <bids dir>       output directory for BIDSified data (generally DIR_DATA_HOME/<subject>/<session>)
   -n <base name>      output base name for BIDS files (e.g., sub-01_ses-1)                
+  -d <depth>          search depth for dcm2niix
 
 Options:
   --ow                overwrite existing files
@@ -88,7 +89,8 @@ prot_flag=""
 pe_dir=""
 OW=0
 PHYS_ONLY=0
-while getopts :-:i:o:b:n:r: argument
+searchDepth=0
+while getopts :-:i:o:b:n:r:d: argument
 do
   case ${argument} in
     -)
@@ -139,6 +141,8 @@ do
           ;;
     o)  tmp_dir=${OPTARG}
           ;;
+    d)  searchDepth=${OPTARG}
+          ;;            
     b)  bids_dir=${OPTARG}
           ;;
     n)  base=${OPTARG}
@@ -171,7 +175,7 @@ if [[ -d ${tmp_dir} ]]; then
   echo "Directory exists, skipping conversion (use \"--full\" to overwrite this folder too)."
 else
   echo "Converting files to nifti-format"
-  call_dcm2niix ${prot_flag} -i ${input_dir} -o ${tmp_dir}
+  call_dcm2niix ${prot_flag} -i ${input_dir} -o ${tmp_dir} -d ${searchDepth}
 fi
 
 echo "BIDSifying data .."

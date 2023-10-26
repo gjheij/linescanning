@@ -27,6 +27,7 @@ Parameters
   -o <output folder>  output folder. If empty, it will use <input folder>/nifti
   -c <compress>       create nii's ("n") or nii.gz's ("o"; default)
   -v <version>        2019|2020 (2020 fails sometimes when dealing with fMRI phase data)
+  -d <depth>          search depth for dcm2niix
 
 Example
 ----------
@@ -43,7 +44,8 @@ USAGE
 # Allocate input arguments to variables
 #
 prot_flag=""
-while getopts :-:i:o:c:v: argument
+searchDepth=0
+while getopts :-:i:o:c:v:d: argument
 do
   case ${argument} in
     -)
@@ -61,6 +63,8 @@ do
       esac;;   
     i)  pathInput=${OPTARG}
           ;;
+    d)  searchDepth=${OPTARG}
+          ;;          
     o)  pathOutput=${OPTARG}
           ;;
     c)  compress=${OPTARG}
@@ -135,7 +139,7 @@ if [[ -f ${log} ]]; then
 fi
 
 # redirect output to log-file so we can monitor catastrophic errors
-${cmd} -b y -f %n_%p -z ${NIIGZ} -d 0 -o ${pathOutput} -v 1 ${pathInput} &> ${log}
+${cmd} -b y -f %n_%p -z ${NIIGZ} -d ${searchDepth} -o ${pathOutput} -v 1 ${pathInput} &> ${log}
 
 # check for catastrophic errors and try to run them with parrec2nii
 ff=`cat ${log} | grep "Catastrophic" | cut -d"." -f2 | xargs | sed 's/\r$//'`

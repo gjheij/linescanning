@@ -84,6 +84,7 @@ DCM_FIX=""                # spinoza_scanner2bids
 pe_dir_flag=""            # spinoza_scanner2bids
 reorient_flag=""          # spinoza_scanner2bids
 FULL_OW=""                # spinoza_scanner2bids
+SEARCH_DEPTH=0            # spinoza_scanner2bids
 UPs=""                    # spinoza_qmrimaps
 BIAS_FLAG=""              # spinoza_qmrimaps
 PROT_FLAG=""              # spinoza_scanner2bids
@@ -105,7 +106,7 @@ declare -a array=("--no_bbr" "--local" "--ups" "--biascorr" "--remove_wf" "--rem
 IFS=$'\n' opts=($(sort <<<"${array[*]}"))
 unset IFS
 
-while getopts :-:wofm:s:h:n:t:l:v:p:x:u:r:e:i:c:k:j:q:a: arg
+while getopts :-:wofm:s:h:n:t:l:v:p:x:u:r:e:i:c:k:j:q:a:d: arg
 do
   case ${arg} in
     -)
@@ -388,6 +389,8 @@ do
       esac;;  
     m)  MOD=${OPTARG}
           ;;
+    d)  SEARCH_DEPTH=${OPTARG}
+          ;;          
     s)  SUB=${OPTARG}
           ;;
     h)  HEMI=${OPTARG}
@@ -937,6 +940,7 @@ if [[ $? -eq 0 ]]; then
     ${SGE} \
     ${SGE_QUEUE} \
     ${phys_flag} \
+    "-d ${SEARCH_DEPTH}"
     ${DIR_DATA_HOME} ${DIR_DATA_SOURCE}
 
   echo "[${module}] DONE" && echo

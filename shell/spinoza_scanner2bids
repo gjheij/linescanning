@@ -21,6 +21,7 @@ line scanning stuff.
 Input options:
   -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
   -n <session>        session ID (e.g., 1, 2, or none)
+  -d <depth>          search depth for dcm2niix
   <project root>      directory to output BIDSified data to
   <sourcedata>        directory containing to be converted data
   -q <queue>          submit jobs to a specific queue. Defaults to SGE_QUEUE_LONG in spinoza_setup
@@ -92,7 +93,8 @@ PE_FLAG=""
 SGE_FLAG=0
 DEBUG_MODE=0
 PHYS_FLAG=""
-while getopts :-:os:n:r:q: argument
+SEARCH_DEPTH=0
+while getopts :-:os:n:r:q:d: argument
 do
   case ${argument} in
     -)
@@ -154,6 +156,8 @@ do
       esac;;    
     s)  sub=${OPTARG}
           ;;
+    d)  SEARCH_DEPTH=${OPTARG}
+          ;;          
     n)  ses=${OPTARG}
           ;;     
     o)  OW="--ow"
@@ -321,7 +325,7 @@ for subID in ${search}; do
           ${PE_FLAG} \
           ${OW} \
           ${PHYS_FLAG} \
-          -i ${input_dir} -o ${output_dir} -b ${bids_dir} -n ${base} ${RUNS}"""
+          -i ${input_dir} -o ${output_dir} -b ${bids_dir} -n ${base} -d ${SEARCH_DEPTH} ${RUNS}"""
 
         # echo command if running locally
         if [[ ${SGE_FLAG} -eq 0 ]]; then
