@@ -197,13 +197,25 @@ for subID in ${search}; do
   # copy T2w-file to pymp2rage folder for later convenience
   t2=`find -L "${input_dir}" -type f \( -name "*T2w.nii.gz" \) 2>/dev/null`
   if [ ! -z ${t2} ]; then
-    cp ${t2} ${output_dir} 2>/dev/null
+    ct=0; for ii in ${t2[@]}; do ((ct++)); done
+    ix=0
+    if [[ ${ct} -gt 1 ]]; then
+      echo "Found multiple T2-images; taking last one"
+      ix=${#t2[@]}
+    fi
+    cp ${t2[ix]} ${output_dir} 2>/dev/null  
   fi
 
   # copy FLAIR-file to pymp2rage folder for later convenience
-  flair=`find -L "${input_dir}" -type f \( -name "*FLAIR.nii.gz" \) 2>/dev/null`
+  flair=(`find -L "${input_dir}" -type f \( -name "*FLAIR.nii.gz" \) 2>/dev/null`)
   if [[ ! -z ${flair} ]]; then
-    cp ${flair} ${output_dir} 2>/dev/null
+    ct=0; for ii in ${flair[@]}; do ((ct++)); done
+    ix=0
+    if [[ ${ct} -gt 1 ]]; then
+      echo "Found multiple FLAIR-images; taking last one"
+      ix=${#flair[@]}
+    fi
+    cp ${flair[ix]} ${output_dir} 2>/dev/null
   fi  
 
 done
