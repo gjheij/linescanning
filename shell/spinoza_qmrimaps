@@ -202,7 +202,7 @@ for subID in ${search}; do
 
   # copy FLAIR-file to pymp2rage folder for later convenience
   flair=`find -L "${input_dir}" -type f \( -name "*FLAIR.nii.gz" \) 2>/dev/null`
-  if [ ! -z ${flair} ]; then
+  if [[ ! -z ${flair} ]]; then
     cp ${flair} ${output_dir} 2>/dev/null
   fi  
 
