@@ -84,7 +84,7 @@ DCM_FIX=""                # spinoza_scanner2bids
 pe_dir_flag=""            # spinoza_scanner2bids
 reorient_flag=""          # spinoza_scanner2bids
 FULL_OW=""                # spinoza_scanner2bids
-SEARCH_DEPTH=0            # spinoza_scanner2bids
+SEARCH_DEPTH=""           # spinoza_scanner2bids
 UPs=""                    # spinoza_qmrimaps
 BIAS_FLAG=""              # spinoza_qmrimaps
 PROT_FLAG=""              # spinoza_scanner2bids
@@ -389,7 +389,7 @@ do
       esac;;  
     m)  MOD=${OPTARG}
           ;;
-    d)  SEARCH_DEPTH=${OPTARG}
+    d)  SEARCH_DEPTH="-d ${OPTARG}"
           ;;          
     s)  SUB=${OPTARG}
           ;;
@@ -940,7 +940,7 @@ if [[ $? -eq 0 ]]; then
     ${SGE} \
     ${SGE_QUEUE} \
     ${phys_flag} \
-    "-d ${SEARCH_DEPTH}"
+    ${SEARCH_DEPTH} \
     ${DIR_DATA_HOME} ${DIR_DATA_SOURCE}
 
   echo "[${module}] DONE" && echo
