@@ -105,6 +105,7 @@ OW=0
 n_cpu=1
 clean_wd=""
 fsl_flag=""
+DOCKER_FLAG=""
 while getopts :-:ols:r:n:f:m:j:k:q:u:a: argument
 do
 case ${argument} in
@@ -112,7 +113,10 @@ case ${argument} in
       case "${OPTARG}" in
         no_bbr)
           bbr_flag="--no_bbr"
-          ;;          
+          ;;        
+        docker)
+          DOCKER_FLAG="--docker"
+          ;;            
         warp_only)
           warp_only="--warp_only"
           ;;   
@@ -438,7 +442,8 @@ for subID in ${search}; do
     ${kwargs_file} \
     ${boldref_flag} \
     ${clean_wd} \
-    ${fsl_flag}
+    ${fsl_flag} \
+    ${DOCKER_FLAG}
 
   if [[ $? != 0 ]]; then
     echo "ERROR in `basename ${0}`: call_fmriprep did not execute cleanly"

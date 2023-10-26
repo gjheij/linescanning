@@ -69,6 +69,7 @@ kwargs_file=""            # spinoza_fmriprep
 boldref_flag=""           # spinoza_fmriprep
 clean_flag=""             # spinoza_fmriprep
 fetch_fsl_flag=""         # spinoza_fmriprep
+DOCKER_FLAG=""            # spinoza_fmriprep
 run_local=""              # spinoza_fmriprep/spinoza_fitprfs
 LAYER_FLAG=""             # spinoza_layering
 NR_LAYERS=""              # spinoza_layering
@@ -98,7 +99,7 @@ t_specified=0             # keep track when t-flag is specified or --func is use
 
 # use long options in bash:
 # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options
-declare -a array=("--no_bbr" "--local" "--ups" "--biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv" "--no_fit" "--fmriprep" "--fprep" "--v1" "--v2" "--save_grid" "--debug" "--no_nordic" "--dcm_fix" "--ow" "--no_bounds" "--no_tsnr" "--mag" "--no_highres" "--xopts-use" "--xopts-clean" "--xopts-overwrite" "--take-avg-tr" "--force_exec" "--no_t2" "--merge_ses" "--fsaverage" "--fsnative" "--ap" "--pa" "--lr" "--rl" "--no_lpi" "--anat_only" "--func_only" "--no_boldref" "--gauss" "--dog" "--css" "--norm" "--no_srf" "--srf_file" "--gallery" "--abc" "--abd" "--manual" "--ctx" "--func" "--help" "--ofsl" "--clean" "--fd" "--fetch_fsl" "--anat" "--no_epi" "--no_manual" "--aparc" "--phys" "--skip_bg")
+declare -a array=("--no_bbr" "--local" "--ups" "--biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv" "--no_fit" "--fmriprep" "--fprep" "--v1" "--v2" "--save_grid" "--debug" "--no_nordic" "--dcm_fix" "--ow" "--no_bounds" "--no_tsnr" "--mag" "--no_highres" "--xopts-use" "--xopts-clean" "--xopts-overwrite" "--take-avg-tr" "--force_exec" "--no_t2" "--merge_ses" "--fsaverage" "--fsnative" "--ap" "--pa" "--lr" "--rl" "--no_lpi" "--anat_only" "--func_only" "--no_boldref" "--gauss" "--dog" "--css" "--norm" "--no_srf" "--srf_file" "--gallery" "--abc" "--abd" "--manual" "--ctx" "--func" "--help" "--ofsl" "--clean" "--fd" "--fetch_fsl" "--anat" "--no_epi" "--no_manual" "--aparc" "--phys" "--skip_bg" "--docker")
 
 # sort options array
 IFS=$'\n' opts=($(sort <<<"${array[*]}"))
@@ -371,7 +372,10 @@ do
           ;;
         skip_bg)
           BG_FLAG="--skip_bg"
-          ;;           
+          ;;
+        docker)
+          DOCKER_FLAG="--docker"
+          ;;             
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             for ii in ${opts[@]}; do echo " ${ii}"; done
@@ -567,6 +571,9 @@ Arguments:
                     'parrec2nii', which comes with the python pacakge 'nibabel'
   --debug           run debug mode for various modules; prints extra stuff regarding input/output to ve-
                     rify that paths and arguments are set correctly.
+  --docker          use docker images for fmriprep/mriqc; requires 'fmriprep-docker' and/or 'mriqc-docker'
+                    to be installed. See:
+                              
   --fd              only get FD-timecourse file without initializing MRIqc
   --f(mri)prep      use output from fMRIPrep as input for pRF-fitting. Default is the output fro py-
                     best
@@ -1536,6 +1543,7 @@ if [[ $? -eq 0 ]]; then
     ${SGE_QUEUE} \
     ${KEEP_RUNS} \
     ${clean_flag} \
+    ${DOCKER_FLAG} \
     ${fetch_fsl_flag} \
     -f ${DIR_DATA_HOME} \
     -m ${TYPE} \

@@ -48,7 +48,8 @@ Arguments:
                     default I'll remove the output nifti's so that the folder is not clogged. With 
                     this argument you can specify which runs to keep. Again, if not specified, all
                     nifti-files with space-MNI152*.nii.gz will be removed. The transformation matri-
-                    ces will be left alone. Use '-a all' to keep all runs (not recommended..)                    
+                    ces will be left alone. Use '-a all' to keep all runs (not recommended..)     
+  --docker          use command 'fmriprep-docker' to invoke docker image               
   --warp_only       skip fMRIPrep, but re-do the 'boldref'-images and copy the bold-to-T1w warps
   --no_boldref      don't create new boldref images (mean over time) after fMRIprep has finished.
   --sge             run fMRIPrep with singularity-configuration. Default singularity image should 
@@ -88,6 +89,7 @@ pref="sub-"
 KWARGS_FILE=""
 BOLDREF=1
 clean_wd=0
+USE_DOCKER=0
 fetch_fsl=0
 while getopts :-:us:m:r:d:c:i:b:w:l:x:t:k:a: arg
 do
@@ -102,6 +104,9 @@ do
         warp_only)
           WARP_ONLY=1
           ;;  
+        docker)
+          USE_DOCKER=1
+          ;;            
         no_boldref)
           BOLDREF=0
           ;;
@@ -280,42 +285,46 @@ if [[ ! -z ${IMG} ]]; then
 fi
 
 # Define command line
-if [[ -f ${fprep_container} ]]; then
-
-  #-----------------------------------------------------------------------------
-  # Set default binding point if none specified
-  if [[ -z ${BIND} ]]; then
-    binding=${PATH_HOME}
-  else
-    binding=${BIND}
-  fi
-
-  if [[ ! -f ${fprep_container} ]]; then
-    echo "Could not find singularity image \"${fprep_container}\" for fmriprep.."
-    exit 1
-  fi 
-
-  # check if FS license is within binding point
-  if [[ ${license} != *"${binding}"* ]]; then
-    echo
-    echo "---------------------------------------------------------------------------------------------------"
-    echo "ERROR in call_fmriprep; license file \"${license}\" cannot be accessed due to your binding point (\"${binding}\"). Please make sure the file on somewhere along the binding-path"
-    exit 1
-  fi
-
-  # check if project root is within binding point
-  if [[ ${project} != *"${binding}"* ]]; then
-    echo
-    echo "---------------------------------------------------------------------------------------------------"
-    echo "ERROR in `basename ${0}`; your project root \"${project}\" cannot be accessed due to your binding point (\"${binding}\"). Please make sure the file on somewhere along the binding-path"
-    exit 1
-  fi
-
-  # define SGE command
-  run_cmd="singularity run --cleanenv -B ${binding}:${binding} ${fprep_container}"
-  
+if [[ ${USE_DOCKER} -eq 1 ]]; then
+  run_cmd="fmriprep-docker"
 else
-  run_cmd="fmriprep"
+  if [[ -f ${fprep_container} ]]; then
+
+    #-----------------------------------------------------------------------------
+    # Set default binding point if none specified
+    if [[ -z ${BIND} ]]; then
+      binding=${PATH_HOME}
+    else
+      binding=${BIND}
+    fi
+
+    if [[ ! -f ${fprep_container} ]]; then
+      echo "Could not find singularity image \"${fprep_container}\" for fmriprep.."
+      exit 1
+    fi 
+
+    # check if FS license is within binding point
+    if [[ ${license} != *"${binding}"* ]]; then
+      echo
+      echo "---------------------------------------------------------------------------------------------------"
+      echo "ERROR in call_fmriprep; license file \"${license}\" cannot be accessed due to your binding point (\"${binding}\"). Please make sure the file on somewhere along the binding-path"
+      exit 1
+    fi
+
+    # check if project root is within binding point
+    if [[ ${project} != *"${binding}"* ]]; then
+      echo
+      echo "---------------------------------------------------------------------------------------------------"
+      echo "ERROR in `basename ${0}`; your project root \"${project}\" cannot be accessed due to your binding point (\"${binding}\"). Please make sure the file on somewhere along the binding-path"
+      exit 1
+    fi
+
+    # define SGE command
+    run_cmd="singularity run --cleanenv -B ${binding}:${binding} ${fprep_container}"
+
+  else
+    run_cmd="fmriprep"
+  fi
 fi
 
 # overwrite anat only if 'func' is specified
