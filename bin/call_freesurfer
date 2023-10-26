@@ -262,7 +262,7 @@ CMD(){
     submit=1
   else
     parallel_flag=""
-    mp_flag=""
+    mp_flag="-nthreads ${n_cpus}"
     submit=0
   fi
 
