@@ -73,7 +73,7 @@ do
   esac
 done
 
-if [[ $# -lt 5 ]] ; then
+if [[ $# -lt 4 ]] ; then
   Usage >&2
   exit 1
 fi
@@ -121,9 +121,11 @@ for subID in ${search}; do
     nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
     base_path=${sub_name}/ses-${nr}
     base=${sub_name}_ses-${nr}
+    ses_flag="-n ${nr}"
   else
     base_path=${sub_name}
     base=${sub_name}
+    ses_flag=""
   fi
 
   input_dir=${INPUT}/${base_path}
@@ -171,7 +173,7 @@ for subID in ${search}; do
           cmd="""call_gdhmasking \
             ${man_flag} \
             -s ${sub_name} \
-            -n ${nr} \
+            ${ses_flag} \
             -t ${t1w_fn}"""
 
           # echo command
