@@ -213,7 +213,7 @@ for subID in ${search}; do
     ix=0
     if [[ ${ct} -gt 1 ]]; then
       echo "Found multiple FLAIR-images; taking last one"
-      ix=$((${#t2[@]}-1))
+      ix=$((${#flair[@]}-1))
     fi
     cp ${flair[ix]} ${output_dir} 2>/dev/null
   fi  
