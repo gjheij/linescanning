@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+#$ -cwd
+#$ -j Y
+#$ -V
+
+#---------------------------------------------------------------------------------------------------------
+# source helper functions
+source ${SETUP_FILE}
+source call_bashhelper
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<EOF
+
+---------------------------------------------------------------------------------------------------------
+call_complex
+
+Convert imaginary/real images from the MP2RAGE sequence to INV1/INV2 images that are compatible with py-
+mp2rage. 
+
+Arguments
+	<real>	file representing the "real" images
+	<imag>	file representing the "imaginary" images
+	<base>	output basename (e.g., sub-01_ses-1_acq-MP2RAGE_); "_inv-{1|2}_part-{mag|phase} will be 
+					appended
+
+Example
+	call_complex real.nii.gz imag.nii.gz sub-01_ses-1_acq-MP2RAGE
+
+---------------------------------------------------------------------------------------------------------
+
+EOF
+    exit 1
+}
+
+#---------------------------------------------------------------------------------------------------------
+# Deal with arguments
+if [[ $# -lt 3 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+# read full file paths
+real=`fetch_filepath ${1}`
+imag=`fetch_filepath ${2}`
+out=`fetch_filepath ${3}`
+
+# check dimensions
+for f in ${real} ${imag}; do
+	dim=`fslval ${f} dim4`
+	if [[ ${dim} -lt 2 ]]; then
+		echo "ERROR in `basename ${0}`: ${f} only has ${dim} dimensions. This file must contain 2x 3D images"
+		exit 1
+	fi
+done
+
+# loop through inversions
+for inv in `seq 1 2`; do
+	
+  echo "Dealing with INV-${inv}"
+  echo " Combine real/imag into complex.."
+  ix=$((inv-1))
+	# combine real/imag into complex
+	cplx=${out}_inv-${inv}_part-complex.nii.gz
+	cmd="""fslcomplex -complex ${real} ${imag} ${cplx} ${ix} ${ix}"""
+  ${cmd}
+
+  if [[ $? -ne 0 ]]; then
+    echo "ERROR in `basename ${0}`: fslcomplex -complex exited with non-zero error"
+    exit 1
+  fi
+  
+  # change orientation to LPI
+  if [[ -f ${cplx} ]]; then
+
+    echo " Split complex into magnitude/phase.."
+
+    # split complex into mag/phase
+    mag=${out}_inv-${inv}_part-mag.nii.gz
+    ph=${out}_inv-${inv}_part-phase.nii.gz
+    cmd="""fslcomplex -realpolar ${cplx} ${mag} ${ph}"""
+    ${cmd}
+
+    # fix affines
+    echo " Copying geometry from complex and reorient to LPI"
+    for f in ${mag} ${ph}; do
+      fslcpgeom ${cplx} ${f}
+      call_reorient -i ${f}
+    done
+
+  else
+    echo "ERROR in `basename ${0}`: complex file \"${cplx}\" does not exist"
+    exit 1
+  fi
+done
+
+echo "Done"
+
