@@ -1414,14 +1414,30 @@ def find_intersection(xx, curve1, curve2):
     first_line = geometry.LineString(np.column_stack((xx, curve1)))
     second_line = geometry.LineString(np.column_stack((xx, curve2)))
     geom = first_line.intersection(second_line)
-
+    
     try:
-        coords = list(geom.geoms)
+        if isinstance(geom, geometry.multipoint.MultiPoint):
+            # multiple coordinates
+            coords = [i.coords._coords for i in list(geom.geoms)]
+        elif isinstance(geom, geometry.point.Point):
+            # single coordinate
+            coords = [geom.coords._coords]
+        elif isinstance(geom, geometry.collection.GeometryCollection):
+            # coordinates + line segments
+            mapper = geometry.mapping(geom)
+            coords = []
+            for el in mapper["geometries"]:
+                coor = np.array(el["coordinates"])
+                if coor.ndim > 1:
+                    coor = coor[0]
+                coords.append(coor[np.newaxis,...]) # to make indexing same as above
+        else:
+            raise ValueError(f"Can't deal with output of type {type(geom)}")
+            # coords = geom
     except:
         raise ValueError("Could not find intersection between curves..")
-
-    return [i.coords._coords for i in coords]
-
+    
+    return coords
 
 def disassemble_fmriprep_wf(wf_path, subj_ID, prefix="sub-"):
     """disassemble_fmriprep_wf
