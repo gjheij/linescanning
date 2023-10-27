@@ -172,12 +172,23 @@ fi
 #-------------------------------------------------------------------------------------------------------------------------------
 # PARREC TO NIFTI
 if [[ -d ${tmp_dir} ]]; then
-  echo "Directory exists, skipping conversion (use \"--full\" to overwrite this folder too)."
+  if [[ -z "$(ls -A $tmp_dir)" ]]; then    
+    echo "Directory exists, but is empty. You probably need to change the search depth for dcm2niix with \"-d <depth>\" (now ${searchDepth}). Append \"--full -d <depth>\" to your call"
+    exit 1
+  else    
+    echo "Directory exists, skipping conversion (use \"--full\" to overwrite this folder too)." 
+  fi
 else
   echo "Converting files to nifti-format"
   call_dcm2niix ${prot_flag} -i ${input_dir} -o ${tmp_dir} -d ${searchDepth}
 fi
 
+# check if we got something
+if [[ -z "$(ls -A $tmp_dir)" ]]; then    
+  echo "Directory exists, but is empty. You probably need to change the search depth for dcm2niix with \"-d <depth>\" (now ${searchDepth}). Append \"--full -d <depth>\" to your call"
+  exit 1
+fi
+  
 echo "BIDSifying data .."
 
 #-------------------------------------------------------------------------------------------------------------------------------
@@ -259,6 +270,21 @@ if [[ ${PHYS_ONLY} -eq 0 ]]; then
 
       done
 
+    else
+
+      # check if flies have been reconstructed already (e.g., using call_complex)
+      parts=(`find -L "${tmp_dir}" -type f \( -name "*part-mag*" -or -name "*part-phase*" \) 2>/dev/null | sort`)
+      
+      # do stuff if files are found
+      if [[ ! -z ${parts} ]]; then
+        
+        # make directory
+        if [[ ! -d ${bids_dir}/anat ]]; then
+          mkdir -p ${bids_dir}/anat
+        fi
+
+        cp ${parts[@]} ${bids_dir}/anat
+      fi
     fi
 
     # find T2s or FLAIR
