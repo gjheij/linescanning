@@ -122,6 +122,11 @@ for subID in ${search}; do
     INPUTDIR=${INPUT}/${base_path}
   fi
 
+  if [[ ! -d ${INPUTDIR} ]]; then
+    echo "ERROR in `basename ${0}`: ${INPUTDIR} does not exist | is session set correctly?"
+    exit 1
+  fi  
+
   # set outputdir to inputdir if outputdir not specified
   if [[ ! -z ${OUTPUT} ]]; then
     OUTPUTDIR=${OUTPUT}/${base_path}

@@ -129,6 +129,12 @@ for subID in ${search}; do
   INPUTDIR=${INPUT}/${base_path}
   BET=${OUTPUT}/${base_path}
   MASKS=${SKULL}/${base_path}
+
+  # check if input directory exists
+  if [[ ! -d ${INPUTDIR} ]]; then
+    echo "ERROR in `basename ${0}`: ${INPUTDIR} does not exist"
+    exit 1
+  fi
   
   if [ ! -d ${MASKS} ]; then
     mkdir -p ${MASKS}
@@ -460,7 +466,8 @@ for subID in ${search}; do
       else
 
         if [[ -z ${input} ]]; then
-          echo "${sub_name}: No input file found"
+          echo "No file with \"${DATA^^}\", \"*T1w\" in \"${INPUTDIR}\""
+          exit 1
         fi
 
       fi
