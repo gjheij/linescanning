@@ -134,7 +134,7 @@ for subID in ${search}; do
   skull_dir=${SKULL}/${base_path}
 
   if [[ ! -d ${input_dir} ]]; then
-    echo "${sub_name}: could not find subject in `basename ${INPUT}`-folder"
+    echo "Input folder \"${input_dir}\" does not exist"
     continue
   else
     search_for_mask="cat_dura"
