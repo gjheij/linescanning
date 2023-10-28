@@ -408,11 +408,40 @@ class bold_confs_wf():
         # set workdir
         self.bold_confounds_wf.base_dir = self.workdir
 
+    def init_carpet_wf(self):
+
+        # set up carpet plot
+        self.carpetplot_wf = init_carpetplot_wf(
+            mem_gb=self.mem_gb,
+            metadata=self.metadata,
+            cifti_output=False,
+            name="carpetplot_wf",
+        )
+
+        self.carpetplot_wf.inputs.inputnode.dummy_scans = 0
+        self.carpetplot_wf.inputs.inputnode.bold = self.bold_file
+        self.carpetplot_wf.inputs.inputnode.bold_mask = self.bold_mask
+        self.carpetplot_wf.base_dir = self.workdir
+        self.carpetplot_wf.inputs.inputnode.t1_bold_xform = self.t1_bold_xform
+        self.carpetplot_wf.inputs.inputnode.confounds_file = self.fetch_output("bold_confounds_wf", "spike_regressors", "confounds_file", graph=self.res)
+        self.carpetplot_wf.inputs.inputnode.crown_mask = self.fetch_output("bold_confounds_wf", "subtract_mask", "out_mask", graph=self.res)
+
+        self.carpetplot_wf.inputs.inputnode.acompcor_mask = opj(self.workdir, "bold_confounds_wf", "acc_msk_tfm", "mapflow", "_acc_msk_tfm2", "acompcor_wmcsf_trans.nii.gz")
+
+        for node in self.carpetplot_wf.list_node_names():
+            if node.split(".")[-1].startswith("ds_report"):
+                self.carpetplot_wf.get_node(node).inputs.base_directory = self.bids_dir
+                self.carpetplot_wf.get_node(node).inputs.source_file = self.boldref
+
     def run(self):
         config.loggers.workflow.log(25, "fMRIPrep (bold_confs_wf only) started!")
         try:
             # run workflow
             self.res = self.bold_confounds_wf.run()
+
+            # use outputs of bold_confounds_wf
+            self.init_carpet_wf()
+            self.carp = self.carpetplot_wf.run()
             
             # run the DerivativesDatasink thing to get the confound timeseries in the fmriprep folder
             self.generate_outputs()
@@ -456,6 +485,7 @@ class bold_confs_wf():
             run_without_submitting=True,
             mem_gb=config.DEFAULT_MEMORY_MIN_GB,
         )
+        
         ds_ref_t1w_xfm = pe.Node(
             DerivativesDataSink(
                 base_directory=self.bids_dir,
