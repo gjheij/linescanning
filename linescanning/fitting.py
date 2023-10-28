@@ -183,6 +183,9 @@ class InitFitter():
         for key,val in zip(self.onset_index, [1,1,"stim"]):
             if not key in list(self.onsets.columns):
                 self.onsets[key] = val
+            else:
+                if key == "run":
+                    self.onsets["run"] = self.onsets["run"].astype(int)
 
         self.onsets.set_index(self.onset_index, inplace=True)   
     
@@ -200,15 +203,29 @@ class InitFitter():
                 self.func = self.func.reset_index()
             except:
                 pass
-            
+        
         # format dataframe with subject, run, and t
-        self.final_index = [
-            "subject",
-            "run",
-            "t"
-        ]
+        try:
+            self.task_ids = utils.get_unique_ids(self.func, id="task")
+            self.final_index = [
+                "subject",
+                "task",
+                "run",
+                "t"
+            ]
 
-        for key,val in zip(self.final_index, [1,1,self.time]):
+            self.final_elements = [1,None,1,self.time]
+
+        except:
+            self.task_ids = None
+            self.final_index = [
+                "subject",
+                "run",
+                "t"
+            ]
+            self.final_elements = [1,1,self.time]
+
+        for key,val in zip(self.final_index, self.final_elements):
             if not key in list(self.func.columns):
                 self.func[key] = val
 
@@ -479,7 +496,7 @@ class NideconvFitter(InitFitter):
         concatenate_runs=False, 
         verbose=False, 
         lump_events=False, 
-        interval=[0,12], 
+        interval=[0,20], 
         osf=20,
         fit=True,
         covariates=None,
@@ -513,6 +530,10 @@ class NideconvFitter(InitFitter):
             "canonical_hrf_with_time_derivative",
             "canonical_hrf_with_time_derivative_dispersion"
         ]
+
+        # check if interval is multiple of TR
+        if isinstance(self.interval[-1], str):
+            self.interval[-1] = int(self.interval[-1])*self.TR
 
         # format arrays as dataframe
         super().__init__(self.func, self.onsets, self.TR)
@@ -676,7 +697,8 @@ class NideconvFitter(InitFitter):
             for i in range(ev_df.shape[-1]):
                 
                 # find plateaus
-                diff = np.diff(ev_df.values[:,i].T)
+                tc = ev_df.values[:,i].T
+                diff = np.diff(tc)
                 gradient = np.sign(diff)
                 idx = np.where(gradient != 0)[-1]
 
@@ -685,16 +707,21 @@ class NideconvFitter(InitFitter):
                 new_idx = np.append(np.array((0,idx[0]//2)), new_idx).astype(int)
 
                 # pull out new values
-                uni = ev_df.values[new_idx,i][...,np.newaxis]
+                new_vals = ev_df.values[new_idx,i]
+
+                # resample to original shape
+                # new_vals = glm.resample_stim_vector(new_vals, tc.shape[0], interpolate="linear")
+                uni = new_vals[...,np.newaxis]
                 interp.append(uni)
 
             # concatenate into array and extract time column
             interp = np.concatenate(interp, axis=1)
-            tt = self.time[new_idx]
+            new_t = self.time[new_idx]
+            # new_t = glm.resample_stim_vector(new_t, tc.shape[0], interpolate="linear")
 
             # format dataframe in the same way as self.tc_condition
             df = pd.DataFrame(interp)
-            df["time"], df["event_type"], df["covariate"] = tt,ev,utils.get_unique_ids(ev_df, id="covariate")[0]
+            df["time"], df["event_type"], df["covariate"] = new_t,ev,utils.get_unique_ids(ev_df, id="covariate")[0]
 
             # append
             evs_interp.append(df)
@@ -733,8 +760,9 @@ class NideconvFitter(InitFitter):
                 preds.columns = self.tc_condition.columns
 
                 # append
+                preds = preds.reset_index().rename(columns={"index": "time"})
                 preds["run"] = run
-                self.predictions.append(preds.reset_index())
+                self.predictions.append(preds)
 
                 # event-specific predictions
                 ev_pred = self.get_event_predictions_from_fitter(run_fitter)
@@ -751,11 +779,11 @@ class NideconvFitter(InitFitter):
             sub_pred_full.append(self.predictions)
 
         # event-specific events
-        self.ev_predictions = pd.concat(sub_pred)
+        self.ev_predictions = pd.concat(sub_pred, ignore_index=True)
         self.ev_predictions.set_index(["subject","event_type","run","t"], inplace=True)
         
         # full model
-        self.sub_pred_full = pd.concat(sub_pred_full)
+        self.sub_pred_full = pd.concat(sub_pred_full, ignore_index=True)
         self.sub_pred_full.set_index(["subject","run","time"], inplace=True)
 
     def timecourses_condition(self):
@@ -783,26 +811,19 @@ class NideconvFitter(InitFitter):
         self.tc_mean = self.obj_grouped.mean()
 
         # rename 'event type' to 'event_type'
-        tmp = self.tc_sem.reset_index().rename(columns={"event type": "event_type"})
-        self.tc_sem = tmp.set_index(["subject", "event_type", "covariate",  "time"])
+        self.tc_sem = self.change_name_set_index(self.tc_sem)
+        self.tc_std = self.change_name_set_index(self.tc_std)
+        self.tc_mean = self.change_name_set_index(self.tc_mean)
         
-        tmp = self.tc_std.reset_index().rename(columns={"event type": "event_type"})
-        self.tc_std = tmp.set_index(["subject", "event_type", "covariate", "time"])
-
-        tmp = self.tc_mean.reset_index().rename(columns={"event type": "event_type"})
-        self.tc_mean = tmp.set_index(["subject", "event_type", "covariate", "time"])            
-
-        self.sem_condition = self.tc_sem.groupby(level=["event_type", "covariate", "time"]).mean()
-        self.std_condition = self.tc_std.groupby(level=["event_type", "covariate", "time"]).mean()
+        self.grouper = ["event_type","covariate","time"]
+        self.sem_condition = self.tc_sem.groupby(level=self.grouper).mean()
+        self.std_condition = self.tc_std.groupby(level=self.grouper).mean()
             
         # rename 'event type' to 'event_type' so it's compatible with utils.select_from_df
-        tmp = self.tc_condition.reset_index().rename(columns={"event type": "event_type"})
-        self.tc_condition = tmp.set_index(['event_type', 'covariate', 'time'])
+        self.tc_condition = self.change_name_set_index(self.tc_condition, index=['event_type', 'covariate', 'time'])
+        self.tc_subjects = self.change_name_set_index(self.tc_subjects, index=['subject','run','event_type','covariate','time'])     
 
-        tmp = self.tc_subjects.reset_index().rename(columns={"event type": "event_type"})
-        self.tc_subjects = tmp.set_index(['subject','run','event_type','covariate','time'])        
-
-        # set time axis
+        # get time axis
         self.time = self.tc_condition.groupby(['time']).mean().reset_index()['time'].values
 
         if self.basis_sets == "fir":
@@ -824,7 +845,60 @@ class NideconvFitter(InitFitter):
             self.get_predictions_per_event()
         else:
             self.ev_predictions = self.sub_ev_df.copy()
+
+    def parameters_for_tc_subjects(
+        self, 
+        plot=False, 
+        shift=None,
+        nan_policy=False):
+
+        subj_ids = utils.get_unique_ids(self.tc_subjects, id="subject")
+
+        subjs = []
+        for sub in subj_ids:
+
+            sub_df = utils.select_from_df(self.tc_subjects, expression=f"subject = {sub}")
+            run_ids = utils.get_unique_ids(self.tc_subjects, id="run")
+
+            runs = []
+            for run in run_ids:
+                run_df = utils.select_from_df(sub_df, expression=f"run = {run}")
+                ev = utils.get_unique_ids(run_df, id="event_type")[0]
+
+                pars = HRFMetrics(run_df, plot=plot, shift=shift, nan_policy=nan_policy).return_metrics()
+                pars["run"], pars["event_type"] = run,ev
+                
+                runs.append(pars)
+
+            runs = pd.concat(runs)
+            runs["subject"] = sub
+            subjs.append(runs)
+
+        df_conc = pd.concat(subjs)
+        idx = ["subject","event_type","run"]
+        if "vox" in list(df_conc.columns):
+            idx += ["vox"]
         
+        self.pars_subjects = df_conc.set_index(idx)
+    
+    def change_name_set_index(self, df, index=["subject","event_type","covariate","time"]):
+
+        # reset index
+        tmp = df.reset_index()
+
+        # remove space in event type column
+        if "event type" in list(tmp.columns):
+            tmp = tmp.rename(columns={"event type": "event_type"})
+
+        # set index
+        if isinstance(index, str):
+            index = [index]
+
+        tmp.set_index(index, inplace=True)
+
+        # return
+        return tmp
+
     def define_model(self, **kwargs):
 
         self.model = nd.GroupResponseFitter(
@@ -1008,7 +1082,7 @@ class NideconvFitter(InitFitter):
         )
 
         # get onsets
-        [
+        for i in self.cond:
             model.add_event(
                 str(i),
                 onsets=self.make_onsets_for_response_fitter(i, run=run),
@@ -1016,8 +1090,7 @@ class NideconvFitter(InitFitter):
                 n_regressors=self.n_regressors,
                 interval=self.interval,
                 covariates=cov
-            ) for i in self.cond
-        ]
+            )
 
         return model
     
@@ -1970,7 +2043,7 @@ def fwhm_lines(
     xlim = axs.get_xlim()
     tot = sum(list(np.abs(xlim)))
     for ix, ii in enumerate(fwhm_list):
-        start = (ii.hmx[0]-xlim[0])/tot
+        start = (ii.t0_-xlim[0])/tot
         axs.axhline(
             ii.half_max, 
             xmin=start, 
@@ -1986,19 +2059,28 @@ class HRFMetrics():
         hrf,
         TR=None,
         force_pos=False,
-        force_neg=False):
+        force_neg=False,
+        plot=False,
+        nan_policy=False,
+        shift=0):
 
         self.hrf = hrf
         self.TR = TR
         self.force_pos = force_pos
         self.force_neg = force_neg
+        self.plot = plot
+        self.shift = shift
+        self.nan_policy = nan_policy
+
         self._get_metrics(
             TR=self.TR, 
             force_pos=self.force_pos,
-            force_neg=self.force_neg)
+            force_neg=self.force_neg,
+            nan_policy=self.nan_policy
+        )
 
     def return_metrics(self):
-        return self.metrics
+        return self.metrics.reset_index(drop=True)
     
     @staticmethod
     def _check_negative(hrf, force_pos=False, force_neg=False):
@@ -2019,31 +2101,38 @@ class HRFMetrics():
         self, 
         TR=None,
         force_pos=False,
-        force_neg=False):
+        force_neg=False,
+        nan_policy=False):
 
-        hrf = self._verify_input(self.hrf, TR=TR)
+        hrf = self._verify_input(self.hrf, TR=TR, shift=self.shift)
 
+        cols = list(hrf.columns)
         if not isinstance(force_neg, list):
-            force_neg = [force_neg for _ in list(hrf.columns)]
+            force_neg = [force_neg for _ in cols]
 
         if not isinstance(force_pos, list):
-            force_pos = [force_pos for _ in list(hrf.columns)]
+            force_pos = [force_pos for _ in cols]
         
         # print(force_pos)
         self.metrics = []
         self.fwhm_objs = []
-        for ix,col in enumerate(list(hrf.columns)):
+        for ix,col in enumerate(cols):
             pars,fwhm_ = self._get_single_hrf_metrics(
                 hrf[col],
                 TR=self.TR,
                 force_pos=force_pos[ix],
-                force_neg=force_neg[ix])
+                force_neg=force_neg[ix],
+                plot=self.plot,
+                nan_policy=nan_policy)
             
             self.metrics.append(pars)
             self.fwhm_objs.append(fwhm_)
 
         if len(self.metrics) > 0:
             self.metrics = pd.concat(self.metrics)
+            
+            if len(cols)>1:
+                self.metrics["vox"] = cols
 
     @staticmethod
     def _get_time(hrf):
@@ -2061,7 +2150,7 @@ class HRFMetrics():
                 raise ValueError("Could not find time dimension. Dataframe should contain 't' or 'time' column..")
     
     @classmethod
-    def _verify_input(self, hrf, TR=None):
+    def _verify_input(self, hrf, TR=None, shift=None):
         if isinstance(hrf, np.ndarray):
             if hrf.ndim > 1:
                 hrf = hrf.squeeze()
@@ -2077,13 +2166,30 @@ class HRFMetrics():
         elif isinstance(hrf, pd.Series):
             hrf = pd.DataFrame(hrf)
 
+        # shift to zero
+        if isinstance(shift, int):
+            if shift > 1:
+                bsl = hrf.values[:shift].mean()
+            else:
+                bsl = hrf.values[0]
+
+            if bsl>0:
+                hrf -= bsl
+            elif bsl<0:
+                hrf += abs(bsl)
+
         return hrf
 
     @classmethod
     def plot_profile_for_debugging(
         self, 
         hrf, 
+        axs=None,
+        figsize=(5,5),
         **kwargs):
+
+        if not isinstance(axs, mpl.axes._axes.Axes):
+            _,axs = plt.subplots(figsize=figsize)
 
         time = self._get_time(hrf)
         plotting.LazyPlot(
@@ -2091,14 +2197,19 @@ class HRFMetrics():
             xx=list(time),
             x_label="time (s)",
             y_label="magnitude",
-            figsize=(5,5),
+            axs=axs,
             color="r",
             line_width=2,
             **kwargs
         )
 
     @classmethod
-    def _get_riseslope(self, hrf, force_pos=False, force_neg=False):
+    def _get_riseslope(
+        self, 
+        hrf, 
+        force_pos=False, 
+        force_neg=False,
+        nan_policy=False):
 
         # fetch time stamps
         time = self._get_time(hrf)
@@ -2127,13 +2238,19 @@ class HRFMetrics():
                     val = np.array([np.amax(diff)])
             else:
                 val = np.array([np.amax(diff)])
+            
+            final_val = val[0]
+            val_ix = utils.find_nearest(diff,final_val)[0]
+            val_t = time[val_ix]
+
         except Exception as e:
-            self.plot_profile_for_debugging(hrf)
-            raise ValueError(f"Could not extract rise-slope from this profile: {e}")
+            if not nan_policy:
+                self.plot_profile_for_debugging(hrf)
+                raise ValueError(f"Could not extract rise-slope from this profile: {e}")
+            else:
+                val_t = final_val = np.nan 
         
-        val_ix = utils.find_nearest(diff,val)[0]
-        val_t = time[val_ix]
-        return val,val_t
+        return final_val,val_t
 
     @classmethod
     def _get_amplitude(self, hrf, force_pos=False, force_neg=False):
@@ -2158,10 +2275,143 @@ class HRFMetrics():
         mag_ix = utils.find_nearest(hrf.values.squeeze(), mag_tmp)[0]
 
         return {
-            "amplitude": mag_tmp,
+            "amplitude": mag_tmp[0],
             "t": time[mag_ix],
             "t_ix": mag_ix
         }
+    
+    @classmethod
+    def _get_auc(
+        self, 
+        hrf, 
+        force_pos=False, 
+        force_neg=False,
+        nan_policy=False):
+
+        # get time 
+        time = self._get_time(hrf)
+        dx = np.diff(time)[0]
+
+        # get amplitude of HRF
+        mag = self._get_amplitude(
+            hrf, 
+            force_pos=force_pos,
+            force_neg=force_neg
+        )
+
+        # first check if the period before the peak has zero crossings
+        zeros = np.zeros_like(hrf)[:mag["t_ix"]]
+        xx = np.arange(0, zeros.shape[0])
+
+        try:
+            coords = utils.find_intersection(
+                xx,
+                zeros,
+                hrf.values[:mag["t_ix"]]
+            )
+
+            HAS_ZEROS_BEFORE_PEAK = True
+        except:
+            HAS_ZEROS_BEFORE_PEAK = False
+        
+        if HAS_ZEROS_BEFORE_PEAK:
+            # if we found multiple coordinates, we have some bump/dip before peak
+            coords = [int(i[0][0]) for i in coords]
+            coords.sort()
+
+            if len(coords) > 1:
+                first_cross = coords[-1]
+            else:
+                # assume single zero point before peak
+                first_cross = coords[0]
+            
+        else:
+            # if no zeros before peak, take start of curve as starting curve
+            first_cross = 0
+
+        # print(f"1st crossing = {first_cross}")
+        # find the next zero crossing after "first_cross" that is after peak index
+        zeros = np.zeros_like(hrf)
+        xx = np.arange(0, zeros.shape[0])        
+
+        try:
+            coords = utils.find_intersection(
+                xx,
+                zeros,
+                hrf.values.squeeze()
+            )
+
+            FAILED = False
+        except:
+            FAILED = True
+
+        # if there's no zero-crossings, take end of interval
+        third_cross = None
+        if FAILED:
+            second_cross = hrf.shape[0]-1
+        else:
+
+            # filter coordinates for elements BEFORE peak
+            coord_list = [int(i[0][0]) for i in coords if int(i[0][0])>mag["t_ix"]]
+            if len(coord_list)>0:
+
+                # sort
+                coord_list.sort()
+                # index first element as second zero 
+                second_cross = coord_list[0]
+
+                # take last element as undershoot
+                if len(coord_list)<2:
+                    third_cross = hrf.shape[0]-1
+            else:
+                second_cross = hrf.shape[0]-1
+
+            # if multple coords after peak we might have negative undershoot
+            if len(coord_list)>1:
+                # check if sample are not too close to one another;AUC needs at least 2 samples
+                ix = 1
+                third_cross = coord_list[ix]
+                # print(coord_list)
+                # print(third_cross)
+                while (third_cross-second_cross)<2:
+                    ix += 1
+                    if ix<len(coord_list):
+                        third_cross = coord_list[ix]
+                    else:
+                        third_cross = hrf.shape[0]-1
+
+        # print(f"2nd crossing = {second_cross}")
+        # print(f"3rd crossing = {third_cross}")
+        # connect A and B (bulk of response)
+        zeros = np.zeros_like(hrf.iloc[first_cross:second_cross])
+        xx = np.arange(0, zeros.shape[0])
+
+        try:
+            ab_area = metrics.auc(xx, hrf.iloc[first_cross:second_cross])*dx
+        except:
+            if not nan_policy:
+                self.plot_profile_for_debugging(hrf)
+                raise ValueError()
+            else:
+                ab_area = np.nan
+        
+        # check for under-/overshoot
+        ac_area = np.nan
+        if isinstance(third_cross, int):
+            # print(f"1st cross: {first_cross}\t2nd cross: {second_cross}\t3rd cross: {third_cross}")
+            zeros = np.zeros_like(hrf.iloc[second_cross:third_cross])
+            xx = np.arange(0, zeros.shape[0])
+            try:
+                ac_area = abs(metrics.auc(xx, hrf.iloc[second_cross:third_cross]))*dx
+            except:
+                self.plot_profile_for_debugging(hrf, add_hline=0)
+                raise ValueError()
+            
+        return {
+            "pos_area": ab_area,
+            "undershoot": ac_area
+        }
+
 
     @classmethod    
     def _get_fwhm(
@@ -2169,6 +2419,7 @@ class HRFMetrics():
         hrf,
         force_pos=False, 
         force_neg=False,
+        nan_policy=False,
         add_fct=0.5):
 
         # fetch time stamps
@@ -2197,29 +2448,45 @@ class HRFMetrics():
         try:
             # get fwhm around max amplitude
             fwhm_val = FWHM(
-                time[:end_ix], 
-                hrf.values[:end_ix], 
+                time, 
+                hrf.values, 
                 negative=negative)
+            
+            fwhm_dict = {
+                "fwhm": fwhm_val.fwhm,
+                "half_rise": fwhm_val.t0_,
+                "half_max": fwhm_val.half_max,
+                "obj": fwhm_val
+            }
         except Exception as e:
-            self.plot_profile_for_debugging(hrf)
-            raise ValueError(f"Could not extract FWHM from this profile: {e}")
+            if not nan_policy:
+                self.plot_profile_for_debugging(hrf)
+                raise ValueError(f"Could not extract FWHM from this profile: {e}")
+            else:
+                fwhm_dict = {
+                    "fwhm": np.nan,
+                    "half_rise": np.nan,
+                    "half_max": np.nan,
+                    "obj": np.nan
+                }
         
-        return {
-            "fwhm": fwhm_val.fwhm,
-            "half_rise": fwhm_val.hmx[0],
-            "half_max": fwhm_val.half_max,
-            "obj": fwhm_val
-        }
+        return fwhm_dict
             
     def _get_single_hrf_metrics(
         self, 
         hrf, 
         TR=None, 
         force_pos=False,
-        force_neg=False):
+        force_neg=False,
+        plot=False,
+        nan_policy=False,
+        **kwargs):
 
         # verify input type
         hrf = self._verify_input(hrf, TR=TR)
+
+        if plot:
+            self.plot_profile_for_debugging(hrf, add_hline=0)
 
         # get magnitude and amplitude
         mag = self._get_amplitude(
@@ -2231,26 +2498,39 @@ class HRFMetrics():
         fwhm_obj = self._get_fwhm(
             hrf, 
             force_pos=force_pos, 
-            force_neg=force_neg)
+            force_neg=force_neg,
+            nan_policy=nan_policy)
 
         # rise slope
         rise_tmp, rise_t = self._get_riseslope(
             hrf, 
             force_pos=force_pos, 
-            force_neg=force_neg)
-                
-        df = pd.DataFrame(
-            {
-                "magnitude": mag["amplitude"], 
-                "magnitude_ix": mag["t_ix"], 
-                "fwhm": fwhm_obj["fwhm"], 
-                "time_to_peak": mag["t"],
-                "half_rise_time": fwhm_obj["half_rise"],
-                "half_max": fwhm_obj["half_max"],
-                "rise_slope": rise_tmp,
-                "rise_slope_t": rise_t
-            }
+            force_neg=force_neg,
+            nan_policy=nan_policy)
+
+        # positive area + undershoot
+        auc = self._get_auc(
+            hrf,
+            force_pos=force_pos,
+            force_neg=force_neg,
+            nan_policy=nan_policy
         )
+
+        ddict =  {
+            "magnitude": [mag["amplitude"]], 
+            "magnitude_ix": [mag["t_ix"]], 
+            "fwhm": [fwhm_obj["fwhm"]], 
+            "fwhm_obj": [fwhm_obj["obj"]], 
+            "time_to_peak": [mag["t"]],
+            "half_rise_time": [fwhm_obj["half_rise"]],
+            "half_max": [fwhm_obj["half_max"]],
+            "rise_slope": [rise_tmp],
+            "rise_slope_t": [rise_t],
+            "positive_area": [auc["pos_area"]],
+            "undershoot": [auc["undershoot"]]
+        }
+
+        df = pd.DataFrame(ddict)
 
         return df,fwhm_obj
 
@@ -2260,23 +2540,48 @@ class FWHM():
         self, 
         x, 
         hrf, 
-        negative=False
+        negative=False,
+        y_tol=0.01,
+        resample=500,
         ):
         
         self.x = x
         self.hrf = hrf
+        self.y_tol = y_tol
+        self.resample = resample
         self.negative = negative
+        
+        if x.shape[0]<self.resample:
+            
+            # print(f"resample vectors of shape {x.shape} to {self.resample}")
+            self.use_x = glm.resample_stim_vector(self.x,self.resample, interpolate="linear")
+            self.use_rf = glm.resample_stim_vector(self.hrf,self.resample, interpolate="linear")
 
-        self.hmx = self.half_max_x(self.x,self.hrf)
-        self.fwhm = self.hmx[1] - self.hmx[0]
+        else:
+            self.use_x = x.copy()
+            self.use_rf = hrf.copy()
+
+        self.hmx = self.half_max_x(self.use_x,self.use_rf)
+
+        if len(self.hmx) < 2:
+            raise ValueError(f"Could not find two points close to half max..")
+        
+        self.ts = [i.squeeze()[0] for i in self.hmx]
+        self.ts.sort()
+
+        self.t0_ = self.ts[0]
+        self.t1_ = self.ts[1]
+        self.fwhm = abs(self.t1_-self.t0_)
         
         if self.negative:
-            self.half_max = min(hrf)/2
+            self.half_max = min(self.use_rf)/2
         else:
-            self.half_max = max(hrf)/2
-    
-    def lin_interp(self, x, y, i, half):
-        return x[i] + (x[i+1] - x[i]) * ((half - y[i]) / (y[i+1] - y[i]))
+            self.half_max = max(self.use_rf)/2
+
+        self.half_max = self.half_max[0]
+
+    # def lin_interp(self, x, y, i, half):
+    #     return x[i] + (x[i+1] - x[i]) * ((half - y[i]) / (y[i+1] - y[i]))
 
     def half_max_x(self, x, y):
         
@@ -2285,11 +2590,13 @@ class FWHM():
         else:
             half = min(y)/2.0
 
-        signs = np.sign(np.add(y, -half))
-        zero_crossings = (signs[0:-2] != signs[1:-1])
-        zero_crossings_i = np.where(zero_crossings)[0]
-        return [self.lin_interp(x, y, zero_crossings_i[0], half),
-                self.lin_interp(x, y, zero_crossings_i[1], half)]
+        return utils.find_intersection(x,y,np.full_like(y,half))
+
+        # signs = np.sign(np.add(y, -half))
+        # zero_crossings = (signs[0:-2] != signs[1:-1])
+        # zero_crossings_i = np.where(zero_crossings)[0]
+        # return [self.lin_interp(x, y, zero_crossings_i[0], half),
+        #         self.lin_interp(x, y, zero_crossings_i[1], half)]
 
 def error_function(
     parameters,
@@ -2649,3 +2956,165 @@ class FitHRFparams():
         self.hrf_profiles = self.hrf_profiles.set_index(self.prof_indices)
         self.predictions = self.predictions.set_index(self.pred_indices)        
     
+
+class Epoch(InitFitter):
+
+    def __init__(
+        self, 
+        func, 
+        onsets, 
+        TR=0.105, 
+        interval=[-2,14]
+        ):
+        
+        self.func = func
+        self.onsets = onsets
+        self.TR = TR
+        self.interval = interval
+
+        # prepare data
+        super().__init__(self.func, self.onsets, self.TR)
+
+        # epoch data based on present identifiers (e.g., task/run)
+        self.epoch_input()
+
+    @staticmethod
+    def _get_epoch_timepoints(interval,TR):
+        total_length = interval[1] - interval[0]
+        timepoints = np.linspace(
+            interval[0],
+            interval[1],
+            int(total_length * (1/TR) * 1),
+            endpoint=False)
+        
+        return timepoints
+
+    def epoch_events(
+        self,
+        df_func,
+        df_onsets, 
+        index=False,
+        ):
+
+        ev_epochs = []
+
+        info = {}
+        for el in ["event_type","subject","run"]:
+            info[el] = utils.get_unique_ids(df_onsets, id=el)
+
+        df_idx = ["subject","run","event_type","epoch","t"]
+        for ev in info["event_type"]:
+
+            epochs = []
+            ev_onsets = utils.select_from_df(df_onsets, expression=f"event_type = {ev}")
+            for i,t in enumerate(ev_onsets.onset.values):
+                
+                if ev not in ["response","blink"]:
+                    # find closest ID to interval
+                    t_start = t-abs(self.interval[0])
+                    ix_start = int(t_start/self.TR)
+
+                    samples = self.interval[1]+abs(self.interval[0])
+                    n_sampl = int(samples/self.TR)
+                    ix_end = ix_start+n_sampl
+
+                    # extract from data
+                    stim_epoch = df_func.iloc[ix_start:ix_end,:].values #[...,np.newaxis]       
+                    time = self._get_epoch_timepoints(self.interval, self.TR)
+
+                    df_stim_epoch = pd.DataFrame(stim_epoch)
+                    df_stim_epoch["t"],df_stim_epoch["epoch"],df_stim_epoch["event_type"] = time,i,ev
+                    epochs.append(df_stim_epoch)
+            
+            # concatenate into 3d array (time,ev,stimulus_nr), average, and store in dataframe
+            ev_epoch = pd.concat(epochs)
+
+            # format dataframe
+            ev_epoch["subject"], ev_epoch["run"] = info["subject"][0],info["run"][0]
+            
+            ev_epochs.append(ev_epoch)
+
+        # concatenate into dataframe
+        df_epochs = pd.concat(ev_epochs)
+
+        # set index or not
+        if index:
+            df_epochs.set_index(df_idx, inplace=True)
+
+        return df_epochs
+
+    def epoch_runs(
+        self,
+        df_func,
+        df_onsets, 
+        index=False,
+        ):
+
+        # loop through runs
+        self.run_ids = utils.get_unique_ids(df_func, id="run")
+        # print(f"task-{task}\t| runs = {run_ids}")
+        run_df = []
+        for run in self.run_ids:
+            
+            expr = f"run = {run}"
+            run_func = utils.select_from_df(df_func, expression=expr)
+            run_stims = utils.select_from_df(df_onsets, expression=expr)
+
+            # get epochs
+            df = self.epoch_events(
+                run_func,
+                run_stims,
+                index=index
+            )
+
+            run_df.append(df)
+
+        run_df = pd.concat(run_df)
+
+        return run_df
+    
+    def epoch_tasks(
+        self,
+        df_func,
+        df_onsets
+        ):
+
+        # read task IDs
+        self.task_ids = utils.get_unique_ids(df_func, id="task")
+
+        # loop through task IDs
+        task_df = [] 
+        for task in self.task_ids:
+
+            # extract task-specific dataframes
+            expr = f"task = {task}"
+            task_func = utils.select_from_df(df_func, expression=expr)
+            task_stims = utils.select_from_df(df_onsets, expression=expr)
+
+            df = self.epoch_runs(
+                task_func,
+                task_stims,
+                index=False
+            )
+
+            df["task"] = task
+            task_df.append(df)
+
+        return pd.concat(task_df)
+    
+    def epoch_input(self):
+
+        try:
+            self.task_ids = utils.get_unique_ids(self.func, id="task")
+        except:
+            self.task_ids = None
+
+        if isinstance(self.task_ids, list):
+            self.df_epoch = self.epoch_tasks(self.func, self.onsets)
+            self.idx = ["subject","task","run","event_type","epoch","t"]
+        else:
+            self.df_epoch = self.epoch_runs(self.func, self.onsets)
+            self.idx = ["subject","run","event_type","epoch","t"]
+
+        self.df_epoch.set_index(self.idx, inplace=True)
+
