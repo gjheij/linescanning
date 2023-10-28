@@ -742,7 +742,6 @@ class LazyPlot(Defaults):
         Error data with the same length/shape as the input timeseries, by default None. Can be either a numpy.ndarray for 1 timeseries, or a list of numpy.ndarrays for multiple timeseries
     error_alpha: float, optional
         Opacity level for error shadings, by default 0.3
-
     cmap: str, optional
         Color palette to use for colors if no individual colors are specified, by default 'viridis'
     figsize: tuple, optional
@@ -870,7 +869,7 @@ class LazyPlot(Defaults):
                         raise ValueError(f"Alpha list ({len(self.plot_alpha)}) does not match length of data list ({len(self.array)})")                        
 
             if isinstance(self.color, str):
-                self.color = [self.color]
+                self.color = [self.color for _ in range(len(self.array))]
 
             if not isinstance(self.markers, list):
                 if self.markers == None:
@@ -968,9 +967,14 @@ class LazyPlot(Defaults):
                             self.t_ = self.xx[idx]
                         else:
                             self.t_ = self.xx
-                    else:
-                        self.t_ = self.xx.copy()
+                    elif isinstance(self.xx, np.ndarray):
+                        if self.xx.ndim>1:
+                            self.xx = self.xx.squeeze()
 
+                        self.t_ = self.xx.copy()
+                    else:
+                        raise TypeError(f"Could not derive time axis from input type {type(self.xx)}")
+                
                 if isinstance(self.labels, (list,np.ndarray)):
                     lbl = self.labels[idx]
                 else:
@@ -1307,7 +1311,7 @@ class LazyCorr(Defaults):
         )
 
         self.kde_color = utils.make_between_cm(self.color,self.color,as_list=True)
-        sns.regplot(
+        self.reg_ = sns.regplot(
             x=self.x, 
             y=self.y, 
             color=self.color, 
@@ -1315,7 +1319,8 @@ class LazyCorr(Defaults):
             scatter=self.points,
             label=self.label,
             scatter_kws=self.scatter_kwargs,
-            **self.reg_kwargs)
+            **self.reg_kwargs
+        )
 
         # set labels and titles
         for lbl,func in zip(
@@ -1548,7 +1553,24 @@ class LazyBar():
             
         # check if we got custom labels
         if isinstance(self.labels, (np.ndarray,list)):
-            self.data[self.x] = self.labels
+            # check if x is multi-level
+            if len(self.data[self.x])>len(self.labels):
+                
+                # get unique values
+                unique_x = utils.get_unique_ids(self.data, id=self.x)
+
+                # new xw
+                new_x = []
+                for x in self.data[self.x].values:
+                    # find index of old x in unique x
+                    curr_x = unique_x.index(x)
+
+                    # substitute for new x
+                    new_x.append(self.labels[curr_x])
+
+                self.data[self.x] = new_x
+            else:
+                self.data[self.x] = self.labels
 
         if self.sns_ori == "h":
             xx = self.y
