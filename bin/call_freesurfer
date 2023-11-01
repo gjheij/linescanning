@@ -185,7 +185,7 @@ do
           ;;
     x)  EXPERT_FILE=${OPTARG}
           ;;    
-    q)  SGE_QUEUE="-q ${OPTARG}"
+    q)  SGE_QUEUE=${OPTARG}
           ;;  
     j)  n_cpus=${OPTARG}
           ;;                                      
