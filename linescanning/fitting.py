@@ -196,10 +196,16 @@ class InitFitter():
         
         # put in dataframe
         self.time = self._get_timepoints()
+        self.old_index = []
         if isinstance(self.func, np.ndarray):
             self.func = pd.DataFrame(self.func)
         else:
             try:
+                # check old index
+                try:
+                    self.old_index = list(self.func.index.names)
+                except:
+                    pass
                 self.func = self.func.reset_index()
             except:
                 pass
@@ -228,6 +234,15 @@ class InitFitter():
         for key,val in zip(self.final_index, self.final_elements):
             if not key in list(self.func.columns):
                 self.func[key] = val
+
+        self.drop_cols = []
+        if len(self.old_index)>0:
+            for ix in self.old_index:
+                if ix not in self.final_index:
+                    self.drop_cols.append(ix)
+
+        if len(self.drop_cols)>0:
+            self.func = self.func.drop(self.drop_cols, axis=1)
 
         self.func.set_index(self.final_index, inplace=True)              
         
@@ -606,17 +621,13 @@ class NideconvFitter(InitFitter):
         if not hasattr(self, "axis_width"):
             self.axis_width = self.plotting_defaults.axis_width
 
-    def get_event_predictions_from_fitter(self, fitter):
+    @staticmethod
+    def get_event_predictions_from_fitter(fitter, intercept=True):
 
         ev_pred = []
-        for ix,ev in enumerate(fitter.events.keys()):
+        for ix, ev in enumerate(fitter.events.keys()):
 
-            if isinstance(self.add_intercept, list):
-                icpt = self.add_intercept[ix]
-            else:
-                icpt = self.add_intercept                
-            
-            if icpt:
+            if intercept:
                 X_stim = pd.concat(
                     [
                         fitter.X.xs("confounds", axis=1, drop_level=False),
@@ -624,7 +635,7 @@ class NideconvFitter(InitFitter):
                     ],
                     axis=1
                 )
-                
+
                 expr = (
                     f"event type = {ev}",
                     "or",
@@ -636,10 +647,10 @@ class NideconvFitter(InitFitter):
 
             betas = utils.select_from_df(fitter.betas, expression=expr)
             pred = X_stim.dot(betas).reset_index()
-            pred.rename(columns={"time": "t"}, inplace=True) 
+            pred.rename(columns={"time": "t"}, inplace=True)
 
             if "index" in list(pred.columns):
-                pred.rename(columns={"index": "t"}, inplace=True) 
+                pred.rename(columns={"index": "t"}, inplace=True)
 
             pred["event_type"] = ev
             ev_pred.append(pred)
