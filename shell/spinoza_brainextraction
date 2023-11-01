@@ -473,7 +473,7 @@ for subID in ${search}; do
       fi
 
     else
-      echo "${sub_name}: bias-field and intensity corrected image exists"
+      echo "${sub_name}: CAT12 already executed. Use \"--ow\" to overwrite"
     fi
 
     # still copy SPM-mask even if heavy CAT12-processing was turned off
