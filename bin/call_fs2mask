@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 
-import sys, getopt
+import sys
 import os
 import ast
-from nibabel import freesurfer
-import numpy as np
+from linescanning import utils
 import nibabel as nb
+import numpy as np
 from nilearn import image
 opj = os.path.join
 
@@ -94,6 +94,14 @@ Example:
         freesurfer_seg = image.resample_to_img(atlas_nii,resamp_img, interpolation='nearest')
     else:
         freesurfer_seg = nb.load(atlas_nii)
+
+    # parse input into list
+    if "," in roi_values:
+        roi_values = utils.string2list(roi_values)
+    else:
+        roi_values = [roi_values]
+
+    roi_values = [int(i) for i in roi_values]
 
     # get roi-values
     if not isinstance(roi_values, int):
