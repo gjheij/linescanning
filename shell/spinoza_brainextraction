@@ -493,7 +493,7 @@ for subID in ${search}; do
       cp ${spm_mask} ${spm}
     fi
 
-    if [[ -f ${spm} && -f ${brainmask} && ! -f ${duramask} ]]; then
+    if [[ -f ${spm} && -f ${brainmask} ]]; then
       # the difference mask between the CAT12-mask and SPM-mask is already a pretty good dura mask.
       fslmaths ${spm} -sub ${brainmask} -thr 0 ${duramask}
     fi
