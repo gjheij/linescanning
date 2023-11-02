@@ -1051,7 +1051,7 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
         try:
             self.condition = self.trimmed['condition'].values[..., np.newaxis]
         except:
-            self.condition = np.full_like(self.onset_times, self.ev_onset)
+            self.condition = np.full_like(self.onset_times, self.ev_onset, dtype=object)
             if self.condition.ndim < 2:
                 self.condition = self.condition[...,np.newaxis]
 
