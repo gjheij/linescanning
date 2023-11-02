@@ -822,6 +822,7 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
         response_window=3,
         merge=True,
         resp_as_cov=False,
+        ev_onset="stim",
         key_press=["b"],
         **kwargs):
 
@@ -847,7 +848,8 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
         self.merge                          = merge
         self.resp_as_cov                    = resp_as_cov
         self.key_press                      = key_press
-        
+        self.ev_onset                       = ev_onset
+
         # filter kwargs
         tmp_kwargs = filter_kwargs(
             [
@@ -1033,7 +1035,7 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
             self.start_time = float(utils.select_from_df(self.data, expression="event_type = pulse").iloc[0].onset)
         else:
             self.start_time = 0
-        self.trimmed = utils.select_from_df(self.data, expression=("event_type = stim","&",f"onset > {self.start_time}"))
+        self.trimmed = utils.select_from_df(self.data, expression=(f"event_type = {self.ev_onset}","&",f"onset > {self.start_time}"))
         self.trimmed = utils.select_from_df(self.trimmed, expression=f"phase = {phase_onset}")
         self.onset_times = self.trimmed['onset'].values[...,np.newaxis]
         self.n_trials = np.unique(self.trimmed["onset"].values).shape[0]
