@@ -23,6 +23,7 @@ import nibabel as nb
 import platform
 from bids import BIDSLayout
 from linescanning import utils
+import shutil
 warnings.filterwarnings("ignore")
 opj = os.path.join
 opb = os.path.basename
@@ -248,6 +249,11 @@ Notes:
 
             with open(json_file, "w+") as file:
                 json.dump(params, file, indent=4)
+
+    # copy original pymp2rage output which has proper intensity histograms
+    src = OUTPUT["t1w_uni"]
+    trg = opj(os.path.dirname(src), "orig.nii.gz")
+    shutil.copyfile(src,trg)
 
     if do_stuff:
         brainmask = opj(outputdir, f'{outputbase}_desc-spm_mask.nii.gz')
