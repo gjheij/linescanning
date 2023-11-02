@@ -953,6 +953,9 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
 
             # concatemate df
             self.df_onsets = pd.concat(self.df_onsets).set_index(self.onset_index)
+            
+            # filter for NaNs to be sure
+            self.df_onsets = utils.select_from_df(self.df_onsets, expression="event_type != nan")
 
             # rts
             try:
@@ -1023,12 +1026,17 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
             self.data = pd.read_csv(f, delimiter='\t')
 
         # trim onsets to first 't'
-        delete_time         = delete_vols*self.TR
-        self.start_time     = float(utils.select_from_df(self.data, expression=("event_type = pulse","&",f"phase = {phase_onset}")).iloc[0].onset)
-        self.trimmed        = utils.select_from_df(self.data, expression=("event_type = stim","&",f"onset > {self.start_time}"))
-        self.trimmed        = utils.select_from_df(self.trimmed, expression=f"phase = {phase_onset}")
-        self.onset_times    = self.trimmed['onset'].values[...,np.newaxis]
-        self.n_trials       = np.unique(self.trimmed["onset"].values).shape[0]
+        delete_time = delete_vols*self.TR
+
+        self.ev_types = utils.get_unique_ids(self.data, id="event_type")
+        if "pulse" in self.ev_types:
+            self.start_time = float(utils.select_from_df(self.data, expression="event_type = pulse").iloc[0].onset)
+        else:
+            self.start_time = 0
+        self.trimmed = utils.select_from_df(self.data, expression=("event_type = stim","&",f"onset > {self.start_time}"))
+        self.trimmed = utils.select_from_df(self.trimmed, expression=f"phase = {phase_onset}")
+        self.onset_times = self.trimmed['onset'].values[...,np.newaxis]
+        self.n_trials = np.unique(self.trimmed["onset"].values).shape[0]
 
         skip_duration = False
         if isinstance(duration, (float,int)):
@@ -1045,47 +1053,50 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
         if "response" in np.unique(self.data["event_type"]):
             self.response_df = self.data.loc[(self.data['event_type'] == "response") & (self.data['response'] != 'space')]
 
-            # filter out button responses before first trigger
-            self.response_df = utils.select_from_df(self.response_df, expression=f"onset > {self.start_time}")
+            if len(self.response_df)>0:
+                # filter out button responses before first trigger
+                self.response_df = utils.select_from_df(self.response_df, expression=f"onset > {self.start_time}")
 
-            self.nr_resp = self.response_df.shape[0]
-            utils.verbose(f" Extracting {self.key_press} button(s)", self.verbose)
+                self.nr_resp = self.response_df.shape[0]
+                utils.verbose(f" Extracting {self.key_press} button(s)", self.verbose)
 
-            # loop through them
-            self.button_df = []
-            
-            self.single_button = True
-            if len(self.key_press) > 1:
-                self.single_button = False
+                # loop through them
+                self.button_df = []
+                
+                self.single_button = True
+                if len(self.key_press) > 1:
+                    self.single_button = False
 
-            for button in self.key_press:
+                for button in self.key_press:
 
-                # get the onset times
-                self.response_times = self.response_df['onset'].values[...,np.newaxis]
+                    # get the onset times
+                    self.response_times = self.response_df['onset'].values[...,np.newaxis]
 
-                # store responses in separate dataframe
-                self.response_times -= (self.start_time + delete_time)
+                    # store responses in separate dataframe
+                    self.response_times -= (self.start_time + delete_time)
 
-                # decide name
-                if self.single_button:
-                    ev_name = "response"
-                else:
-                    ev_name = button
+                    # decide name
+                    if self.single_button:
+                        ev_name = "response"
+                    else:
+                        ev_name = button
 
-                # make into dataframe
-                tmp = pd.DataFrame(self.response_times, columns=["onset"])
-                tmp["event_type"] = ev_name
+                    # make into dataframe
+                    tmp = pd.DataFrame(self.response_times, columns=["onset"])
+                    tmp["event_type"] = ev_name
 
-                self.tmp_df = self.index_onset(
-                    tmp, 
-                    task=task,
-                    subject=self.sub, 
-                    run=run)
+                    self.tmp_df = self.index_onset(
+                        tmp, 
+                        task=task,
+                        subject=self.sub, 
+                        run=run)
 
-                self.button_df.append(self.tmp_df)
+                    self.button_df.append(self.tmp_df)
 
-            if len(self.button_df) > 0:
-                self.button_df = pd.concat(self.button_df)
+                if len(self.button_df) > 0:
+                    self.button_df = pd.concat(self.button_df)
+            else:
+                utils.verbose(f" No button presses found", self.verbose)
 
         # check if we should include other events
         if isinstance(self.add_events, str):
