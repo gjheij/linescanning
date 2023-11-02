@@ -1048,7 +1048,13 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
         else:
             self.durations = self.trimmed['duration'].values[...,np.newaxis]
 
-        self.condition = self.trimmed['condition'].values[..., np.newaxis]
+        try:
+            self.condition = self.trimmed['condition'].values[..., np.newaxis]
+        except:
+            self.condition = np.full_like(self.onset_times, self.ev_onset)
+            if self.condition.ndim < 2:
+                self.condition = self.condition[...,np.newaxis]
+
         utils.verbose(f" 1st 't' @{round(self.start_time,2)}s", self.verbose)
         
         # get dataframe with responses
