@@ -790,6 +790,20 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
         If we have a design that required some response to a stimulus, we can request the reaction times. Default = False
     RT_relative_to: str, optional
         If `RTs=True`, we need to know relative to what time the button response should be offset. Only correct responses are considered, as there's a conditional statement that requires the present of the reference time (e.g., `target_onset`) and button response. If there's a response but no reference time, the reaction time cannot be calculated. If you do not have a separate reference time column, you can specify `RT_relative_to='start'` to calculate the reaction time relative to onset time. If `RT_relative_to != 'start'`, I'll assume you had a target in your experiment in X/n_trials. From this, we can calculate the accuracy and save that to `self.df_accuracy`, while reaction times are saved in`self.df_rts`
+    button_duration: float, int, optional
+        Set duration for button event
+    response_window: float, int, optional
+        Set window in which a response is counted
+    merge: bool, optional
+        Merge the dataframes containing responses and stimulus onsets. Default = True. Onset times will be sorted in an ascending order. Select parts of dataframes with :func:`linescanning.utils.select_from_df()`
+    resp_as_cov: bool, optional
+        If you have a design where you have button presses in half of the trials, you can add a covariate consisting of -1/1 for the stimulus onsets where there was a response or not. This way, the response event will not steal variance from the stimulus event when fitting using :class:`linescanning.fitting.NideconvFitter()`. Default = False
+    ev_onset: str, optional
+        Sometimes experiments are coded such that the event name of interest is not called `stim`. Use this variable + `phase_onset` to extract the correct onset times
+    key_press: list, optional
+        Specify a custom list of button presses to extract. Default = `['b']`
+    expr: str, tuple, optional
+        Add additional conditions for your extracted onset times. This follows the formulation of :func:`linescanning.utils.select_from_df()`. E.g., `expr="movie_type != blank`. Acts as an extra filter to extract the relevant onsets
 
     Examples
     ----------
@@ -824,6 +838,7 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
         resp_as_cov=False,
         ev_onset="stim",
         key_press=["b"],
+        expr=None,
         **kwargs):
 
         self.tsv_file                       = tsv_file
@@ -849,6 +864,7 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
         self.resp_as_cov                    = resp_as_cov
         self.key_press                      = key_press
         self.ev_onset                       = ev_onset
+        self.expr                           = expr
 
         # filter kwargs
         tmp_kwargs = filter_kwargs(
@@ -1035,8 +1051,25 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
             self.start_time = float(utils.select_from_df(self.data, expression="event_type = pulse").iloc[0].onset)
         else:
             self.start_time = 0
+
+        utils.verbose(f" 1st 't' @{round(self.start_time,2)}s", self.verbose)
+
+        # select all events after start time with `ev_onset`
         self.trimmed = utils.select_from_df(self.data, expression=(f"event_type = {self.ev_onset}","&",f"onset > {self.start_time}"))
+
+        # check for more conditions
+        if isinstance(self.expr, (tuple,str)):
+            utils.verbose(f" Adding filters: {self.expr}", self.verbose)
+            self.trimmed = utils.select_from_df(self.trimmed, expression=self.expr)
+            
+        # get the correct phase
         self.trimmed = utils.select_from_df(self.trimmed, expression=f"phase = {phase_onset}")
+        rm_cols = ["index","level_0"]
+        for col in rm_cols:
+            if col in list(self.trimmed.columns):
+                self.trimmed.drop([col], axis=1, inplace=True)
+
+        # get onset times
         self.onset_times = self.trimmed['onset'].values[...,np.newaxis]
         self.n_trials = np.unique(self.trimmed["onset"].values).shape[0]
 
@@ -1055,7 +1088,6 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
             if self.condition.ndim < 2:
                 self.condition = self.condition[...,np.newaxis]
 
-        utils.verbose(f" 1st 't' @{round(self.start_time,2)}s", self.verbose)
         
         # get dataframe with responses
         if "response" in np.unique(self.data["event_type"]):
