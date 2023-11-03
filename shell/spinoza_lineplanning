@@ -2,7 +2,8 @@
 
 #---------------------------------------------------------------------------------------------------------
 # check if there's is a setup file containing the major paths and source it if it exists
-call_loadsetup
+source ${SETUP_FILE}
+source call_bashhelper
 
 #---------------------------------------------------------------------------------------------------------
 # Create help text
@@ -47,8 +48,8 @@ Notes:
 
 Command with master:
   master -m 00 -s <subject> -h <hemi> -n <session>
-  master -m 00 -s 001 -h left -n 3                    # use session 3
-  master -m 00 -s 001 -h left -n 1                    # use session 1 (uses identity matrix)
+  master -m 00 -s 001 --lh -n 3               # use session 3
+  master -m 00 -s 001 --rh -n 2 --identity    # use session 1 (uses identity matrix)
 
 ---------------------------------------------------------------------------------------------------
 
@@ -63,9 +64,33 @@ fi
 
 # Allocate input arguments to variables
 #
-while getopts uos:i:p:h:n: argument
+debug=0
+while getopts :-:uos:i:p:h:n: argument
 do
   case ${argument} in
+    -)
+      case "${OPTARG}" in
+        lh)
+          hemi="left"
+          hemi_flag="--lh"
+          ;;             
+        rh)
+          hemi="right"
+          hemi_flag="--rh"
+          ;;   
+        ident)
+          debug=1
+          ;;           
+        identity)
+          debug=1
+          ;;               
+        *)
+          if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
+            echo "Unknown option --${OPTARG}"
+            exit 1
+          fi
+          ;;
+        esac;;  
     s)  subject=${OPTARG}
           ;;
     n)  session=${OPTARG}
@@ -75,6 +100,7 @@ do
     p)  ctxfile=${OPTARG}
           ;;
     h)  hemi=${OPTARG}
+        hemi_flag="-l ${hemi}"
           ;;
   esac
 done
@@ -94,7 +120,7 @@ echo
 
 #-----------------------------------------------------------------------------
 # Check if all input are correctly specified
-if [[ ${session} -ne 1 ]]; then
+if [[ ${debug} -ne 1 ]]; then
   if [[ ! -d ${nifti} ]]; then
     echo "Please specify the path to the raw session ${session} anatomy"
     exit 1
@@ -132,40 +158,46 @@ fi
 
 #-----------------------------------------------------------------------------
 # Convert PARREC to nifti for registration
-if [[ ${session} -ne 1 ]]; then
-  if [[ ! -d ${nifti}/nifti ]]; then
-    echo "Converting data with dcm2niix"
-    call_dcm2niix -i ${nifti} -o ${nifti}/nifti
-    echo
-  fi
+if [[ ${debug} -ne 1 ]]; then
 
-  # find delay time for nifti file
-  PAR_FILE=`find ${nifti} -maxdepth 1 -type f -name "*.PAR" 2>/dev/null`
-  ttime=`cat ${PAR_FILE} | awk '/^\s*$/ {next;} {print $33}' | grep -oE '[0-9]+' | head -n 1`
-        # echo content      #extract 33rd column              # filter numbers    # get first value (= trigger delay)
-
-  if [[ -z ${ttime} ]]; then
-    # set ttime to 1008 if command above did not work
-    ttime="1008"
-    echo "Could not find Trigger Delay time in .PAR file, setting it to \"${ttime}\""
+  if [[ -f ${nifti} ]]; then
+    anat_session2=`fetch_filepath ${nifti}`
   else
-    echo "Trigger Delay time                 = ['${ttime}']"
-  fi
+    if [[ ! -d ${nifti}/nifti ]]; then
+      echo "Converting data with dcm2niix"
+      call_dcm2niix -i ${nifti} -o ${nifti}/nifti
+      echo
+    fi
 
-  anat_session2=`find "${nifti}/nifti" -type f \( -name "*t${ttime}*" -and -name "*real*" -and -name "*.nii.gz" \) 2>/dev/null`
-  if [[ -z ${anat_session2} ]]; then
+    # find delay time for nifti file
+    PAR_FILE=`find ${nifti} -maxdepth 1 -type f -name "*.PAR" 2>/dev/null`
+    ttime=`cat ${PAR_FILE} | awk '/^\s*$/ {next;} {print $33}' | grep -oE '[0-9]+' | head -n 1`
+          # echo content      #extract 33rd column              # filter numbers    # get first value (= trigger delay)
 
-    # look for fast 3D T1 (3DFFE)
-    anat_session2=`find "${nifti}/nifti" -type f \( -name "*3DFFE*" -and -name "*.nii.gz" \) 2>/dev/null`
+    if [[ -z ${ttime} ]]; then
+      # set ttime to 1008 if command above did not work
+      ttime="1008"
+      echo "Could not find Trigger Delay time in .PAR file, setting it to \"${ttime}\""
+    else
+      echo "Trigger Delay time                 = ['${ttime}']"
+    fi
+
+    anat_session2=`find "${nifti}/nifti" -type f \( -name "*t${ttime}*" -and -name "*real*" -and -name "*.nii.gz" \) 2>/dev/null`
     if [[ -z ${anat_session2} ]]; then
-      echo "ERROR: Couldn't find low-res anatomy file, please specify correctly.."
+
+      # look for fast 3D T1 (3DFFE)
+      anat_session2=`find "${nifti}/nifti" -type f \( -name "*3DFFE*" -and -name "*.nii.gz" \) 2>/dev/null`
+      if [[ -z ${anat_session2} ]]; then
+        echo "ERROR: Couldn't find low-res anatomy file, please specify correctly.."
+        exit 1
+      fi
+    elif [ `echo ${anat_session2} | wc -w` -gt 1 ]; then
+      echo "ERROR: Found more than 1 file, make sure only one file is specified for session 2 anatomy:"
+      for i in ${anat_session2[@]}; do echo "  ${i}"; done
       exit 1
     fi
-  elif [ `echo ${anat_session2} | wc -w` -gt 1 ]; then
-    echo "ERROR: Found more than 1 file, make sure only one file is specified for session 2 anatomy:"
-    for i in ${anat_session2[@]}; do echo "  ${i}"; done
-    exit 1
   fi
+  
   echo "Session ${session} input                    = ['`basename ${anat_session2}`']"
 
   #-----------------------------------------------------------------------------
@@ -193,6 +225,12 @@ fi
 # of the line in session 1 anatomy calculated based on the minimal curvature
 # and pRF-mapping
 line_orientation_file=${ctxfile}
+if [[ ! -f ${line_orientation_file} ]]; then
+  echo "ERROR in `basename ${0}`: file \"${line_orientation_file}\" does not exist"
+  exit 1
+fi
+
+echo "File containing coordinates        = ['`basename ${line_orientation_file}`']"
 if [[ -f ${genaff} ]] || [[ ${genaff} == "identity" ]]; then
 
   cmd="""call_mrconsole \
@@ -202,11 +240,12 @@ if [[ -f ${genaff} ]] || [[ ${genaff} == "identity" ]]; then
     -d ${DIR_DATA_DERIV} \
     --ses2 ${anat_session2} \
     -a ${genaff} \
-    -h ${hemi} \
-    -l ${line_orientation_file}
+    ${hemi_flag} \
+    --line ${line_orientation_file}
   """
 
   # run
+  echo ${cmd}
   ${cmd}
 
   if [[ $? != 0 ]]; then

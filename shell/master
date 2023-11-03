@@ -19,6 +19,8 @@ job="bash"
 # Allocate input arguments to variables
 #
 HELP=0
+HEMI_FLAG=""              # spinoza_lineplanning
+IDENT_FLAG=""             # spinoza_lineplanning
 DEBUG=""                  # spinoza_linerecon
 NORDIC=""                 # spinoza_linerecon
 OW=""                     # multiple (overwrite mode)
@@ -31,6 +33,7 @@ SRF_FILE=""               # spinoza_bestvertex
 GALLERY_FLAG=""           # spinoza_bestvertex
 MAN_EPI=""                # spinoza_bestvertex
 EPI_FILE=""               # spinoza_bestvertex
+LS_SES=""                 # spinoza_bestvertex
 PROC=""                   # spinoza_brainextraction
 SELECTION_FLAG=""         # spinoza_bestvertex
 OPEN_WITH_FLAG=""         # spinoza_bestvertex
@@ -87,6 +90,7 @@ FULL_OW=""                # spinoza_scanner2bids
 SEARCH_DEPTH=""           # spinoza_scanner2bids
 UPs=""                    # spinoza_qmrimaps
 BIAS_FLAG=""              # spinoza_qmrimaps
+BG_FLAG=""                # spinoza_qmrimaps
 PROT_FLAG=""              # spinoza_scanner2bids
 FS_stage="all"            # spinoza_freesurfer
 FORCE_FLAG=""             # spinoza_freesurfer
@@ -95,12 +99,11 @@ use_t2_flag=""            # spinoza_freesurfer
 space_flag=""             # spinoza_denoising
 mod_flag=""               # spinoza_mriqc
 fd_flag=""                # spinoza_mriqc
-BG_FLAG=""                # spinoza_qmrimaps
 t_specified=0             # keep track when t-flag is specified or --func is used (alias for -t func)
 
 # use long options in bash:
 # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options
-declare -a array=("--no_bbr" "--local" "--ups" "--biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv" "--no_fit" "--fmriprep" "--fprep" "--v1" "--v2" "--save_grid" "--debug" "--no_nordic" "--dcm_fix" "--ow" "--no_bounds" "--no_tsnr" "--mag" "--no_highres" "--xopts-use" "--xopts-clean" "--xopts-overwrite" "--take-avg-tr" "--force_exec" "--no_t2" "--merge_ses" "--fsaverage" "--fsnative" "--ap" "--pa" "--lr" "--rl" "--no_lpi" "--anat_only" "--func_only" "--no_boldref" "--gauss" "--dog" "--css" "--norm" "--no_srf" "--srf_file" "--gallery" "--abc" "--abd" "--manual" "--ctx" "--func" "--help" "--ofsl" "--clean" "--fd" "--fetch_fsl" "--anat" "--no_epi" "--no_manual" "--aparc" "--phys" "--skip_bg" "--docker")
+declare -a array=("--no_bbr" "--local" "--ups" "--biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv" "--no_fit" "--fmriprep" "--fprep" "--v1" "--v2" "--save_grid" "--debug" "--no_nordic" "--dcm_fix" "--ow" "--no_bounds" "--no_tsnr" "--mag" "--no_highres" "--xopts-use" "--xopts-clean" "--xopts-overwrite" "--take-avg-tr" "--force_exec" "--no_t2" "--merge_ses" "--fsaverage" "--fsnative" "--ap" "--pa" "--lr" "--rl" "--no_lpi" "--anat_only" "--func_only" "--no_boldref" "--gauss" "--dog" "--css" "--norm" "--no_srf" "--srf_file" "--gallery" "--abc" "--abd" "--manual" "--ctx" "--func" "--help" "--ofsl" "--clean" "--fd" "--fetch_fsl" "--anat" "--no_epi" "--no_manual" "--aparc" "--phys" "--skip_bg" "--docker" "--rh" "--lh" "--identity" "--ident")
 
 # sort options array
 IFS=$'\n' opts=($(sort <<<"${array[*]}"))
@@ -376,7 +379,19 @@ do
           ;;
         docker)
           DOCKER_FLAG="--docker"
+          ;;          
+        lh)
+          HEMI_FLAG="--lh"
           ;;             
+        rh)
+          HEMI_FLAG="--rh"
+          ;;               
+        ident)
+          IDENT_FLAG="--identity"
+          ;;           
+        identity)
+          IDENT_FLAG="--identity"
+          ;;               
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             for ii in ${opts[@]}; do echo " ${ii}"; done
@@ -404,6 +419,7 @@ do
           ;;
     l)  WHICH_MOD=${OPTARG}
         NR_LAYERS="-l ${OPTARG}"
+        LS_SES="-l ${OPTARG}"
           ;;
     v)  VERTICES=${OPTARG}
           ;;
@@ -494,6 +510,7 @@ Arguments:
                         dard path that 'spinoza_fitprfs' will be looking for
                       - spinoza_denoising: input directory for pybest. By default 'fmriprep', but 
                         can be something else
+                      - spinoza_lineplanning: file to use for registration with ses-1 (default to DIR_DATA_SOURCE/<subject>/ses-<ls_session>/planning)
   -j <n_jobs>       number of jobs to use when submitting to SoGE. Used in:
                       - spinoza_mriqc
                       - spinoza_freesurfer
@@ -609,6 +626,8 @@ Arguments:
   --help            query the usage-information of a given module number: e.g., master -m 00 -q
                     brings up the help-text from module 00 (spinoza_lineplanning)
   --hrf             also fit the HRF during pRF-fitting (spinoza_fitprfs)
+  --ident(ity)      used for spinoza_lineplanning to check what the angles would look like without 
+                    executing a registration step
   --itk             use ITK-Snap to draw sinus mask (spinoza_sagittalsinus) [default]
   --inv             in case a session contains line-scanning data but also high resolution anatomical
                     data that you'd like to process as per usual, use this flag to also copy in the
@@ -618,6 +637,7 @@ Arguments:
                     Uses a custom pipeline for converting the files in a veeery specific way. If not
                     specified, we'll assume a regular scan-session of whole-brain data.
   --local           maps to '-l' in spinoza_fmriprep & spinoza_fitprfs; runs the process locally.
+  --lh              use left hemisphere for spinoza_lineplanning (same as '-h left')
   --merge_ses       average pRF data from all sessions
   --mag             use magnitude only for NORDIC denoising (spinoza_nordic)
   --multi_design    specifies that for all runs in the dataset have run-/task-specific screenshot di-
@@ -661,6 +681,7 @@ Arguments:
                     with "run-"
   --remove_surf_wf  Remove surface reconstruction workflow folder; refreshes the surfaces used for re-
                     gistration and transformation
+  --rh              use right hemisphere for spinoza_lineplanning (same as '-h right')             
   --rigid           use 'rigid-body' registration (spinoza_registration)
   --save_grid       Save out gridsearch parameters (default skips saving grid-parameters)
   --sge             passes '--sge' on to:
@@ -820,9 +841,9 @@ if [[ $? -eq 0 ]]; then
     exit 1
   fi
 
-  if [[ -z ${HEMI} ]]; then
+  if [[ -z ${HEMI} ]] && [[ -z ${HEMI_FLAG} ]]; then
     echo "ERROR: Need a hemisphere for this module. Specify the subject number with the -h flag in the master script"
-    echo "  e.g., ./master -m 00 -s 001 -h left"
+    echo "  e.g., ./master -m 00 -s 001 {--lh|--rh}"
     exit 1
   fi
 
@@ -846,15 +867,23 @@ if [[ $? -eq 0 ]]; then
   else
     ses_nr=${SES}
   fi
+
+  # check if we got custom file, otherwise default to directory
+  if [[ ! -z ${images} ]]; then
+    reg_img=${images}
+  else
+    reg_img=${DIR_DATA_SOURCE}/${subject}/ses-${ses_nr}/planning
+  fi
   
   subject=${SUBJECT_PREFIX}${SUB}
   ${job} spinoza_lineplanning \
     ${OW} \
+    ${HEMI_FLAG} \
+    ${IDENT_FLAG} \
     -s ${subject} \
     -n ${ses_nr} \
-    -i ${DIR_DATA_SOURCE}/${subject}/ses-${ses_nr}/planning \
-    -p ${DIR_DATA_DERIV}/pycortex/${subject}/line_pycortex.csv \
-    -h ${HEMI}
+    -i ${reg_img} \
+    -p ${DIR_DATA_DERIV}/pycortex/${subject}/ses-${ses_nr}/${subject}_ses-${ses_nr}_desc-coords.csv
 
 
   echo "[${module}] DONE" && echo
@@ -1758,6 +1787,7 @@ if [[ $? -eq 0 ]]; then
     ${SELECTION_FLAG} \
     ${MAN_EPI} \
     ${EPI_FILE} \
+    ${LS_SES} \
     ${DIR_DATA_HOME} ${DIR_DATA_DERIV} ${LABEL_FILE}
 
   if [[ $? -ne 0 ]]; then

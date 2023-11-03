@@ -78,6 +78,7 @@ Args:
   -s <subject>    subject ID as used throughout the pipeline without prefix (e.g., 001 > 001)
   -n <session>    session ID used to extract the correct pRF-parameters. Will combined with <deriva-
                   tives>/prf/ses-<session>
+  -l <line ses>   session ID for new line-scanning session; default = 2
   -t <task>       select pRF estimates from a particular task; by default the first element of TASK_
                   SES1 in spinoza_setup
   -v <vertices>   manually specify two vertices to use instead of having the program look for it. 
@@ -141,7 +142,8 @@ selection=""
 open_with=""
 epi=1
 epi_file=""
-while getopts :-:fos:v:n:m:t:e: argument
+ls_ses=2
+while getopts :-:fos:v:n:m:t:e:l: argument
 do
   case ${argument} in
     -)
@@ -213,6 +215,8 @@ do
           ;;
     n)  ses=${OPTARG}
           ;;          
+    l)  ls_ses=${OPTARG}
+          ;;            
     v)  vert=${OPTARG}
           ;;         
     o)  OW=1
@@ -286,7 +290,7 @@ for subID in ${search}; do
 
   # set the paths
   fs_dir=${DERIV}/freesurfer
-  cx_dir=${DERIV}/pycortex
+  cx_dir=${DERIV}/pycortex/${sub_name}/ses-${ls_ses}
   prf_dir=${DERIV}/prf/${base_path}
 
   # make the pycortex directory if it doesn't exists; the others should exists already. If not, it will complain about it below
@@ -297,14 +301,14 @@ for subID in ${search}; do
   # never really delete a line_pycortex file, but rename numerically, so that the highest number is the oldest file.
   # The file without any numbering will be the most recent one and also the one that will be used; unless otherwise
   # specified in the master script
-  line_orientation_file=${cx_dir}/${sub_name}/line_pycortex.csv
+  line_orientation_file=${cx_dir}/${sub_name}_ses-${ls_ses}_desc-coords.csv
   if [[ ${FULL_OW} -eq 1 ]]; then
     rm -r ${line_orientation_file} 2>/dev/null
   else
     if [[ ${OW} -eq 1 ]]; then
       if [[ -f ${line_orientation_file} ]]; then
-        nr=`find $(dirname ${line_orientation_file}) -type f -name "line_pycortex*" | wc -w`
-        fname=${DERIV}/pycortex/${sub_name}/line_pycortex${nr}.csv
+        nr=`find $(dirname ${line_orientation_file}) -type f -name "${base}*" -and -name "*desc-coords.csv" | wc -w`
+        fname=$(dirname ${line_orientation_file})/${base}_backup-${nr}_desc-coords.csv
         mv ${line_orientation_file} ${fname}
       fi
     fi
@@ -398,7 +402,7 @@ for subID in ${search}; do
       ${aparc_flag}"""
     
     echo ${cmd}
-    exec ${cmd}
+    ${cmd}
 
     if [[ $? != 0 ]]; then
       echo
@@ -409,7 +413,7 @@ for subID in ${search}; do
 
   else
 
-    echo "${sub_name}: line_pycortex.csv already present"
+    echo "${sub_name}: ${line_orientation_file} already present"
 
   fi
 
