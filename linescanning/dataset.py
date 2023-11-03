@@ -830,6 +830,7 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
         phase_onset=1,
         stim_duration=None,
         add_events=None,
+        add_cols=None,
         event_names=None,
         invoked_from_func=False,
         button_duration=1,
@@ -837,6 +838,7 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
         merge=True,
         resp_as_cov=False,
         ev_onset="stim",
+        duration_col="duration",
         key_press=["b"],
         expr=None,
         **kwargs):
@@ -865,6 +867,8 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
         self.key_press                      = key_press
         self.ev_onset                       = ev_onset
         self.expr                           = expr
+        self.duration_col                   = duration_col
+        self.add_cols                       = add_cols
 
         # filter kwargs
         tmp_kwargs = filter_kwargs(
@@ -1079,7 +1083,7 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
         elif duration == None:
             skip_duration = True
         else:
-            self.durations = self.trimmed['duration'].values[...,np.newaxis]
+            self.durations = self.trimmed[self.duration_col].values[...,np.newaxis]
 
         try:
             self.condition = self.trimmed['condition'].values[..., np.newaxis]
@@ -1173,6 +1177,17 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
         else:
             self.onset = np.hstack((self.onset_times, self.condition))
 
+        if isinstance(self.add_cols, (str,list)):
+            if isinstance(self.add_cols, str):
+                self.add_cols = [self.add_cols]
+            
+            utils.verbose(f" Adding {self.add_cols} to onsets", self.verbose)
+            add_cols = []
+            for i in self.add_cols:
+                add_cols.append(self.trimmed[i].values[..., np.newaxis])
+            add_cols = np.hstack(add_cols)
+            self.onset = np.hstack([self.onset, add_cols])
+
         # sort array based on onset times (https://stackoverflow.com/a/2828121)        
         self.onset = self.onset[self.onset[:,0].argsort()]
 
@@ -1187,6 +1202,9 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
         columns = ['onset', 'event_type']
         if not skip_duration:
             columns += ['duration']
+
+        if isinstance(self.add_cols, list):
+            columns += self.add_cols
 
         # check if we should do reaction times
         if self.RTs:
