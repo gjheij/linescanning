@@ -1,0 +1,113 @@
+#!/usr/bin/env python
+
+import nibabel as nb
+import numpy as np
+from nilearn import image
+import sys, getopt
+import os
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_setmasktoval
+
+This script is a wrapper that sets the values in a given mask to one in a given image, kind of like
+the opposite of regular 'making', where values in the mask are retained in the input image. See also
+call_setmasktoone and call_setmasktozero
+
+Args:
+    -i|--input      input image
+    -m|--mask       mask image
+    -o|--output     output image|optional)
+    -v|--val        value
+
+Outputs
+    same as input image but with values from mask image set to a specified value
+
+Example:
+    call_setmasktozero -i t1w_image.nii.gz -m mask.nii.gz -o zeroed_t1w.nii.gz
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    input_img = None
+    mask_img = None
+    out_img = None
+    val = None
+
+    try:
+        opts = getopt.getopt(argv,"hi:m:o:v:",["input=", "mask=", "output=", "val="])[0]
+    except getopt.GetoptError:
+        print(main.__doc__)
+        sys.exit(2)
+
+    for opt, arg in opts:
+        if opt == '-h':
+            print(main.__doc__)
+            sys.exit()
+        elif opt in ("-i", "--input"):
+            input_img = os.path.abs(arg)
+        elif opt in ("-m", "--mask"):
+            mask_img = os.path.abspath(arg)
+        elif opt in ("-o", "--output"):
+            out_img = os.path.abspath(arg)
+        elif opt in ("-v", "--val"):
+            val = arg
+
+            if "." in val:
+                val = float(val)
+            else:
+                val = int(val)
+
+    if len(argv) < 4:
+        print("\nNOT ENOUGH ARGUMENTS SPECIFIED")
+        print(main.__doc__)
+        sys.exit()
+
+    anat = nb.load(input_img)
+    mask = nb.load(mask_img)
+
+    # get the data in numpy arrays
+    anat_data = anat.get_fdata()
+    mask_data = mask.get_fdata()
+
+    if anat_data.shape != mask_data.shape:
+        print(f"Input shape {anat_data.shape} does not match mask shape {mask_data.shape}. Resampling..")
+        res_img = image.resample_to_img(mask_img, input_img, interpolation='nearest')
+        mask_data = res_img.get_fdata()
+
+    # set corresponding voxels from mask in input to zero and save new image
+    print(f"Setting mask voxels to value: {val}")
+    anat_data[mask_data.astype(bool)] = val
+
+    if not isinstance(out_img, str):
+        out_img = input_img
+
+    # load files in with nibabel
+    fs = False
+    if out_img.endswith("nii.gz"):
+        ext = "nii.gz"
+    elif out_img.endswith("nii"):
+        ext = "nii"
+    elif out_img.endswith("mgz"):
+        ext = "mgz"
+        fs = True
+
+    # check if we should initialize MGH image or Nifti
+    if fs:
+        print("Output is FreeSurfer MGHImage")
+        nb_func = nb.freesurfer.MGHImage
+    else:
+        print("Output is Nifti image")
+        nb_func = nb.Nifti1Image
+
+    nb_func(
+        anat_data, 
+        header=anat.header, 
+        affine=anat.affine
+    ).to_filename(out_img)
+    print(f"Saved '{out_img}'")
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
