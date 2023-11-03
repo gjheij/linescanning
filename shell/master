@@ -1576,6 +1576,7 @@ if [[ $? -eq 0 ]]; then
     ${SGE_QUEUE} \
     ${KEEP_RUNS} \
     ${clean_flag} \
+    ${fd_flag} \
     ${DOCKER_FLAG} \
     ${fetch_fsl_flag} \
     -f ${DIR_DATA_HOME} \

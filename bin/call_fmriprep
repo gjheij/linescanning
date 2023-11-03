@@ -58,6 +58,7 @@ Arguments:
   --clean           remove the single-subject workflow folder completely. This saves storage, but comes
                     at the price that it re-runs EVERYTHING if you restart the process.
   --fetch_fsl       retrieve the MNI-transformed nifti-files (which are cleaned by default)
+  --fd              retrieve the frame-wise displacement files from the workflow folder
 
 Example:
   call_fmriprep -s 001 (simplest form, runs the entire pipeline)
@@ -91,6 +92,7 @@ BOLDREF=1
 clean_wd=0
 USE_DOCKER=0
 fetch_fsl=0
+FD_ONLY=0
 while getopts :-:us:m:r:d:c:i:b:w:l:x:t:k:a: arg
 do
   case ${arg} in
@@ -115,7 +117,10 @@ do
           ;;            
         fetch_fsl)
           fetch_fsl=1
-          ;;           
+          ;;        
+        fd)
+          FD_ONLY=1
+          ;;               
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}" >&2
@@ -354,7 +359,7 @@ if [[ ${fetch_fsl} -ne 1 ]]; then
 fi
 
 # run cmd if warp_only=0
-if [[ ${WARP_ONLY} -eq 0 && ${fetch_fsl} -eq 0 ]]; then
+if [[ ${WARP_ONLY} -eq 0 && ${fetch_fsl} -eq 0 && ${FD_ONLY} -eq 0 ]]; then
 
   # execute the fMRIPrep command
   cmd="""
@@ -380,6 +385,9 @@ ${run_cmd} \
   -w ${work} \
   ${kwargs[@]}
 """
+
+  # set the flag to get the FD-files
+  FD_ONLY=1
 
   # execute
   echo ${cmd}
@@ -422,7 +430,7 @@ if [[ ${fetch_fsl} -eq 0 ]]; then
 
   # see https://github.com/nipreps/fmriprep/issues/2189#issuecomment-646620788
   for tt in "fwd" "inv"; do
-    xfms=(`find ${work}/fmriprep*wf/single_subject_${subj_ID}_wf/func_preproc*/bold_reg_wf/bbreg_wf/concat_xfm -type f -name "out_${tt}.tfm" 2>/dev/null`)
+    xfms=(`find -L ${work}/fmriprep*wf/single_subject_${subj_ID}_wf/func_preproc*/bold_reg_wf/bbreg_wf/concat_xfm -type f -name "out_${tt}.tfm" 2>/dev/null`)
     if [[ ! -z ${xfms} ]]; then
 
       if [[ ${tt} == "fwd" ]]; then
@@ -496,7 +504,7 @@ if [[ ${fetch_fsl} -eq 0 ]]; then
 fi
 
 if [[ ${fetch_fsl} -eq 1 ]]; then
-  mni_files=(`find ${work}/fmriprep*wf/single_subject_${subj_ID}_wf/func_preproc*/bold_std_trans_wf/*MNI152NLin6Asym*/merge -type f -name "*_merged.nii.gz" 2>/dev/null`)
+  mni_files=(`find -L ${work}/fmriprep*wf/single_subject_${subj_ID}_wf/func_preproc*/bold_std_trans_wf/*MNI152NLin6Asym*/merge -type f -name "*_merged.nii.gz" 2>/dev/null`)
   if [[ ! -z ${mni_files} ]]; then
     echo "Copying \"MNI152NLin6Asym\"-transformed files"
     for mni in ${mni_files[@]}; do
@@ -520,5 +528,36 @@ if [[ ${fetch_fsl} -eq 1 ]]; then
     echo "Done" 
   else
     echo "Could not find directory \"${work}/fmriprep*wf/single_subject_${subj_ID}_wf/func_preproc*/bold_std_trans_wf/*MNI152NLin6Asym*/merge\""
+  fi
+fi
+
+# find directory where these FD files should live
+if [[ ${FD_ONLY} -eq 1 ]]; then
+  echo "Finding FD-timecourse files"
+  work_dir=${work}/fmriprep*wf/single_subject_${subj_ID}_wf
+  fd_files=(`find -L ${work_dir}/func_preproc*/bold_confounds_wf/fdisp -type f -name "fd_power*" -and -name "*txt" 2>/dev/null`)
+  if [ ! -z ${fd_files} ]; then
+
+    # find # fdvars timecourse for Marco
+    for fd in ${fd_files[@]}; do
+
+      wf_name=`python -c "from linescanning.utils import disassemble_fmriprep_wf; print(disassemble_fmriprep_wf('${fd}', '${subj_ID}', prefix='${pref}'))"`
+      
+      # check ses-flag
+      if [[ ${wf_name} == *"ses-"* ]]; then
+        ses_id=`echo ${wf_name} | cut -d'_' -f2`
+        base_dir=${pref}${subj_ID}/${ses_id}
+      else
+        base_dir=${pref}${subj_ID}
+      fi
+
+      out_fd=${derivatives}/fmriprep/${base_dir}/func/${wf_name}_desc-fd_bold.txt
+      echo " writing ${out_fd}"
+      cp ${fd} ${out_fd}
+
+    done
+    echo "Done"
+  else
+    echo "Could not find \"fd_power_2012.txt\"-files folder in \"${work_dir}\""
   fi
 fi
