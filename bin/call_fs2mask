@@ -2,7 +2,6 @@
 
 import sys
 import os
-import ast
 from linescanning import utils
 import nibabel as nb
 import numpy as np
@@ -63,14 +62,14 @@ Example:
     # print(argv)
 
     try:
-        atlas       = argv[0]
+        atlas       = os.path.abspath(argv[0])
         roi_values  = argv[1]
-        out_img     = argv[2]
-        resamp_img  = argv[3]
+        out_img     = os.path.abspath(argv[2])
+        resamp_img  = os.path.abspath(argv[3])
     except:
-        atlas       = argv[0]
+        atlas       = os.path.abspath(argv[0])
         roi_values  = argv[1]
-        out_img     = argv[2]
+        out_img     = os.path.abspath(argv[2])
 
     if not isinstance(atlas, str):
         raise ValueError("Please specify a string pointing to the desired atlas")
@@ -102,13 +101,6 @@ Example:
         roi_values = [roi_values]
 
     roi_values = [int(i) for i in roi_values]
-
-    # get roi-values
-    if not isinstance(roi_values, int):
-        # we got two values
-        roi_values = np.array(ast.literal_eval(roi_values))
-    else:
-        roi_values = np.array(roi_values)
 
     print(f"Extracting {roi_values}")
     empty_img = np.zeros_like(freesurfer_seg.get_fdata())
