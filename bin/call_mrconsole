@@ -29,11 +29,12 @@ Args:
     --ses2          Second session anatomy
     -a <affine>     matrix mapping session 1 to session 2 (ANTs file)
     -h <hemi>       hemisphere of interest (e.g., "left", or "right")
+    --lh|--rh       equivalents of -h left/right
 
 Usage:
     call_mrconsole -s sub-001 -d /path/to/derivatives -h left -a /path/to/genaff.mat --ses1 anat_
                    ses1.nii.gz --ses2 anat_ses2.nii.gz
-    call_mrconsole -s sub-001 --ses1 <ses1> --ses2 <ses2> -d <DIR_DATA_DERIV> -a <aff> -h left
+    call_mrconsole -s sub-001 --ses1 <ses1> --ses2 <ses2> -d <DIR_DATA_DERIV> -a <aff> --lh
 
 ---------------------------------------------------------------------------------------------------
     """
@@ -55,7 +56,7 @@ Usage:
     line_fn   = None
 
     try:
-        opts = getopt.getopt(argv,"is:n:f:p:c:d:a:h:l:q:",["subject=", "new_ses=", "prf_ses=","fsdir=", "cxdir=", "prfdir=", "deriv=", "affine=", "hemi=", "ses2=", "line="])[0]
+        opts = getopt.getopt(argv,"is:n:f:p:c:d:a:h:l:q:",["subject=", "new_ses=", "prf_ses=","fsdir=", "cxdir=", "prfdir=", "deriv=", "affine=", "hemi=", "ses2=", "line=", "rh","lh"])[0]
     except getopt.GetoptError:
         print(main.__doc__)
         print("ERROR IN ARGUMENT HANDLING")
@@ -67,7 +68,7 @@ Usage:
             sys.exit()
         elif opt in ("-s", "--subject"):
             subject = arg
-        elif opt in ("-q", "--new_ses"):
+        elif opt in ("-q", "--prf_ses"):
             prf_ses = arg                  
         elif opt in ("-n", "--new_ses"):
             new_ses = arg            
@@ -83,9 +84,13 @@ Usage:
             anat2 = arg
         elif opt in ("-h", "--hemi"):
             hemi = arg
+        elif opt in ("--lh"):
+            hemi = "left"         
+        elif opt in ("--rh"):
+            hemi = "right"                
         elif opt in ("-a", "--affine"):
             affine = arg
-        elif opt in ("-l", "--line"):
+        elif opt in ("--line"):
             line_fn = arg            
 
     if len(argv) < 3:
@@ -104,6 +109,12 @@ Usage:
         cx_dir = opj(deriv, 'pycortex')
         prf_dir = opj(deriv, 'prf', subject, f'ses-{prf_ses}')
 
+    if not isinstance(line_fn, str):
+        raise ValueError("Please specify a valid path to the file containing the coordinates")
+    
+    if not os.path.exists(line_fn):
+        raise FileNotFoundError(f"Could not find file {line_fn}")
+    
     # get target vertex
     targ = optimal.TargetVertex(
         subject,

@@ -143,7 +143,18 @@ class SurfaceCalc(object):
         else:
             self.fs_dir = fs_dir
 
+        # define bunch of conditions when to import subject
+        self.import_subj = False
         if not os.path.exists(self.ctx_path):
+            self.import_subj = True
+        else:
+            if not "surfaces" in os.listdir(self.ctx_path):
+                self.import_subj = True
+            else:
+                if len(os.listdir(opj(self.ctx_path, "surfaces")))==0:
+                    self.import_subj = True
+
+        if self.import_subj:
             # import subject from freesurfer (will have the same names)
             cortex.freesurfer.import_subj(
                 fs_subject=self.subject,
@@ -762,122 +773,122 @@ class pRFCalc():
         if not self.fs_dir:
             self.fs_dir = os.environ.get("SUBJECTS_DIR")
         
-        # read BIDS components from prf-file
-        self.comps = utils.split_bids_components(os.path.basename(self.prf_file))
-
-        # set subject
-        if not isinstance(self.subject, str):
-            if "sub" in list(self.comps.keys()):
-                self.subject = f"sub-{self.comps['sub']}"
-
-        # set model
-        if not isinstance(self.model, str):
-            if "model" in list(self.comps.keys()):
-                self.model = self.comps["model"]
-            else:
-                self.model = "gauss"
-        
-        # create output string from input file if we found BIDS components
-        self.out_ = ""
-        for el in list(self.comps.keys()):
-            if el != "desc":
-                self.out_ += f"{el}-{self.comps[el]}_"
-
-        if len(self.out_) != 0:
-            self.out_ += "desc-"
-
         # do stuff if file exists
-        if os.path.exists(self.prf_file):
+        if isinstance(self.prf_file, str):
+            if os.path.exists(self.prf_file):
+                # read BIDS components from prf-file
+                self.comps = utils.split_bids_components(os.path.basename(self.prf_file))
 
-            # read file
-            self.prf_params = prf.read_par_file(self.prf_file)
-            self.prf_dir = os.path.dirname(self.prf_file)
+                # set subject
+                if not isinstance(self.subject, str):
+                    if "sub" in list(self.comps.keys()):
+                        self.subject = f"sub-{self.comps['sub']}"
 
-            # obtained pRF parameters
-            self.df_prf = prf.Parameters(self.prf_params, model=self.model).to_df()
-
-        else:
-            raise FileNotFoundError(f"Could not find file '{self.prf_file}'")
-        
-        if isinstance(self.subject, str):
-            
-            # read pycortex filestore
-            ctx_path = pycortex.set_ctx_path(opt="show_fs")
-
-            # filestore needs to exist to 'import_subj' to work
-            if not os.path.exists(ctx_path):
-                os.makedirs(ctx_path, exist_ok=True)
-
-            if not os.path.exists(opj(ctx_path, self.subject)):
-                cortex.freesurfer.import_subj(
-                    fs_subject=self.subject,
-                    cx_subject=self.subject,
-                    freesurfer_subject_dir=self.fs_dir,
-                    whitematter_surf='smoothwm')
-
-            # make object for r2
-            self.r2_v = pycortex.Vertex2D_fix(
-                self.df_prf.r2,
-                self.df_prf.r2,
-                subject=self.subject,
-                cmap="magma",
-                vmax1=round(self.df_prf.r2.max(),2),
-                vmin2=self.thr,
-                vmax2=0.5)
-
-            # make object for eccentricity
-            self.ecc_v = pycortex.Vertex2D_fix(
-                self.df_prf.ecc,
-                self.df_prf.r2,
-                subject=self.subject,
-                cmap="nipy_spectral",
-                vmax1=5,
-                vmin2=self.thr,
-                vmax2=0.5)
-
-            # make object for polar angle
-            self.polar_v = pycortex.Vertex2D_fix(
-                self.df_prf.polar,
-                self.df_prf.r2,
-                subject=self.subject,
-                cmap="hsvx2",
-                vmin1=-np.pi,
-                vmax1=np.pi,
-                vmin2=self.thr,                
-                vmax2=0.5)
-            
-            self.prf_data_dict = {}
-            for el in ["r2","ecc","polar"]:
-                self.prf_data_dict[el] = getattr(self, f"{el}_v")
-            
-            # create objects for A,B,C,D
-            if self.model == "norm":
-                for par in ["B","D","ratio (B/D)"]:
-                    if par in ["B","D"]:
-                        minmax = [0,100]
-                        obj_par = par
+                # set model
+                if not isinstance(self.model, str):
+                    if "model" in list(self.comps.keys()):
+                        self.model = self.comps["model"]
                     else:
-                        minmax = [
-                            np.nanquantile(self.df_prf["ratio (B/D)"].loc[self.df_prf.r2>self.thr].values,0.1),
-                            round(np.nanquantile(self.df_prf["ratio (B/D)"].loc[self.df_prf.r2>self.thr].values,0.9),2)
-                        ]
-                        obj_par = "ratio_bd"
-                    
-                    data = self.df_prf[par]
-                    # data[data>minmax[1]] = 0
-                    obj_ = pycortex.Vertex2D_fix(
-                        data,
-                        self.df_prf.r2,
-                        subject=self.subject,
-                        vmin1=minmax[0],
-                        vmax1=minmax[1],
-                        vmin2=self.thr,
-                        vmax2=0.5,
-                        cmap="inferno"
-                    )
+                        self.model = "gauss"
+                
+                # create output string from input file if we found BIDS components
+                self.out_ = ""
+                for el in list(self.comps.keys()):
+                    if el != "desc":
+                        self.out_ += f"{el}-{self.comps[el]}_"
 
-                    setattr(self, f"{obj_par}_v", obj_)
-                    self.prf_data_dict[obj_par] = obj_
+                if len(self.out_) != 0:
+                    self.out_ += "desc-"
+
+                # read file
+                self.prf_params = prf.read_par_file(self.prf_file)
+                self.prf_dir = os.path.dirname(self.prf_file)
+
+                # obtained pRF parameters
+                self.df_prf = prf.Parameters(self.prf_params, model=self.model).to_df()
+
+            else:
+                raise FileNotFoundError(f"Could not find file '{self.prf_file}'")
+        
+            if isinstance(self.subject, str):
+                
+                # read pycortex filestore
+                ctx_path = pycortex.set_ctx_path(opt="show_fs")
+
+                # filestore needs to exist to 'import_subj' to work
+                if not os.path.exists(ctx_path):
+                    os.makedirs(ctx_path, exist_ok=True)
+
+                if not os.path.exists(opj(ctx_path, self.subject)):
+                    cortex.freesurfer.import_subj(
+                        fs_subject=self.subject,
+                        cx_subject=self.subject,
+                        freesurfer_subject_dir=self.fs_dir,
+                        whitematter_surf='smoothwm')
+
+                # make object for r2
+                self.r2_v = pycortex.Vertex2D_fix(
+                    self.df_prf.r2,
+                    self.df_prf.r2,
+                    subject=self.subject,
+                    cmap="magma",
+                    vmax1=round(self.df_prf.r2.max(),2),
+                    vmin2=self.thr,
+                    vmax2=0.5)
+
+                # make object for eccentricity
+                self.ecc_v = pycortex.Vertex2D_fix(
+                    self.df_prf.ecc,
+                    self.df_prf.r2,
+                    subject=self.subject,
+                    cmap="nipy_spectral",
+                    vmax1=5,
+                    vmin2=self.thr,
+                    vmax2=0.5)
+
+                # make object for polar angle
+                self.polar_v = pycortex.Vertex2D_fix(
+                    self.df_prf.polar,
+                    self.df_prf.r2,
+                    subject=self.subject,
+                    cmap="hsvx2",
+                    vmin1=-np.pi,
+                    vmax1=np.pi,
+                    vmin2=self.thr,                
+                    vmax2=0.5)
+                
+                self.prf_data_dict = {}
+                for el in ["r2","ecc","polar"]:
+                    self.prf_data_dict[el] = getattr(self, f"{el}_v")
+                
+                # create objects for A,B,C,D
+                if self.model == "norm":
+                    for par in ["B","D","ratio (B/D)"]:
+                        if par in ["B","D"]:
+                            minmax = [0,100]
+                            obj_par = par
+                        else:
+                            minmax = [
+                                np.nanquantile(self.df_prf["ratio (B/D)"].loc[self.df_prf.r2>self.thr].values,0.1),
+                                round(np.nanquantile(self.df_prf["ratio (B/D)"].loc[self.df_prf.r2>self.thr].values,0.9),2)
+                            ]
+                            obj_par = "ratio_bd"
+                        
+                        data = self.df_prf[par]
+                        # data[data>minmax[1]] = 0
+                        obj_ = pycortex.Vertex2D_fix(
+                            data,
+                            self.df_prf.r2,
+                            subject=self.subject,
+                            vmin1=minmax[0],
+                            vmax1=minmax[1],
+                            vmin2=self.thr,
+                            vmax2=0.5,
+                            cmap="inferno"
+                        )
+
+                        setattr(self, f"{obj_par}_v", obj_)
+                        self.prf_data_dict[obj_par] = obj_
 
     def open_pycortex(
         self,
@@ -2193,7 +2204,13 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
                     verbose=True,
                     model=self.model,
                     v1=v1_data)
-                
+
+            # create session directory in pycortex | needs to be after CalcBestVertex so that pycortex get import normally
+            if isinstance(self.out, str):
+                ctx_ses = os.path.dirname(self.out)
+                if not os.path.exists(ctx_ses):
+                    os.makedirs(ctx_ses, exist_ok=True)
+
             #----------------------------------------------------------------------------------------------------------------
             # Set the cutoff criteria based on which you'd like to select a vertex
         
@@ -2426,7 +2443,7 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
                         if isinstance(self.out, str):
 
                             # write json file
-                            self.json_file = opj(self.cx_dir, self.subject, f"cutoffs_pid-{os.getpid()}.json")
+                            self.json_file = opj(ctx_ses, f"cutoffs_pid-{os.getpid()}.json")
                             self.json_object = json.dumps(self.write_dict, indent=4)
                             with open(self.json_file, "w") as outfile:
                                 outfile.write(self.json_object)
@@ -2455,10 +2472,14 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
                     self.prf_data = prf.read_par_file(self.prf_file)
 
                     fbase = self.subject
+                    ls_comps = utils.split_bids_components(self.out)
+                    if "ses" in list(ls_comps.keys()):
+                        fbase += f"_ses-{ls_comps['ses']}"
+
                     if self.model != None:
                         fbase += f'_model-{self.model}'
 
-                    self.prf_bestvertex = opj(self.cx_dir, self.subject, f'{fbase}_desc-best_vertices.csv')
+                    self.prf_bestvertex = opj(ctx_ses, f'{fbase}_desc-best_vertices.csv')
 
                     # print(prf_right)
                     # print(prf_left)

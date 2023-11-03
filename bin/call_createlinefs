@@ -27,7 +27,7 @@ Args:
     -f|--fsdir      FreeSurfer directory; if left empty, SUBJECTS_DIR will be used 
     -l|--line_ctx   file containing the information about placement of the line. If left empty
                     we'll look for <project>/derivatives/pycortex/<subject>/line_pycortex.csv.
-    -n|--session    session ID of line-scanning session to which `line_ctx` belongs
+    -n|--session    session ID of line-scanning session to which `line_ctx` belongs. Default = 2
     -o|--output     new nifti-image containing the beam with the correct orientation and dimensions
                     of FreeSurfer
     --lh|--rh       which hemisphere should we do? Use 'lh' for left, 'rh' for right (default = lh)
@@ -99,20 +99,22 @@ Example:
     beam = get_file_from_substring("space-fs_desc-template_beam", os.path.dirname(orig))
 
     # apply similar strategy as in spinoza_lineplanning, but then with an identity matrix
-    anat2 = opj(os.environ['FS'], subject, 'mri', 'orig.nii.gz')
+    anat2 = opj(
+        os.environ.get('FS'), 
+        subject, 
+        'mri', 
+        'orig.nii.gz'
+    )
+
     if not os.path.exists(anat2):
         os.system(f"call_mriconvert {orig} 2>/dev/null")
 
-    if line_ctx == None:
-        line_ctx = opj(os.environ['CTX'], subject, 'line_pycortex.csv')
+    if not isinstance(line_ctx, str):
+        line_ctx = opj(os.environ['CTX'], subject, f"ses-{session}", f"{subject}_ses-{session}_desc-coords.csv")
 
-        # get target vertex
-        targ = optimal.TargetVertex(
-            subject,
-            out=line_ctx,
-            deriv=os.environ.get("DIR_DATA_DERIV")
-        )
-
+    if not os.path.exists(line_ctx):
+        raise FileExistsError(f"Could not find file with coordinates: {line_ctx}")
+    
     # get target vertex
     targ = optimal.TargetVertex(
         subject,
