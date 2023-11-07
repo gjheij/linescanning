@@ -2115,7 +2115,8 @@ class HRFMetrics():
         force_neg=False,
         nan_policy=False):
 
-        hrf = self._verify_input(self.hrf, TR=TR, shift=self.shift)
+        # set shift to None because this doesn't deal with 2D arrays; just get the format right
+        hrf = self._verify_input(self.hrf, TR=TR, shift=None)
 
         cols = list(hrf.columns)
         if not isinstance(force_neg, list):
@@ -2134,7 +2135,8 @@ class HRFMetrics():
                 force_pos=force_pos[ix],
                 force_neg=force_neg[ix],
                 plot=self.plot,
-                nan_policy=nan_policy)
+                nan_policy=nan_policy
+            )
             
             self.metrics.append(pars)
             self.fwhm_objs.append(fwhm_)
@@ -2494,7 +2496,7 @@ class HRFMetrics():
         **kwargs):
 
         # verify input type
-        hrf = self._verify_input(hrf, TR=TR)
+        hrf = self._verify_input(hrf, TR=TR, shift=self.shift)
 
         if plot:
             self.plot_profile_for_debugging(hrf, add_hline=0)
