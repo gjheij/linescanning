@@ -15,4 +15,4 @@ mkl
 mkl-service
 shapely==2.0.1
 mock
-sphinx-rtd-theme
+sphinx_rtd_theme
