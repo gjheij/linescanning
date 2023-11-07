@@ -358,12 +358,8 @@ Below is the ``help``-information from the ``master`` script:
                       DoG, CSS, or DN). By default, we'll use trust-constr minimization for both. It's
                       recommended to at least to Gaussian fitting with trust-constr, and potential ex-
                       tended models with L-BGFS. For this, see '-x' flag
+    --biascorr          maps to '-b' in spinoza_biassanlm; perform bias correction after denoising
     --comb_only       skip nighres, only do combination of segmentations. Works with '-o' flag. 
-    --dcm_fix         Extremely large par/rec's cannot be converted with 'dcm2niix'. Normal fMRI sessions
-                      are converted using 'call_pydcm2niix', but this flag points it to 'call_dcm2niix',
-                      the same that is used for line-scanning sessions. It pipes the output from dcm2niix
-                      to a log file to monitor 'Catastrophic errors'. It then tries to convert these with
-                      'parrec2nii', which comes with the python pacakge 'nibabel'
     --f(mri)prep      use output from fMRIPrep as input for pRF-fitting. Default is the output fro py-
                       best
     --full            Do full processing with CAT12, assuming module 8 was skipped. This does itera-
@@ -394,7 +390,6 @@ Below is the ``help``-information from the ``master`` script:
     --nighres         use nighres-software for cortex reconstruction (spinoza_cortexrecon) or equivolu-
                       metric layering (spinoza_layering)
     --no_bbr          maps to '--force-no-bbr' in call_fmriprep
-    --no_biascorr     maps to '-b' in spinoza_biassanlm; don't perform bias correction after denoising
     --no_bounds       Turn off grid bounds; sometimes parameters fall outside the grid parameter bounds, 
                       causing 'inf' values. This is especially troublesome when fitting a single time-
                       course. If you trust your iterative fitter, you can turn off the bounds and let 
@@ -532,7 +527,7 @@ First, we need to convert our DICOMs/PARRECs to nifti-files. We can do this by p
         │   └── sub-001_ses-1_task-2R_run-3_Logs
         └── Raw files (DICOMs/PARRECs)
 
-Once you've put the files there, you can run ``module 02a`` (if this doesn't do anything, you're probably on an older version. This means you do not have access to `02b`; quality control with `MRIqc`). This will convert your data to nifti's and store them according to BIDS. You can use the ``-n`` flag to specify with which session we're dealing. This creates the folder structure outlined above. If you also have phase data from your BOLD, then it creates an additional `phase`-folder, which can be used for ``NORDIC`` later on. If you have a non-linescanning acquisition (i.e., standard whole-brain-ish data), we'll set the coordinate system to `LPI` for all image. This ensures we can use later outputs from fMRIprep_ on our native data, which will help if you want to combine segmentations from different software packages (affine matrices are always a pain; check [here](https://nipy.org/nibabel/coordinate_systems.html) for a good explanation). If you have extremely large par/rec files, `dcm2niix` [might fail](https://github.com/rordenlab/dcm2niix/issues/659). To work around this, we monitor these error and attempt to re-run the conversion with [call_parrec2nii](https://github.com/gjheij/linescanning/blob/main/bin/call_parrec2nii), which wraps `parrec2nii` that comes with nibabel. To do this, use the `--dcm_fix` flag. Additionally, we also try to read the phase-encoding direction from the PAR-file, but this is practically impossible. So there's two ways to automatically populate the `PhaseEncodingDirection` field in your json files: 
+Once you've put the files there, you can run ``module 02a`` (if this doesn't do anything, you're probably on an older version. This means you do not have access to `02b`; quality control with `MRIqc`). This will convert your data to nifti's and store them according to BIDS. You can use the ``-n`` flag to specify with which session we're dealing. This creates the folder structure outlined above. If you also have phase data from your BOLD, then it creates an additional `phase`-folder, which can be used for ``NORDIC`` later on. If you have a non-linescanning acquisition (i.e., standard whole-brain-ish data), we'll set the coordinate system to `LPI` for all image. This ensures we can use later outputs from fMRIprep_ on our native data, which will help if you want to combine segmentations from different software packages (affine matrices are always a pain; check [here](https://nipy.org/nibabel/coordinate_systems.html) for a good explanation). If you have extremely large par/rec files, `dcm2niix` [might fail](https://github.com/rordenlab/dcm2niix/issues/659). To work around this, we monitor these error and attempt to re-run the conversion with [call_parrec2nii](https://github.com/gjheij/linescanning/blob/main/bin/call_parrec2nii), which wraps `parrec2nii` that comes with nibabel. Additionally, we also try to read the phase-encoding direction from the PAR-file, but this is practically impossible. So there's two ways to automatically populate the `PhaseEncodingDirection` field in your json files: 
 
 1) Accept defaults: `AP` for BOLD and `PA` for FMAP 
 2) Set the `export PE_DIR_BOLD=<value>` in the setup file, with one of `AP`, `PA`, `LR`, or `RL`. This sets the phase-encoding direction for the BOLD-data. This value is automatically switched for accompanying fieldmaps
@@ -541,10 +536,9 @@ Once you've put the files there, you can run ``module 02a`` (if this doesn't do 
 
 .. code:: bash
 
-    $ master -m 02a -n 1                         # spinoza_scanner2bids
-    $ master -m 02a -n 1 --dcm_fix               # monitor and fix catastrophic errors
-    $ master -m 02a -n 1 --dcm_fix --pa          # set the PhaseEncodingDirection for the BOLD to PA (default = AP)
-    $ master -m 02a -n 1 --dcm_fix --no_lpi      # do not reorient your data to LPI coordinates (the default one for fMRIPrep); ill-advised when you want to do NORDIC
+    $ master -m 02a -n 1            # spinoza_scanner2bids
+    $ master -m 02a -n 1 --pa       # set the PhaseEncodingDirection for the BOLD to PA (default = AP)
+    $ master -m 02a -n 1 --no_lpi   # do not reorient your data to LPI coordinates (the default one for fMRIPrep); ill-advised when you want to do NORDIC
 
 The pipeline can automatically populate the `IntendedFor`-field in the json files. It can do so if one of the following situations holds:
 
@@ -583,14 +577,14 @@ If you have a ``T2w``-image, you can create a sagittal sinus mask. We can do thi
     $ master -m 07 # spinoza_sinusfrommni
 
     # optional
-    $ master -m 05b --affine # use affine registration instead of SyN (is faster)
+    $ master -m 05b --affine # use affine registration instead of SyN (is faster, but less accurate)
 
-Bias correct (*SPM*) and denoise (*SANLM*) your ``T1w``-image. If you did not use Pymp2rage_, we'll be looking for the ``T1w``-file in ``DIR_DATA_HOME/<subject>/<ses>/anat``. If you did use Pymp2rage_, we'll be looking for the file in ``<DIR_DATA_HOME>/derivatives/pymp2rage/<subject>/<ses>``, otherwise we'll default to ``$DIR_DATA_HOME``. If you do not want additional bias correction after denoising, use ``--no_biascorr``
+Bias correct (*SPM*) and denoise (*SANLM*) your ``T1w``-image. If you did not use Pymp2rage_, we'll be looking for the ``T1w``-file in ``DIR_DATA_HOME/<subject>/<ses>/anat``. If you did use Pymp2rage_, we'll be looking for the file in ``<DIR_DATA_HOME>/derivatives/pymp2rage/<subject>/<ses>``, otherwise we'll default to ``$DIR_DATA_HOME``. If you want additional bias correction after denoising, use ``--biascorr``
 
 .. code:: bash
 
     $ master -m 08 # spinoza_biassanlm
-    $ master -m 08 --no_biascorr # skip bias correction after denoising 
+    $ master -m 08 --biascorr # do bias correction after denoising 
 
 Perform brain extraction and white/gray matter + CSF segmentations with CAT12_. If you've skipped the previous step because you want a more thorough denoising of your data, you can specify ``--full`` to do iterative filtering of the data. Beware, though, that this is usually a bit overkill as it makes your images look cartoon'ish.
 
@@ -621,23 +615,24 @@ The whole point of this pipeline is to create a very good segmentation of the su
 .. code:: bash
 
     $ master -m 13 # spinoza_masking
+    $ master -m 13 --no_manual # directly apply mask to T1w, no manual intervention
 
 That was basically the preprocessing of the anatomicals files. We can now run FreeSurfer_ reconstruction *outside* of fMRIprep_. This is because the newest version of FreeSurfer_ deals better with ``T2w``-images than the version used in fMRIprep_. If you have a cluster available (detected via the ``$PLACE`` variable in the spinoza_setup file), we'll automatically submit the job, running all stages of `recon-all`. Check [call_freesurfer](https://github.com/gjheij/linescanning/blob/main/bin/call_freesurfer) for information about further editing/debugging modes. If you've skipped all of the previous preprocessing, we'll look in an hierarchical manner for the T1w-files: first, we'll look in `$DIR_DATA_DERIV/masked_mp2rage` (assuming you've run the preprocessing), then `$DIR_DATA_DERIV/denoising` (denoised, but un-masked), `$DIR_DATA_DERIV/pymp2rage` (un-denoised, un-masked), `$DIR_DATA_HOME` (raw output from the scanner). It also has the ability to process your edits made on the `brainmask.mgz` or white matter, and you can also specify an expert option file (see [this example](https://github.com/gjheij/linescanning/blob/main/misc/example_experts.opts) for inspiration).
 
 .. code:: bash
 
     $ master -m 14
-    $ master -m 14 -s 00 -r 23 -e {wm,pial,cp,aseg}        # insert your edits (one of wm, pial, cp, or aseg)
-    $ master -m 14 -s 00 -x expert.opts     # use an expert option file
+    $ master -m 14 -s 00 -r 23 -e {wm,pial,cp,aseg} # insert your edits (one of wm, pial, cp, or aseg)
+    $ master -m 14 -s 00 -x expert.opts             # use an expert option file
 
 Once you're satisfied with the surface reconstruction, you can proceed with fMRIprep_. By default this runs fMRIprep_ with the ``--anat-only`` option, but you can use ``-t`` flag to include functional data in as well. If you have multiple tasks in your session and you'd like to preprocess only a particular task, you can specify ``-t <task ID>`` instead of ``-t func``. Alternatively, you can use ``-u <config file>`` (see `DIR_SCRIPTS/misc/fmriprep_config.json`). I use this because most of my sessions will have line-scanning data that cannot be preprocessed by fMRIprep_. Therefore, I use `DIR_SCRIPTS/misc/fmriprep_config.json` to only include data from `ses-1`. If there's no `$DIR_DATA_DERIV/masked_mp2rage`-folder, we'll default straight to `$DIR_DATA_HOME`. fMRIprep_'s bold-reference images are sometimes a bit wonky, so we're creating those again after fMRIPrep has finished. In addition, we'll copy the `bold-to-T1w`-registration files to the output folder as well, just so we have everything in one place. This avoids that we have to request the MNI152 outputs, as we have all the registration files needed in case we'd still want them (saves some disk space). To skip fMRIPrep and only create new bold-reference images and copy the registration files, use ``--warp-only``. 
 
 .. code:: bash
 
     $ master -m 15 # spinoza_fmriprep
-    $ master -m 15 -t func 
-    $ master -m 15 -t $TASK_SES1 # preprocess a specific task (maps to '--task-ID' from fMRIprep) 
-    $ master -m 15 -t func -u $DIR_SCRIPTS/misc/fmriprep_config.json # run fMRIPrep with specific configuration
+    $ master -m 15 --func       # include functional data (same as -t func)
+    $ master -m 15 -t <task_name> # preprocess a specific task (maps to '--task-ID' from fMRIprep) 
+    $ master -m 15 --func -u $DIR_SCRIPTS/misc/fmriprep_config.json # run fMRIPrep with specific configuration
 
     # optional
     $ master -m 15 --warp-only # only create new bold-reference images and copy the registration files
@@ -651,7 +646,8 @@ We then proceed by denoising the functional data using Pybest_. This takes the `
 
     # optional
     $ master -m 16 --no_raw # turn of unzscoring
-    $ master -m 16 --sge # submit to cluster
+    $ master -m 16 --sge    # submit to cluster
+    $ master -m 16 --func   # use volumetric space
 
 You can do some pRF-fitting as well. If you did not use Pybest_ for denoising, we'll use fMRIprep_-output as input for the pRF-fitting. All models specified within pRFpy_ are available, as well as several other options: ``--grid``, run a grid fit only, no iterative fitting; ``-c``, list of values to clip the design matrix with (if ```--no_clip`` is NOT specified); ``--zscore``, use the zscore'd output from pybest; ``--multi_design``, used if you have multiple pRF designs within a session so the correct screenshots are used for the design matrix. ``--local``, do not submit the job to the cluster (can be useful for debugging). ``-p``, specifies which model to use (can be one of ['gauss', 'css', 'dog', 'norm']); ``-t``, fit a specific task (if you have mutliple in a session). It's advised to copy the pRF-analysis template from the *linescanning*-repository to ``$DIR_DATA_HOME/code`` and adjust settings there. Do NOT rename the settings file, otherwise [call_prf](https://github.com/gjheij/linescanning/blob/main/bin/call_prf) will fail.
 
@@ -660,7 +656,7 @@ You can do some pRF-fitting as well. If you did not use Pybest_ for denoising, w
     $ master -m 17 # spinoza_fitprfs
 
     # added options
-    $ master -m 17 -p norm # run divisive-normalization (DN-) model
+    $ master -m 17 --norm # run divisive-normalization (DN-) model
     $ master -m 17 --multi_design # multiple designs in a session
 
 Continuing with the anatomical pipeline, we now enter the Nighres_ stage, to fully optimize the quality of segmentations. These modules can be run pretty much successively, and consist of ``MGDM``, ``region extaction``, ``CRUISE``, and ``volumetric layering``:
@@ -681,7 +677,7 @@ Which is equivalent to:.
 Selecting best vertex
 ===========================================
 
-Selecting the best vertex is performed by ``spinoza_bestvertex``, which internally calls upon ``optimal.call_pycortex2``. This function internalizes the classes within ``optimal.py``. First, deal the input folders. We need the path to the pRF-parameters, FreeSurfer output, and Pycortex.
+Selecting the best vertex is performed by ``spinoza_bestvertex``, which internally calls upon ``optimal.TargetVertex()``. This function internalizes the classes within ``optimal.py``. First, deal the input folders. We need the path to the pRF-parameters, FreeSurfer output, and Pycortex.
 
 .. code:: python
 
@@ -777,7 +773,7 @@ For this section to be relevant, you're in the following situation: you have a s
 
 .. code:: bash
 
-    $ master -m 00 -s <subject (without 'sub')> -h <hemisphere (left|right)> -n <session (new session ID, e.g., 3 | default = 2)>
+    $ master -m 00 -s <subject (without 'sub')> --lh/--rh -n <session (new session ID, e.g., 3 | default = 2)>
 
 This will do the following:
 
