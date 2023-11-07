@@ -13,3 +13,5 @@ pybids
 niworkflows
 mkl
 mkl-service
+shapely==2.0.1
+mock
