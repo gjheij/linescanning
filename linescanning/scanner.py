@@ -27,7 +27,7 @@ class Scanner(object):
         hemisphere you're interested in. Should be 'right' or 'left'. It will do all operations on both hemispheres anyway, but only print the actual values you need to insert in the MR console for the specified hemisphere
     fs_dir: str
         path to FreeSurfer directory; will default to SUBJECTS_DIR if left empty.
-    ses: str
+    ses: int, optional
         session ID of new session. Generally this will be `ses-2`, pointing to a line-scanning session. Should be >1
     print_to_console: bool
         boolean whether to print the translation/rotations that should be inserted in the console to the terminal. Can be turned off for debugging reasons
@@ -51,7 +51,7 @@ class Scanner(object):
         new_anat=None,
         hemi=None,
         fs_dir=None,
-        ses='2',
+        ses=2,
         print_to_console=True,
         debug=False):
 
@@ -64,6 +64,7 @@ class Scanner(object):
         self.fs2ses = fs2ses
         self.new_anat = new_anat
         self.subject = self.pycortex.subject
+        self.ses = ses
 
         # set reference anatomy to orig
         self.ref_anat = opj(fs_dir,self.subject,'mri','orig.mgz')
@@ -124,10 +125,10 @@ class Scanner(object):
         }
         
         if self.fs2ses != "identity":
-            print(f"Convert FreeSurfer straight to session {ses}")
+            print(f"Convert FreeSurfer straight to session {self.ses}")
             self.ses2_chicken = {
-                'lh': transform.ants_applytopoints(self.fs_chicken['lh'], utils.replace_string(self.fs_chicken['lh'], "space-fs", f"space-ses{ses}"), self.fs2ses),
-                'rh': transform.ants_applytopoints(self.fs_chicken['rh'], utils.replace_string(self.fs_chicken['rh'], "space-fs", f"space-ses{ses}"), self.fs2ses)
+                'lh': transform.ants_applytopoints(self.fs_chicken['lh'], utils.replace_string(self.fs_chicken['lh'], "space-fs", f"space-ses{self.ses}"), self.fs2ses),
+                'rh': transform.ants_applytopoints(self.fs_chicken['rh'], utils.replace_string(self.fs_chicken['rh'], "space-fs", f"space-ses{self.ses}"), self.fs2ses)
             }
         else:
             print(f"Identity-matrix was specified, using existing chicken files")
@@ -216,7 +217,7 @@ class Scanner(object):
             if debug:
                 print(f"Warped normal LPS {self.warped_normals_lps['lh']}")
                 print(f"Warped normal RAS {self.warped_normals['lh']}")
-                print(f"Session 2 angles: {np.rad2deg(self.ses2_angles_nonCoPlanar['lh'])}")
+                print(f"Session {self.ses} angles: {np.rad2deg(self.ses2_angles_nonCoPlanar['lh'])}")
                 
             # Get component of normal that is in XY-plane and calculate angles with that vector.
             self.ses2_angles_raw = {}
@@ -253,7 +254,7 @@ class Scanner(object):
 
                     if debug:
                         if ii == "lh":
-                            print(f"Coplanar angles 2: {self.ses2_angles_raw['lh']}")
+                            print(f"Coplanar angles {self.ses}: {self.ses2_angles_raw['lh']}")
 
                 # self.ses2_angles_raw[ii][-1] = self.ses2_angles_nonCoPlanar[ii][-1] * (180/np.pi)
 
@@ -396,9 +397,11 @@ class Scanner(object):
             if hasattr(self, "normals"):
                 self.warped_normals = {}
                 for i in ['lh', 'rh']:
-                    self.warped_normals[i] = planning.rotate_normal(self.normals[i], 
-                                                                    self.fs2ses,
-                                                                    system=system)
+                    self.warped_normals[i] = planning.rotate_normal(
+                        self.normals[i], 
+                        self.fs2ses,
+                        system=system
+                    )
         else:
             raise NotImplementedError(f"Im lazy, sorry.. Just to both hemi's please")
 
@@ -420,9 +423,9 @@ class Scanner(object):
 
     def print_to_console(self, hemi=None):
 
-        if hemi.lower() == "left" or hemi.lower() == "lh" or hemi.lower() == "l":
+        if hemi.lower() in ["left","lh","l"]:
             tag = "lh"
-        elif hemi.lower() == "right" or hemi.lower() == "rh" or hemi.lower() == "r":
+        elif hemi.lower() in ["right","rh","r"]:
             tag = "rh"
         else:
             raise ValueError(f"Unknown input for 'hemi': {hemi}. Must be of the format 'lh','left', or 'l' (same for right hemisphere)")
@@ -450,12 +453,14 @@ class Scanner(object):
             ]
         
         try:
-            log_file = opj(os.environ['CTX'], self.subject, "console.o{ext}".format(ext=os.getpid()))
+            cx_dir = opj(os.environ.get("CTX"), self.subject, f"ses-{self.ses}")
+            log_file = opj(cx_dir, "console.o{ext}".format(ext=os.getpid()))
             outF = open(log_file, "w")
             outF.writelines(textList)
             outF.close()
         except:
-            log_file = opj(self.fs_dir, self.subject, 'mri', "console.o{ext}".format(ext=os.getpid()))
+            fs_dir = opj(self.fs_dir, self.subject, 'mri')
+            log_file = opj(fs_dir, "console.o{ext}".format(ext=os.getpid()))
             outF = open(log_file, "w")
             outF.writelines(textList)
             outF.close()
