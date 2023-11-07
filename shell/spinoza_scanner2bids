@@ -30,11 +30,6 @@ Input options:
   --lines             flag to tell we're dealing with a line-scanning session. By default 'regular',
                       which means standard whole-brain acquisitions.
   --inv               add individual inversion files from anatomies in 'anat' folder
-  --dcm_fix           Extremely large par/rec's cannot be converted with 'dcm2niix'. Normal fMRI 
-                      sessions are converted using 'call_pydcm2niix', but this flag points it to 'call
-                      _dcm2niix', the same that is used for line-scanning sessions. It pipes the output 
-                      from dcm2niix to a log file to monitor 'Catastrophic errors'. It then tries to 
-                      convert these with 'parrec2nii', which comes with the python pacakge 'nibabel'.
   --take-avg-tr       Take the average over all TRs from the par file, rather than the first in the
                       sequence of TRs
   --ap|--pa|--lr|--rl Specifies the phase-encoding direction for the BOLD run. The phase-encoding 
@@ -86,7 +81,6 @@ FULL_OW=""
 SES_FLAG=""
 SES_TYPE="regular"
 ADD_INV=""
-DCM_FIX=""
 ORIENT_FLAG=""
 PROT_FLAG=""
 PE_FLAG=""
@@ -105,11 +99,7 @@ do
           ;;
         inv)
           ADD_INV="--inv"
-          ;;       
-        dcm_fix)
-          DCM_FIX="--dcm_fix"
-          SES_TYPE="lines"
-          ;;  
+          ;;
         take-avg-tr)
           PROT_FLAG="--take-avg-tr"
           ;;         
@@ -234,114 +224,67 @@ for subID in ${search}; do
     rm -r ${bids_dir} 2>/dev/null
   fi
   
-  if [[ ${SES_TYPE} == "regular" ]]; then
-
-    if [[ -d ${bids_dir}/anat && -d ${bids_dir}/func ]]; then
-      nr_anat=`ls -l ${bids_dir}/anat | grep "total" | cut -d' ' -f2`
-      nr_func=`ls -l ${bids_dir}/func | grep "total" | cut -d' ' -f2`
-      if [ ${nr_anat} -ne 0 ] && [ ${nr_func} -ne 0 ]; then
-        echo "${msg}; use \"master -m 02a --ow\" to overwrite"
-        echo " anat = ${nr_anat} | func = ${nr_func}"
-        continue
-      fi
-    fi
-
-    if [[ ! -d ${input_dir} ]]; then
-      echo "${sub_name}: \"${input_dir}\" does not exist"
-      continue
-    else
-
-      echo
-      echo "**************************************** Processing ${sub_name} ***************************************"
-      
-      # We're dealing with session-1, the anatomical and pRF-mapping part, so we'll use FromScannerToBIDS.py/call_dcm2niix.py
-      echo "Regular scan session (whole-brain data); using call_pydcm2niix"
-      call_pydcm2niix ${input_dir} True False 2019
-
-      if [[ ${reorient} -eq 1 ]]; then
-        echo "Reorienting images to LPI (conform fMRIPrep)"
-        # for convenience, reorient all files to RAS+ (used by nibabel & fMRIprep)
-        files=`find ${bids_dir} -type f -name "*.nii.gz"`
-        for f in ${files[@]}; do
-          val=`fslval ${f} qform_xorient`
-          if [ ${val} != "Left-to-Right" ]; then
-            call_reorient -i ${f} -c nb
-          fi
-        done
-      fi
-
-    fi
-
-  elif [[ ${SES_TYPE} == "lines" ]]; then
-
-    # check if input directory exists
-    if [[ ! -d ${input_dir} ]]; then
-      echo "${sub_name}: could not find input directory \"${input_dir}\""
-      continue
-    else
-  
-      if [[ ! -d ${bids_dir}/anat || ! -d ${bids_dir}/func || ! -z ${OW} || ${DEBUG_MODE} -eq 1 || ! -z ${PHYS_FLAG} ]]; then
-
-        if [[ ${DCM_FIX} -eq 1 ]]; then
-          intro_txt="Regular session, but with call_parrec2nii fix for big PAR/REC files"
-        else
-          intro_txt="Exotic session (e.g., line-scanning); using call_dcm2niix"
-        fi
-
-
-        if [[ ${SGE_FLAG} -eq 1 ]]; then
-          if [[ ! -z ${SGE_QUEUE} ]]; then
-            QUEUE=${SGE_QUEUE}
-          else
-            QUEUE=${SGE_QUEUE_LONG}
-          fi        
-          job="qsub -q ${QUEUE} -wd ${DIR_LOGS} -pe smp 1 -N ${base}_desc-dcm2bids"
-        else
-          job="bash"
-          echo
-          echo "**************************************** Processing ${sub_name} ***************************************"
-          echo ${intro_txt}
-        fi
-
-        if [[ ${DEBUG_MODE} -eq 1 ]]; then
-          echo " OW          = ${OW}"
-          echo " FULL_OW     = ${FULL_OW}"
-          echo " SES_FLAG    = ${SES_FLAG}"
-          echo " ADD_INV     = ${ADD_INV}"
-          echo " DCM_FIX     = ${DCM_FIX}"
-          echo " ORIENT_FLAG = ${ORIENT_FLAG}"
-          echo " PROT_FLAG   = ${PROT_FLAG}"
-          echo " PE_FLAG     = ${PE_FLAG}"
-          echo " RUNS FLAG   = ${RUNS}"
-          echo " PHYS FLAG   = ${PHYS_FLAG}"
-        fi
-
-        cmd="""${job} ${DIR_SCRIPTS}/bin/call_bids \
-          ${SES_FLAG} \
-          ${ADD_INV} \
-          ${DCM_FIX} \
-          ${ORIENT_FLAG} \
-          ${PROT_FLAG} \
-          ${PE_FLAG} \
-          ${OW} \
-          ${PHYS_FLAG} \
-          -i ${input_dir} -o ${output_dir} -b ${bids_dir} -n ${base} -d ${SEARCH_DEPTH} ${RUNS}"""
-
-        # echo command if running locally
-        if [[ ${SGE_FLAG} -eq 0 ]]; then
-          echo
-          echo ${cmd}
-        fi
-
-        ${cmd}
-          
-      else
-        echo "${msg}; use \"master -m 02a --ow\" (re-runs bidsification) or \"master -m 02a --full\" (also re-runs conversion) to overwrite"
-      fi
-    fi
-  else
-    echo "Invalid session-type \"${SES_TYPE}\". Must be 'regular' or 'lines'"
+  # check if input directory exists
+  if [[ ! -d ${input_dir} ]]; then
+    echo "${sub_name}: could not find input directory \"${input_dir}\""
     continue
+  else
+
+    if [[ ! -d ${bids_dir}/anat || ! -d ${bids_dir}/func || ! -z ${OW} || ${DEBUG_MODE} -eq 1 || ! -z ${PHYS_FLAG} ]]; then
+
+      if [[ ${SES_TYPE} == "lines" ]]; then
+        intro_txt="Exotic session (e.g., line-scanning); using call_dcm2niix"
+      else
+        intro_txt="Regular session, but with call_parrec2nii fix for big PAR/REC files"
+      fi
+
+      if [[ ${SGE_FLAG} -eq 1 ]]; then
+        if [[ ! -z ${SGE_QUEUE} ]]; then
+          QUEUE=${SGE_QUEUE}
+        else
+          QUEUE=${SGE_QUEUE_LONG}
+        fi        
+        job="qsub -q ${QUEUE} -wd ${DIR_LOGS} -pe smp 1 -N ${base}_desc-dcm2bids"
+      else
+        job="bash"
+        echo
+        echo "**************************************** Processing ${sub_name} ***************************************"
+        echo ${intro_txt}
+      fi
+
+      if [[ ${DEBUG_MODE} -eq 1 ]]; then
+        echo " OW          = ${OW}"
+        echo " FULL_OW     = ${FULL_OW}"
+        echo " SES_FLAG    = ${SES_FLAG}"
+        echo " ADD_INV     = ${ADD_INV}"
+        echo " ORIENT_FLAG = ${ORIENT_FLAG}"
+        echo " PROT_FLAG   = ${PROT_FLAG}"
+        echo " PE_FLAG     = ${PE_FLAG}"
+        echo " RUNS FLAG   = ${RUNS}"
+        echo " PHYS FLAG   = ${PHYS_FLAG}"
+      fi
+
+      cmd="""${job} ${DIR_SCRIPTS}/bin/call_bids \
+        ${SES_FLAG} \
+        ${ADD_INV} \
+        ${ORIENT_FLAG} \
+        ${PROT_FLAG} \
+        ${PE_FLAG} \
+        ${OW} \
+        ${PHYS_FLAG} \
+        -i ${input_dir} -o ${output_dir} -b ${bids_dir} -n ${base} -d ${SEARCH_DEPTH} ${RUNS}"""
+
+      # echo command if running locally
+      if [[ ${SGE_FLAG} -eq 0 ]]; then
+        echo
+        echo ${cmd}
+      fi
+
+      ${cmd}
+        
+    else
+      echo "${msg}; use \"master -m 02a --ow\" (re-runs bidsification) or \"master -m 02a --full\" (also re-runs conversion) to overwrite"
+    fi
   fi
 
 done

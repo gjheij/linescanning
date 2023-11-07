@@ -33,11 +33,6 @@ Options:
   --lines             flag to tell we're dealing with a line-scanning session. By default 'regular',
                       which means standard whole-brain acquisitions.
   --inv               add individual inversion files from anatomies in 'anat' folder
-  --dcm_fix           Extremely large par/rec's cannot be converted with 'dcm2niix'. Normal fMRI 
-                      sessions are converted using 'call_pydcm2niix', but this flag points it to 'call
-                      _dcm2niix', the same that is used for line-scanning sessions. It pipes the output 
-                      from dcm2niix to a log file to monitor 'Catastrophic errors'. It then tries to 
-                      convert these with 'parrec2nii', which comes with the python pacakge 'nibabel'.
   --take-avg-tr       Take the average over all TRs from the par file, rather than the first in the
                       sequence of TRs
   --ap|--pa|--lr|--rl Specifies the phase-encoding direction for the BOLD run. The phase-encoding 
@@ -57,7 +52,7 @@ Example:
     sub-02_ses-1                          # BIDS base name
 
   call_bids
-    --dcm_fix                             # deal with laaaarge par/rec files
+    --lines                               # also consider line-scanning files
     DIR_DATA_SOURCE/sub-02/ses-1          # input with par/rec files
     DIR_DATA_SOURCE/sub-002/ses-1/nifti   # output for tmp nifti files
     DIR_DATA_HOME/sub-02/ses-1            # BIDS output
@@ -83,13 +78,13 @@ EOF
 # Check for subject & session flags
 SES_TYPE="regular"
 ADD_INV=0
-DCM_FIX=0
 reorient=1
 prot_flag=""
 pe_dir=""
 OW=0
 PHYS_ONLY=0
 searchDepth=0
+LS_SES=0
 while getopts :-:i:o:b:n:r:d: argument
 do
   case ${argument} in
@@ -97,14 +92,11 @@ do
       case "${OPTARG}" in
         lines)
           SES_TYPE="lines"
+          LS_SES=1
           ;;
         inv)
           ADD_INV=1
-          ;;       
-        dcm_fix)
-          DCM_FIX=1
-          SES_TYPE="lines"
-          ;;  
+          ;;
         take-avg-tr)
           prot_flag="--take-avg-tr"
           ;;         
@@ -196,27 +188,33 @@ echo "BIDSifying data .."
 if [[ ${PHYS_ONLY} -eq 0 ]]; then
 
   # Low resolution anatomical scan
-  if [[ ${DCM_FIX} -eq 0 ]]; then
-            
-    anat_lowres=`find -L "${input_dir}/planning/nifti" -type f \( -name "*real*" -and -name "*t10*" -and -name "*.nii.gz" \) 2>/dev/null`
+  if [[ ${LS_SES} -eq 1 ]]; then
+
+    anat_lowres=`find -L "${input_dir}/planning/nifti" -type f \( -name "*real*" -and -name "*t10*" -and -name "*.nii.gz" -or -name "*acq-3DFFE*" -and -name "*.nii.gz" \) 2>/dev/null`
     anat_t1map=`find -L "${input_dir}/planning/nifti" -type f \( -name "*real*" -and -name "*t29*" -and -name "*.nii.gz" \) 2>/dev/null`
-    if [[ ! -f ${bids_dir}/anat/${base}_acq-MP2RAGE_T1w.nii.gz ]]; then
-      if [[ -f ${anat_lowres} && -f ${anat_t1map} ]]; then
+    if [[ ! -z ${anat_lowres} ]]; then
+      
+      if [[ ! -d ${bids_dir}/anat ]]; then
+        mkdir -p ${bids_dir}/anat
+      fi
 
-        if [[ ! -d ${bids_dir}/anat ]]; then
-          mkdir -p ${bids_dir}/anat
-        fi
-
+      if [[ -f ${anat_t1map} ]]; then
         min=`fslstats ${anat_lowres} -R | awk '{print $1}'`
         if [[ ${min} != "0.000000" ]]; then
           echo " Rescaling lowres MP2RAGE-file"
           call_maskmp2rage ${anat_lowres} ${anat_t1map} ${anat_lowres}
         fi
-
-        echo " Relocating lowres MP2RAGE-file as ${base}_acq-MP2RAGE_T1w.nii.gz"
-        cp ${anat_lowres} ${bids_dir}/anat/${base}_acq-MP2RAGE_T1w.nii.gz
-        cp $(dirname ${anat_lowres})/$(basename ${anat_lowres} .nii.gz).json ${bids_dir}/anat/${base}_acq-MP2RAGE_T1w.json
       fi
+
+      acq=`get_id ${anat_lowres} acq`
+      if [[ -z ${acq} ]]; then
+        acq="MP2RAGE"
+      fi
+      acq_flag="_acq-${acq}"
+
+      echo " Relocating lowres MP2RAGE-file as ${base}${acq_flag}_T1w.nii.gz"
+      cp ${anat_lowres} ${bids_dir}/anat/${base}${acq_flag}_T1w.nii.gz
+      cp $(dirname ${anat_lowres})/$(basename ${anat_lowres} .nii.gz).json ${bids_dir}/anat/${base}${acq_flag}_T1w.json
 
     else
       echo " low resolution MP2RAGE exists"
@@ -225,7 +223,16 @@ if [[ ${PHYS_ONLY} -eq 0 ]]; then
 
   #---------------------------------------------------------------------------------------------------------
   # anatomicals
-  if [[ ${ADD_INV} -eq 1 || ${DCM_FIX} -eq 1 ]]; then
+  inv_files=0
+  if [[ ${LS_SES} -eq 1 ]]; then
+    if [[ ${ADD_INV} -eq 1 ]]; then
+      inv_files=1
+    fi
+  else
+    inv_files=1
+  fi  
+
+  if [[ ${inv_files} -eq 1 ]]; then
 
     echo " Dealing with anatomical images.."
     invs=(`find -L "${tmp_dir}" -type f \( -name "*T1w_*" -and -name "*_t10*" -and -not -name "*WIP*" -or -name "*_t29*" -and -not -name "*WIP*" -or -name "*_t30*" -and -not -name "*WIP*" \) 2>/dev/null | sort`)
@@ -314,7 +321,7 @@ if [[ ${PHYS_ONLY} -eq 0 ]]; then
 
   #---------------------------------------------------------------------------------------------------------
   # acq-motion files for line-scanning
-  if [[ ${DCM_FIX} -eq 0 ]]; then
+  if [[ ${LS_SES} -eq 1 ]]; then
 
     if [[ ! -d ${bids_dir}/anat ]]; then
       mkdir -p ${bids_dir}/anat
@@ -503,18 +510,18 @@ if [[ ${PHYS_ONLY} -eq 0 ]]; then
 
   #---------------------------------------------------------------------------------------------------------
   # check for more whole-brainy stuff
-  if [[ ${DCM_FIX} -eq 0 ]]; then
+  if [[ ${LS_SES} -eq 1 ]]; then
     # deal with stuff added by sequence development editor..
     sde=1
 
     if [[ ! -z ${runs} ]]; then
       b_files=()
       for r in ${n_runs[@]}; do
-        run_f=`find -L "${input_dir}" -type f \( -name "*run-${r}*" -and -iname "*acq-3DEPI*" -and -name "*bold*" -and -name "*.nii.gz" -and -not -name "*_ph.nii.gz" \) 2>/dev/null`
+        run_f=`find -L "${input_dir}" -type f \( -name "${base}*" -and -name "*run-${r}*" -and -iname "*acq-3DEPI*" -and -name "*bold*" -and -name "*.nii.gz" -and -not -name "*_ph.nii.gz" \) 2>/dev/null`
         b_files+=(${run_f})
       done
     else
-      b_files=`find -L "${input_dir}" -type f \( -iname "*acq-3DEPI*" -and -name "*bold*" -and -name "*.nii.gz" -and -not -name "*_ph.nii.gz" \) 2>/dev/null`
+      b_files=`find -L "${input_dir}" -type f \( -name "${base}*" -and -iname "*acq-3DEPI*" -and -name "*bold*" -and -name "*.nii.gz" -and -not -name "*_ph.nii.gz" \) 2>/dev/null`
     fi
 
   else
@@ -522,11 +529,11 @@ if [[ ${PHYS_ONLY} -eq 0 ]]; then
     if [[ ! -z ${runs} ]]; then
       b_files=()
       for r in ${n_runs[@]}; do
-        run_f=`find -L "${input_dir}" -type f \( -name "*run-${r}*" -and -name "*bold.nii.gz" \) 2>/dev/null`
+        run_f=`find -L "${input_dir}" -type f \( -name "${base}*" -and -name "*run-${r}*" -and -name "*bold.nii.gz" \) 2>/dev/null`
         b_files+=(${run_f})
       done
     else  
-      b_files=`find -L "${input_dir}" -type f \( -name "*bold.nii.gz" \) 2>/dev/null`
+      b_files=`find -L "${input_dir}" -type f \( -name "${base}*" -and -name "*bold.nii.gz" \) 2>/dev/null`
     fi
   fi
 
@@ -800,7 +807,14 @@ if [[ ${PHYS_ONLY} -eq 0 ]]; then
         run=${count}
       fi              
 
-      bids_tsv=${bids_dir}/func/${base}_task-${task}_run-${run}_events.tsv
+      acq=`get_id ${file} acq`
+      if [[ ! -z ${acq} ]]; then
+        add_acq="_acq-${acq}"
+      else
+        add_acq=""
+      fi
+
+      bids_tsv=${bids_dir}/func/${base}_task-${task}_run-${run}${add_acq}_events.tsv
       if [[ ! -f ${bids_tsv} || ${OW} -eq 1 ]]; then
         echo "  renaming tsv-file to `basename ${bids_tsv}`"
         cp ${file} ${bids_tsv}
