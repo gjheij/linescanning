@@ -869,13 +869,13 @@ if [[ $? -eq 0 ]]; then
   fi
 
   # check if we got custom file, otherwise default to directory
+  subject=${SUBJECT_PREFIX}${SUB}
   if [[ ! -z ${images} ]]; then
     reg_img=${images}
   else
     reg_img=${DIR_DATA_SOURCE}/${subject}/ses-${ses_nr}/planning
   fi
-  
-  subject=${SUBJECT_PREFIX}${SUB}
+
   ${job} spinoza_lineplanning \
     ${OW} \
     ${HEMI_FLAG} \
