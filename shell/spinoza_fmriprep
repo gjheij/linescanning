@@ -70,6 +70,7 @@ Arguments:
                   this argument you can specify which runs to keep. Again, if not specified, all
                   nifti-files with space-MNI152*.nii.gz will be removed. The transformation matri-
                   ces will be left alone. Use '-a all' to keep all runs (not recommended..)
+  -w <workdir>    custom working directory; defaults to PATH_HOME/fmriprep/<PROJECT>
   <anat dir>      directory containing the anatomical data. Can also be the regular project root
                   folder if you want fMRIprep do the surface reconstruction
   <derivatives>   output folder for fMRIprep; generally this will be <project>/derivatives
@@ -108,7 +109,8 @@ clean_wd=""
 fsl_flag=""
 DOCKER_FLAG=""
 fd_flag="" 
-while getopts :-:ols:r:n:f:m:j:k:q:u:a: argument
+crash_flag=""
+while getopts :-:ols:r:n:f:m:j:k:q:u:a:w: argument
 do
 case ${argument} in
     -)
@@ -148,7 +150,10 @@ case ${argument} in
           ;;          
         fd)
           fd_flag="--fd"
-          ;;                                                                   
+          ;;       
+        try)
+          crash_flag="--try"
+          ;;                                                                        
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}" >&2
@@ -173,6 +178,8 @@ case ${argument} in
           ;;      
     q)  SGE_QUEUE=${OPTARG}
           ;;                   
+    w)  workdir=${OPTARG}
+          ;;                             
     o)  OW=1
           ;;
     a)  keep_runs="-a ${OPTARG}"
@@ -184,7 +191,6 @@ if [[ $# -lt 3 ]] ; then
   Usage >&2
   exit 1
 fi
-
 INPUT=${@:$OPTIND:1}
 OUTPUT=${@:$OPTIND+1:1}
 T2=${@:$OPTIND+2:1}
@@ -307,8 +313,11 @@ for subID in ${search}; do
       continue
     fi
   fi
-
-  workdir=${PATH_HOME}/fmriprep/${PROJECT}
+  
+  # set default work directory
+  if [[ -z ${workdir} ]]; then
+    workdir=${PATH_HOME}/fmriprep/${PROJECT}
+  fi
 
   # check existence working directory and other general settings
   if [[ ! -d ${workdir} ]]; then
@@ -412,6 +421,7 @@ for subID in ${search}; do
   fi
 
   # decide the job type (depending on SGE, can be either qsub or call_fmriprep; for anything else it's call_fmriprep)
+  echo_cmd=1
   if [[ ${PLACE} == "SGE" ]]; then
     if [[ ${run_local} -eq 1 ]]; then
       job="call_fmriprep"
@@ -422,6 +432,7 @@ for subID in ${search}; do
         QUEUE=${SGE_QUEUE_LONG}
       fi
       job="qsub -q ${QUEUE} -pe smp ${n_cpu} -N ${sub_name}_desc-fmriprep -o ${workdir} ${DIR_SCRIPTS}/bin/call_fmriprep"
+      echo_cmd=0
     fi 
   else
     job="call_fmriprep"
@@ -431,7 +442,7 @@ for subID in ${search}; do
   fi
 
   # execute the command
-  ${job} \
+  cmd="""${job} \
     -s ${sub_id} \
     -m ${MODE} \
     -b ${FPREP_BINDING} \
@@ -439,6 +450,7 @@ for subID in ${search}; do
     -d ${OUTPUT} \
     -w ${workdir} \
     -c ${n_cpu} \
+    ${crash_flag} \
     ${keep_runs} \
     ${confFile} \
     ${task_id} \
@@ -449,8 +461,13 @@ for subID in ${search}; do
     ${clean_wd} \
     ${fsl_flag} \
     ${DOCKER_FLAG} \
-    ${fd_flag}
+    ${fd_flag}"""
 
+    if [[ ${echo_cmd} -eq 1 ]]; then
+      echo $cmd
+    fi
+    ${cmd}
+    
   if [[ $? != 0 ]]; then
     echo "ERROR in `basename ${0}`: call_fmriprep did not execute cleanly"
     exit 1
