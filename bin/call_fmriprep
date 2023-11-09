@@ -59,6 +59,12 @@ Arguments:
                     at the price that it re-runs EVERYTHING if you restart the process.
   --fetch_fsl       retrieve the MNI-transformed nifti-files (which are cleaned by default)
   --fd              retrieve the frame-wise displacement files from the workflow folder
+  --try             the default behavior of fmriprep is to crash upon the first error through the
+                    '--stop-on-first-crash' flag. The '--try' flag tells fmriprep to keep trying in 
+                    the face of errors. This can be useful if you know errors might occur that are
+                    not necessarily relevent. E.g., if you're trying to re-run someone elses fmri-
+                    prep, it cannot find TemplateFlow-files that are stored in the other person's
+                    HOME-folder. If you don't care about that, you can keep continuing
 
 Example:
   call_fmriprep -s 001 (simplest form, runs the entire pipeline)
@@ -93,6 +99,7 @@ clean_wd=0
 USE_DOCKER=0
 fetch_fsl=0
 FD_ONLY=0
+crash_flag="--stop-on-first-crash"
 while getopts :-:us:m:r:d:c:i:b:w:l:x:t:k:a: arg
 do
   case ${arg} in
@@ -120,7 +127,10 @@ do
           ;;        
         fd)
           FD_ONLY=1
-          ;;               
+          ;;     
+        try)
+          crash_flag=""
+          ;;                         
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}" >&2
@@ -291,10 +301,16 @@ fi
 
 # Define command line
 if [[ ${USE_DOCKER} -eq 1 ]]; then
-  run_cmd="fmriprep-docker"
+
+  # read user/group ID in a platform friendly way: https://superuser.com/questions/581989/bash-find-directory-group-owner
+  UID=`\ls -l "$(dirname $TARGET_FILE)" | grep -v '^l' | grep " $(basename $TARGET_FILE)\$" | awk '{ print $3 }'`
+  GID=`\ls -l "$(dirname $TARGET_FILE)" | grep -v '^l' | grep " $(basename $TARGET_FILE)\$" | awk '{ print $4 }'`
+  run_cmd="fmriprep-docker -u ${UID}:${GID}"
+
 else
   if [[ -f ${fprep_container} ]]; then
 
+    echo "Singularity image: \"${fprep_container}\""
     #-----------------------------------------------------------------------------
     # Set default binding point if none specified
     if [[ -z ${BIND} ]]; then
@@ -328,6 +344,7 @@ else
     run_cmd="singularity run --cleanenv -B ${binding}:${binding} ${fprep_container}"
 
   else
+    echo "WARNING: system is setup to use SoGE, but singularity image \"${fprep_container}\" could not be found. Defaulting to \"fmriprep\"-command"
     run_cmd="fmriprep"
   fi
 fi
@@ -348,7 +365,9 @@ nthread_flag="--nthreads ${nthreads}"
 # output directory structure has changed after v21: https://github.com/nipreps/fmriprep/releases/tag/21.0.0
 if [[ ${fetch_fsl} -ne 1 ]]; then
   echo "Checking fMRIPrep's version.."
-  VERSION=`${run_cmd} --version | cut -d" " -f2 | cut -d"." -f1`
+  ver_cmd="""${run_cmd} --version"""
+  echo ${ver_cmd}
+  VERSION=`${ver_cmd} | cut -d" " -f2 | cut -d"." -f1`
   if [[ `echo "${VERSION//[!0-9]/}"` -lt "21" ]]; then
     output_dir=${derivatives}
     add_fprep=1
@@ -373,7 +392,7 @@ ${run_cmd} \
   --fs-license-file ${license} \
   --output-spaces ${FPREP_OUT_SPACES} \
   --fs-subjects-dir ${FS} \
-  --stop-on-first-crash \
+  ${crash_flag} \
   ${bbr_flag} \
   ${cifti_flag} \
   ${syn_flag} \
