@@ -488,7 +488,7 @@ Example:
             for func in funcs:
 
                 # split into bids components to get run ID
-                all_search, output_base = bids_search(func, start_search=search_for, skip_run_id=skip_run_id)
+                all_search, output_base = bids_search(func, start_search=[], skip_run_id=skip_run_id)
 
                 # set tmp directory containing pkl-files
                 avg_dir = opj(out_dir, output_base, 'tmp')
