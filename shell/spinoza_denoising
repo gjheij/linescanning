@@ -276,7 +276,10 @@ for subID in ${search}; do
           ${post_flag} \
           ${pyb_flag} \
           ${raw_flag}"""
-        echo ${cmd}
+
+        if [[ ${SGE} -eq 0 ]]; then
+          echo ${cmd}
+        fi
         ${cmd}
 
         if [[ $? != 0 ]]; then
