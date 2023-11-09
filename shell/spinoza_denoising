@@ -64,6 +64,9 @@ raw_flag=""
 SGE=0
 FULL_OW=0
 ses_flag=""
+post_only=0
+pre_only=0
+pyb_only=0
 
 # check if variable is set in setup file
 if [[ -z ${PYBEST_SPACE} ]]; then
@@ -98,7 +101,16 @@ do
           ;;
         anat)
           PYBEST_SPACE="T1w"
-          ;;                           
+          ;;      
+        post_only)
+          post_flag="--post_only"
+          ;;
+        pre_only)
+          pre_flag="--pre_only"
+          ;;
+        pyb_only)
+          pyb_flag="--pyb_only"
+          ;;                                   
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}"
@@ -245,9 +257,12 @@ for subID in ${search}; do
           -c ${n_cpus} \
           -p ${PYBEST_N_COMPS} \
           ${task_flag} \
+          ${pre_flag} \
+          ${post_flag} \
+          ${pyb_flag} \
           ${raw_flag}"""
         echo ${cmd}
-        eval ${cmd}
+        ${cmd}
 
         if [[ $? != 0 ]]; then
           echo

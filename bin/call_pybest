@@ -64,6 +64,9 @@ output_dir=${DIR_DATA_DERIV}/pybest
 input_dir=${DIR_DATA_DERIV}/fmriprep
 raw=1
 n_comps=10
+post_only=0
+pre_only=0
+pyb_only=0
 while getopts :-:s:n:o:f:c:v:r:t:p: arg; do
   case $arg in
     -)
@@ -76,7 +79,16 @@ while getopts :-:s:n:o:f:c:v:r:t:p: arg; do
           ;; 
         fsnative)
           in_space="fsnative"
-          ;;                                                          
+          ;;
+        post_only)
+          post_only=1
+          ;;
+        pre_only)
+          pre_only=1
+          ;;
+        pyb_only)
+          pyb_only=1
+          ;;                    
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}"
@@ -145,43 +157,130 @@ if [[ ! -d ${output_dir}/sub-${sub} ]]; then
   mkdir -p ${output_dir}/sub-${sub}
 fi 
 
+# define rules
+execute_pre=1
+if [[ ${post_only} -eq 1 || ${pyb_only} -eq 1 ]]; then
+  execute_pre=0
+fi
+
+execute_pyb=1
+if [[ ${post_only} -eq 1 || ${pre_only} -eq 1 ]]; then
+  execute_pyb=0
+fi
+
+execute_post=1
+if [[ ${pyb_only} -eq 1 || ${pre_only} -eq 1 ]]; then
+  execute_post=0
+fi    
+
 # loop through tasks; I know pybest can do ALL tasks at once, but it's nice to have a limiter in here
 for task_id in ${task_ids[@]}; do
   echo "Running pybest on task: \"${task_id}\""
   if [[ ${in_space} == "fsnative" || ${in_space} == "fsaverage" ]]; then
     
     # save standard deviation and mean in tmp/ folder (pkl files)
-    if [ ${raw} -eq 1 ]; then
-      echo "Saving average/standard deviation"
-      call_unzscore \
-        -s ${sub} \
-        ${ses_raw} \
-        -o ${outputdir} \
-        -f ${input_dir} \
-        -t ${task_id} \
-        -p ${in_space} \
-        --pre
+    if [[ ${execute_pre} -eq 1 ]]; then
+      if [ ${raw} -eq 1 ]; then
+        echo "Saving average/standard deviation"
+        call_unzscore \
+          -s ${sub} \
+          ${ses_raw} \
+          -o ${outputdir} \
+          -f ${input_dir} \
+          -t ${task_id} \
+          -p ${in_space} \
+          --pre
 
-      if [[ $? -ne 0 ]]; then
-        echo "ERROR in `basename ${0}`: call_unzscore (--pre) existed with non-zero status"
-        exit 1
-      fi          
+        if [[ $? -ne 0 ]]; then
+          echo "ERROR in `basename ${0}`: call_unzscore (--pre) existed with non-zero status"
+          exit 1
+        fi
+      fi
     fi
 
-    for hemi in "L" "R"; do
+    if [[ ${execute_pyb} -eq 1 ]]; then
 
-      echo "Dealing with hemi-${hemi}"
+      for hemi in "L" "R"; do
 
+        echo "Dealing with hemi-${hemi}"
+        cmd="""pybest \
+          ${sub_input} \
+          ${ses_input} \
+          --task ${task_id} \
+          --space ${in_space} \
+          --hemi ${hemi} \
+          ${cpu_input} \
+          --verbose ERROR \
+          --save-all \
+          --out-dir ${outputdir} \
+          ${input_dir} \
+          --n-comps ${n_comps}"""
+
+        echo ${cmd}
+        ${cmd}
+
+        if [[ $? -ne 0 ]]; then
+          echo "ERROR in `basename ${0}`: pybest existed with non-zero status"
+          exit 1
+        fi
+
+      done
+    fi
+    
+    if [[ ${execute_post} ]]; then
+      # undo z-scoring
+      if [ ${raw} -eq 1 ]; then
+        echo "Un-zcoring output from pybest"
+
+        call_unzscore \
+          -s ${sub} \
+          ${ses_raw} \
+          -o ${output_dir} \
+          -f ${input_dir} \
+          -t ${task_id} \
+          -p ${in_space} \
+          --post
+
+        if [[ $? -ne 0 ]]; then
+          echo "ERROR in `basename ${0}`: call_unzscore (--post) existed with non-zero status"
+          exit 1
+        fi          
+      fi
+    fi
+    echo "Done"
+    
+  else
+
+    # save standard deviation and mean in tmp/ folder (pkl files)
+    if [[ ${execute_pre} -eq 1 ]]; then
+      if [ ${raw} -eq 1 ]; then
+        echo "Saving average/standard deviation"
+        call_unzscore \
+          -s ${sub} \
+          ${ses_raw} \
+          -o ${outputdir} \
+          -f ${input_dir} \
+          -t ${task_id} \
+          -p ${in_space} \
+          --pre
+
+        if [[ $? -ne 0 ]]; then
+          echo "ERROR in `basename ${0}`: call_unzscore (--pre) existed with non-zero status"
+          exit 1
+        fi         
+      fi
+    fi
+
+    if [[ ${execute_pyb} -eq 1 ]]; then
+      # we got volumetric data, so stuff gets a bit more exotic
       cmd="""pybest \
         ${sub_input} \
         ${ses_input} \
+        --out-dir ${outputdir} \
         --task ${task_id} \
         --space ${in_space} \
-        --hemi ${hemi} \
-        ${cpu_input} \
         --verbose ERROR \
         --save-all \
-        --out-dir ${outputdir} \
         ${input_dir} \
         --n-comps ${n_comps}"""
 
@@ -191,88 +290,28 @@ for task_id in ${task_ids[@]}; do
       if [[ $? -ne 0 ]]; then
         echo "ERROR in `basename ${0}`: pybest existed with non-zero status"
         exit 1
+      fi 
+    fi
+
+    # undo z-scoring
+    if [[ ${execute_pre} -eq 1 ]]; then
+      if [ ${raw} -eq 1 ]; then
+        echo "Un-zcoring output from pybest"
+
+        call_unzscore \
+          -s ${sub} \
+          ${ses_raw} \
+          -o ${output_dir} \
+          -f ${input_dir} \
+          -t ${task_id} \
+          -p ${in_space} \
+          --post
+
+        if [[ $? -ne 0 ]]; then
+          echo "ERROR in `basename ${0}`: call_unzscore (--post) existed with non-zero status"
+          exit 1
+        fi
       fi
-
-    done
-
-    # undo z-scoring
-    if [ ${raw} -eq 1 ]; then
-      echo "Un-zcoring output from pybest"
-
-      call_unzscore \
-        -s ${sub} \
-        ${ses_raw} \
-        -o ${output_dir} \
-        -f ${input_dir} \
-        -t ${task_id} \
-        -p ${in_space} \
-        --post
-
-      if [[ $? -ne 0 ]]; then
-        echo "ERROR in `basename ${0}`: call_unzscore (--post) existed with non-zero status"
-        exit 1
-      fi          
-    fi
-
-    echo "Done"
-    
-  else
-
-    # save standard deviation and mean in tmp/ folder (pkl files)
-    if [ ${raw} -eq 1 ]; then
-      echo "Saving average/standard deviation"
-      call_unzscore \
-        -s ${sub} \
-        ${ses_raw} \
-        -o ${outputdir} \
-        -f ${input_dir} \
-        -t ${task_id} \
-        -p ${in_space} \
-        --pre
-
-      if [[ $? -ne 0 ]]; then
-        echo "ERROR in `basename ${0}`: call_unzscore (--pre) existed with non-zero status"
-        exit 1
-      fi         
-    fi
-
-    # we got volumetric data, so stuff gets a bit more exotic
-    cmd="""pybest \
-      ${sub_input} \
-      ${ses_input} \
-      --out-dir ${outputdir} \
-      --task ${task_id} \
-      --space ${in_space} \
-      --verbose ERROR \
-      --save-all \
-      ${input_dir} \
-      --n-comps ${n_comps}"""
-
-    echo ${cmd}
-    ${cmd}
-
-    if [[ $? -ne 0 ]]; then
-      echo "ERROR in `basename ${0}`: pybest existed with non-zero status"
-      exit 1
-    fi 
-
-    # undo z-scoring
-    if [ ${raw} -eq 1 ]; then
-      echo "Un-zcoring output from pybest"
-
-      call_unzscore \
-        -s ${sub} \
-        ${ses_raw} \
-        -o ${output_dir} \
-        -f ${input_dir} \
-        -t ${task_id} \
-        -p ${in_space} \
-        --post
-
-      if [[ $? -ne 0 ]]; then
-        echo "ERROR in `basename ${0}`: call_unzscore (--post) existed with non-zero status"
-        exit 1
-      fi   
 
       echo "Done"
             
