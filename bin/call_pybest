@@ -58,8 +58,8 @@ USAGE
 task_ids=${TASK_SES1[@]}
 sub_input=""
 cpu_input=""
-check_env="base"
 ses_input=""
+ses_raw=""
 output_dir=${DIR_DATA_DERIV}/pybest
 input_dir=${DIR_DATA_DERIV}/fmriprep
 raw=1
@@ -120,6 +120,7 @@ base_dir="sub-${sub}/"
 if [[ ! -z ${ses} ]]; then
   if [[ ${ses} != "all" ]]; then
     ses_input="--session ${ses}"
+    ses_raw="-n ${ses}"
     base_dir+="ses-${ses}"
   fi
 fi
@@ -154,7 +155,7 @@ for task_id in ${task_ids[@]}; do
       echo "Saving average/standard deviation"
       call_unzscore \
         -s ${sub} \
-        -n ${ses} \
+        ${ses_raw} \
         -o ${outputdir} \
         -f ${input_dir} \
         -t ${task_id} \
@@ -185,7 +186,7 @@ for task_id in ${task_ids[@]}; do
         --n-comps ${n_comps}"""
 
       echo ${cmd}
-      eval ${cmd}
+      ${cmd}
 
       if [[ $? -ne 0 ]]; then
         echo "ERROR in `basename ${0}`: pybest existed with non-zero status"
@@ -200,7 +201,7 @@ for task_id in ${task_ids[@]}; do
 
       call_unzscore \
         -s ${sub} \
-        -n ${ses} \
+        ${ses_raw} \
         -o ${output_dir} \
         -f ${input_dir} \
         -t ${task_id} \
@@ -222,7 +223,7 @@ for task_id in ${task_ids[@]}; do
       echo "Saving average/standard deviation"
       call_unzscore \
         -s ${sub} \
-        -n ${ses} \
+        ${ses_raw} \
         -o ${outputdir} \
         -f ${input_dir} \
         -t ${task_id} \
@@ -248,7 +249,7 @@ for task_id in ${task_ids[@]}; do
       --n-comps ${n_comps}"""
 
     echo ${cmd}
-    eval ${cmd}
+    ${cmd}
 
     if [[ $? -ne 0 ]]; then
       echo "ERROR in `basename ${0}`: pybest existed with non-zero status"
@@ -261,7 +262,7 @@ for task_id in ${task_ids[@]}; do
 
       call_unzscore \
         -s ${sub} \
-        -n ${ses} \
+        ${ses_raw} \
         -o ${output_dir} \
         -f ${input_dir} \
         -t ${task_id} \
