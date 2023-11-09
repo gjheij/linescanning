@@ -485,6 +485,9 @@ Example:
             if len(run_ids) == 1:
                 skip_run_id = True
 
+            if not skip_run_id:
+                funcs = utils.get_file_from_substring(["run-"], funcs)
+            
             for func in funcs:
 
                 # split into bids components to get run ID
