@@ -63,6 +63,7 @@ task_flag=""
 raw_flag=""
 SGE=0
 FULL_OW=0
+ses_flag=""
 
 # check if variable is set in setup file
 if [[ -z ${PYBEST_SPACE} ]]; then
@@ -125,6 +126,10 @@ done
 if [[ $# -lt 2 ]] ; then
   Usage >&2
   exit 1
+fi
+
+if [[ ! -z ${ses} ]]; then
+  ses_flag="-n ${ses}"
 fi
 
 # set default nr of components
@@ -233,7 +238,7 @@ for subID in ${search}; do
         # full path is needed for qsub
         cmd="""${job} ${DIR_SCRIPTS}/bin/call_pybest \
           -s ${sub_id} \
-          -n ${nr} \
+          ${ses_flag} \
           -o ${DENOISE} \
           -r ${PYBEST_SPACE} \
           -f ${FPREP} \
