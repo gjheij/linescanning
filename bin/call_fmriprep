@@ -303,6 +303,7 @@ fi
 if [[ ${USE_DOCKER} -eq 1 ]]; then
 
   # read user/group ID in a platform friendly way: https://superuser.com/questions/581989/bash-find-directory-group-owner
+  TARGET_FILE=${project}
   UID=`\ls -l "$(dirname $TARGET_FILE)" | grep -v '^l' | grep " $(basename $TARGET_FILE)\$" | awk '{ print $3 }'`
   GID=`\ls -l "$(dirname $TARGET_FILE)" | grep -v '^l' | grep " $(basename $TARGET_FILE)\$" | awk '{ print $4 }'`
   run_cmd="fmriprep-docker -u ${UID}:${GID}"
