@@ -231,7 +231,22 @@ for subID in ${search}; do
     
     if [[ ${ses} == "all" || -d ${FPREP}/${base_path}/func ]]; then
 
-      if [[ ! -d ${DENOISE}/${base_path}/denoising || ${OW} -eq 1 ]]; then
+      # set execution rules
+      execute_cmd=0
+      if [[ ! -d ${DENOISE}/${base_path}/denoising ]]; then
+        execute_cmd=1
+      fi
+
+      if [[ ${OW} -eq 1 ]]; then
+        execute_cmd=1
+      fi
+
+      if [[ ! -z ${pre_flag} || ! -z ${post_flag} || ! -z ${pyb_flag} ]]; then
+        execute_cmd=1
+      fi
+
+      # execute
+      if [[ ${execute_cmd} -eq 1 ]]; then
 
         # append sub
         if [[ ${SGE} -eq 1 ]]; then
