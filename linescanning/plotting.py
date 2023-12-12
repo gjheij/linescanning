@@ -2319,6 +2319,8 @@ def fig_annot(
     x_corr=-0.09, 
     fontsize=28,
     lower=False,
+    brackets=False,
+    square=False,
     **kwargs):
 
     # get figure letters
@@ -2349,8 +2351,15 @@ def fig_annot(
         else:
             y_pos = y
 
+        txt = alphabet[ix]
+        if brackets:
+            if square:
+                txt = f"[{txt}]"
+            else:
+                txt = f"({txt})"
+
         ax.annotate(
-            alphabet[ix], 
+            txt, 
             (pos,y_pos), 
             fontsize=fontsize, 
             xycoords="axes fraction",
