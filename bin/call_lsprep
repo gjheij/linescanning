@@ -4,7 +4,6 @@
 #$ -j Y
 #$ -V
 
-import ast
 import os
 import sys, getopt
 from bids import BIDSLayout
@@ -12,7 +11,6 @@ from linescanning import (
     utils,
     dataset
 )
-import yaml
 opj = os.path.join
 
 def main(argv):
@@ -177,10 +175,11 @@ Example
       bids_dir = opj(os.environ.get("DIR_DATA_HOME"), base_path)
 
     if not isinstance(output_dir, str):
-      output_dir = opj(
-        os.environ.get("DIR_DATA_DERIV"), 
-        "lsprep", 
-        base_path)
+        output_dir = opj(
+            os.environ.get("DIR_DATA_DERIV"), 
+            "lsprep", 
+            base_path
+        )
       
     # make output dir
     if not os.path.exists(output_dir):
@@ -296,7 +295,8 @@ Example
         deleted_first_timepoints=del_first,
         deleted_last_timepoints=del_last,
         baseline=bsl_length,
-        phase_onset=phase_onset)
+        phase_onset=phase_onset
+    )
 
     # save h5 if needed; filename will be derived from inputs
     obj_.to_hdf(overwrite=overwrite)

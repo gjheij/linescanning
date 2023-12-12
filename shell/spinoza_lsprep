@@ -1,0 +1,228 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# check if there's is a setup file containing the major paths and source it if it exists
+call_loadsetup
+source call_bashhelper
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+spinoza_lsprep
+
+wrapper for call_lsprep that performs the reconstruction of the line data. Uses MRecon, so we can
+only run it on the spinoza cluster. It calls upon call_lsprep, which internally uses a template
+for the reconstruction with MRecon based on scripts provided by Luisa Raimondo.
+
+Usage:
+  spinoza_lsprep [options] <project root directory> <sourcedata>
+
+Arguments:
+  -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
+  -n <session>        session ID (e.g., "2,3" or "3"). Defaults to '2'; specify multiple 
+                      sessions in a comma-separated list: "2,3,4"
+  -j <n_cpus>         number of CPUs to use (default = 1)
+  -q <queue>          submit jobs to a specific queue. Defaults to SGE_QUEUE_LONG in spinoza_setup
+  -x <kwargs>         Additional commands to be passed to 'call_lsprep'. Format should
+                      be comma-separated flags as follows: 
+                        - if you specify a flag and values | <flag>=<value>
+                        - if you specify a flag only | <flag>
+
+                      combine as:
+                      "-x <flag1>=<value>,<flag2>,<flag3>,<flag4>=<value>"
+
+                      This allows bash commands to be translated to python commands
+
+  -c|--sge            submit job to cluster (SGE)
+  <project root>      base directory containing the derivatives and the subject's folders.
+  <derivatives>       base directory to store the 'lsprep'-folder in 
+
+Eample:
+  spinoza_linerecon DIR_DATA_HOME DIR_DATA_SOURCE
+
+run with master:  
+  "master -m 03b -s 003 -n 4 -e 5" (sub-003, ses-4, multi-echo (5) acquisition)
+  "master -m 03b -s 003 -n 4"      (sub-003, ses-4, single-echo acquisition)
+  "master -m 03b --sge"            (submit to cluster)
+  "master -m 03b -o"               (overwrite existing files)
+  "master -m 03b -o --sge"         (overwrite and submit)
+  "master -m 03b -s 003 --debug"   (debug mode)
+
+Runs by default NORDIC denoising!
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+if [[ $# -lt 2 ]] ; then
+  Usage >&2
+  exit 1
+fi
+
+# Check for subject & session flags
+OW=0
+while getopts :-:cs:n:q:x:j: argument
+do
+  case ${argument} in
+    -)
+      case "${OPTARG}" in      
+        sge)
+          SGE=1
+          ;;                                                                        
+        *)
+          if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
+            echo "Unknown option --${OPTARG}"
+            exit 1
+          fi
+          ;;
+      esac;;    
+    s)  sub=${OPTARG}
+          ;;
+    n)  ses=${OPTARG}
+          ;;
+    c)  SGE=1
+          ;;   
+    j)  n_cpus=${OPTARG}
+          ;;
+    q)  SGE_QUEUE=${OPTARG}
+          ;;          
+    x)  LSPREP_KWARGS=${OPTARG}
+          ;;                               
+  esac
+done
+
+INPUT=${@:$OPTIND:1}
+OUTPUT=${@:$OPTIND+1:1}
+
+#-----------------------------------------------------------------------------
+# Get bash helper functions
+source call_bashhelper
+
+if [[ -z ${sub} ]]; then
+  # loop through subjects
+  search="${INPUT}/${SUBJECT_PREFIX}*"
+else
+  # read specified subjects into array
+  IFS=', ' read -r -a search <<< "${sub}"
+  search=${search[@]}
+  unset IFS
+fi
+
+if [[ -z ${ses} ]]; then
+  # loop through subjects
+  ses_ids=("2")
+else
+  # read specified subjects into array
+  IFS=', ' read -r -a ses_ids <<< "${ses}"
+  ses_ids=${ses_ids[@]}
+  unset IFS
+fi
+
+if [[ ${SGE} -eq 1 ]]; then
+  if [[ -z ${n_cpus} ]]; then
+    n_cpus=1
+  fi
+
+  if [ ! -d ${DIR_LOGS} ]; then
+    mkdir -p ${DIR_LOGS}
+  fi
+else
+  if [[ -z ${n_cpus} ]]; then
+    n_cpus=1
+  fi
+fi
+
+#-----------------------------------------------------------------------------
+# Start clock
+#-----------------------------------------------------------------------------
+
+echo
+echo "==================================================================================================="
+printf "PREPROCESSING OF LINE-SCANNING DATA WITH LSPREP\n"
+start=`date +%s`
+start_date=`date`
+
+printf "Started at ${start_date}\n"
+echo "==================================================================================================="
+
+#-----------------------------------------------------------------------------
+# Run it
+
+for subID in ${search}; do
+
+  # collect subject name
+  if [[ ! -z ${sub} ]]; then
+    sub_name=${SUBJECT_PREFIX}${subID}
+    sub_id=${subID}
+  else
+    sub_name=$(basename ${subID})
+    sub_id=`get_id ${sub_name} ${SUBJECT_PREFIX}`
+  fi
+
+  # parse kwargs
+  if [[ ! -z ${LSPREP_KWARGS} ]]; then
+    LSPREP_KWARGS=`echo ${LSPREP_KWARGS} | tr '=' ' ' | tr ',' ' '`
+  fi
+
+  if [[ ${SGE} -eq 0 ]]; then
+    echo
+    echo "**************************************** Processing ${sub_name} ***************************************"
+  fi
+
+  # loop through sessions
+  for s_id in ${ses_ids}; do
+    
+    base=${sub_name}_ses-${s_id}
+
+    # decide job execution
+    log_file=${OUTPUT}/lsprep/${sub_name}/${sub_name}_ses-${s_id}_desc-preproc_bold.log
+    if [[ ${SGE} -eq 1 ]]; then
+      if [[ ! -z ${SGE_QUEUE} ]]; then
+        QUEUE=${SGE_QUEUE}
+      else
+        QUEUE=${SGE_QUEUE_SHORT}
+      fi            
+      job="qsub -q ${QUEUE} -o ${log_file} -pe smp ${n_cpus} -N ${base}_desc-lsprep"
+    else
+      job="bash"
+    fi
+
+    cmd="""${job} ${DIR_SCRIPTS}/bin/call_lsprep -s sub-${subID} -n ${s_id} ${LSPREP_KWARGS}"""
+
+    # echo command
+    if [[ ${SGE} -eq 0 ]]; then
+      echo $cmd
+    fi
+
+    (
+      echo ""
+      echo "### New invocation of call_lsprep @ `date`"
+      echo "${cmd}"
+      echo ""
+    ) >> ${log_file}
+    
+    # execute cmd
+    ${cmd}
+
+  done
+
+done
+
+#-----------------------------------------------------------------------------
+# Calculate time spent using 'let'
+echo
+echo "---------------------------------------------------------------------------------------------------"
+end=`date +%s`
+end_date=`date`
+printf "Done at ${end_date}\n"
+
+let deltatime=end-start
+let hours=deltatime/3600
+let minutes=(deltatime/60)%60
+let seconds=deltatime%60
+printf "Time spent: %d:%02d:%02d\n" ${hours} ${minutes} ${seconds}
+echo "---------------------------------------------------------------------------------------------------"
