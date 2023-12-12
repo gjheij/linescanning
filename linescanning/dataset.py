@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import nibabel as nb
 from nilearn.signal import _standardize
 from niworkflows.reports import core
+import json
 import numpy as np
 import os
 from pathlib import Path
@@ -2050,9 +2051,48 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
                 self.ref_slice = [self.ref_slice]
 
         utils.verbose("\nFUNCTIONAL", self.verbose)
-
+        
         if isinstance(self.func_file, (str, np.ndarray)):
             self.func_file = [self.func_file]
+        
+        # store settings
+        self.func_settings = {}
+        self.incl_settings = [
+            "TR",
+            "lb",
+            "deleted_first_timepoints",
+            "deleted_last_timepoints",
+            "window_size",
+            "poly_order",
+            "button",
+            "func_file",
+            "tsv_file",
+            "edf_file",
+            "verbose",
+            "retroicor",
+            "acompcor",
+            "foldover",
+            "shift",
+            "func_tag",
+            "n_components",
+            "select_component",
+            "filter_confs",
+            "standardization",
+            "ses1_2_ls",
+            "run_2_run",
+            "save_as",
+            "gm_range",
+            "tissue_thresholds",
+            "filter_strategy",
+            "baseline",
+            "baseline_units",
+            "psc_nilearn",
+            "ica",
+            "keep_comps"
+        ]
+
+        for key in self.incl_settings:
+            self.func_settings[key] = getattr(self, key)
                 
         # check if we should index task
         self.index_task = False
@@ -3258,6 +3298,18 @@ class Dataset(ParseFuncFile,SetAttributes):
                     except:
                         # send error message
                         utils.verbose(f" Could not store attribute '{attr}'", self.verbose)
+
+        # define json file
+        self.json_file = self.h5_file.split(".")[0]+".json"
+        if os.path.exists(self.json_file):
+            os.remove(self.json_file)
+
+        # Serializing json
+        json_object = json.dumps(self.func_settings, indent=4)
+        
+        # Writing to sample.json
+        with open(self.json_file, "w") as outfile:
+            outfile.write(json_object)
 
         utils.verbose("Done", self.verbose)
 
