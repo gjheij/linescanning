@@ -294,7 +294,7 @@ for task_id in ${task_ids[@]}; do
     fi
 
     # undo z-scoring
-    if [[ ${execute_pre} -eq 1 ]]; then
+    if [[ ${execute_post} -eq 1 ]]; then
       if [ ${raw} -eq 1 ]; then
         echo "Un-zcoring output from pybest"
 
