@@ -625,7 +625,7 @@ class NideconvFitter(InitFitter):
     def get_event_predictions_from_fitter(fitter, intercept=True):
 
         ev_pred = []
-        for ix, ev in enumerate(fitter.events.keys()):
+        for ev in fitter.events.keys():
 
             if intercept:
                 X_stim = pd.concat(
@@ -776,7 +776,7 @@ class NideconvFitter(InitFitter):
                 self.predictions.append(preds)
 
                 # event-specific predictions
-                ev_pred = self.get_event_predictions_from_fitter(run_fitter)
+                ev_pred = self.get_event_predictions_from_fitter(run_fitter, intercept=self.conf_icpt)
                 ev_pred["run"] = run
                 
                 self.sub_predictions.append(ev_pred)
@@ -1021,7 +1021,7 @@ class NideconvFitter(InitFitter):
                             self.vox_prof.append(self.rf.get_timecourses().reset_index())
 
                             # timecourse predictions
-                            self.ev_pred = self.get_event_predictions_from_fitter(self.rf)
+                            self.ev_pred = self.get_event_predictions_from_fitter(self.rf, intercept=self.conf_icpt)
                             self.ev_predictions.append(self.ev_pred)
 
                         self.rf_df = pd.DataFrame({col: self.rf}, index=[0])
@@ -2417,8 +2417,11 @@ class HRFMetrics():
             try:
                 ac_area = abs(metrics.auc(xx, hrf.iloc[second_cross:third_cross]))*dx
             except:
-                self.plot_profile_for_debugging(hrf, add_hline=0)
-                raise ValueError()
+                if not nan_policy:
+                    self.plot_profile_for_debugging(hrf, add_hline=0)
+                    raise ValueError()
+                else:
+                    ac_area = np.nan
             
         return {
             "pos_area": ab_area,
