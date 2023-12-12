@@ -1190,7 +1190,7 @@ def double_gamma(x, lag=6, a2=12, b1=0.9, b2=0.9, c=0.35, scale=True):
         hrf = (1 - hrf.min()) * (hrf - hrf.min()) / \
             (hrf.max() - hrf.min()) + hrf.min()
     return hrf
-    
+
 class Posthoc(Defaults):
     """Posthoc
 
