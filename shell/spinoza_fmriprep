@@ -43,6 +43,11 @@ Arguments:
                   at the price that it re-runs EVERYTHING if you restart the process.
   --func          same as '-t func'
   --fd            only fetch framewise displacement files
+  --fetch_fsl     retrieve the MNI-transformed nifti-files (which are cleaned by default)
+  --fetch_anat    retrieve the nifti-files in T1w-space
+  --fetch_func    retrieve the nifti-files in func-space
+  --masks         used in combination with '--fetch_{fsl|func|anat}' to also fetch the brain masks
+                  associated with the timeseries files
   -s <subject>    subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
   -n <session>    session ID (e.g., 1, 2, or none); used to check for T1w-image. fMRIprep will do all
                   sessions it finds in the project root regardless of this argument. Use the bids fil-
@@ -107,9 +112,12 @@ OW=0
 n_cpu=1
 clean_wd=""
 fsl_flag=""
+func_flag=""
+anat_flag=""
 DOCKER_FLAG=""
 fd_flag="" 
 crash_flag=""
+mask_flag=0
 while getopts :-:ols:r:n:f:m:j:k:q:u:a:w: argument
 do
 case ${argument} in
@@ -148,6 +156,15 @@ case ${argument} in
         fetch_fsl)
           fsl_flag="--fetch_fsl"
           ;;          
+        fetch_func)
+          func_flag="--fetch_func"
+          ;; 
+        fetch_anat)
+          anat_flag="--fetch_anat"
+          ;;          
+        masks)
+          mask_flag="--masks"
+          ;;                     
         fd)
           fd_flag="--fd"
           ;;       
@@ -460,6 +477,9 @@ for subID in ${search}; do
     ${boldref_flag} \
     ${clean_wd} \
     ${fsl_flag} \
+    ${func_flag} \
+    ${anat_flag} \
+    ${mask_flag} \
     ${DOCKER_FLAG} \
     ${fd_flag}"""
 
