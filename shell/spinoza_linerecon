@@ -23,8 +23,10 @@ Usage:
 Arguments:
   -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
   -n <session>        session ID (e.g., 1, 2, or n)
-  -m <n_echoes>       number of echoes in the acquisition (e.g., 5)
+  -m <n_echoes>       number of echoes in the acquisition (e.g., 5); by default we try to read it 
+                      from the PAR-file (field 'number of echoes')
   -c|--sge            submit job to cluster (SGE)
+  -q <queue>          submit jobs to a specific queue. Defaults to SGE_QUEUE_LONG in spinoza_setup
   --debug             don't submit job, just print inputs/outputs
   --no_nordic         turn off NORDIC denoising during reconstruction
   -o                  overwrite existing files
@@ -39,12 +41,12 @@ Notes:
   we can only run this on the spinoza server
 
 run with master:  
-  "master -m 03 -s 003 -n 4 -e 5" (sub-003, ses-4, multi-echo (5) acquisition)
-  "master -m 03 -s 003 -n 4"      (sub-003, ses-4, single-echo acquisition)
-  "master -m 03 --sge"            (submit to cluster)
-  "master -m 03 -o"               (overwrite existing files)
-  "master -m 03 -o --sge"         (overwrite and submit)
-  "master -m 03 -s 003 --debug"   (debug mode)
+  "master -m 03a -s 003 -n 4 -e 5" (sub-003, ses-4, multi-echo (5) acquisition)
+  "master -m 03a -s 003 -n 4"      (sub-003, ses-4, single-echo acquisition)
+  "master -m 03a --sge"            (submit to cluster)
+  "master -m 03a -o"               (overwrite existing files)
+  "master -m 03a -o --sge"         (overwrite and submit)
+  "master -m 03a -s 003 --debug"   (debug mode)
 
 Runs by default NORDIC denoising!
 ---------------------------------------------------------------------------------------------------
@@ -62,7 +64,7 @@ fi
 OW=0
 SGE=0
 NORDIC=""
-while getopts :-:ocs:n:m: argument
+while getopts :-:ocs:n:m:q: argument
 do
   case ${argument} in
     -)
@@ -92,7 +94,9 @@ do
     o)  OW=1
           ;;
     c)  SGE=1
-          ;;             
+          ;;   
+    q)  SGE_QUEUE=${OPTARG}
+          ;;                     
   esac
 done
 
@@ -247,9 +251,14 @@ for subID in ${search}; do
               exit 1
             fi
           fi
-          
+
           if [[ ${SGE} -eq 1 ]]; then
-            job="qsub -N ${base}_task-${task}_run-${run}_desc-recon -wd ${OUTPUT}/${base_path}"
+            if [[ ! -z ${SGE_QUEUE} ]]; then
+              QUEUE=${SGE_QUEUE}
+            else
+              QUEUE=${SGE_QUEUE_LONG}
+            fi             
+            job="qsub -q ${QUEUE} -N ${base}_task-${task}_run-${run}_desc-recon -wd ${OUTPUT}/${base_path}"
           else
             echo "Running recon for run-${run} (task-${task})"
             job="bash"
