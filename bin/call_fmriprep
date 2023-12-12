@@ -58,6 +58,10 @@ Arguments:
   --clean           remove the single-subject workflow folder completely. This saves storage, but comes
                     at the price that it re-runs EVERYTHING if you restart the process.
   --fetch_fsl       retrieve the MNI-transformed nifti-files (which are cleaned by default)
+  --fetch_anat      retrieve the nifti-files in T1w-space
+  --fetch_func      retrieve the nifti-files in func-space
+  --masks           used in combination with '--fetch_{fsl|func|anat}' to also fetch the brain masks
+                    associated with the timeseries files  
   --fd              retrieve the frame-wise displacement files from the workflow folder
   --try             the default behavior of fmriprep is to crash upon the first error through the
                     '--stop-on-first-crash' flag. The '--try' flag tells fmriprep to keep trying in 
@@ -98,6 +102,9 @@ BOLDREF=1
 clean_wd=0
 USE_DOCKER=0
 fetch_fsl=0
+fetch_func=0
+fetch_anat=0
+fetch_masks=0
 FD_ONLY=0
 crash_flag="--stop-on-first-crash"
 while getopts :-:us:m:r:d:c:i:b:w:l:x:t:k:a: arg
@@ -124,7 +131,19 @@ do
           ;;            
         fetch_fsl)
           fetch_fsl=1
-          ;;        
+          ;;  
+        fetch_func)
+          fetch_func=1
+          ;;           
+        fetch_anat)
+          fetch_anat=1
+          ;;  
+        masks)
+          fetch_masks=1
+          ;;      
+        mask)
+          fetch_masks=1
+          ;;                                 
         fd)
           FD_ONLY=1
           ;;     
@@ -350,11 +369,13 @@ else
   fi
 fi
 
+#-----------------------------------------------------------------------------
 # overwrite anat only if 'func' is specified
 if [[ ${mode} != "anat" ]]; then
   anat_only_flag="" 
 fi
 
+#-----------------------------------------------------------------------------
 # set nthreads
 if [[ -z ${n_threads} ]]; then
   nthreads=15
@@ -363,23 +384,43 @@ else
 fi
 nthread_flag="--nthreads ${nthreads}"
 
-# output directory structure has changed after v21: https://github.com/nipreps/fmriprep/releases/tag/21.0.0
-if [[ ${fetch_fsl} -ne 1 ]]; then
+#-----------------------------------------------------------------------------
+# set rules for executing 
+execute_cmd=1
+if [[ ${fetch_fsl} -eq 1 ]]; then
+  execute_cmd=0
+fi
+
+if [[ ${fetch_func} -eq 1 ]]; then
+  execute_cmd=0
+fi
+
+if [[ ${WARP_ONLY} -eq 1 ]]; then
+  execute_cmd=0
+fi
+
+if [[ ${FD_ONLY} -eq 1 ]]; then
+  execute_cmd=0
+fi
+
+#-----------------------------------------------------------------------------
+# run cmd if execute_cmd == 1
+if [[ ${execute_cmd} -eq 1 ]]; then
+
+  # set flags
+  BOLDREF=1
+  WARP_ONLY=1
+
+  # output directory structure has changed after v21: https://github.com/nipreps/fmriprep/releases/tag/21.0.0
   echo "Checking fMRIPrep's version.."
   ver_cmd="""${run_cmd} --version"""
   echo ${ver_cmd}
   VERSION=`${ver_cmd} | cut -d" " -f2 | cut -d"." -f1`
   if [[ `echo "${VERSION//[!0-9]/}"` -lt "21" ]]; then
     output_dir=${derivatives}
-    add_fprep=1
   else
     output_dir=${derivatives}/fmriprep
-    add_fprep=0
   fi
-fi
-
-# run cmd if warp_only=0
-if [[ ${WARP_ONLY} -eq 0 && ${fetch_fsl} -eq 0 && ${FD_ONLY} -eq 0 ]]; then
 
   # execute the fMRIPrep command
   cmd="""
@@ -406,9 +447,6 @@ ${run_cmd} \
   ${kwargs[@]}
 """
 
-  # set the flag to get the FD-files
-  FD_ONLY=1
-
   # execute
   echo ${cmd}
   ${cmd}
@@ -419,64 +457,6 @@ ${run_cmd} \
     echo "ERROR in `basename ${0}`: job submission/execution was unsuccessful"
     exit 1
   fi    
-
-else
-  echo "Skipping fMRIPrep.."
-fi
-
-#-----------------------------------------------------------------------------
-# fMRIPrep's boldref seems to be messy lately (snow-like noise pattern instead of an image)
-if [ ! -z ${SUBJECT_PREFIX} ]; then
-  pref=${SUBJECT_PREFIX}
-fi
-
-if [[ ${fetch_fsl} -eq 0 ]]; then
-  if [[ ${BOLDREF} -eq 1 ]]; then
-    bold_files=`find ${derivatives}/fmriprep/*${subj_ID}/ -type f -name "*preproc_bold.nii.gz" 2>/dev/null`
-    IFS=$'\n' bold_files=($(sort <<<"${bold_files[*]}"))
-    unset IFS
-
-    if [ ! -z ${bold_files} ]; then
-      echo "Overwriting fMRIPrep's \"boldref\"-files"
-      for bold in ${bold_files[@]}; do
-        boldref=$(dirname ${bold})/$(basename ${bold} _desc-preproc_bold.nii.gz)_boldref.nii.gz
-        fslmaths ${bold} -Tmean ${boldref}
-      done
-    fi
-  fi
-
-  #-----------------------------------------------------------------------------
-  # copy the bold-to-T1w warps from the fmriprep_wf
-
-  # see https://github.com/nipreps/fmriprep/issues/2189#issuecomment-646620788
-  for tt in "fwd" "inv"; do
-    xfms=(`find -L ${work}/fmriprep*wf/single_subject_${subj_ID}_wf/func_preproc*/bold_reg_wf/bbreg_wf/concat_xfm -type f -name "out_${tt}.tfm" 2>/dev/null`)
-    if [[ ! -z ${xfms} ]]; then
-
-      if [[ ${tt} == "fwd" ]]; then
-        m="bold_to-T1w"
-      else
-        m="T1w_to-bold"
-      fi
-
-      echo "Copying \"${m}\" tfm-files"
-      for xfm in ${xfms[@]}; do
-        wf_name=`python -c "from linescanning.utils import disassemble_fmriprep_wf; print(disassemble_fmriprep_wf('${xfm}', '${subj_ID}', prefix='${pref}'))"`
-        
-        # check ses-flag
-        if [[ ${wf_name} == *"ses-"* ]]; then
-          ses_id=`echo ${wf_name} | cut -d'_' -f2`
-          base_dir=${pref}${subj_ID}/${ses_id}
-        else
-          base_dir=${pref}${subj_ID}
-        fi
-
-        out_xfm=${derivatives}/fmriprep/${base_dir}/func/${wf_name}_from-${m}_mode-image_xfm.txt
-        cp ${xfm} ${out_xfm}
-
-      done
-    fi
-  done
 
   # remove large MNI152*-files
   if [[ ! -z ${keep_runs} ]]; then
@@ -521,37 +501,159 @@ if [[ ${fetch_fsl} -eq 0 ]]; then
       echo "Could not find directory containing \"fmriprep\" and \"wf\" in \"${work}\""
     fi
   fi
-fi
 
-if [[ ${fetch_fsl} -eq 1 ]]; then
-  mni_files=(`find -L ${work}/fmriprep*wf/single_subject_${subj_ID}_wf/func_preproc*/bold_std_trans_wf/*MNI152NLin6Asym*/merge -type f -name "*_merged.nii.gz" 2>/dev/null`)
-  if [[ ! -z ${mni_files} ]]; then
-    echo "Copying \"MNI152NLin6Asym\"-transformed files"
-    for mni in ${mni_files[@]}; do
-      wf_name=`python -c "from linescanning.utils import disassemble_fmriprep_wf; print(disassemble_fmriprep_wf('${mni}', '${subj_ID}', prefix='${pref}'))"`
-      
-      # check ses-flag
-      if [[ ${wf_name} == *"ses-"* ]]; then
-        ses_id=`echo ${wf_name} | cut -d'_' -f2`
-        base_dir=${pref}${subj_ID}/${ses_id}
-      else
-        base_dir=${pref}${subj_ID}
-      fi
+  #-----------------------------------------------------------------------------
+  # fMRIPrep's boldref seems to be messy lately (snow-like noise pattern instead of an image)
+  if [[ ${BOLDREF} -eq 1 ]]; then
+    bold_files=`find ${derivatives}/fmriprep/*${subj_ID}/ -type f -name "*preproc_bold.nii.gz" 2>/dev/null`
+    IFS=$'\n' bold_files=($(sort <<<"${bold_files[*]}"))
+    unset IFS
 
-      out_mni=${derivatives}/fmriprep/${base_dir}/func/${wf_name}_space-MNI152NLin6Asym_res-1_desc-preproc_bold.nii.gz
-      if [[ ! -f ${out_mni} ]]; then
-        echo " writing ${out_mni}"
-        cp ${mni} ${out_mni}
-      fi
-
-    done   
-    echo "Done" 
-  else
-    echo "Could not find directory \"${work}/fmriprep*wf/single_subject_${subj_ID}_wf/func_preproc*/bold_std_trans_wf/*MNI152NLin6Asym*/merge\""
+    if [ ! -z ${bold_files} ]; then
+      echo "Overwriting fMRIPrep's \"boldref\"-files"
+      for bold in ${bold_files[@]}; do
+        boldref=$(dirname ${bold})/$(basename ${bold} _desc-preproc_bold.nii.gz)_boldref.nii.gz
+        fslmaths ${bold} -Tmean ${boldref}
+      done
+    fi
   fi
+
+else
+  echo "Skipping fMRIPrep.."
 fi
 
-# find directory where these FD files should live
+# define subject prefix
+if [ ! -z ${SUBJECT_PREFIX} ]; then
+  pref=${SUBJECT_PREFIX}
+fi
+
+#-----------------------------------------------------------------------------
+# copy the bold-to-T1w warps from the fmriprep_wf
+if [[ ${WARP_ONLY} -eq 1 ]]; then
+  for tt in "fwd" "inv"; do
+    xfms=(`find -L ${work}/fmriprep*wf/single_subject_${subj_ID}_wf/func_preproc*/bold_reg_wf/bbreg_wf/concat_xfm -type f -name "out_${tt}.tfm" 2>/dev/null`)
+    if [[ ! -z ${xfms} ]]; then
+
+      if [[ ${tt} == "fwd" ]]; then
+        m="bold_to-T1w"
+      else
+        m="T1w_to-bold"
+      fi
+
+      echo "Copying \"${m}\" tfm-files"
+      for xfm in ${xfms[@]}; do
+        wf_name=`python -c "from linescanning.utils import disassemble_fmriprep_wf; print(disassemble_fmriprep_wf('${xfm}', '${subj_ID}', prefix='${pref}'))"`
+        
+        # check ses-flag
+        if [[ ${wf_name} == *"ses-"* ]]; then
+          ses_id=`echo ${wf_name} | cut -d'_' -f2`
+          base_dir=${pref}${subj_ID}/${ses_id}
+        else
+          base_dir=${pref}${subj_ID}
+        fi
+
+        out_xfm=${derivatives}/fmriprep/${base_dir}/func/${wf_name}_from-${m}_mode-image_xfm.txt
+        cp ${xfm} ${out_xfm}
+
+      done
+    fi
+  done
+fi
+
+#-----------------------------------------------------------------------------
+# fetch func-space files
+output_space=("func" "fsl" "anat")
+ct=0
+for space in ${fetch_func} ${fetch_fsl} ${fetch_anat}; do
+  if [[ ${space} -eq 1 ]]; then
+
+    if [[ ${output_space[ct]} == "func" ]]; then
+      tag=""
+      msg="space-func"
+      err="bold_bold_trans_wf"
+      fetch_files=(`find -L ${work}/fmriprep*wf/single_subject_${subj_ID}_wf/func_preproc*/bold_bold_trans_wf/merge -type f -name "*_merged.nii.gz" 2>/dev/null`)
+    elif [[ ${output_space[ct]} == "fsl" ]]; then
+      tag="_space-MNI152NLin6Asym_res-1"
+      msg="space-MNI152NLin6Asym_res-1"
+      err="bold_std_trans_wf/*MNI152NLin6Asym*"
+      fetch_files=(`find -L ${work}/fmriprep*wf/single_subject_${subj_ID}_wf/func_preproc*/bold_std_trans_wf/*MNI152NLin6Asym*/merge -type f -name "*_merged.nii.gz" 2>/dev/null`)
+    elif [[ ${output_space[ct]} == "anat" ]]; then
+      tag="_space-T1w"
+      msg="space-T1w"
+      err="bold_t1_trans_wf"
+      fetch_files=(`find -L ${work}/fmriprep*wf/single_subject_${subj_ID}_wf/func_preproc*/bold_t1_trans_wf/merge -type f -name "*_merged.nii.gz" 2>/dev/null`)
+    fi
+
+    # fetch time course files
+    if [[ ! -z ${fetch_files} ]]; then
+      echo "Copying ${#fetch_files[@]} \"${msg}\"-transformed files"
+      for ff in ${fetch_files[@]}; do
+        wf_name=`python -c "from linescanning.utils import disassemble_fmriprep_wf; print(disassemble_fmriprep_wf('${ff}', '${subj_ID}', prefix='${pref}'))"`
+        
+        # check ses-flag
+        if [[ ${wf_name} == *"ses-"* ]]; then
+          ses_id=`echo ${wf_name} | cut -d'_' -f2`
+          base_dir=${pref}${subj_ID}/${ses_id}
+        else
+          base_dir=${pref}${subj_ID}
+        fi
+
+        out_file=${derivatives}/fmriprep/${base_dir}/func/${wf_name}${tag}_desc-preproc_bold.nii.gz
+        echo " writing ${out_file}"
+        cp ${ff} ${out_file}
+
+      done   
+      echo "Done" 
+    else
+      echo "Could not find directory \"${work}/fmriprep*wf/single_subject_${subj_ID}_wf/func_preproc*/${err}/merge\""
+    fi
+
+    # fetch masks
+    if [[ ${fetch_masks} -eq 1 ]]; then
+      if [[ ${output_space[ct]} == "func" ]]; then
+        tag=""
+        msg="space-func"
+        fetch_files=(`find -L ${work}/fmriprep*wf/single_subject_${subj_ID}_wf/func_preproc*/final_boldref_wf/enhance_and_skullstrip_bold_wf/combine_masks -type f -name "*_maths.nii.gz" 2>/dev/null`)
+      elif [[ ${output_space[ct]} == "fsl" ]]; then
+        tag="_space-MNI152NLin6Asym_res-1"
+        msg="space-MNI152NLin6Asym_res-1"
+        fetch_files=(`find -L ${work}/fmriprep*wf/single_subject_${subj_ID}_wf/func_preproc*/bold_std_trans_wf/bold_reference_wf/enhance_and_skullstrip_bold_wf/*MNI152NLin6Asym*/combine_masks -type f -name "*_maths.nii.gz" 2>/dev/null`)
+      elif [[ ${output_space[ct]} == "anat" ]]; then
+        tag="_space-T1w"
+        msg="space-T1w"
+        fetch_files=(`find -L ${work}/fmriprep*wf/single_subject_${subj_ID}_wf/func_preproc*/bold_t1_trans_wf/bold_reference_wf/enhance_and_skullstrip_bold_wf/combine_masks -type f -name "*_maths.nii.gz" 2>/dev/null`)
+      fi      
+
+      if [[ ! -z ${fetch_files} ]]; then
+        echo "Copying ${#fetch_files[@]} \"${msg}\"-transformed brain masks"
+        for ff in ${fetch_files[@]}; do
+          wf_name=`python -c "from linescanning.utils import disassemble_fmriprep_wf; print(disassemble_fmriprep_wf('${ff}', '${subj_ID}', prefix='${pref}'))"`
+          
+          # check ses-flag
+          if [[ ${wf_name} == *"ses-"* ]]; then
+            ses_id=`echo ${wf_name} | cut -d'_' -f2`
+            base_dir=${pref}${subj_ID}/${ses_id}
+          else
+            base_dir=${pref}${subj_ID}
+          fi
+
+          out_file=${derivatives}/fmriprep/${base_dir}/func/${wf_name}${tag}_desc-brain_mask.nii.gz
+          echo " writing ${out_file}"
+          cp ${ff} ${out_file}
+
+        done
+        echo "Done"
+      fi
+    fi
+
+  fi
+
+  # update counter
+  ((ct++))
+done
+
+#-----------------------------------------------------------------------------
+# Fetch FD files
 if [[ ${FD_ONLY} -eq 1 ]]; then
   echo "Finding FD-timecourse files"
   work_dir=${work}/fmriprep*wf/single_subject_${subj_ID}_wf
