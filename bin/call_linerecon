@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 #$ -S /bin/bash
 #$ -cwd
-#$ -q recon.q
 #$ -j Y
 #$ -V
 
