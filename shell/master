@@ -1101,7 +1101,7 @@ echo ${FLAG_executeModule} | grep -q ${module}
 if [[ $? -eq 0 ]]; then
 
   if [[ ${HELP} -eq 1 ]]; then
-    ${job} spinoza_linerecon
+    ${job} spinoza_lsprep
     exit 1
   fi
 

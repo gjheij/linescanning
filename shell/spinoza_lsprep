@@ -41,17 +41,14 @@ Arguments:
   <derivatives>       base directory to store the 'lsprep'-folder in 
 
 Eample:
-  spinoza_linerecon DIR_DATA_HOME DIR_DATA_SOURCE
+  spinoza_lsprep -s 001 -n 3 --sge DIR_DATA_SOURCE DIR_DATA_DERIV
+  spinoza_lsprep -s 001 -n 3 -x --filter_pca=0.18,--verbose DIR_DATA_SOURCE DIR_DATA_DERIV
 
 run with master:  
-  "master -m 03b -s 003 -n 4 -e 5" (sub-003, ses-4, multi-echo (5) acquisition)
-  "master -m 03b -s 003 -n 4"      (sub-003, ses-4, single-echo acquisition)
-  "master -m 03b --sge"            (submit to cluster)
-  "master -m 03b -o"               (overwrite existing files)
-  "master -m 03b -o --sge"         (overwrite and submit)
-  "master -m 03b -s 003 --debug"   (debug mode)
+  "master -m 03b -s 008 -n 3" # use all defaults from call_lsprep
+  "master -m 03b -s 008 -n 3 -x --filter_pca=0.18,--verbose,--no_button,--ow,--ica" # customize
+  "master -m 03b -s 008 -n 3 --sge -x --filter_pca=0.18,--verbose,--ica" # customize # submit
 
-Runs by default NORDIC denoising!
 ---------------------------------------------------------------------------------------------------
 
 USAGE
