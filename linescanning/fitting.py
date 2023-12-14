@@ -867,19 +867,33 @@ class NideconvFitter(InitFitter):
 
         subjs = []
         for sub in subj_ids:
-
+            
             sub_df = utils.select_from_df(self.tc_subjects, expression=f"subject = {sub}")
-            run_ids = utils.get_unique_ids(self.tc_subjects, id="run")
+            run_ids = utils.get_unique_ids(sub_df, id="run")
 
             runs = []
             for run in run_ids:
                 run_df = utils.select_from_df(sub_df, expression=f"run = {run}")
-                ev = utils.get_unique_ids(run_df, id="event_type")[0]
+                ev_ids = utils.get_unique_ids(run_df, id="event_type")
 
-                pars = HRFMetrics(run_df, plot=plot, shift=shift, nan_policy=nan_policy).return_metrics()
-                pars["run"], pars["event_type"] = run,ev
+                evs = []
+                for ev in ev_ids:
+                    ev_df = utils.select_from_df(run_df, expression=f"event_type = {ev}")
+
+                    pars = HRFMetrics(
+                        ev_df, 
+                        plot=plot, 
+                        shift=shift,
+                        nan_policy=nan_policy
+                    ).return_metrics()
+
+                    pars["event_type"] = ev
+                    evs.append(pars)
                 
-                runs.append(pars)
+                evs = pd.concat(evs)
+                evs["run"] = run
+                
+                runs.append(evs)
 
             runs = pd.concat(runs)
             runs["subject"] = sub
@@ -1376,6 +1390,7 @@ class NideconvFitter(InitFitter):
         figsize=(8,8), 
         ttp_ori='h', 
         split="event_type",
+        lines_only=False,
         **kwargs):
 
         if not isinstance(axs, mpl.axes._axes.Axes):
@@ -1423,16 +1438,17 @@ class NideconvFitter(InitFitter):
                     color=colors[ix], 
                     linewidth=0.5)        
         
-        self.ttp_plot = plotting.LazyBar(
-            data=self.df_pars,
-            x=x_lbl,
-            y="time_to_peak",
-            labels=ttp_labels,
-            sns_ori=ttp_ori,
-            axs=axs,
-            error=None,
-            **kwargs
-        )   
+        if not lines_only:
+            self.ttp_plot = plotting.LazyBar(
+                data=self.df_pars,
+                x=x_lbl,
+                y="time_to_peak",
+                labels=ttp_labels,
+                sns_ori=ttp_ori,
+                axs=axs,
+                # error=None,
+                **kwargs
+            )   
         
     def plot_fwhm(
         self, 
@@ -3118,19 +3134,45 @@ class Epoch(InitFitter):
 
         return pd.concat(task_df)
     
+    def epoch_subjects(
+        self,
+        df_func,
+        df_onsets
+        ):
+
+        self.sub_ids = utils.get_unique_ids(self.func, id="subject")
+        
+        # loop through subject IDs
+        sub_df = [] 
+        for sub in self.sub_ids:
+
+            # extract task-specific dataframes
+            expr = f"subject = {sub}"
+            self.sub_func = utils.select_from_df(df_func, expression=expr)
+            self.sub_stims = utils.select_from_df(df_onsets, expression=expr)
+
+            try:
+                self.task_ids = utils.get_unique_ids(self.sub_func, id="task")
+            except:
+                self.task_ids = None
+
+            if isinstance(self.task_ids, list):
+                sub_epoch = self.epoch_tasks(self.sub_func, self.sub_stims)
+                self.idx = ["subject","task","run","event_type","epoch","t"]
+            else:
+                sub_epoch = self.epoch_runs(self.sub_func, self.sub_stims)
+                self.idx = ["subject","run","event_type","epoch","t"]
+
+            sub_epoch.set_index(self.idx, inplace=True)        
+            sub_df.append(sub_epoch)
+
+        sub_df = pd.concat(sub_df)
+
+        return sub_df
+    
     def epoch_input(self):
 
-        try:
-            self.task_ids = utils.get_unique_ids(self.func, id="task")
-        except:
-            self.task_ids = None
-
-        if isinstance(self.task_ids, list):
-            self.df_epoch = self.epoch_tasks(self.func, self.onsets)
-            self.idx = ["subject","task","run","event_type","epoch","t"]
-        else:
-            self.df_epoch = self.epoch_runs(self.func, self.onsets)
-            self.idx = ["subject","run","event_type","epoch","t"]
-
-        self.df_epoch.set_index(self.idx, inplace=True)
-
+        self.df_epoch = self.epoch_subjects(
+            self.func,
+            self.onsets
+        )
