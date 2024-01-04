@@ -1384,7 +1384,7 @@ class LazyBar():
     points_alpha: float, optional
         Alpha of the points, by default 1. Sometimes useful to adjust if you have LOADS of data points
     error: str, optional
-        Type of error bar to use for the bar, by default "sem". Can be "sem" or "std". Internally, we'll check if there's enough samples to calculate errors from, otherwise `error` will be set to `None`
+        Type of error bar to use for the bar, by default "sem". Can be {'sem'|'se'} or {'std'|'sd'. Internally, we'll check if there's enough samples to calculate errors from, otherwise `error` will be set to `None`
     fancy: bool, optional
         Flag to round the edges of the bars, by default False. By default, the rounding is scaled by the min/max of the plot, regardless whether `lim` was specified. This ensures equal rounding across inputs. The other `fancy`-arguments below are a bit vague, so leaving them default will ensure nice rounding of the bars
     fancy_rounding: float, optional
@@ -1600,6 +1600,13 @@ class LazyBar():
             if not isinstance(self.palette, sns.palettes._ColorPalette):
                 # self.palette = sns.color_palette(self.cmap, self.data.shape[0])
                 self.palette = self.cmap
+        
+        # allow more input types
+        if isinstance(self.error, str):
+            if self.error.lower() in "sem":
+                self.error = "se"
+            elif self.error.lower() == "std":
+                self.error = "sd"
         
         self.ff = sns.barplot(
             data=self.data,
