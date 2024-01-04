@@ -268,7 +268,7 @@ Notes:
             
             try:
                 print("Make mask with SPM from INV2-image")
-                cmd = f'call_spmmask {select_fn[2]} {brainmask} y'
+                cmd = f'call_spmmask --clean {select_fn[2]} {brainmask}'
                 os.system(cmd)
             except:
                 pass

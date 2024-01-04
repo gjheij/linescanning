@@ -314,7 +314,7 @@ Notes:
             
             try:
                 print(f"Make SPM mask from {select_fn[2]}")
-                cmd = f'call_spmmask {select_fn[2]} {brainmask} y'
+                cmd = f'call_spmmask --clean {select_fn[2]} {brainmask}'
                 os.system(cmd)
             except:
                 pass
