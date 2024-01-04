@@ -475,6 +475,9 @@ def get_unique_ids(df, id=None, sort=True):
     except:
         pass
 
+    if not isinstance(id, str):
+        raise ValueError(f"Please specify a identifier from the dataframe")
+    
     try:
         a = df[id].values
         if not sort:
@@ -1162,6 +1165,20 @@ def select_from_df(df, expression="run = 1", index=True, indices=None, match_exa
                     sub_df = sub_df.set_index(idc)
 
         return sub_df
+
+def multiselect_from_df(df, expression=[]):
+
+    if not isinstance(expression, list):
+        raise TypeError(f"expression must be list of tuples (see docs utils.select_from_df), not {type(expression)}")
+    
+    if len(expression) == 0:
+        raise ValueError(f"List is empty")
+    
+    start_df = df.copy()
+    for expr in expression:
+        df = select_from_df(df, expression=expr)
+
+    return df
 
 def split_bids_components(fname, entities=False):
 
