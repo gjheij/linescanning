@@ -866,45 +866,74 @@ class NideconvFitter(InitFitter):
         subj_ids = utils.get_unique_ids(self.tc_subjects, id="subject")
 
         subjs = []
+        subjs_avg_run = []
         for sub in subj_ids:
             
             sub_df = utils.select_from_df(self.tc_subjects, expression=f"subject = {sub}")
-            run_ids = utils.get_unique_ids(sub_df, id="run")
+            ev_ids = utils.get_unique_ids(sub_df, id="event_type")
 
-            runs = []
-            for run in run_ids:
-                run_df = utils.select_from_df(sub_df, expression=f"run = {run}")
-                ev_ids = utils.get_unique_ids(run_df, id="event_type")
+            # loop through evs
+            evs = []
+            evs_avg = []
+            for ev in ev_ids:
+                
+                # get event-specific dataframe
+                ev_df = utils.select_from_df(sub_df, expression=f"event_type = {ev}")
+                run_ids = utils.get_unique_ids(sub_df, id="run")
 
-                evs = []
-                for ev in ev_ids:
-                    ev_df = utils.select_from_df(run_df, expression=f"event_type = {ev}")
-
+                # loop through runs
+                runs = []
+                for run in run_ids:
+                    
+                    # get run-specific dataframe
+                    run_df = utils.select_from_df(ev_df, expression=f"run = {run}")
                     pars = HRFMetrics(
-                        ev_df, 
+                        run_df, 
                         plot=plot, 
                         shift=shift,
                         nan_policy=nan_policy
                     ).return_metrics()
 
-                    pars["event_type"] = ev
-                    evs.append(pars)
+                    pars["event_type"],pars["run"] = ev,run
+                    runs.append(pars)
                 
-                evs = pd.concat(evs)
-                evs["run"] = run
-                
-                runs.append(evs)
+                # also get parameters of average across runs
+                avg_df = ev_df.groupby(["subject","event_type","time"]).mean()
+                avg_pars = HRFMetrics(
+                    avg_df, 
+                    plot=plot, 
+                    shift=shift,
+                    nan_policy=nan_policy
+                ).return_metrics()
 
-            runs = pd.concat(runs)
-            runs["subject"] = sub
-            subjs.append(runs)
+                # save average
+                avg_pars["event_type"] = ev
+                evs_avg.append(avg_pars)
+
+                # save single runs
+                runs = pd.concat(runs)
+                evs.append(runs)
+
+            # avg
+            evs_avg = pd.concat(evs_avg)
+            evs_avg["subject"] = sub
+            subjs_avg_run.append(evs_avg)
+
+            # single runs
+            evs = pd.concat(evs)
+            evs["subject"] = sub
+            subjs.append(evs)
 
         df_conc = pd.concat(subjs)
-        idx = ["subject","event_type","run"]
+        df_avg = pd.concat(subjs_avg_run)
+        avg_idx = ["subject","event_type"]
+        idx = avg_idx+["run"]
         if "vox" in list(df_conc.columns):
             idx += ["vox"]
+            avg_idx += ["vox"]
         
         self.pars_subjects = df_conc.set_index(idx)
+        self.avg_pars_subjects = df_avg.set_index(avg_idx)
     
     def change_name_set_index(self, df, index=["subject","event_type","covariate","time"]):
 
@@ -934,7 +963,8 @@ class NideconvFitter(InitFitter):
             concatenate_runs=self.concatenate_runs,
             oversample_design_matrix=self.osf,
             add_intercept=self.conf_icpt,
-            **kwargs)
+            **kwargs
+        )
     
     def add_event(self, *args, **kwargs):
         self.model.add_event(*args, **kwargs)
