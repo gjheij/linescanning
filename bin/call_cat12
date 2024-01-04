@@ -126,7 +126,7 @@ fi
 
 #-----------------------------------------------------------------------------
 # Create new script
-new_script=${LOG_DIR}/cat12.m
+new_script=${LOG_DIR}/catscript.m
 if [[ -f ${new_script} ]]; then
   rm -r ${new_script}
 fi
