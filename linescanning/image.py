@@ -1,6 +1,6 @@
 # pylint: disable=no-member,E1130,E1137
 import json
-from linescanning import transform, utils
+from linescanning import transform, utils, optimal
 import matplotlib.pyplot as plt
 import nibabel as nb
 import numpy as np
@@ -754,3 +754,87 @@ def tsnr(img,file_name=None, clip=None):
             header=hdr).to_filename(file_name)
 
     return mean_tsnr
+
+class ROI():
+
+    def __init__(
+        self,
+        roi,
+        ):
+
+        self.roi = roi
+
+        # read parc data once even for multiple ROIs
+        self.read_aparc()
+        self.roi_list = self.read_roi_list()
+
+        # force list
+        if isinstance(self.roi, str):
+            self.roi = [self.roi]
+
+        # loop through list and merge
+        self.individual_masks = {}
+        if isinstance(self.roi, list):
+            for roi in self.roi:
+                if roi not in self.roi_list:
+                    raise ValueError(f"'{roi}' is not part of the aparc atlas. Options are {self.roi_list}")
+                
+                self.individual_masks[roi] = self.make_roi_mask(roi=roi)
+
+        # merge
+        if len(self.individual_masks)>1:
+            self.roi_mask = np.zeros_like(self.individual_masks[self.roi[0]])
+            for _,val in self.individual_masks.items():
+                self.roi_mask[val>0] = 1
+        else:
+            self.roi_mask = self.individual_masks[self.roi[0]].copy()
+
+    def get_rois(self):
+        return self.read_roi_list()
+    
+    def return_mask(self):
+        return self.roi_mask
+    
+    def read_aparc(self):
+
+        # GET VERICES FOR A SPECIFIC ROI 
+        self.parc_data = optimal.SurfaceCalc.read_fs_annot(
+            subject='fsaverage',
+            fs_annot="aparc",
+            hemi="both"
+        )
+
+    def read_roi_list(self):
+        if not hasattr(self, "parc_data"):
+            self.read_aparc()
+
+        roi_list = []
+        for i in self.parc_data["lh"][-1]:
+            roi_list.append(i.decode())
+
+        roi_list = [i for i in roi_list if i != "unknown"]
+        return roi_list
+    
+    def make_roi_mask(self, roi=None):
+        
+        if not isinstance(roi, str):
+            raise ValueError(f"Please specify an ROI to extract")
+
+
+        tmp = {}
+        for ii in ['lh', 'rh']:
+            
+            # get data
+            parc_hemi = self.parc_data[ii][0]
+
+            # get index of specified ROI in list | hemi doesn't matter here
+            for ix,i in enumerate(self.parc_data[ii][2]):
+                if roi.encode() in i:
+                    break
+            
+            tmp[ii] = (parc_hemi == ix).astype(int)
+
+        # Concat Hemis
+        concat_hemis = np.hstack((tmp['lh'],tmp['rh']))
+
+        return concat_hemis
