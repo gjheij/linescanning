@@ -999,7 +999,7 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
                 pass            
 
         # get events per run
-        self.events_per_run = self.events_per_run()
+        self.evs_per_run = utils.get_unique_ids(self.df_onsets, id="event_type")
 
         # check if we should merge responses with onsets
         if self.merge:
@@ -2093,7 +2093,7 @@ class ParseFuncFile(ParseExpToolsFile, ParsePhysioFile):
 
         for key in self.incl_settings:
             self.func_settings[key] = getattr(self, key)
-                
+        
         # check if we should index task
         self.index_task = False
         self.index_list = ["subject","run","t"]
@@ -2129,16 +2129,15 @@ Functional data preprocessing
             # reports
             for run_id, func in enumerate(self.func_file):
                 
-                if self.verbose:
-                    if isinstance(func, str):
-                        utils.verbose(f"Preprocessing {func}", self.verbose)
-                    elif isinstance(func, np.ndarray):
-                        utils.verbose(f"Preprocessing array {run_id+1} in list", self.verbose)
-                        
-                        # override use_bids. Can't be use with numpy arrays
-                        self.use_bids = False
-                    else:
-                        raise ValueError(f"Unknown input type '{type(func)}'. Must be string or numpy-array")
+                if isinstance(func, str):
+                    utils.verbose(f"Preprocessing {func}", self.verbose)
+                elif isinstance(func, np.ndarray):
+                    utils.verbose(f"Preprocessing array {run_id+1} in list", self.verbose)
+                    
+                    # override use_bids. Can't be use with numpy arrays
+                    self.use_bids = False
+                else:
+                    raise ValueError(f"Unknown input type '{type(func)}'. Must be string or numpy-array")
 
                 self.run = run_id+1
                 self.ses = None
@@ -2474,7 +2473,7 @@ Functional data preprocessing
         if not self.stop_process:
             # check baseline
             if not self.psc_nilearn:
-                if self.baseline_units == "seconds" or self.baseline_units == "s" or self.baseline_units == "sec":
+                if self.baseline_units in ["seconds","s","sec"]:
                     baseline_vols_old = int(np.round(baseline*self.fs, 0))
                     utils.verbose(f" Baseline is {baseline} seconds, or {baseline_vols_old} TRs", self.verbose)
                 else:
