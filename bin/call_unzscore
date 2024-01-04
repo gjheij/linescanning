@@ -107,7 +107,7 @@ def bids_search(func, start_search=[], skip_run_id=False):
             if not any("ses" in i for i in start_search):
                 start_search += [f"ses-{comps['ses']}_"]
 
-    for el in ["run","hemi","task","acq"]:
+    for el in ["run","hemi","task","acq","space"]:
 
         if el in list(comps.keys()):
 
