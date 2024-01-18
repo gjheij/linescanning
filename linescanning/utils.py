@@ -768,13 +768,13 @@ def read_chicken_csv(chicken_file, return_type="lps"):
 
         return LPS@coord
 
-def get_vertex_nr(subject, as_list=False, verbose=False):
+def get_vertex_nr(subject, as_list=False, debug=False):
 
     n_verts_fs = []
     for i in ['lh', 'rh']:
         
         surf = opj(os.environ.get('SUBJECTS_DIR'), subject, 'surf', f'{i}.white')
-        utils.verbose(surf, verbose)
+        verbose(surf, debug)
         if not os.path.exists(surf):
             raise FileNotFoundError(f"Could not find file '{surf}'")
         
