@@ -768,6 +768,25 @@ def read_chicken_csv(chicken_file, return_type="lps"):
 
         return LPS@coord
 
+def get_vertex_nr(subject, as_list=False, verbose=False):
+
+    n_verts_fs = []
+    for i in ['lh', 'rh']:
+        
+        surf = opj(os.environ.get('SUBJECTS_DIR'), subject, 'surf', f'{i}.white')
+        utils.verbose(surf, verbose)
+        if not os.path.exists(surf):
+            raise FileNotFoundError(f"Could not find file '{surf}'")
+        
+        verts = nb.freesurfer.io.read_geometry(surf)[0].shape[0]
+        n_verts_fs.append(verts)
+
+
+    if as_list:
+        return n_verts_fs
+    else:
+        return sum(n_verts_fs)
+
 class VertexInfo:
 
     """ VertexInfo
@@ -800,9 +819,9 @@ class VertexInfo:
         except:
             pass
             
-        if hemi == "lh" or hemi.lower() == "l" or hemi.lower() == "left":
+        if hemi.lower() in ["lh","l","left"]:
             self.hemi = "L"
-        elif hemi == "rh" or hemi.lower() == "r" or hemi.lower() == "right":
+        elif hemi.lower() in ["rh","r","right"]:
             self.hemi = "R"
         else:
             self.hemi = "both"
