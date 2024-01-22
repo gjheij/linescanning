@@ -291,7 +291,7 @@ Example:
 
                     for func in ses_funcs:
                         
-                        print(f" {func}")
+                        utils.verbose(f" {func}", True)
                         # construct output basename and base output dir
                         final_output, base_dir = fetch_filepath(func, skip_run_id=skip_run_id)
 
@@ -367,6 +367,7 @@ Example:
 
                             for func in ses_funcs:
                                 
+                                utils.verbose(f" {func}", True)
                                 # construct output basename and base output dir
                                 final_output, base_dir = fetch_filepath(func, skip_run_id=skip_run_id)
 
@@ -391,6 +392,9 @@ Example:
 
                         for func in funcs:
                             
+                            # print
+                            utils.verbose(f" {func}", True)
+
                             # construct output basename and base output dir
                             final_output, base_dir = fetch_filepath(func, skip_run_id=skip_run_id)
 
