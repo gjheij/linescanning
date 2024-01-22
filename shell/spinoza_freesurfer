@@ -320,7 +320,7 @@ for subID in ${search}; do
         fi
       fi
 
-      call_freesurfer \
+      cmd="""call_freesurfer \
         -s ${sub_name} \
         -t ${input_t1w} \
         -r ${STAGE} \
@@ -333,7 +333,10 @@ for subID in ${search}; do
         ${XOPTS_} \
         ${sge_flag} \
         ${use_t2_flag} \
-        ${force_flag} \
+        ${force_flag}"""
+
+      echo ${cmd}
+      ${cmd}      
 
     else
       echo "${sub_name}: FreeSurfer already ran"

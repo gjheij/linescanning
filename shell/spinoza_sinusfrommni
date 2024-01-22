@@ -66,9 +66,10 @@ if [[ -z ${sub} ]]; then
   # loop through subjects
   search="${ANAT}/${SUBJECT_PREFIX}*"
 else
-  # do for 1 subject
-  sub_nr=`echo ${sub} | sed -e 's/^[[:space:]]*//'`
-  search="${ANAT}/${SUBJECT_PREFIX}${sub_nr}"
+  # read specified subjects into array
+  IFS=', ' read -r -a search <<< "${sub}"
+  search=${search[@]}
+  unset IFS
 fi
 
 #-----------------------------------------------------------------------------
@@ -86,17 +87,24 @@ echo "==========================================================================
 #-----------------------------------------------------------------------------
 # Run it
 
-for dir in ${search}; do
+for subID in ${search}; do
 
-  # check if we got a session number
-  if [[ -z ${ses} ]]; then
-    nr=""
-    base=$(basename ${dir})
-    base_dir=$(basename ${dir})
+  # collect subject name
+  if [[ ! -z ${sub} ]]; then
+    sub_name=${SUBJECT_PREFIX}${subID}
+    sub_id=${subID}
   else
+    sub_name=$(basename ${subID})
+    sub_id=`get_id ${sub_name} ${SUBJECT_PREFIX}`
+  fi
+
+  if [[ ! -z ${ses} ]]; then
     nr=`echo ${ses} | sed -e 's/^[[:space:]]*//'`
-    base="$(basename ${dir})_ses-${nr}"
-    base_dir=$(basename ${dir})/ses-${nr}
+    base_dir=${sub_name}/ses-${nr}
+    base=${sub_name}_ses-${nr}
+  else
+    base_dir=${sub_name}
+    base=${sub_name}
   fi
 
   pn_anat=${ANAT}/${base_dir}
@@ -127,33 +135,56 @@ for dir in ${search}; do
 
         # calculate T1w/T2w ratio
         t1=`find "${pn_anat}" -type f \( -name "*T1w.nii.gz" \) 2>/dev/null`
-        t2=`find "${pn_anat}" -type f \( -name "*T2w.nii.gz" \) 2>/dev/null`
+        t2=`find "${pn_anat}" -type f \( -name "*T2w.nii.gz" -and -not -name "tmp*" \) 2>/dev/null`
         mask=`find "${pn_anat}" -type f \( -name "*spm_mask.nii.gz" \) 2>/dev/null`
 
         if [[ ! -z ${t1} && ! -z ${t2} ]]; then
 
           echo
-          echo "**************************************** Processing `basename ${dir}` ***************************************"
+          echo "**************************************** Processing ${sub_name} ***************************************"
           echo ${txt}
 
           # if we have a mask-image, we can create a sinus mask directly from the T2-image. Use ratio otherwise
-          if [ ! -z ${mask} ]; then
+          if [[ ! -z ${mask} ]]; then
             echo "Creating sinus mask directly from T2-image"
-            fslmaths ${t2} -mas ${mask} $(dirname ${t2})/tmp_$(basename ${t2})
-            fslmaths $(dirname ${t2})/tmp_$(basename ${t2}) -uthr 10000 -bin ${fn_nuisance}
+
+            # mask t2 with brain mask
+            cmd="""fslmaths ${t2} -mas ${mask} $(dirname ${t2})/tmp_$(basename ${t2})"""
+            echo ${cmd}
+            ${cmd}
+            if [[ $? -ne 0 ]]; then
+              echo "ERROR in `basename ${0}`: fslmaths exited with non-zero code"
+              exit 1
+            fi
+
+            # threshold
+            cmd="""fslmaths $(dirname ${t2})/tmp_$(basename ${t2}) -uthr 10000 -bin ${fn_nuisance}"""
+            echo
+            echo ${cmd}
+            ${cmd}
+            if [[ $? -ne 0 ]]; then
+              echo "ERROR in `basename ${0}`: fslmaths exited with non-zero code"
+              exit 1
+            fi
+
+            # delete tmp files          
             rm $(dirname ${t2})/tmp_$(basename ${t2}) 2>/dev/null
           else
             echo "Creating T1w/T2w + thresholded image"
-            call_t12ratio --t1 ${t1} --t2 ${t2} -o ${pn_anat}/${base}_acq-${DATA^^}
-          fi
-
-          if [[ $? -ne 0 ]]; then
-            echo "ERROR in `basename ${0}`: call_t12ratio exited with non-zero status"
-            exit 1
+            cmd="""call_t12ratio \
+              --t1 ${t1} \
+              --t2 ${t2} \
+              -o ${pn_anat}/${base}_acq-${DATA^^}"""
+            echo ${cmd}
+            ${cmd}
+            if [[ $? -ne 0 ]]; then
+              echo "ERROR in `basename ${0}`: call_t12ratio exited with non-zero status"
+              exit 1
+            fi
           fi
 
         else
-          echo "`basename ${dir}`: Could not find t1 and-/or t2 file input directory"
+          echo "${sub_name}: Could not find t1 and-/or t2 file in \"${pn_anat}\""
           continue
         fi
 
@@ -168,30 +199,31 @@ for dir in ${search}; do
           mat_file=`find "${pn_matrix}" -type f \( -name "*from-MNI152NLin6Asym*" -and -name "*.mat" \) 2>/dev/null`
           warp_file=`find "${pn_matrix}" -type f \( -name "*from-MNI152NLin6Asym*" -and -name "*invwarp.nii.gz" \) 2>/dev/null`
           
-          echo "Warping MNI152_T1_1mm_Dil3_sagsinus_mask to subject space"
           if [[ ! -z ${mat_file} && ! -z ${warp_file} ]]; then
             # got SyN registration
             call_antsapplytransforms -i "1 0" --gen ${fn_nuisance} ${mni_mask} ${fn_mni} "${mat_file} ${warp_file}"
-
             if [[ $? -ne 0 ]]; then
               echo "ERROR in `basename ${0}`: call_antsapplytransforms exited with non-zero status"
               exit 1
             fi
           elif [[ ! -z ${mat_file} && -z ${warp_file} ]]; then
             # got affine registration
-            call_antsapplytransforms --gen ${fn_nuisance} ${mni_mask} ${fn_mni} ${mat_file}
+            cmd="""call_antsapplytransforms --gen ${fn_nuisance} ${mni_mask} ${fn_mni} ${mat_file}"""
+            echo
+            echo ${cmd}
+            ${cmd}
 
             if [[ $? -ne 0 ]]; then
               echo "ERROR in `basename ${0}`: call_antsapplytransforms exited with non-zero status"
               exit 1
             fi          
           else
-            echo "`basename ${dir}`: missing warp-files for call_antsapplytransforms"
+            echo "${sub_name}: missing warp-files for call_antsapplytransforms"
             continue
           fi
 
         else
-          echo "`basename ${dir}`: missing ${fn_nuisance}"
+          echo "${sub_name}: missing ${fn_nuisance}"
           continue
         fi
 
@@ -199,10 +231,19 @@ for dir in ${search}; do
 
       if [[ ! -f ${fn_out} ]]; then
         if [[ -f ${fn_mni} ]]; then
+          echo
           echo "Multiplying template mask with nuisance-image"
-          fslmaths ${fn_mni} -mul ${fn_nuisance} ${fn_out}
+          cmd="""fslmaths ${fn_mni} -mul ${fn_nuisance} ${fn_out}"""
+          echo ${cmd}
+          ${cmd}
+
+          if [[ $? -ne 0 ]]; then
+            echo "ERROR in `basename ${0}`: fslmaths exited with non-zero status"
+            exit 1
+          fi
+
           rm ${fn_mni} 2>/dev/null
-          echo "Created ${fn_out}"
+          echo; echo "Created ${fn_out}"
 
           if [[ $? -ne 0 ]]; then
             echo "ERROR in `basename ${0}`: fslmaths exited with non-zero status"
@@ -210,19 +251,19 @@ for dir in ${search}; do
           fi
 
         else
-          echo "`basename ${dir}`: Could not find file of MNI-mask in subject space. Check previous step!"
+          echo "${sub_name}: Could not find file of MNI-mask in subject space. Check previous step!"
         fi
       fi
 
     else
       
-      echo "`basename ${dir}`: `basename ${fn_out}` already exists"
+      echo "${sub_name}: `basename ${fn_out}` already exists"
 
     fi
 
   else
 
-    echo "`basename ${dir}`: Could not find anatomy directory"
+    echo "${sub_name}: Could not find directory \"${pn_anat}\""
     continue
 
   fi
