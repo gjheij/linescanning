@@ -2094,6 +2094,7 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
         verbose=True,
         selection=None,
         open_with="fs",
+        skip_prf_info=False,
         aparc=False):
 
         self.subject = subject
@@ -2112,6 +2113,7 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
         self.selection = selection
         self.open_with = open_with
         self.aparc = aparc
+        self.skip_prf_info = skip_prf_info
 
         # check if we can read DIR_DATA_DERIV if necessary
         if not self.deriv:
@@ -2191,7 +2193,7 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
                 verbose=self.verbose,
                 aparc=self.aparc)
 
-            if self.use_epi & self.use_prf:
+            if self.use_epi or self.use_prf:
                 utils.verbose("Also initialize CollectSubject object", self.verbose)
                 # load in subject
                 self.SI_ = prf.CollectSubject(
@@ -2467,51 +2469,52 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
 
             #----------------------------------------------------------------------------------------------------------------
             # Get pRF-parameters from best vertices
-            if isinstance(self.prf_file, str):
-                if os.path.exists(self.prf_file):
-                    self.prf_data = prf.read_par_file(self.prf_file)
+            if not skip_prf_info:
+                if isinstance(self.prf_file, str):
+                    if os.path.exists(self.prf_file):
+                        self.prf_data = prf.read_par_file(self.prf_file)
 
-                    fbase = self.subject
-                    ls_comps = utils.split_bids_components(self.out)
-                    if "ses" in list(ls_comps.keys()):
-                        fbase += f"_ses-{ls_comps['ses']}"
+                        fbase = self.subject
+                        ls_comps = utils.split_bids_components(self.out)
+                        if "ses" in list(ls_comps.keys()):
+                            fbase += f"_ses-{ls_comps['ses']}"
 
-                    if self.model != None:
-                        fbase += f'_model-{self.model}'
+                        if self.model != None:
+                            fbase += f'_model-{self.model}'
 
-                    self.prf_bestvertex = opj(ctx_ses, f'{fbase}_desc-best_vertices.csv')
+                        self.prf_bestvertex = opj(ctx_ses, f'{fbase}_desc-best_vertices.csv')
 
-                    # print(prf_right)
-                    # print(prf_left)
-                    lh_df = self.prf.df_prf.iloc[self.lh_best_vertex,:]
-                    rh_df = self.prf.df_prf.iloc[self.surface.lh_surf_data[0].shape[0]+self.rh_best_vertex,:]
+                        # print(prf_right)
+                        # print(prf_left)
+                        lh_df = self.prf.df_prf.iloc[self.lh_best_vertex,:]
+                        rh_df = self.prf.df_prf.iloc[self.surface.lh_surf_data[0].shape[0]+self.rh_best_vertex,:]
 
-                    self.dd_dict = {}
-                    # write existing pRF parameters to dictionary
-                    for ii in list(lh_df.keys()):
-                        self.dd_dict[ii] = [lh_df[ii],rh_df[ii]]
+                        self.dd_dict = {}
+                        # write existing pRF parameters to dictionary
+                        for ii in list(lh_df.keys()):
+                            self.dd_dict[ii] = [lh_df[ii],rh_df[ii]]
 
-                    # add custom stuff
-                    self.dd_dict["index"]    = [lh_df.name,rh_df.name]
-                    self.dd_dict["position"] = [self.lh_best_vertex_coord, self.rh_best_vertex_coord]
-                    self.dd_dict["normal"]   = [self.lh_normal, self.rh_normal]
-                    self.dd_dict["hemi"]     = ["L","R"]
+                        # add custom stuff
+                        self.dd_dict["index"]    = [lh_df.name,rh_df.name]
+                        self.dd_dict["position"] = [self.lh_best_vertex_coord, self.rh_best_vertex_coord]
+                        self.dd_dict["normal"]   = [self.lh_normal, self.rh_normal]
+                        self.dd_dict["hemi"]     = ["L","R"]
 
-                    # we should have stimulus sizes if srf=True
-                    if self.srf:
-                        try:
-                            self.dd_dict["stim_sizes"] = [np.array([getattr(self, f"{i}_stim_size_activation"), getattr(self, f"{i}_stim_size_suppression")]) for i in ["lh","rh"]]
+                        # we should have stimulus sizes if srf=True
+                        if self.srf:
+                            try:
+                                self.dd_dict["stim_sizes"] = [np.array([getattr(self, f"{i}_stim_size_activation"), getattr(self, f"{i}_stim_size_suppression")]) for i in ["lh","rh"]]
 
-                            self.dd_dict["stim_betas"] = [np.array([getattr(self, f"{i}_max_suppression"), getattr(self, f"{i}_max_activation")]) for i in ["lh","rh"]]                    
-                        except:
-                            pass
+                                self.dd_dict["stim_betas"] = [np.array([getattr(self, f"{i}_max_suppression"), getattr(self, f"{i}_max_activation")]) for i in ["lh","rh"]]                    
+                            except:
+                                pass
 
-                    self.final_df = pd.DataFrame(self.dd_dict)
+                        self.final_df = pd.DataFrame(self.dd_dict)
 
-                    if isinstance(self.out, str):
-                        self.final_df.to_csv(self.prf_bestvertex, index=False)
-                        utils.verbose(f" writing {self.prf_bestvertex}", self.verbose)
-                        # utils.verbose(f"Now run 'call_sizeresponse -s {self.subject} --verbose {v1_flag}' to obtain DN-parameters", self.verbose)
+                        if isinstance(self.out, str):
+                            self.final_df.to_csv(self.prf_bestvertex, index=False)
+                            utils.verbose(f" writing {self.prf_bestvertex}", self.verbose)
+                            # utils.verbose(f"Now run 'call_sizeresponse -s {self.subject} --verbose {v1_flag}' to obtain DN-parameters", self.verbose)
 
             utils.verbose("Done", self.verbose)
 
