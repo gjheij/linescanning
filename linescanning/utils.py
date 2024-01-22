@@ -778,9 +778,13 @@ def get_vertex_nr(subject, as_list=False, debug=False):
         if not os.path.exists(surf):
             raise FileNotFoundError(f"Could not find file '{surf}'")
         
-        verts = nb.freesurfer.io.read_geometry(surf)[0].shape[0]
+        try:
+            verts = nb.freesurfer.io.read_geometry(surf)[0].shape[0]
+        except:
+            annot = opj(os.environ.get('SUBJECTS_DIR'), subject, 'label', f'{i}.aparc.a2009s.annot')
+            verts = nb.freesurfer.io.read_annot(annot)[0].shape[0]
+            
         n_verts_fs.append(verts)
-
 
     if as_list:
         return n_verts_fs
@@ -982,7 +986,14 @@ def make_stats_cm(
 
     return mcolors.LinearSegmentedColormap.from_list("", col_list)
 
-def percent_change(ts, ax, nilearn=False, baseline=20):
+def percent_change(
+    ts, 
+    ax, 
+    nilearn=False, 
+    baseline=20,
+    prf=False,
+    dm=None
+    ):
     """percent_change
 
     Function to convert input data to percent signal change. Two options are current supported: the nilearn method (`nilearn=True`), where the mean of the entire timecourse if subtracted from the timecourse, and the baseline method (`nilearn=False`), where the median of `baseline` is subtracted from the timecourse.
@@ -1012,38 +1023,70 @@ def percent_change(ts, ax, nilearn=False, baseline=20):
     if ts.ndim == 1:
         ts = ts[:,np.newaxis]
         ax = 0
-        
-    if nilearn:
+    
+    if prf:
+        from linescanning import prf
+
+        # format data
+        if ts.ndim == 1:
+            ts = ts[...,np.newaxis]
+
+        # read design matrix
+        if isinstance(dm, str):
+            dm = prf.read_par_file(dm)
+
+        # calculate mean
+        avg = np.mean(ts, axis=ax)
+        ts *= (100/avg)
+
+        # find points with no stimulus
+        timepoints_no_stim = prf.baseline_from_dm(dm)
+
+        # find timecourses with no stimulus
         if ax == 0:
-            psc = _standardize(ts, standardize='psc')
+            med_bsl = ts[timepoints_no_stim,:]
         else:
-            psc = _standardize(ts.T, standardize='psc').T
+            med_bsl = ts[:,timepoints_no_stim]
+
+        # calculat median over baseline
+        median_baseline = np.median(med_bsl, axis=ax)
+
+        # shift to zero
+        ts -= median_baseline
+
+        return ts
     else:
-
-        # first step of PSC; set NaNs to zero if dividing by 0 (in case of crappy timecourses)
-        ts_m = ts*np.expand_dims(np.nan_to_num((100/np.mean(ts, axis=ax))), ax)
-
-        # get median of baseline
-        if isinstance(baseline, np.ndarray):
-            baseline = list(baseline)
-
-        if ax == 0:
-            if isinstance(baseline, list):
-                median_baseline = np.median(ts_m[baseline,:], axis=0)
+        if nilearn:
+            if ax == 0:
+                psc = _standardize(ts, standardize='psc')
             else:
-                median_baseline = np.median(ts_m[:baseline,:], axis=0)
-        elif ax == 1:
-            if isinstance(baseline, list):
-                median_baseline = np.median(ts_m[:,baseline], axis=1)
-            else:
-                median_baseline = np.median(ts_m[:,:baseline], axis=1)
+                psc = _standardize(ts.T, standardize='psc').T
         else:
-            raise ValueError("ax must be 0 or 1")
 
-        # subtract
-        psc = ts_m-np.expand_dims(median_baseline,ax)
+            # first step of PSC; set NaNs to zero if dividing by 0 (in case of crappy timecourses)
+            ts_m = ts*np.expand_dims(np.nan_to_num((100/np.mean(ts, axis=ax))), ax)
+
+            # get median of baseline
+            if isinstance(baseline, np.ndarray):
+                baseline = list(baseline)
+
+            if ax == 0:
+                if isinstance(baseline, list):
+                    median_baseline = np.median(ts_m[baseline,:], axis=0)
+                else:
+                    median_baseline = np.median(ts_m[:baseline,:], axis=0)
+            elif ax == 1:
+                if isinstance(baseline, list):
+                    median_baseline = np.median(ts_m[:,baseline], axis=1)
+                else:
+                    median_baseline = np.median(ts_m[:,:baseline], axis=1)
+            else:
+                raise ValueError("ax must be 0 or 1")
+
+            # subtract
+            psc = ts_m-np.expand_dims(median_baseline,ax)
         
-    return psc
+        return psc
 
 def unique_combinations(elements: list[str], l: int=2) -> list[tuple[str, str]]:
     """
