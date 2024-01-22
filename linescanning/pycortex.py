@@ -14,6 +14,7 @@ import sys
 import time
 from matplotlib.colors import Normalize
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 from typing import Union
 opj = os.path.join
 
@@ -971,6 +972,7 @@ class Vertex2D_fix():
     def make_colormap(
         self, 
         label=None, 
+        *args,
         **kwargs):
 
         cm = plotting.LazyColorbar(
@@ -978,9 +980,47 @@ class Vertex2D_fix():
             txt=label,
             vmin=self.vmin1,
             vmax=self.vmax1,
+            *args,
             **kwargs)
 
         return cm
-        
+    
+    def quick_flat(
+        self,
+        plot_kw={},
+        cbar_kw={},
+        axs=None,
+        figsize=(10,4),
+        cb=True,
+        cb_pos=[0.35,-0.1,0.3,0.05],
+        *args,
+        **kwargs):
+
+        if not isinstance(axs, mpl.axes.Axes):
+            fig,axs = plt.subplots(figsize=figsize)
+
+        self.object = self.get_result()
+        self.flat = cortex.quickflat.make_figure(
+            self.object,
+            with_colorbar=False,
+            fig=axs,
+            *args,
+            **kwargs
+        )
+
+        # conform to styling
+        plotting.conform_ax_to_obj(
+            ax=axs,
+            **plot_kw
+        )
+
+        # add custom colorbar
+        if cb:
+            ax2 = axs.inset_axes(cb_pos)
+            _ = self.get_colormap(
+                axs=ax2, 
+                ori="horizontal",
+                **cbar_kw)
+
     def get_colormap(self, *args, **kwargs):
         return self.make_colormap(*args, **kwargs)
