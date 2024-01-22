@@ -74,7 +74,11 @@ Args:
                   are included, this will yield in a 4x5 grid with brainmaps of various kinds that 
                   were used in the selection process of the target vertex.
   --manual        use manual selection for the vertex, rather than minimizing for curvature     
-  --no_epi        do not use EPI-intensities even though you could             
+  --no_epi        do not use EPI-intensities even though you could   
+  --skip_prf_info skip the creation of the 'model-{}_desc-best_vertices.csv'. This can be useful if 
+                  you want an indication of the pRF-properties, but want to refit yourself. This is 
+                  the case where I use M. Aqil's fitting output, which has been fitted with an out-
+                  dated screen distance.      
   -s <subject>    subject ID as used throughout the pipeline without prefix (e.g., 001 > 001)
   -n <session>    session ID used to extract the correct pRF-parameters. Will combined with <deriva-
                   tives>/prf/ses-<session>
@@ -143,6 +147,7 @@ open_with=""
 epi=1
 epi_file=""
 ls_ses=2
+skip_prf_info=""
 while getopts :-:fos:v:n:m:t:e:l: argument
 do
   case ${argument} in
@@ -203,7 +208,10 @@ do
           ;;     
         no_epi)
           epi=0
-          ;;                                                               
+          ;;     
+        skip_prf_info)
+          skip_prf_info="--skip_prf_info"
+          ;;                                                                      
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}"
@@ -399,7 +407,8 @@ for subID in ${search}; do
       ${selection} \
       ${open_with} \
       ${epi_file_flag} \
-      ${aparc_flag}"""
+      ${aparc_flag} \
+      ${skip_prf_info}"""
     
     echo ${cmd}
     ${cmd}

@@ -97,9 +97,10 @@ Notes
     open_with   = "fs"
     epi_file    = None
     is_aparc    = False
+    skip_prf_info = False
 
     try:
-        opts = getopt.getopt(argv,"fuhd:s:t:r:o:b:v:m:n:p:",["help", "deriv=", "sub=", "roi=", "out=", "vert=", "use-prf", "no-freeview", "prf_file=", "use-epi", "srf", "srf_file=", "gallery", "manual", "ctx", "epi_file=", "aparc"])[0]
+        opts = getopt.getopt(argv,"fuhd:s:t:r:o:b:v:m:n:p:",["help", "deriv=", "sub=", "roi=", "out=", "vert=", "use-prf", "no-freeview", "prf_file=", "use-epi", "srf", "srf_file=", "gallery", "manual", "ctx", "epi_file=", "aparc","skip_prf_info"])[0]
     except getopt.GetoptError:
         print("ERROR IN ARGUMENT HANDLING!")
         print(main.__doc__)
@@ -127,6 +128,8 @@ Notes
             use_prf = True                        
         elif opt in ("-f", "--no-freeview"):
             open_fv = False
+        elif opt in ("--skip_prf_info"):
+            skip_prf_info = True            
         elif opt in ("--vert"):
             verts = arg
         elif opt in ("--srf"):
@@ -170,7 +173,9 @@ Notes
         srf_file=srf_file,
         selection=selection,
         open_with=open_with,
-        aparc=is_aparc)
+        aparc=is_aparc,
+        skip_prf_info=skip_prf_info
+    )
 
     if gallery:
 
