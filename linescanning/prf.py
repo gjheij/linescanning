@@ -61,7 +61,7 @@ def normalize_prf(src,targ):
 
     return p_prime
     
-def read_par_file(prf_file):
+def read_par_file(prf_file, key="pars"):
 
     """read_par_file
 
@@ -104,9 +104,9 @@ def read_par_file(prf_file):
                     data = pickle.load(input)
 
                     try:
-                        pars = data['pars']
+                        pars = data[key]
                     except:
-                        raise TypeError(f"Pickle-file did not arise from 'pRFmodelFitting'. I'm looking for 'pars', but got '{data.keys()}'")
+                        raise TypeError(f"Pickle-file did not arise from 'pRFmodelFitting'. I'm looking for '{key}', but got '{data.keys()}'")
         else:
             raise TypeError(f"Input '{prf_file}' is not a file..")
         
@@ -1387,7 +1387,7 @@ def generate_model_params(
 
     if isinstance(dm, str):
         dm = read_par_file(dm)
-
+    
     prf_stim = stimulus.PRFStimulus2D(
         screen_size_cm=settings['screen_size_cm'],
         screen_distance_cm=settings['screen_distance_cm'],
@@ -1439,7 +1439,9 @@ def generate_model_params(
                 'y': list(gauss_bounds[1]), 
                 'size': [float(item) for item in gauss_bounds[2]], 
                 'prf_ampl': gauss_bounds[3], 
-                'bold_bsl': gauss_bounds[4]}}
+                'bold_bsl': gauss_bounds[4]
+            }
+        }
 
     elif model == "css":
         css_bounds = standard_bounds.copy() + [settings['css_exponent']] # CSS exponent
@@ -1450,7 +1452,9 @@ def generate_model_params(
                 'size': [float(item) for item in css_bounds[2]],
                 'prf_ampl': css_bounds[3],
                 'bold_bsl': css_bounds[4],
-                'css_exponent': css_bounds[5]}}
+                'css_exponent': css_bounds[5]
+            }
+        }
 
     elif model == "dog":
         dog_bounds = standard_bounds.copy() + [
@@ -1466,7 +1470,9 @@ def generate_model_params(
                 'prf_ampl': dog_bounds[3],
                 'bold_bsl': dog_bounds[4],
                 'surr_ampl': dog_bounds[5],
-                'surr_size': [float(item) for item in dog_bounds[6]]}}
+                'surr_size': [float(item) for item in dog_bounds[6]]
+            }
+        }
     else:
         # set D-param to 1
         if model == "abc":
@@ -1498,7 +1504,9 @@ def generate_model_params(
                 'surr_ampl': norm_bounds[5],
                 'surr_size': [float(item) for item in norm_bounds[6]],
                 'neur_bsl': list(norm_bounds[7]),
-                'surr_bsl': [float(item) for item in norm_bounds[8]]}}
+                'surr_bsl': [float(item) for item in norm_bounds[8]]
+            }
+        }
 
     if fit_hrf:
         bounds['bounds']["hrf_deriv"] = settings["hrf"]["deriv_bound"]
@@ -1510,6 +1518,15 @@ def generate_model_params(
     settings.update({'model': model})
     settings.update({'TR': TR})
 
+    # print important settings
+    utils.verbose("\n---------------------------------------------------------------------------------------------------", verbose)
+    utils.verbose("Check these important settings!", verbose)
+    utils.verbose(f" Screen distance: {settings['screen_distance_cm']}cm", verbose)
+    utils.verbose(f" Screen size: {settings['screen_size_cm']}cm", verbose)
+    utils.verbose(f" TR: {settings['TR']}s", verbose)
+    utils.verbose("---------------------------------------------------------------------------------------------------\n", verbose)
+
+    # return
     return settings, prf_stim
 
 class GaussianModel():
@@ -1542,7 +1559,7 @@ class GaussianModel():
 
     def gridfit(self):
         ## start grid fit
-        utils.verbose(f"Starting gauss gridfit at {datetime.now().strftime('%Y/%m/%d %H:%M:%S')}", self.verbose)
+        utils.verbose(f"Starting gauss gridfit {self.data.shape} at {datetime.now().strftime('%Y/%m/%d %H:%M:%S')}", self.verbose)
         
         start = time.time()
         self.gaussian_fitter.grid_fit(
@@ -1573,7 +1590,7 @@ class GaussianModel():
     def iterfit(self):
 
         start = time.time()
-        utils.verbose(f"Starting gauss iterfit at {datetime.now().strftime('%Y/%m/%d %H:%M:%S')}", self.verbose)
+        utils.verbose(f"Starting gauss iterfit {self.data.shape} at {datetime.now().strftime('%Y/%m/%d %H:%M:%S')}", self.verbose)
 
         # fetch bounds
         self.gauss_bounds = self.fetch_bounds(model='gauss')
@@ -1661,26 +1678,36 @@ class ExtendedModel():
 
         # define grids into lists so we can call gridfit ones
         if self.model == "css":
-            self.grid_list      = [np.array(self.settings['css']['css_exponent_grid'], dtype='float32')]
-            self.grid_bounds    = [tuple(self.settings['bounds']['prf_ampl'])]
+            self.grid_list = [
+                np.array(self.settings['css']['css_exponent_grid'], dtype='float32')
+            ]
+
+            self.grid_bounds = [
+                tuple(self.settings['bounds']['prf_ampl'])
+            ]
+
         elif self.model == "dog":
-            self.grid_list      = [np.array(self.settings['dog']['dog_surround_amplitude_grid'], dtype='float32'),
-                                   np.array(self.settings['dog']['dog_surround_size_grid'], dtype='float32')]
-            # self.grid_list      = [np.linspace(0.05,3, self.settings['grid_nr'], dtype='float32'),
-            #                        np.linspace(5,18, self.settings['grid_nr'], dtype='float32')]         
-            self.grid_bounds    = [tuple(self.settings['prf_ampl']),
-                                   tuple(self.settings['bounds']['surr_ampl'])]
+            self.grid_list = [
+                np.array(self.settings['dog']['dog_surround_amplitude_grid'], dtype='float32'),
+                np.array(self.settings['dog']['dog_surround_size_grid'], dtype='float32')
+            ]      
+            self.grid_bounds = [
+                tuple(self.settings['prf_ampl']),
+                tuple(self.settings['bounds']['surr_ampl'])
+            ]
+
         elif self.model in ["norm","abc","abd"]:
-            self.grid_list      = [np.array(self.settings['norm']['surround_amplitude_grid'], dtype='float32'),
-                                   np.array(self.settings['norm']['surround_size_grid'], dtype='float32'),
-                                   np.array(self.settings['norm']['neural_baseline_grid'], dtype='float32'),
-                                   np.array(self.settings['norm']['surround_baseline_grid'], dtype='float32')]
-            # self.grid_list      = [np.linspace(0.05,3, self.settings['grid_nr'], dtype='float32'),
-            #                        np.linspace(5,18, self.settings['grid_nr'], dtype='float32'),
-            #                        np.linspace(0,100, self.settings['grid_nr'], dtype='float32'),
-            #                        np.linspace(0,100, self.settings['grid_nr'], dtype='float32')]            
-            self.grid_bounds    = [tuple(self.settings['bounds']['prf_ampl']),
-                                   tuple(self.settings['bounds']['neur_bsl'])]
+            self.grid_list = [
+                np.array(self.settings['norm']['surround_amplitude_grid'], dtype='float32'),
+                np.array(self.settings['norm']['surround_size_grid'], dtype='float32'),
+                np.array(self.settings['norm']['neural_baseline_grid'], dtype='float32'),
+                np.array(self.settings['norm']['surround_baseline_grid'], dtype='float32')
+            ]
+
+            self.grid_bounds = [
+                tuple(self.settings['bounds']['prf_ampl']),
+                tuple(self.settings['bounds']['neur_bsl'])
+            ]
         
         # grid fit
         if not self.skip_grid:
@@ -1691,7 +1718,7 @@ class ExtendedModel():
 
             ## Start grid fit
             start = time.time()
-            utils.verbose(f"Starting {self.model} gridfit at {datetime.now().strftime('%Y/%m/%d %H:%M:%S')}", self.verbose)
+            utils.verbose(f"Starting {self.model} gridfit {self.data.shape} at {datetime.now().strftime('%Y/%m/%d %H:%M:%S')}", self.verbose)
 
             self.tmp_fitter.grid_fit(
                 *self.grid_list,
@@ -1736,7 +1763,7 @@ class ExtendedModel():
         setattr(self, f"{self.model}_bounds", self.tmp_bounds)        
         
         start = time.time()
-        utils.verbose(f"Starting {self.model} iterfit at {datetime.now().strftime('%Y/%m/%d %H:%M:%S')}", self.verbose)
+        utils.verbose(f"Starting {self.model} iterfit {self.data.shape}  at {datetime.now().strftime('%Y/%m/%d %H:%M:%S')}", self.verbose)
 
         # fit
         if self.constraints[1] == "tc":
@@ -1857,7 +1884,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         old_params=None,
         verbose=True,
         hrf=None,
-        fit_hrf=False,
+        fit_hrf=True,
         settings=None,
         nr_jobs=1,
         prf_stim=None,
@@ -2482,6 +2509,10 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
             else:
                 x_axis = np.array(list(np.arange(0,self.prediction.shape[0])))
                 x_label = "volumes"
+            
+            if "x_label" in list(kwargs.keys()):
+                x_label = kwargs["x_label"]
+                kwargs.pop("x_label")
                 
             # add additional timecourse
             if isinstance(add_tc, np.ndarray):
@@ -2556,12 +2587,26 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
 
         return params, prf_array, tc, self.prediction
 
-    def save_params(self, model="gauss", stage="grid"):
+    def save_params(
+        self, 
+        model="gauss", 
+        stage="grid",
+        output_base=None,
+        output_dir=None
+        ):
         
         if hasattr(self, f"{model}_{stage}"):
+            
+            # set output stuff
+            for flag,el in zip([output_base,output_dir],["output_base","output_dir"]):
+                if isinstance(flag, str):
+                    setattr(self, el)
+                else:
+                    if not hasattr(self, el):
+                        raise ValueError(f"'{el}' is not set. Use the flags in 'save_params' or define in {self}")
 
+            # define pickle
             pkl_file = opj(self.output_dir, f'{self.output_base}_model-{model}_stage-{stage}_desc-prf_params.pkl')
-            utils.verbose(f"Save {stage}-fit parameters in {pkl_file}", self.verbose)
 
             # get parameters given model and stage
             params = getattr(self, f"{model}_{stage}")
@@ -2572,9 +2617,9 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
             out_dict['settings'] = self.settings
             # out_dict['predictions'] = self.make_predictions(model=model, stage=stage)
 
-            f = open(pkl_file, "wb")
-            pickle.dump(out_dict, f)
-            f.close()
+            utils.verbose(f"Save {stage}-fit parameters in {pkl_file}", self.verbose)
+            with open(pkl_file, "wb") as f:
+                pickle.dump(out_dict, f)
 
         else:
             raise ValueError(f"{self} does not have attribute '{model}_{stage}'. Not saving parameters")
@@ -2823,7 +2868,8 @@ class SizeResponse():
         self, 
         params, 
         stims=None,
-        center_prf=True):
+        center_prf=True,
+        normalize=False):
 
         if not isinstance(params, (pd.DataFrame,pd.Series)):
             params = Parameters(params, model="norm").to_df()
@@ -2853,6 +2899,9 @@ class SizeResponse():
             stims, 
             mu_x=mu_x, 
             mu_y=mu_y)
+
+        if normalize:
+            sr /= sr.max()
 
         return sr
 
@@ -2996,7 +3045,8 @@ class SizeResponse():
         curve2=None, 
         t="max", 
         dt="fill",
-        sizes=None):
+        sizes=None,
+        return_ampl=False):
         """find_stim_sizes
 
         Function to fetch the stimulus sizes that optimally disentangle the responses of two pRFs given the Size-Response curves. Starts by finding the maximum response for each curve, then finds the intersect, then finds the stimulus sizes before and after the intersect where the response difference is largest.
@@ -3023,53 +3073,74 @@ class SizeResponse():
         """
 
         # find the peaks of individual curves
-        if curve2 != None:
+        if isinstance(curve2,(np.ndarray,list)):
+
+            # do some formatting stuff
+            if isinstance(curve2, list):
+                curve2 = np.array(curve2)
+            
+            if curve2.ndim > 1:
+                curve2 = curve2.squeeze()
+
+            if curve1.ndim > 1:
+                curve1 = curve1.squeeze()
+
+            if not isinstance(sizes, (list,np.ndarray)):
+                raise ValueError(f"sizes must be a list or array consisting of stimulus sizes, not {sizes} of type ({type(sizes)})")
+            
+            # get intersection
             sr_diff = curve1-curve2
             size_indices = signal.find_peaks(abs(sr_diff))[0]
-            size_indices = np.append(size_indices, 
-                                    np.array((utils.find_max_val(curve1)[0],
-                                            utils.find_max_val(curve2)[0])))
 
             # append sizes of max of curves
             use_stim_sizes = []
             for size_index in size_indices:
-                use_stim_sizes.append(self.stims_fill_sizes[size_index])
+                use_stim_sizes.append(sizes[size_index])
 
-            # find intersection of curves
-            _,y_size = utils.find_intersection(self.stims_fill_sizes, curve1, curve2)
-            use_stim_sizes.append(y_size)
+            # # find intersection of curves
+            y_size,_ = utils.find_intersection(sizes, curve1, curve2)
+            use_stim_sizes.append(y_size[0][0])
             use_stim_sizes.sort()
 
-            # append a stimulus of size 3dva if len(use_stim_sizes) == 4
-            if len(use_stim_sizes) == 4:
-                use_stim_sizes.append(2.5)
+            # find equidistance 
+            eq1 = use_stim_sizes[0]+(use_stim_sizes[1]-use_stim_sizes[0])/2
+            eq2 = use_stim_sizes[1]+(use_stim_sizes[2]-use_stim_sizes[1])/2
+
+            use_stim_sizes += [eq1,eq2]
+            use_stim_sizes.sort()
             
             return use_stim_sizes
         else:
             # find maximum
             if t == "max":
-                size_index = np.where(curve1 == np.amax(curve1))[0][0]
+                ffunc = np.amax
             else:
-                # find minimum
-                size_index = np.where(curve1 == np.amin(curve1))[0][0]
+                ffunc = np.amin
+
+            extr_val = ffunc(curve1)
+            size_index = np.where(curve1 == extr_val)[0][0]
             
             if not isinstance(sizes, (list,np.ndarray)):
                 sizes = getattr(self, f"stims_{dt}_sizes")
             
-            return sizes[size_index]
+            if not return_ampl:
+                return sizes[size_index]
+            else:
+                return sizes[size_index],extr_val
 
     def plot_stim_size(
         self, 
         stim, 
         vf_extent=([-5,5],[-5,5]), 
-        axs=None, 
+        ax=None, 
         clip=True, 
         cmap=(8,178,240),
         axis=False):
         
         """plot output of :func:`linescanning.prf.SizeResponse.find_stim_sizes`"""
 
-        if ax == None:
+        import matplotlib as mpl
+        if not isinstance(ax, mpl.axes._axes.Axes):
             _,ax = plt.subplots(figsize=(6,6))        
         
         cmap_blue = utils.make_binary_cm(cmap)
@@ -3569,3 +3640,116 @@ def create_model_rf_wrapper(model,stim,params,normalize_RFs=False):
         prf -= (params[7]/params[8])[...,np.newaxis,np.newaxis]
 
     return prf
+
+class FormatTimeCourses():
+
+    def __init__(
+        self, 
+        data, 
+        *args, 
+        **kwargs
+        ):
+
+        # format
+        self.data = data
+        self.formatted_data, self.n_verts = self.format_hemi_data(
+            self.data,
+            *args,
+            **kwargs
+        )
+    
+    def return_data(self):
+        return self.formatted_data.copy()
+    
+    @classmethod
+    def average_iterations(
+        self, 
+        data, 
+        n_folds=None, 
+        debug=False
+        ):
+
+        if not isinstance(n_folds, int):
+            raise TypeError(f"folds-argument must be integer, not {n_folds} of type {type(n_folds)}")
+        
+        n_vols,n_vertices = data.shape
+        iter_size = n_vols//n_folds
+        
+        chunk_list = []
+        start = 0
+        for i in range(n_folds):
+
+            # try to fetch values, if steps are out of bounds, zero-pad the timecourse
+            end_point = start+iter_size
+            utils.verbose(f"chunk #{i+1}\t{start}-{end_point}", debug)
+            if end_point <= n_vols:
+                chunk = data[start:end_point]
+            else:
+                raise ValueError(f"Data with {n_vertices} vertices cannot be split evenly in chunks of {iter_size}. Use '--cut_vols <n_vols>' to remove volumes at the beginning to align the data")
+
+            chunk_list.append(chunk[...,np.newaxis])
+            start += iter_size
+
+        chunked_array = np.concatenate(chunk_list, axis=-1).mean(axis=-1)
+        return chunked_array
+
+    def get_verts(self):
+        return self.n_verts
+    
+    @classmethod
+    def format_hemi_data(
+        self,
+        pair,
+        gifti=False,
+        psc=False,
+        n_folds=None,
+        dm=None,
+        *args,
+        **kwargs
+        ):
+
+        # different function for giftis
+        if gifti:
+            hemi_data = [dataset.ParseGiftiFile(pair[ix]).data for ix in range(len(pair))]
+        else:
+            hemi_data = [np.load(pair[ix]) for ix in range(len(pair))]
+
+        n_verts = [ii.shape[-1] for ii in hemi_data]
+
+        # stack into array (time,voxels)
+        hemi_data = np.hstack(hemi_data)
+
+        # cut vols?
+        if "cut_vols" in list(kwargs.keys()):
+            # print(f"cutting {kwargs['cut_vols']} away")
+            hemi_data = hemi_data[kwargs["cut_vols"]:,:]
+            kwargs.pop("cut_vols")
+
+        # check if we got multiple repeats within runs
+        if isinstance(n_folds, int):
+            hemi_data = self.average_iterations(
+                hemi_data, 
+                n_folds=n_folds, 
+                *args, 
+                **kwargs
+            )
+
+        # do percent change following marco's method
+        if psc:
+
+            if not isinstance(dm, (str,np.ndarray,dict)):
+                raise ValueError(f"Please specify a path representing the design matrix, or a numpy array, not {dm} of type {type(dm)}")
+            
+            if hemi_data.shape[0] != dm.shape[-1]:
+                diff = dm.shape[-1]-hemi_data.shape[0]
+                # print(f"cutting {diff} from design")
+                dm = dm[...,diff:]
+
+            hemi_data = utils.percent_change(
+                hemi_data,
+                0,
+                prf=True,
+                dm=dm
+            )
+
+        return hemi_data,n_verts

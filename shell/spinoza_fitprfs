@@ -31,6 +31,9 @@ Options:
   -c              list of values used for clipping of design matrix. Format must be [<top>,<bottom>,
                   <left>,<right>]. Negative values will be set to zero within 'linescanning.prf.
                   get_prfdesign'
+  -f <n_folds>    if your pRF experiment contains multiple equal sequences, you can use this flag
+                  to perform within-run averaging before percent-changing in call_prf. This should
+                  be in concert with number of volumes removed from the beginning of the timeseries                  
   -k <kwargs>     specify a file with additional arguments, similar to FreeSurfer's expert options.
                   See linescanning/misc/prf_options for an example. Please make sure you have a 
                   final empty white space at the end of the file, otherwise the parser gets confu-
@@ -55,12 +58,15 @@ Options:
   -q <queue>      submit jobs to a specific queue. Defaults to SGE_QUEUE_LONG in spinoza_setup
   -r <TR>         set repetition time (TR) manually. Defaults to 1.5 if input != gifti's. Otherwise
                   we'll read it from gifti-files with 'dataset.ParseGiftiFile'
+  -v <n_vols>     number of volumes to cut from the beginning of the timeseries (default = None)
   --bgfs          use L-BGFS minimization for both the Gaussian as well as the extended model. Use 
-                  the '-x'flag if you want different minimizers for both stages   
+                  the '-x'flag if you want different minimizers for both stages
+  --bold          re-calculate the BOLD timecourses; otherwise use existing '*hemi-LR_desc-avg_bold.npy'   
   --fsaverage     overwrite PYBEST_SPACE-variable and use FSAverage for fitting (see your setup file)
   --fsnative      overwrite PYBEST_SPACE-variable and use FSNative for fitting (see your setup file)                  
   --grid          only run grid fit, skip iterative fit
-  --hrf           fit the HRF during pRF-fitting. See 'call_prf' for more information
+  --no_hrf        do NOT fit the HRF during pRF-fitting. See 'call_prf' for more information
+  --separate_hrf  fit the HRF in two stages. See 'call_prf' for more information
   --local         run locally even though we have SGE available.
   --merge_ses     average pRF data from all sessions
   --multi_design  specifies that for all runs in the dataset have run-/task-specific screenshot di-
@@ -76,6 +82,8 @@ Options:
                   course. If you trust your iterative fitter, you can turn off the bounds and let 
                   the iterative take care of the parameters
   --raw           use the raw, un-zscore'd output from pybest, rather than percent signal change
+  --refit         refit existing data; uses a simplified call to linescanning.prf.pRFmodelFitting 
+                  using call_prfrefit
   --tc            use trust-constr minimization for both the Gaussian as well as the extended model. 
                   Use the '-x' flag if you want different minimizers for both stages
   --zscore        use the zscore'd output from pybest, rather than percent signal change. If not spe-
@@ -141,7 +149,11 @@ n_jobs=5
 kwargs_file=""
 tr_flag=""
 use_space=${PYBEST_SPACE}
-while getopts :-:los:n:m:t:x:c:v:j:k:q:r: argument
+refit_data=0
+n_pix=100
+redo_bold=""
+folds_flag=""
+while getopts :-:los:n:m:t:x:c:v:j:k:q:r:p:f: argument
 do
   case ${argument} in
     -)
@@ -149,9 +161,12 @@ do
         multi_design)
           multi_design=1
           ;;           
-        hrf)
-          fit_hrf="--hrf"
+        no_hrf)
+          fit_hrf="--no_hrf"
           ;;  
+        separate_hrf)
+          fit_hrf="--separate_hrf"
+          ;;             
         gauss)
           model="gauss"
           ;;  
@@ -198,8 +213,7 @@ do
           fit_flag="--no_fit"
           ;;      
         save_grid)
-          save_grid="--save_    q)  SGE_QUEUE=${OPTARG}
-          ;; grid"
+          save_grid="--save_grid"
           ;;            
         v1)
           lbl_flag="--v1"
@@ -219,7 +233,13 @@ do
           ;; 
         fsnative)
           use_space="fsnative"
-          ;;                           
+          ;;                 
+        refit)
+          refit_data=1
+          ;;  
+        bold)
+          redo_bold="--bold"
+          ;;                                 
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}"
@@ -240,6 +260,8 @@ do
           ;;
     c)  clipper=${OPTARG}
           ;; 
+    p)  n_pix=${OPTARG}
+          ;;          
     j)  n_jobs=${OPTARG}
           ;;               
     x)  use_constr="--constr [${OPTARG[@]}]"
@@ -251,7 +273,9 @@ do
     q)  SGE_QUEUE=${OPTARG}
           ;;  
     r)  tr_flag="--tr ${OPTARG}"
-          ;;                          
+          ;;       
+    f)  folds_flag="--folds ${OPTARG}"
+          ;;                                    
   esac
 done
 
@@ -407,7 +431,7 @@ for subID in ${search}; do
       fi
 
       # run stuff if file doesn't exist
-      if [[ ! -f ${prf_params} ]] || [[ ! -z ${fit_flag} ]]; then
+      if [[ ! -f ${prf_params} ]] || [[ ! -z ${fit_flag} ]] || [[ ${refit_data} -eq 1 ]]; then
 
         # exclude rest as task
         if [[ ${task} != "rest" ]]; then
@@ -517,27 +541,60 @@ for subID in ${search}; do
           fi
 
           # decide how to execute the process
-          if [[ ${PLACE} != "SGE" ]]; then
-            job="python"
+          if [[ ${refit_data} -eq 0 ]]; then
+            script_name="call_prf"
+            bold_flag=""
+            dm_flag=""
+            par_flag=""
           else
-            if [[ ${run_locally} -eq 0 ]]; then
-              if [[ ! -z ${SGE_QUEUE} ]]; then
-                QUEUE=${SGE_QUEUE}
-              else
-                QUEUE=${SGE_QUEUE_LONG}
-              fi                
-              job="qsub -q ${QUEUE} -pe smp ${n_jobs} -wd ${prf_dir} -N ${base}_task-${task}_model-${model}"
-            elif [[ ${run_locally} -eq 1 ]]; then
-              job="python"
-            else
-              echo "ERROR in `basename ${0}`: invalid option \"${run_locally}\". Must be '0' or '1'"
+            script_name="call_refit"
+
+            # check bold file/ design matrix
+            bold_file=`find ${prf_dir} -type f \( -name "*hemi-LR_*" -and -name "*avg_bold.npy" \) 2>/dev/null`
+            dm_file=${prf_dir}/design_task-${task}.mat
+
+            if [[ ! -f ${bold_file} ]]; then
+              echo "ERROR in `basename ${0}`: could not file with \"hemi-LR\" and \"avg_bold.npy\" in \"${prf_dir}\""
               exit 1
             fi
+
+            if [[ ! -f ${dm_file} ]]; then
+              echo "ERROR in `basename ${0}`: could not file \"${dm_file}\""
+              exit 1
+            fi
+             
+            bold_flag="--in ${bold_file}"
+            dm_flag="--dm ${dm_file}"
+
+            # old params
+            if [[ ! -z ${prf_params} ]]; then
+              echo "Refitting \"${prf_params}\""
+              
+              # rename iter fit to grid; iter will be the refitted data
+              if [[ ${prf_params} == *"stage-iter"* ]]; then
+                file_grid=${prf_params//stage-iter/stage-grid}
+                cp ${prf_params} ${file_grid} 2>/dev/null
+              fi
+              par_flag="--old ${prf_params}"
+            fi
+
+          fi
+
+          if [[ ${run_locally} -eq 0 ]]; then
+            if [[ ! -z ${SGE_QUEUE} ]]; then
+              QUEUE=${SGE_QUEUE}
+            else
+              QUEUE=${SGE_QUEUE_LONG}
+            fi
+
+            job="qsub -q ${QUEUE} -pe smp ${n_jobs} -wd ${prf_dir} -N ${base}_task-${task}_model-${model} ${DIR_SCRIPTS}/bin/${script_name}"
+          else
+            job=${script_name}
           fi
   
           # define call to call_prf
           export DISPLAY=:0
-          ${job} ${DIR_SCRIPTS}/bin/call_prf ${grid_flag} ${fit_hrf} ${clip_flag} \
+          cmd="""${job} ${grid_flag} ${fit_hrf} ${clip_flag} \
             -s ${sub_id} \
             -n ${nr} \
             -t ${task} \
@@ -547,6 +604,8 @@ for subID in ${search}; do
             -u ${use_space} \
             --${use_model} \
             --n_jobs ${n_jobs} \
+            --n_pix ${n_pix} \
+            ${folds_flag} \
             ${tr_flag} \
             ${kwargs_file} \
             ${save_grid} \
@@ -559,8 +618,24 @@ for subID in ${search}; do
             ${fit_flag} \
             ${cut_vols} \
             ${bounds_flag} \
-            ${merge_flag}
-          
+            ${merge_flag} \
+            ${bold_flag} \
+            ${dm_flag} \
+            ${redo_bold} \
+            ${par_flag}"""
+
+          if [[ ${run_locally} -eq 1 ]]; then
+            echo ${cmd}
+          fi
+
+          cmd_file=${prf_dir}/sub-${sub_id}_ses-${nr}_task-${task}_desc-command.txt
+          (
+            echo "### New invocation of call_prf @`date`"
+            echo "`echo ${cmd} | tr '\n' ' '`"
+            echo
+          ) >> ${cmd_file}
+
+          ${cmd}
           if [[ $? -ne 0 ]]; then
             echo "ERROR in `basename ${0}`: call_prf did not execute cleanly"
             exit 1

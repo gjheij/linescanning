@@ -70,10 +70,14 @@ Arguments:
                                     transient
     --tr                            manually set repetition time (TR). Default = 1.5. Can be read
                                     from gifti files (if input = fMRIprep).
+    --folds <number>                number of repeats WITHIN runs to average over. This can be used
+                                    to increase SNR if your run consists of multiple equal bar-pass
+                                    sequences
 
 Options:                                  
     --bgfs          use L-BGFS minimization for both the Gaussian as well as the extended model. Use 
-                    the -x flag if you want different minimizers for both stages                      
+                    the -x flag if you want different minimizers for both stages
+    --bold          re-calculate BOLD timecourses; otherwise use 'hemi-LR_desc-avg_bold.npy' file
     --clip          clip the edges of design matrix in the space of 'n_pix' (by default = 100). You 
                     will need to calculate how many pixels are to be set to zero given the visual 
                     field of the subject in the scanner (with a screensize of [1920,1080]px and 
@@ -88,11 +92,12 @@ Options:
                     cessed appropriately. There's no filtering, percent-signal changing or other
                     stuff.
     -g|--grid       only run a grid-fit with the specified model
-    --hrf           Fit the HRF during pRF-fitting. If `True`, the fitting will consist of two 
-                    stages: first, a regular fitting without HRF estimation. Then, the fitting 
-                    object of that fit is inserted as `previous_gaussian_fitter` into a new fitter 
-                    object with HRF estimation turned on. Default = False.
-                    This will ensure the baseline of periods without stimulus are set to zero.
+    --no_hrf        Do not fit the HRF during pRF-fitting. 
+    --separate_hrf  If `True`, the fitting will consist of two stages: first, a regular fitting 
+                    without HRF estimation. Then, the fitting object of that fit is inserted as 
+                    `previous_gaussian_fitter` into a new fitter object with HRF estimation turned 
+                    on. Default = False. This will ensure the baseline of periods without stimulus 
+                    are set to zero.
     --merge_ses     Pool the data across all sessions for averaging. 
     --no_bounds     Turn off grid bounds; sometimes parameters fall outside the grid parameter 
                     bounds, causing 'inf' values. This is especially troublesome when fitting a
@@ -130,37 +135,40 @@ Example:
 ---------------------------------------------------------------------------------------------------
 """
 
-    sub         = None
-    ses         = None
-    task        = None
-    outputdir   = None
-    inputdir    = None
-    png_dir     = None
-    model       = "gauss"
-    stage       = "iter"
-    grid_only   = False
-    space       = None
-    giftis      = False
-    fit_hrf     = False
-    verbose     = False
-    n_pix       = 100
-    clip_dm     = [0,0,0,0]
+    sub = None
+    ses = None
+    task = None
+    outputdir = None
+    inputdir = None
+    png_dir = None
+    model = "gauss"
+    stage = "iter"
+    grid_only = False
+    space = None
+    giftis = False
+    fit_hrf = True
+    verbose = True
+    n_pix = 100
+    clip_dm = [0,0,0,0]
     file_ending = None
-    psc         = True
-    overwrite   = False
+    psc = True
+    overwrite = False
     constraints = "tc"
-    do_fit      = True
-    cut_vols    = 0
-    lbl         = None
-    save_grid   = False
+    do_fit = True
+    cut_vols = 0
+    lbl = None
+    save_grid = False
     grid_bounds = True   
-    n_jobs      = 5
+    n_jobs = 5
     kwargs_file = None
     merge_sessions = False
-    tr          = 1.5
+    tr = 1.5
+    separate_hrf = False
+    overwrite_bold = False
+    n_folds = None
 
     try:
-        opts = getopt.getopt(argv,"ghs:n:t:o:i:p:m:x:u:c:v:j:",["help", "sub=", "model=", "ses=", "task=", "out=", "in=", "png=", "kwargs=", "grid", "space=", "hrf", "n_pix=", "clip=", "verbose", "file_ending=", "zscore", "overwrite", "constr=", "tc", "bgfs", "no_fit", "raw", "cut_vols=", "v1", "v2", "save_grid", "merge_ses", "n_jobs=", "gauss", "dog", "css", "norm", "abc", "abd", "tr="])[0]
+        opts = getopt.getopt(argv,"ghs:n:t:o:i:p:m:x:u:c:v:j:f:",["help", "sub=", "model=", "ses=", "task=", "out=", "in=", "png=", "kwargs=", "grid", "space=", "no_hrf", "n_pix=", "clip=", "verbose", "file_ending=", "zscore", "overwrite", "constr=", "tc", "bgfs", "no_fit", "raw", "cut_vols=", "v1", "v2", "save_grid", "merge_ses", "n_jobs=", "gauss", "dog", "css", "norm", "abc", "abd", "tr=","separate_hrf","bold","folds="])[0]
     except getopt.GetoptError:
         print("ERROR while reading arguments; did you specify an illegal argument?")
         print(main.__doc__)
@@ -190,8 +198,10 @@ Example:
             grid_only = True
         elif opt in ("-x", "--kwargs"):
             kwargs_file = arg
-        elif opt in ("--hrf"):
-            fit_hrf = True
+        elif opt in ("-f", "--folds"):
+            n_folds = int(arg)
+        elif opt in ("--no_hrf"):
+            fit_hrf = False
         elif opt in ("--n_pix"):
             n_pix = int(arg)
         elif opt in ("-v", "--verbose"):
@@ -199,11 +209,13 @@ Example:
         elif opt in ("-j", "--n_jobs"):
             n_jobs = int(arg)
         elif opt in ("--clip"):
-            clip_dm = list(ast.literal_eval(arg))
+            clip_dm = arg
         elif opt in ("--file_ending"):
             file_ending = arg
         elif opt in ("--zscore"):
             psc = False
+        elif opt in ("--bold"):
+            overwrite_bold = True
         elif opt in ("--raw"):
             psc = False 
         elif opt in ("--gauss"):
@@ -226,6 +238,8 @@ Example:
             constraints = "bgfs"
         elif opt in ("--no_fit"):
             do_fit = False
+        elif opt in ("--separate_hrf"):
+            separate_hrf = True
         elif opt in ("--constr"):
             constraints = utils.string2list(arg)
         elif opt in ("--cut_vols"):
@@ -273,7 +287,7 @@ Example:
                 clip_dm = clip_dm.astype(int)
         elif clip_dm.endswith("yml"):
             with open(clip_dm, 'rb') as input:
-                settings = pickle.load(input)
+                settings = yaml.safe_load(input)
 
             if "screen_delim" in list(settings.keys()):
                 screen_set = settings["screen_delim"]
@@ -292,17 +306,21 @@ Example:
     design_file = opj(outputdir, f'design_task-{task}.mat')
     if os.path.isfile(design_file):
         utils.verbose(f"Design matrix: {design_file}", verbose)
-        design_matrix = io.loadmat(design_file)
+        design_matrix = prf.read_par_file(design_file)
     else:
-        utils.verbose(f"Creating new design matrix", verbose)
+        utils.verbose(f"Creating new design matrix (n_pix={n_pix})", verbose)
         if os.path.isdir(png_dir):
             try:
-                dm = prf.get_prfdesign(png_dir, n_pix=n_pix, dm_edges_clipping=clip_dm)
+                dm = prf.get_prfdesign(
+                    png_dir, 
+                    n_pix=n_pix, 
+                    dm_edges_clipping=clip_dm
+                )
             except:
                 raise TypeError(f"Failed to create {design_file}")
 
             io.savemat(design_file, {"stim": dm})
-            design_matrix = io.loadmat(design_file)
+            design_matrix = prf.read_par_file(design_file)
         else:
             print("\n---------------------------------------------------------------------------------------------------")
             print(f"ERROR in {os.path.basename(__file__)}: invalid directory '{png_dir}'")
@@ -322,185 +340,180 @@ Example:
     search_for = ["run-", f"task-{task}", file_ending]
     if space != None:
         search_for += [f"space-{space}"]
-    
+
     # set output base
     out = f"sub-{sub}"
-
-    # find all files in input folder
-    found_files = utils.FindFiles(inputdir, extension=file_ending).files
-    files = utils.get_file_from_substring(search_for, found_files)
     if merge_sessions:
         out += f"_ses-avg"
-
-        # fetch which session IDs
-        ses = []
-        for ff in files:
-            comps = utils.split_bids_components(ff)
-            ses.append(comps["ses"])
-        unique_ses = list(np.unique(np.array(ses, dtype=int)))
-
     else:
-        if ses != None:
-            out += f"_ses-{ses}"        
-
-        if isinstance(ses, int):
-            unique_ses = [ses]
-        else:
-            unique_ses = []
+        if isinstance(ses, (int,str)):
+            out += f"_ses-{ses}" 
     
     if task != None:
         out += f"_task-{task}"
-    
-    # convert to psc according to baseline (as per Serge Dumoulin).
-    if psc:
-        utils.verbose("Converting to percent signal change and fix baseline", verbose)
-      
-        # default baseline is 19 volumes
-        baseline = 19-cut_vols
 
-    if not files[0].endswith(".nii.gz") and not files[0].endswith(".nii"):
+    if isinstance(lbl, str):
+        out += f"_roi-{roi_tag}"
+
+    # search for bold
+    bold_file = opj(outputdir, f"{out}_hemi-LR_desc-avg_bold.npy")
+    exclude = None
+    if not isinstance(bold_file, str) or overwrite_bold:
         
-        # chunk into L/R pairs
-        hemi_pairs = []
+        # find all files in input folder
+        found_files = utils.FindFiles(inputdir, extension=file_ending).files
+        files = utils.get_file_from_substring(search_for, found_files)
+        if merge_sessions:
+            # fetch which session IDs
+            ses = []
+            for ff in files:
+                comps = utils.split_bids_components(ff)
+                ses.append(comps["ses"])
+            unique_ses = list(np.unique(np.array(ses, dtype=int)))
 
-        if len(unique_ses) > 0:
-            utils.verbose(f"Including data for session(s): {unique_ses}", verbose)
-            for ses in unique_ses:
-                
-                # get session-specific files
-                ses_files = utils.get_file_from_substring([f"ses-{ses}"], files)
+        else:  
+
+            if isinstance(ses, int):
+                unique_ses = [ses]
+            else:
+                unique_ses = []
+
+        # load files
+        if not files[0].endswith(".nii.gz") and not files[0].endswith(".nii"):
+            
+            # chunk into L/R pairs
+            hemi_pairs = []
+
+            # specfic sessions
+            if len(unique_ses) > 0:
+                utils.verbose(f"Including data for session(s): {unique_ses}", verbose)
+                for ses in unique_ses:
+                    
+                    # get session-specific files
+                    ses_files = utils.get_file_from_substring([f"ses-{ses}"], files)
+
+                    utils.verbose("Loading in data", verbose)
+                    for ff in ses_files:
+                        print(f" {ff}", flush=True)
+
+                    # get unique run-IDs
+                    run_ids = []
+                    for ii in ses_files:
+                        run_ids.append(utils.split_bids_components(ii)["run"])
+
+                    run_ids = np.unique(np.array(run_ids))
+
+                    for run in run_ids:
+                        pair = utils.get_file_from_substring([f"run-{run}_"], ses_files)
+                        hemi_pairs.append(pair)
+            else:
 
                 utils.verbose("Loading in data", verbose)
-                for ff in ses_files:
-                    print(f" {ff}", flush=True)
+                for ff in files:
+                    utils.verbose(f" {ff}", verbose)
 
                 # get unique run-IDs
                 run_ids = []
-                for ii in ses_files:
+                for ii in files:
                     run_ids.append(utils.split_bids_components(ii)["run"])
 
                 run_ids = np.unique(np.array(run_ids))
 
                 for run in run_ids:
-                    pair = utils.get_file_from_substring([f"run-{run}_"], ses_files)
+                    pair = utils.get_file_from_substring([f"run-{run}_"], files)
                     hemi_pairs.append(pair)
+
+            # load them in
+            prf_tc_data = []
+            for pair in hemi_pairs:
+                
+                # read in pairs, to chuncking if requires, and percent change
+                tcs = prf.FormatTimeCourses(
+                    pair, 
+                    gifti=giftis,
+                    psc=psc,
+                    n_folds=n_folds,
+                    dm=design_matrix,
+                    cut_vols=cut_vols
+                )
+                hemi_data = tcs.return_data()
+                
+                prf_tc_data.append(hemi_data)
+
+            # take median of data
+            m_prf_tc_data = np.median(np.array(prf_tc_data), 0)
         else:
+            obj = dataset.Dataset(
+                files,
+                verbose=verbose, 
+                standardization='raw', 
+                use_bids=True, 
+                filter_strategy="raw")
 
-            utils.verbose("Loading in data", verbose)
-            for ff in files:
-                utils.verbose(f" {ff}", verbose)
+            # get pandas dataframe with all runs
+            prf_tc_data = obj.fetch_fmri()
 
-            # get unique run-IDs
-            run_ids = []
-            for ii in files:
-                run_ids.append(utils.split_bids_components(ii)["run"])
+            # get run IDs
+            run_ids = obj.get_runs(prf_tc_data)
 
-            run_ids = np.unique(np.array(run_ids))
+            # loop through run IDs and get median into <time,voxels> array
+            m_prf_tc_data = np.median(
+                [utils.select_from_df(
+                    prf_tc_data, 
+                    expression=f"run = {ii}").values 
+                for ii in run_ids
+                ], 
+                axis=0
+            )
 
-            for run in run_ids:
-                pair = utils.get_file_from_substring([f"run-{run}_"], files)
-                hemi_pairs.append(pair)
+        if space == "fsnative":
 
-        # load them in
-        prf_tc_data = []
-        for pair in hemi_pairs:
-            
-            if giftis:
-                hemi_data = [dataset.ParseGiftiFile(pair[ix]).data for ix in range(len(pair))]
+            # vertices per hemi
+            n_verts = tcs.get_verts()
+
+            # check if this matches with FreeSurfer surfaces
+            n_verts_fs = utils.get_vertex_nr(f"sub-{sub}", as_list=True)
+
+            if n_verts_fs != n_verts:
+                raise ValueError(f"Mismatch between number of vertices in pRF-analysis ({n_verts}) and FreeSurfer ({n_verts_fs})..? You're probably using an older surface reconstruction. Check if you've re-ran fMRIprep again with new FreeSurfer-segmentation")
+
+            # check if there's ROI-specific fitting
+            if isinstance(lbl, str):
+
+                utils.verbose(f"Label: {lbl}", verbose)
+                from linescanning import optimal
+
+                # load in surfaces
+                surf_obj = optimal.SurfaceCalc(subject=f"sub-{sub}", fs_label=lbl)
+
+                # initialize empty array and only keep the timecourses from label; keeps the original dimensions for simplicity sake! You can always retrieve the label indices with linescanning.optimal.SurfaceCalc
+                empty = np.zeros_like(m_prf_tc_data)
+
+                # insert timecourses 
+                lbl_true = np.where(surf_obj.whole_roi == True)[0]
+                empty[:,lbl_true] = m_prf_tc_data[:,lbl_true]
+
+                # overwrite m_prf_tc_data
+                m_prf_tc_data = empty.copy()
             else:
-                if psc:
-                    hemi_data = [utils.percent_change(np.load(pair[ix]), 0, baseline=baseline) for ix in range(len(pair))]
-                else:
-                    hemi_data = [np.load(pair[ix]) for ix in range(len(pair))]
-            
-            prf_tc_data.append(np.hstack(hemi_data))
+                exclude = "roi-"
 
-        # take median of data
-        m_prf_tc_data = np.median(np.array(prf_tc_data), 0)
-    else:
-        obj = dataset.Dataset(
-            files,
-            verbose=verbose, 
-            standardization='raw', 
-            use_bids=True, 
-            filter_strategy="raw")
-
-        # get pandas dataframe with all runs
-        prf_tc_data = obj.fetch_fmri()
-
-        # get run IDs
-        run_ids = obj.get_runs(prf_tc_data)
-
-        # loop through run IDs and get median into <time,voxels> array
-        m_prf_tc_data = np.median(
-            [utils.select_from_df(
-                prf_tc_data, 
-                expression=f"run = {ii}").values 
-            for ii in run_ids], 
-            axis=0)
-
-    exclude = None
-    if space == "fsnative":
-
-        # vertices per hemi
-        n_verts = [ii.shape[-1] for ii in hemi_data]
-
-        # check if this matches with FreeSurfer surfaces
-        n_verts_fs = []
-        for i in ['lh', 'rh']:
-            surf = opj(os.environ.get('SUBJECTS_DIR'), f"sub-{sub}", 'surf', f'{i}.white')
-            verts = nb.freesurfer.io.read_geometry(surf)[0].shape[0]
-            n_verts_fs.append(verts)
-
-        if n_verts_fs != n_verts:
-            raise ValueError(f"Mismatch between number of vertices in pRF-analysis ({n_verts}) and FreeSurfer ({n_verts_fs})..? You're probably using an older surface reconstruction. Check if you've re-ran fMRIprep again with new FreeSurfer-segmentation")
-
-        # check if there's ROI-specific fitting
-        if isinstance(lbl, str):
-
-            utils.verbose(f"Label: {lbl}", verbose)
-            from linescanning import optimal
-
-            # load in surfaces
-            surf_obj = optimal.SurfaceCalc(subject=f"sub-{sub}", fs_label=lbl)
-
-            # initialize empty array and only keep the timecourses from label; keeps the original dimensions for simplicity sake! You can always retrieve the label indices with linescanning.optimal.SurfaceCalc
-            empty = np.zeros_like(m_prf_tc_data)
-
-            # insert timecourses 
-            lbl_true = np.where(surf_obj.whole_roi == True)[0]
-            empty[:,lbl_true] = m_prf_tc_data[:,lbl_true]
-
-            # overwrite m_prf_tc_data
-            m_prf_tc_data = empty.copy()
-
-            out += f"_roi-{roi_tag}"
-            exclude = None
-        else:
-            exclude = "roi-"
-
-    elif space == "fsaverage":
-
-        # get FSaverage vertices
-        n_verts = []
-        for i in ['lh', 'rh']:
-            surf = opj(os.environ.get('SUBJECTS_DIR'), "fsaverage", 'surf', f'{i}.white')
-            verts = nb.freesurfer.io.read_geometry(surf)[0].shape[0]
-            n_verts.append(verts)
-
-    # cut volumes at the beginning of the timeseries. Also subtract number of volumes from baseline
-    utils.verbose(f"Cutting {cut_vols} from beginning of timeseries", verbose)
-    
-    m_prf_tc_data = m_prf_tc_data[cut_vols:,:]
-    design = design_matrix[list(design_matrix.keys())[-1]][...,cut_vols:]
-
-    # save files
-    utils.verbose("Saving averaged data", verbose)
+        elif space == "fsaverage":
+            n_verts = utils.get_vertex_nr("fsaverage", as_list=True)
         
-    np.save(opj(outputdir, f'{out}_hemi-LR_desc-avg_bold.npy'), m_prf_tc_data)
-    np.save(opj(outputdir, f'{out}_hemi-L_desc-avg_bold.npy'), m_prf_tc_data[:,:n_verts[0]])
-    np.save(opj(outputdir, f'{out}_hemi-R_desc-avg_bold.npy'), m_prf_tc_data[:,n_verts[0]:])
-    
+        # save files
+        utils.verbose("Saving averaged data", verbose)
+        np.save(bold_file, m_prf_tc_data)
+        np.save(opj(outputdir, f'{out}_hemi-L_desc-avg_bold.npy'), m_prf_tc_data[:,:n_verts[0]])
+        np.save(opj(outputdir, f'{out}_hemi-R_desc-avg_bold.npy'), m_prf_tc_data[:,n_verts[0]:])
+    else:
+        utils.verbose(f"Reading '{bold_file}'", verbose)
+        m_prf_tc_data = np.load(bold_file)
+
+    # remove NaNs
+    m_prf_tc_data = np.nan_to_num(m_prf_tc_data)
+
+    # start fitter
     if do_fit:
 
         if not isinstance(tr, (int,float)):
@@ -548,9 +561,17 @@ Example:
             kwargs = {}
 
         # stage 1 - no HRF
+        fit_hrf_stage1 = True
+        if not fit_hrf:
+            separate_hrf = False
+            fit_hrf_stage1 = False
+        else:
+            if separate_hrf:
+                fit_hrf_stage1 = False
+
         stage1 = prf.pRFmodelFitting(
             m_prf_tc_data.T, 
-            design_matrix=design, 
+            design_matrix=design_matrix, 
             TR=tr, 
             model=model, 
             stage=stage, 
@@ -558,7 +579,7 @@ Example:
             output_dir=outputdir,
             output_base=out,
             write_files=True,
-            fit_hrf=False,
+            fit_hrf=fit_hrf_stage1,
             fix_bold_baseline=psc,
             old_params=old_params,
             constraints=constraints,
@@ -570,7 +591,7 @@ Example:
         stage1.fit()
 
         # stage2 - fit HRF after initial iterative fit
-        if fit_hrf:
+        if separate_hrf:
 
             previous_fitter = f"{model}_fitter"
             if not hasattr(stage1, previous_fitter):

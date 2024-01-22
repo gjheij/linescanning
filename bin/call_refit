@@ -1,0 +1,220 @@
+#!/usr/bin/env python
+#$ -j Y
+#$ -cwd
+#$ -V
+import mkl
+mkl.set_num_threads=1
+
+import ast
+import getopt
+from linescanning import (
+    prf,
+    utils,
+    dataset
+)
+import numpy as np
+import nibabel as nb
+import os
+from scipy import io
+import sys
+import warnings
+import json
+import pickle
+import yaml
+warnings.filterwarnings('ignore')
+opj = os.path.join
+
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_refit
+
+Wrapper for population receptive field fitting with pRFpy. This script is designed to follow up on
+existing data from 'call_refit' and is pretty much a simplified call to pRFmodelFitter objects. It
+also assumes the formatting is all done already; just pass on the file to the percent-changed bold
+data, design matrix, and other model-related parameters
+
+Usage:
+  call_refit [arguments] [options]
+
+Arguments:
+    -i|--in     <bold data>         path to data used for previous fitting
+    -d|--dm     <design matrix>     path to design matrix
+    -o|--out    <prf dir>           output directory containing pRF-stuff, defaults to dirname out
+                                    bold data
+    -j|--n_jobs <nr of jobs>        number of jobs to parallellize over (default = 5)
+    -m|--model  <model type>        one of ['gauss','dog','css','norm'], default = 'gauss'. You can 
+                                    also call models with '--gauss', '--dog', '--css', or '--norm'
+                                    (see below).
+    -x|--kwargs <file>              path to file containing arguments you want to set manually, 
+                                    rather than taking the settings in `prf_analysis.yml`.
+    -c|--constr <constraints>       string or list representing the type of constraints to use for
+                                    each stage (Gaussian and beyond). By default, we'll use trust-
+                                    constr minimization ('tc'), but you can speed up the normaliza-
+                                    tion fitting by using L-BGFS ('bgfs'). To specify a list, use 
+                                    the format '-c [tc,bgfs]'. Use --tc or --bgfs to sync the mini-
+                                    mizers across stages
+    --cut_vols <volumes>            Number of volumes to remove at the beginning of the timeseries. 
+                                    Default is 0, but sometimes it's good to get rid of the initial
+                                    transient
+    --old <file>                    file containing parameters that needs refitting
+    --tr                            manually set repetition time (TR). Default = 1.5. Can be read
+                                    from gifti files (if input = fMRIprep).
+
+Options:                                  
+    --bgfs          use L-BGFS minimization for both the Gaussian as well as the extended model. Use 
+                    the -x flag if you want different minimizers for both stages                      
+    --clip          clip the edges of design matrix in the space of 'n_pix' (by default = 100). You 
+                    will need to calculate how many pixels are to be set to zero given the visual 
+                    field of the subject in the scanner (with a screensize of [1920,1080]px and 
+                    height of 39.3cm). Format needs to be '--clip "a,b,c,d"' or --clip [a,b,c,d] to 
+                    ensure it's read in like a list. Negative values will be set to zero.
+    -g|--grid       only run a grid-fit with the specified model
+    --hrf           Fit the HRF during pRF-fitting. If `True`, the fitting will consist of two 
+                    stages: first, a regular fitting without HRF estimation. Then, the fitting 
+                    object of that fit is inserted as `previous_gaussian_fitter` into a new fitter 
+                    object with HRF estimation turned on. Default = False.
+                    This will ensure the baseline of periods without stimulus are set to zero.
+    --no_bounds     Turn off grid bounds; sometimes parameters fall outside the grid parameter 
+                    bounds, causing 'inf' values. This is especially troublesome when fitting a
+                    single timecourse. If you trust your iterative fitter, you can turn off the 
+                    bounds and let the iterative take care of the parameters
+    --no_fit        only initiate object and do not execute fit; useful for debugging reasons
+    --tc            use trust-constr minimization for both the Gaussian as well as the extended mo-
+                    del. 
+                    Use the -x flag if you want different minimizers for both stages
+    -v|--verbose    print some stuff to a log-file
+
+Models:
+    --gauss         run standard Gaussian model (default) [Dumoulin & Wandell, 2008]
+    --dog           run difference-of-gaussian model (suppression) [Zuiderbaan, et al. 2013]
+    --css           run compressive spatial summation model (compression) [Kay, et al. 2013]
+    --norm          run divisive normalization model (suppresion+compression) [Aqil, et al. 2021]
+
+Example:
+  call_refit --in bold.npy --dm design.mat --old params_to_refit.pkl
+
+---------------------------------------------------------------------------------------------------
+"""
+
+    outputdir   = None
+    model       = "gauss"
+    stage       = "iter"
+    verbose     = True
+    constraints = "tc"
+    grid_bounds = True   
+    n_jobs      = 5
+    kwargs_file = None
+    tr          = 1.5
+    refit_file  = None
+    do_fit      = True
+
+    try:
+        opts = getopt.getopt(argv,"ghs:n:t:o:i:p:m:x:u:c:v:j:",["help", "sub=", "model=", "ses=", "task=", "out=", "in=", "png=", "kwargs=", "grid", "space=", "hrf", "n_pix=", "clip=", "verbose", "file_ending=", "zscore", "overwrite", "constr=", "tc", "bgfs", "no_fit", "raw", "cut_vols=", "v1", "v2", "save_grid", "merge_ses", "n_jobs=", "gauss", "dog", "css", "norm", "abc", "abd", "tr=", "in=", "old=", "dm="])[0]
+    except getopt.GetoptError:
+        print("ERROR while reading arguments; did you specify an illegal argument?")
+        print(main.__doc__)
+        sys.exit(2)
+    
+    for opt, arg in opts:
+        if opt in ('-h', '--help'):
+            print(main.__doc__)
+            sys.exit()
+        elif opt in ("--in"):
+            bold_file = arg
+        elif opt in ("--dm"):
+            dm_file = arg
+        elif opt in ("-o", "--out"):
+            outputdir = arg
+        elif opt in ("--old"):
+            refit_file = arg            
+        elif opt in ("-m", "--model"):
+            model = arg
+        elif opt in ("-x", "--kwargs"):
+            kwargs_file = arg
+        elif opt in ("-v", "--verbose"):
+            verbose = True
+        elif opt in ("-j", "--n_jobs"):
+            n_jobs = int(arg)
+        elif opt in ("--gauss"):
+            model = "gauss" 
+        elif opt in ("--dog"):
+            model = "dog"
+        elif opt in ("--css"):
+            model = "css"
+        elif opt in ("--norm"):
+            model = "norm"  
+        elif opt in ("--abc"):
+            model = "abc"  
+        elif opt in ("--abd"):
+            model = "abd"
+        elif opt in ("--tc"):
+            constraints = "tc"
+        elif opt in ("--bgfs"):
+            constraints = "bgfs"
+        elif opt in ("--constr"):
+            constraints = utils.string2list(arg)
+        elif opt in ("--no_bounds"):
+            grid_bounds = False  
+        elif opt in ("--no_fit"):
+            do_fit = False                    
+        elif opt in ("--tr"):
+            tr = float(arg)                                
+
+    if len(argv) < 2:
+        print(main.__doc__)
+        sys.exit()
+
+    # Create output directory
+    if not isinstance(outputdir, str):
+        outputdir = os.path.dirname(outputdir)
+
+    if not os.path.exists(outputdir):
+        os.makedirs(outputdir, exist_ok=True)
+
+    # derive basename from input
+    file_parts = refit_file.split("_")
+    model_ix = file_parts.index(f"model-{model}")
+    out = "_".join(file_parts[:model_ix])
+
+    # read kwargs file if exists
+    if isinstance(kwargs_file, str):
+        try:
+            with open(kwargs_file) as ff:
+                kwargs = yaml.safe_load(ff)
+        except:
+            raise TypeError(f"Could not read '{kwargs_file}'. Please format like a yaml-file.")
+    else:
+        kwargs = {}
+
+    # initiate fitter
+    stage1 = prf.pRFmodelFitting(
+        bold_file, 
+        transpose=True,
+        design_matrix=dm_file, 
+        TR=tr, 
+        model=model, 
+        stage=stage, 
+        verbose=verbose, 
+        output_dir=outputdir,
+        output_base=out,
+        write_files=True,
+        save_grid=False,
+        fit_hrf=True,
+        fix_bold_baseline=True,
+        old_params=refit_file,
+        constraints=constraints,
+        skip_grid=True,
+        nr_jobs=n_jobs,
+        use_grid_bounds=grid_bounds,
+        **kwargs)
+
+    # start fitter
+    if do_fit:
+        stage1.fit()
+    else:
+        print("Skipping fit; '--no_fit' was passed")
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
