@@ -38,7 +38,11 @@ Arguments:
   -c|--sge            submit job to cluster (SGE); given that we have to rename files after regi-
                       stration, we'll wait for the job to finish if submitted. This can still help
                       with memory issues (e.g., if your local machine does not have enough RAM).
+  --cmd               only echo command; can be useful to submit multiple subjects without waiting 
+                      for the process to finish. This requires the master command to be re-run again
+                      to apply and files
   -q <queue>          submit jobs to a specific queue. Defaults to SGE_QUEUE_LONG in spinoza_setup
+  -j <n_cpus>         number of CPUs to use (default = 1)
   <anat folder>       folder containing images for registration. If DATA == "AVERAGE", we'll look
                       for T1w-images containing 'acq-MP2RAGE_' and 'acq-MP2RAGEME_', create a warp
                       file, and apply this file to MP2RAGEME-files with ('T1w' 'T1map' 'R2starmap
@@ -79,6 +83,7 @@ FSL_FMT=0
 verb=0
 fsl_flag=""
 n_cpu=1
+echo_cmd=0
 
 # Check for subject flag
 while getopts :-:ocs:n:q:j: argument
@@ -98,6 +103,9 @@ do
         sge)
           SGE=1
           ;;    
+        cmd)
+          echo_cmd=1
+          ;;            
         verbose)
           verb_flag="--verbose"
           verb=1
@@ -276,7 +284,7 @@ for subID in ${search}; do
         echo "Registering $(basename ${moving}) to $(basename ${fixed}) [${reg_type}]"
         cmd="${job} ${fsl_flag} ${verb_flag} ${reg_type} -j ${n_cpu} ${fixed} ${moving} ${output_dir}/${base}_${ext}"
 
-        if [[ ${verb} -eq 1 ]]; then
+        if [[ ${verb} -eq 1 || ${echo_cmd} -eq 1 ]]; then
           echo
           echo "call_antsregistration:"
           echo "---------------------------------------------------------------------------------------------------"
@@ -284,43 +292,40 @@ for subID in ${search}; do
           echo
         fi
 
-        # run
-        ${cmd}
+        if [[ ${echo_cmd} -eq 0 ]]; then
+          # run
+          ${cmd}
 
-        if [[ $? -ne 0 ]]; then
-          echo "ERROR in `basename ${0}`: call_antsregistration exited with non-zero status"
-          exit 1
-        fi
-
-        if [[ ${SGE} -eq 1 ]]; then
-          echo "Waiting to check qstat.."
-          sleep 10
-
-          wait_for_qsub "${job_name}"
           if [[ $? -ne 0 ]]; then
-            echo "ERROR in `basename ${0}`: wait_for_qsub exited with non-zero status"
+            echo "ERROR in `basename ${0}`: call_antsregistration exited with non-zero status"
             exit 1
           fi
-        fi
 
-        if [[ ${reg_type} == *"syn"* ]]; then
-          mv ${output_dir}/${base}_${ext}1Warp.nii.gz ${outWarp} 2>/dev/null
-          mv ${output_dir}/${base}_${ext}1InverseWarp.nii.gz ${outInvWarp} 2>/dev/null
-        fi
+          if [[ ${SGE} -eq 1 ]]; then
+            echo "Waiting to check qstat.."
+            sleep 10
 
-        # we'll have this file regardless of registration type
-        mv ${output_dir}/${base}_${ext}genaff.mat ${outGenAff} 2>/dev/null
-        mv ${output_dir}/${base}_${ext}command.txt ${cmd_file} 2>/dev/null
+            wait_for_qsub "${job_name}"
+            if [[ $? -ne 0 ]]; then
+              echo "ERROR in `basename ${0}`: wait_for_qsub exited with non-zero status"
+              exit 1
+            fi
+          fi
+
+          if [[ ${reg_type} == *"syn"* ]]; then
+            mv ${output_dir}/${base}_${ext}1Warp.nii.gz ${outWarp} 2>/dev/null
+            mv ${output_dir}/${base}_${ext}1InverseWarp.nii.gz ${outInvWarp} 2>/dev/null
+          fi
+
+          # we'll have this file regardless of registration type
+          mv ${output_dir}/${base}_${ext}genaff.mat ${outGenAff} 2>/dev/null
+          mv ${output_dir}/${base}_${ext}command.txt ${cmd_file} 2>/dev/null
+        fi
 
       else
         echo "Renaming \"${base}_${ext}genaff.mat\" to \"`basename ${outGenAff}`\""
         mv ${output_dir}/${base}_${ext}genaff.mat ${outGenAff} 2>/dev/null
-        mv ${output_dir}/${base}_${ext}command.txt ${cmd_file} 2>/dev/null
-
-        if [[ ${reg_type} == *"syn"* ]]; then
-          mv ${output_dir}/${base}_${ext}1Warp.nii.gz ${outWarp} 2>/dev/null
-          mv ${output_dir}/${base}_${ext}1InverseWarp.nii.gz ${outInvWarp} 2>/dev/null
-        fi      
+        mv ${output_dir}/${base}_${ext}command.txt ${cmd_file} 2>/dev/null    
       fi
 
       # check if we got fsl output
@@ -330,6 +335,11 @@ for subID in ${search}; do
 
     else
       echo "Warp and matrix files are present. Skipping antsRegistration."
+
+      if [[ -f ${output_dir}/${base}_${ext}1Warp.nii.gz ]]; then
+        mv ${output_dir}/${base}_${ext}1Warp.nii.gz ${outWarp} 2>/dev/null
+        mv ${output_dir}/${base}_${ext}1InverseWarp.nii.gz ${outInvWarp} 2>/dev/null
+      fi  
     fi
 
     if [[ ${verb} -eq 1 ]]; then
