@@ -85,16 +85,17 @@ Example:
 
 
     # Just plop everything in dir of segmentation
-    cruise_cortex_extraction(init_image=wm_mask,
-                             wm_image=wm,
-                             gm_image=gm,
-                             csf_image=csf,
-                             normalize_probabilities=False,
-                             data_weight=0.9,
-                             file_name=output_base,
-                             save_data=True,
-                             output_dir=output_dir)
-
+    cruise_cortex_extraction(
+        init_image=wm_mask,
+        wm_image=wm,
+        gm_image=gm,
+        csf_image=csf,
+        normalize_probabilities=False,
+        data_weight=0.9,
+        file_name=output_base,
+        save_data=True,
+        output_dir=output_dir
+    )
 
 if __name__ == "__main__":
     main(sys.argv[1:])
