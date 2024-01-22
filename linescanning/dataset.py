@@ -838,6 +838,7 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
         response_window=3,
         merge=True,
         resp_as_cov=False,
+        cov_amplitude=1,
         ev_onset="stim",
         duration_col="duration",
         key_press=["b"],
@@ -870,7 +871,7 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
         self.expr                           = expr
         self.duration_col                   = duration_col
         self.add_cols                       = add_cols
-
+        self.cov_amplitude                  = cov_amplitude
         # filter kwargs
         tmp_kwargs = filter_kwargs(
             [
@@ -1300,7 +1301,7 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
                 key="RTs")
 
             # keep track of response during trial
-            self.response_during_trial = np.full((self.n_trials),-1)
+            self.response_during_trial = np.full((self.n_trials),-self.cov_amplitude)
             self.cov_times = []
             for stim in range(self.n_trials):
 
@@ -1322,7 +1323,7 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
                     # response during trial
                     if len(resp) > 0:
                         resp_time = resp["onset"].values[0]
-                        self.response_during_trial[stim] = 1        
+                        self.response_during_trial[stim] = self.cov_amplitude
                         append_time = resp_time
 
                 self.cov_times.append(append_time)
@@ -1334,7 +1335,7 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
                 if self.response_during_trial[stim] < 0:
                     
                     # find closest trial with button press
-                    closest_trial = utils.find_nearest(self.response_during_trial[stim:], 1)[0]
+                    closest_trial = utils.find_nearest(self.response_during_trial[stim:], self.cov_amplitude)[0]
                     closest_trial += stim
 
                     # get reaction time of this stim
@@ -1345,7 +1346,7 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
                     # deal with button presses BEFORE stimulus onset
                     if rt == 0:
                         # invert array for last element
-                        closest_trial = utils.find_nearest(self.response_during_trial[::-1][-stim:], 1)[0]
+                        closest_trial = utils.find_nearest(self.response_during_trial[::-1][-stim:], self.cov_amplitude)[0]
                         closest_trial = (stim-closest_trial)-1
 
                         # get reaction time of this stim
@@ -1389,7 +1390,7 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
 
         # add response covariate column  THIS IS A SHORTCUT FOR NOW!
         if self.resp_as_cov:
-            self.onset_df["cov"] = 1 #self.response_during_trial
+            self.onset_df["cov"] = self.cov_amplitude #self.response_during_trial
 
     def index_onset(
         self,
