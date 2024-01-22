@@ -321,6 +321,9 @@ for subID in ${search}; do
           # we'll have this file regardless of registration type
           mv ${output_dir}/${base}_${ext}genaff.mat ${outGenAff} 2>/dev/null
           mv ${output_dir}/${base}_${ext}command.txt ${cmd_file} 2>/dev/null
+        else
+          echo "Make sure to re-run upon completion of registration for fix the filenaming:"
+          echo " \"master -m 05b -s ${sub_id}\""
         fi
 
       else
