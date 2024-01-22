@@ -1088,7 +1088,6 @@ class LazyCorr(Defaults):
         Second variable to include in plot/regression. Can be a list/array representing data, or a column name from `data`
     color_by: str, np.ndarray, list
         Color the points according to a separate array. Can be a list/array representing data, or a column name from `data`. Default color map for this is 'viridis', and can be changed by passing arguments to `scatter_kwargs`
-
     color: str, list, optional
         String representing a color, by default "#ccccccc" to color the regression fit
     figsize: tuple, optional
@@ -1101,6 +1100,8 @@ class LazyCorr(Defaults):
         Run a regression between `x` and `y`. The result is stored in `self.regression_result`
     scatter_kwargs: dict, optional
         Additional options passed on to the `scatter` function from matplotlib. Set colorbar to nothing by passing:
+    result_to_plot: bool, optional
+        Add the correlation/regression result to the plot
 
 >>> scatter_kwargs={"cbar": False}
 
@@ -1163,6 +1164,12 @@ class LazyCorr(Defaults):
         correlation: bool=False,
         reg_kwargs: dict={},
         error_kwargs: dict={},
+        result_to_plot: bool=False,
+        result_loc: tuple=(0.55,0.1),
+        result_ec: tuple=(1.,0.5,0.5),
+        result_fc: tuple=(1.,0.8,0.8),
+        result_dec: int=2,
+        *args,
         **kwargs):
 
         # init default plotter class
@@ -1182,6 +1189,11 @@ class LazyCorr(Defaults):
         self.correlation    = correlation
         self.reg_kwargs     = reg_kwargs
         self.error_kwargs   = error_kwargs
+        self.result_to_plot = result_to_plot
+        self.result_loc     = result_loc
+        self.result_fc      = result_fc
+        self.result_ec      = result_ec
+        self.result_dec     = result_dec
 
         if self.xkcd:
             with plt.xkcd():
@@ -1197,8 +1209,35 @@ class LazyCorr(Defaults):
         if self.correlation:
             self._run_correlation()            
 
+        # check if we should add text box 
+        if self.result_to_plot:
+            self.add_result_to_plot(*args)
+
         # save
         self._save_figure(self.save_as)
+
+    def add_result_to_plot(self):
+
+        if hasattr(self, "correlation_result"):
+            met_name = "r"
+            p_name = "p-unc"
+            result_obj = self.correlation_result
+        elif hasattr(self, "regression_result"):
+            met_name = "r2"
+            p_name = "pval"
+            result_obj = self.regression_result
+
+        p_val = result_obj[p_name][0]
+        met_val = result_obj[met_name][0]
+
+        self.axs.text(
+            *self.result_loc, 
+            f"{met_name}={round(met_val,self.result_dec)}, p={round(p_val,self.result_dec)}",
+            size=self.font_size*0.8,
+            bbox=dict(boxstyle="round", ec=self.result_ec,fc=self.result_fc),
+            transform=self.axs.transAxes
+        )
+
 
     def _run_regression(self):
         
@@ -1925,7 +1964,7 @@ class LazyHist(Defaults):
         data, 
         x=None,
         y=None,
-        figsize=(7,7),
+        figsize=(5,5),
         kde=False,
         hist=True,
         bins="auto",
@@ -1933,6 +1972,7 @@ class LazyHist(Defaults):
         kde_kwargs={},
         hist_kwargs={},
         color="#cccccc",
+        cmap=None,
         fancy: bool=False,
         fancy_rounding: float=0.15,
         fancy_pad: float=-0.004,
@@ -1959,7 +1999,9 @@ class LazyHist(Defaults):
         self.fancy          = fancy
         self.fancy_rounding = fancy_rounding
         self.fancy_pad      = fancy_pad
-        self.fancy_aspect   = fancy_aspect        
+        self.fancy_aspect   = fancy_aspect   
+        self.cmap           = cmap
+
         # self.__dict__.update(self.kde_kwargs)
 
         if self.xkcd:
@@ -1969,7 +2011,10 @@ class LazyHist(Defaults):
             self.plot()
 
         if self.kde:
-            self.kde_ = self.return_kde()
+            try:
+                self.kde_ = self.return_kde()
+            except:
+                pass
 
         # save
         self._save_figure(self.save_as)
@@ -1978,13 +2023,17 @@ class LazyHist(Defaults):
         return self.ff.get_lines()[0].get_data()
     
     def force_kde_color(self):
-        if "color" in list(self.kde_kwargs.keys()):
-            color = self.kde_kwargs["color"]
-        else:
-            color = self.color
-        self.ff.get_lines()[0].set_color(color)
+        line_cols = self.ff.get_lines()
+        line_cols[-1].set_color(self.color)
+
+    def _set_color(self):
+        if isinstance(self.cmap, str):
+            self.color = sns.color_palette(self.cmap, 1)[0]
 
     def plot(self):
+
+        # overwrite color argument if cmap is specified
+        self._set_color()
 
         # set figure axis
         self._set_figure_axs()   
@@ -2031,6 +2080,10 @@ class LazyHist(Defaults):
             if not "legend" in list(self.kde_kwargs):
                 self.kde_kwargs["legend"] = False
 
+            if not self.hist:
+                if not "color" in list(self.kde_kwargs):
+                    self.kde_kwargs["color"] = self.color
+
             self.ff = sns.kdeplot(
                 data=self.data,
                 x=self.x,
@@ -2041,7 +2094,8 @@ class LazyHist(Defaults):
             )
 
             # the color argument is very unstable for some reason..
-            self.force_kde_color()
+            if self.hist:
+                self.force_kde_color()
 
         # there's no self.ff if kde=False
         if hasattr(self, "ff"):
