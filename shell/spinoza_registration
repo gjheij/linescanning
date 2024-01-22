@@ -292,14 +292,15 @@ for subID in ${search}; do
           echo
         fi
 
-        if [[ ${echo_cmd} -eq 0 ]]; then
-          # run
-          ${cmd}
+        # run
+        ${cmd}
 
-          if [[ $? -ne 0 ]]; then
-            echo "ERROR in `basename ${0}`: call_antsregistration exited with non-zero status"
-            exit 1
-          fi
+        if [[ $? -ne 0 ]]; then
+          echo "ERROR in `basename ${0}`: call_antsregistration exited with non-zero status"
+          exit 1
+        fi
+
+        if [[ ${echo_cmd} -eq 0 ]]; then
 
           if [[ ${SGE} -eq 1 ]]; then
             echo "Waiting to check qstat.."
