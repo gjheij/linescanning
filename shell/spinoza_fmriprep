@@ -315,8 +315,14 @@ for subID in ${search}; do
           cp ${diff_anat} ${func_dir}/${base_path}/anat
 
         else
-          echo "ERROR in `basename ${0}`: Could not find T1w-file in \"${anat_dir}\". Please copy a file containing \"_T1w.nii.gz\" to \"${func_dir}/${base_path}/anat\" as a T1w-file needs to be present. If you've already ran the anatomical workflows, the file will be ignored. Nevertheless, it's needs to be present for fMRIprep to initiate"
-          exit 1
+          # check if we can use rawavg.nii.gz from FreeSurfer
+          fs_rawavg=${FS}/${sub_name}/mri/rawavg.mgz
+          if [[ -f ${fs_rawavg} ]]; then
+            call_mriconvert ${fs_rawavg} ${func_dir}/${base_path}/anat/${base}_acq-${DATA^^}_T1w.nii.gz
+          else
+            echo "ERROR in `basename ${0}`: Could not find T1w-file in \"${anat_dir}\". Please copy a file containing \"_T1w.nii.gz\" to \"${func_dir}/${base_path}/anat\" as a T1w-file needs to be present. If you've already ran the anatomical workflows, the file will be ignored. Nevertheless, it's needs to be present for fMRIprep to initiate"
+            exit 1
+          fi
         fi    
       fi  
     else
