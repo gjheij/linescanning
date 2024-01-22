@@ -760,17 +760,53 @@ class ROI():
     def __init__(
         self,
         roi,
+        mask_type="aparc",
+        subject="fsaverage",
         ):
 
         self.roi = roi
-
-        # read parc data once even for multiple ROIs
-        self.read_aparc()
-        self.roi_list = self.read_roi_list()
+        self.mask_type = mask_type
+        self.subject = subject
 
         # force list
         if isinstance(self.roi, str):
             self.roi = [self.roi]
+
+        # make mask from aparc segmentation
+        if self.mask_type == "aparc":
+            self.aparc_mask()
+        else:
+            # make mask from surf-labels
+            self.surf_mask()
+
+        # merge list of masks
+        self.merge_masks()
+        
+    def surf_mask(self):
+
+        self.surf_calcs = optimal.SurfaceCalc(subject=self.subject)
+
+        # loop through list and merge
+        self.individual_masks = {}
+        if isinstance(self.roi, list):
+            for roi in self.roi:
+
+                self.mask_obj = self.surf_calcs.read_fs_label(
+                    self.subject, 
+                    fs_label=roi
+                )
+                
+                self.individual_masks[roi] = self.surf_calcs.label_to_mask(
+                    subject=self.subject, 
+                    rh_arr=self.mask_obj['rh'],
+                    lh_arr=self.mask_obj['lh']
+                )["whole_roi"]
+
+    def aparc_mask(self):
+
+        # read parc data once even for multiple ROIs
+        self.read_aparc()
+        self.roi_list = self.read_roi_list()
 
         # loop through list and merge
         self.individual_masks = {}
@@ -780,6 +816,8 @@ class ROI():
                     raise ValueError(f"'{roi}' is not part of the aparc atlas. Options are {self.roi_list}")
                 
                 self.individual_masks[roi] = self.make_roi_mask(roi=roi)
+
+    def merge_masks(self):
 
         # merge
         if len(self.individual_masks)>1:
