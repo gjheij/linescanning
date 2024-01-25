@@ -768,12 +768,15 @@ def read_chicken_csv(chicken_file, return_type="lps"):
 
         return LPS@coord
 
-def get_vertex_nr(subject, as_list=False, debug=False):
+def get_vertex_nr(subject, as_list=False, debug=False, fs_dir=None):
+
+    if not isinstance(fs_dir, str):
+        fs_dir = os.environ.get("SUBJECTS_DIR")
 
     n_verts_fs = []
     for i in ['lh', 'rh']:
         
-        surf = opj(os.environ.get('SUBJECTS_DIR'), subject, 'surf', f'{i}.white')
+        surf = opj(fs_dir, subject, 'surf', f'{i}.white')
         verbose(surf, debug)
         if not os.path.exists(surf):
             raise FileNotFoundError(f"Could not find file '{surf}'")
@@ -781,7 +784,7 @@ def get_vertex_nr(subject, as_list=False, debug=False):
         try:
             verts = nb.freesurfer.io.read_geometry(surf)[0].shape[0]
         except:
-            annot = opj(os.environ.get('SUBJECTS_DIR'), subject, 'label', f'{i}.aparc.a2009s.annot')
+            annot = opj(fs_dir, subject, 'label', f'{i}.aparc.a2009s.annot')
             verts = nb.freesurfer.io.read_annot(annot)[0].shape[0]
             
         n_verts_fs.append(verts)
