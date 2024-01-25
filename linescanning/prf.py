@@ -1415,7 +1415,9 @@ def generate_model_params(
             'eccs': [float(item) for item in eccs], 
             'polars': [float(item) for item in polars],
             'hrf1': hrf1,
-            'hrf2': hrf2}}
+            'hrf2': hrf2
+        }
+    }
     
     allowed_models = ['gauss', 'css', 'dog', 'norm', 'abc', 'abd']
     if model not in allowed_models:
@@ -1843,7 +1845,8 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         Save grid-parameters; can save clogging up of directories. Default = True
     any: optional
         You can also provide a value for any key/item present in the default settings-file, e.g., `screen_size_cm`, `rsq_threshold`, `TR`, you name it. This will overwrite the default setting, without the requirement of specifying a new file. Allows for quick tests/adaptations to the default settings. This is especially useful in cases where - pls no.. - you have different screen distances in one dataset.
-
+    skip_settings: bool, optional
+        avoids overwriting of particular settings (e.g., screen_distance_cm), and takes them from the reference analysis file instead
     Returns
     ----------
     pkl-file
@@ -1897,6 +1900,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         use_grid_bounds=True,
         mask=None,
         transpose=False,
+        skip_settings=False,
         **kwargs):
 
         self.data               = data
@@ -1923,6 +1927,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         self.use_grid_bounds    = use_grid_bounds
         self.mask               = mask
         self.transpose          = transpose
+        self.skip_settings      = skip_settings
         self.__dict__.update(kwargs)
 
         # read design matrix if needed
@@ -1946,6 +1951,13 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                 
             if self.design_matrix.shape[-1] != self.data.shape[-1]:
                 missed_vols = self.design_matrix.shape[-1]-self.data.shape[-1]
+
+                # transpose if this value is negative; means shapes are shifted
+                if missed_vols < 0:
+                    self.data = self.data.T
+                    utils.verbose(f"Skipped volumes was negative ({missed_vols}), transposing data to {self.data.shape}", self.verbose)
+                    missed_vols = self.design_matrix.shape[-1]-self.data.shape[-1]
+
                 self.design_matrix = self.design_matrix[...,missed_vols:]
 
                 utils.verbose(f"Design has {missed_vols} more volumes than timecourses, trimming from beginning of design to {self.design_matrix.shape}", self.verbose)
@@ -2076,7 +2088,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         if isinstance(self.old_params, (np.ndarray,str)):
             
             # agnostic read-in of existing parameter file; if pkl-file, settings will be overwritting to ensure consistency
-            self.old_params = self.load_params(self.old_params, return_pars=True)
+            self.old_params = self.load_params(self.old_params, return_pars=True, skip_settings=self.skip_settings)
 
             if self.old_params.ndim == 1:
                 self.old_params = self.old_params[np.newaxis,...]
@@ -2188,6 +2200,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         model='gauss', 
         stage='iter', 
         hemi=None,
+        skip_settings=False,
         return_pars=False):
 
         """load_params
@@ -2238,14 +2251,22 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                     data = pickle.load(input)
                     
                 params = data['pars']
-                self.settings = data['settings']
-
                 for el in ["predictions","hrf"]:
                     if el in list(data.keys()):
                         setattr(self, f'{model}_{stage}_predictions', data['predictions'])
             
-                utils.verbose(f"Reading settings from '{params_file}' (safest option; overwrites other settings)", self.verbose)
-            
+                if not skip_settings:
+                    utils.verbose(f"Reading settings from '{params_file}' (safest option; overwrites other settings)", self.verbose)
+                    self.settings = data['settings']
+
+                    # print important settings
+                    utils.verbose("\n---------------------------------------------------------------------------------------------------", self.verbose)
+                    utils.verbose("Check these important updated settings!", self.verbose)
+                    utils.verbose(f" Screen distance: {self.settings['screen_distance_cm']}cm", self.verbose)
+                    utils.verbose(f" Screen size: {self.settings['screen_size_cm']}cm", self.verbose)
+                    utils.verbose(f" TR: {self.settings['TR']}s", self.verbose)
+                    utils.verbose("---------------------------------------------------------------------------------------------------\n", self.verbose)
+
             # try to read model- from the filename
             if not isinstance(model, str):
                 try:
@@ -2915,7 +2936,8 @@ class SizeResponse():
         batch_size=100,
         parallel=True,
         thresh=0,
-        max_jobs=20):
+        max_jobs=20
+        ):
 
         """create Size-Response function. If you want to ignore the actual location of the pRF, set `center_prf=True`. You can also scale the pRF-size with a factor `scale_factor`, for instance if you want to simulate pRF-sizes across depth."""
         
@@ -3421,14 +3443,17 @@ class CollectSubject(pRFmodelFitting):
                 self.data,
                 design_matrix=self.design_matrix,
                 verbose=self.verbose,
-                model=self.model)
+                model=self.model
+            )
 
             if hasattr(self, "pars"):
                 self.load_params(
                     self.pars, 
                     model=self.model, 
                     stage="iter", 
-                    hemi=self.hemi_tag)
+                    hemi=self.hemi_tag,
+                    skip_settings=self.skip_settings
+                )
         else:
             print("WARNING: could not initiate model due to missing data. Some functions may not work.")
 
