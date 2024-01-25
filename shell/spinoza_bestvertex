@@ -302,8 +302,8 @@ for subID in ${search}; do
   prf_dir=${DERIV}/prf/${base_path}
 
   # make the pycortex directory if it doesn't exists; the others should exists already. If not, it will complain about it below
-  if [[ ! -d ${cx_dir} ]]; then
-    mkdir -p ${cx_dir}
+  if [[ ! -d ${DERIV}/pycortex ]]; then
+    mkdir -p ${DERIV}/pycortex
   fi
 
   # never really delete a line_pycortex file, but rename numerically, so that the highest number is the oldest file.
