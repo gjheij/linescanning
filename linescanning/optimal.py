@@ -759,7 +759,8 @@ class pRFCalc():
         save=False, 
         model=None,
         thr=0.1,
-        fs_dir=None):
+        fs_dir=None,
+        skip_cortex=False):
         
         # set defaults
         self.prf_file   = prf_file
@@ -768,9 +769,10 @@ class pRFCalc():
         self.subject    = subject
         self.thr        = thr
         self.fs_dir     = fs_dir
+        self.skip_cortex = skip_cortex
 
         # check SUBJECTS_DIR
-        if not self.fs_dir:
+        if not isinstance(self.fs_dir, str):
             self.fs_dir = os.environ.get("SUBJECTS_DIR")
         
         # do stuff if file exists
@@ -809,86 +811,87 @@ class pRFCalc():
 
             else:
                 raise FileNotFoundError(f"Could not find file '{self.prf_file}'")
-        
-            if isinstance(self.subject, str):
-                
-                # read pycortex filestore
-                ctx_path = pycortex.set_ctx_path(opt="show_fs")
 
-                # filestore needs to exist to 'import_subj' to work
-                if not os.path.exists(ctx_path):
-                    os.makedirs(ctx_path, exist_ok=True)
+            if not self.skip_cortex:
+                if isinstance(self.subject, str):
+                    
+                    # read pycortex filestore
+                    ctx_path = pycortex.set_ctx_path(opt="show_fs")
 
-                if not os.path.exists(opj(ctx_path, self.subject)):
-                    cortex.freesurfer.import_subj(
-                        fs_subject=self.subject,
-                        cx_subject=self.subject,
-                        freesurfer_subject_dir=self.fs_dir,
-                        whitematter_surf='smoothwm')
+                    # filestore needs to exist to 'import_subj' to work
+                    if not os.path.exists(ctx_path):
+                        os.makedirs(ctx_path, exist_ok=True)
 
-                # make object for r2
-                self.r2_v = pycortex.Vertex2D_fix(
-                    self.df_prf.r2,
-                    self.df_prf.r2,
-                    subject=self.subject,
-                    cmap="magma",
-                    vmax1=round(self.df_prf.r2.max(),2),
-                    vmin2=self.thr,
-                    vmax2=0.5)
+                    if not os.path.exists(opj(ctx_path, self.subject)):
+                        cortex.freesurfer.import_subj(
+                            fs_subject=self.subject,
+                            cx_subject=self.subject,
+                            freesurfer_subject_dir=self.fs_dir,
+                            whitematter_surf='smoothwm')
 
-                # make object for eccentricity
-                self.ecc_v = pycortex.Vertex2D_fix(
-                    self.df_prf.ecc,
-                    self.df_prf.r2,
-                    subject=self.subject,
-                    cmap="nipy_spectral",
-                    vmax1=5,
-                    vmin2=self.thr,
-                    vmax2=0.5)
+                    # make object for r2
+                    self.r2_v = pycortex.Vertex2D_fix(
+                        self.df_prf.r2,
+                        self.df_prf.r2,
+                        subject=self.subject,
+                        cmap="magma",
+                        vmax1=round(self.df_prf.r2.max(),2),
+                        vmin2=self.thr,
+                        vmax2=0.5)
 
-                # make object for polar angle
-                self.polar_v = pycortex.Vertex2D_fix(
-                    self.df_prf.polar,
-                    self.df_prf.r2,
-                    subject=self.subject,
-                    cmap="hsvx2",
-                    vmin1=-np.pi,
-                    vmax1=np.pi,
-                    vmin2=self.thr,                
-                    vmax2=0.5)
-                
-                self.prf_data_dict = {}
-                for el in ["r2","ecc","polar"]:
-                    self.prf_data_dict[el] = getattr(self, f"{el}_v")
-                
-                # create objects for A,B,C,D
-                if self.model == "norm":
-                    for par in ["B","D","ratio (B/D)"]:
-                        if par in ["B","D"]:
-                            minmax = [0,100]
-                            obj_par = par
-                        else:
-                            minmax = [
-                                np.nanquantile(self.df_prf["ratio (B/D)"].loc[self.df_prf.r2>self.thr].values,0.1),
-                                round(np.nanquantile(self.df_prf["ratio (B/D)"].loc[self.df_prf.r2>self.thr].values,0.9),2)
-                            ]
-                            obj_par = "ratio_bd"
-                        
-                        data = self.df_prf[par]
-                        # data[data>minmax[1]] = 0
-                        obj_ = pycortex.Vertex2D_fix(
-                            data,
-                            self.df_prf.r2,
-                            subject=self.subject,
-                            vmin1=minmax[0],
-                            vmax1=minmax[1],
-                            vmin2=self.thr,
-                            vmax2=0.5,
-                            cmap="inferno"
-                        )
+                    # make object for eccentricity
+                    self.ecc_v = pycortex.Vertex2D_fix(
+                        self.df_prf.ecc,
+                        self.df_prf.r2,
+                        subject=self.subject,
+                        cmap="nipy_spectral",
+                        vmax1=5,
+                        vmin2=self.thr,
+                        vmax2=0.5)
 
-                        setattr(self, f"{obj_par}_v", obj_)
-                        self.prf_data_dict[obj_par] = obj_
+                    # make object for polar angle
+                    self.polar_v = pycortex.Vertex2D_fix(
+                        self.df_prf.polar,
+                        self.df_prf.r2,
+                        subject=self.subject,
+                        cmap="hsvx2",
+                        vmin1=-np.pi,
+                        vmax1=np.pi,
+                        vmin2=self.thr,                
+                        vmax2=0.5)
+                    
+                    self.prf_data_dict = {}
+                    for el in ["r2","ecc","polar"]:
+                        self.prf_data_dict[el] = getattr(self, f"{el}_v")
+                    
+                    # create objects for A,B,C,D
+                    if self.model == "norm":
+                        for par in ["B","D","ratio (B/D)"]:
+                            if par in ["B","D"]:
+                                minmax = [0,100]
+                                obj_par = par
+                            else:
+                                minmax = [
+                                    np.nanquantile(self.df_prf["ratio (B/D)"].loc[self.df_prf.r2>self.thr].values,0.1),
+                                    round(np.nanquantile(self.df_prf["ratio (B/D)"].loc[self.df_prf.r2>self.thr].values,0.9),2)
+                                ]
+                                obj_par = "ratio_bd"
+                            
+                            data = self.df_prf[par]
+                            # data[data>minmax[1]] = 0
+                            obj_ = pycortex.Vertex2D_fix(
+                                data,
+                                self.df_prf.r2,
+                                subject=self.subject,
+                                vmin1=minmax[0],
+                                vmax1=minmax[1],
+                                vmin2=self.thr,
+                                vmax2=0.5,
+                                cmap="inferno"
+                            )
+
+                            setattr(self, f"{obj_par}_v", obj_)
+                            self.prf_data_dict[obj_par] = obj_
 
     def open_pycortex(
         self,
