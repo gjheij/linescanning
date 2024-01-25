@@ -153,6 +153,8 @@ refit_data=0
 n_pix=100
 redo_bold=""
 folds_flag=""
+skip_flag=""
+trans_flag=""
 while getopts :-:los:n:m:t:x:c:v:j:k:q:r:p:f: argument
 do
   case ${argument} in
@@ -239,7 +241,13 @@ do
           ;;  
         bold)
           redo_bold="--bold"
-          ;;                                 
+          ;;        
+        skip_settings)
+          skip_flag="--skip_settings"
+          ;;     
+        transpose)
+          trans_flag="--transpose"
+          ;;                                              
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}"
@@ -381,7 +389,7 @@ for subID in ${search}; do
   fi
 
   # do stuff if input directory exists
-  if [[ -d ${full_input} ]]; then
+  if [[ -d ${full_input} || ${refit_data} -eq 1 ]]; then
 
     echo
     echo "**************************************** Processing ${sub_name} ***************************************"
@@ -622,6 +630,8 @@ for subID in ${search}; do
             ${bold_flag} \
             ${dm_flag} \
             ${redo_bold} \
+            ${skip_flag} \
+            ${trans_flag} \
             ${par_flag}"""
 
           if [[ ${run_locally} -eq 1 ]]; then
