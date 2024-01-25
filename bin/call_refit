@@ -85,7 +85,10 @@ Options:
                     del. 
                     Use the -x flag if you want different minimizers for both stages
     -v|--verbose    print some stuff to a log-file
-
+    --transpose     transpose data for fitter object. Format needs to be (voxels,time). You'll get
+                    an error saying the shapes do not match up. In that case, try this flag
+    --skip_settings avoids overwriting of particular settings (e.g., screen_distance_cm), and takes
+                    them from the reference analysis file instead
 Models:
     --gauss         run standard Gaussian model (default) [Dumoulin & Wandell, 2008]
     --dog           run difference-of-gaussian model (suppression) [Zuiderbaan, et al. 2013]
@@ -109,9 +112,11 @@ Example:
     tr          = 1.5
     refit_file  = None
     do_fit      = True
+    transpose   = False
+    skip_settings = False
 
     try:
-        opts = getopt.getopt(argv,"ghs:n:t:o:i:p:m:x:u:c:v:j:",["help", "sub=", "model=", "ses=", "task=", "out=", "in=", "png=", "kwargs=", "grid", "space=", "hrf", "n_pix=", "clip=", "verbose", "file_ending=", "zscore", "overwrite", "constr=", "tc", "bgfs", "no_fit", "raw", "cut_vols=", "v1", "v2", "save_grid", "merge_ses", "n_jobs=", "gauss", "dog", "css", "norm", "abc", "abd", "tr=", "in=", "old=", "dm="])[0]
+        opts = getopt.getopt(argv,"ghs:n:t:o:i:p:m:x:u:c:v:j:",["help", "sub=", "model=", "ses=", "task=", "out=", "in=", "png=", "kwargs=", "grid", "space=", "hrf", "n_pix=", "clip=", "verbose", "file_ending=", "zscore", "overwrite", "constr=", "tc", "bgfs", "no_fit", "raw", "cut_vols=", "v1", "v2", "save_grid", "merge_ses", "n_jobs=", "gauss", "dog", "css", "norm", "abc", "abd", "tr=", "in=", "old=", "dm=", "transpose", "skip_settings"])[0]
     except getopt.GetoptError:
         print("ERROR while reading arguments; did you specify an illegal argument?")
         print(main.__doc__)
@@ -160,7 +165,11 @@ Example:
         elif opt in ("--no_fit"):
             do_fit = False                    
         elif opt in ("--tr"):
-            tr = float(arg)                                
+            tr = float(arg)        
+        elif opt in ("--transpose"):
+            transpose = True         
+        elif opt in ("--skip_settings"):
+            skip_settings = True                                                             
 
     if len(argv) < 2:
         print(main.__doc__)
@@ -191,7 +200,7 @@ Example:
     # initiate fitter
     stage1 = prf.pRFmodelFitting(
         bold_file, 
-        transpose=True,
+        transpose=transpose,
         design_matrix=dm_file, 
         TR=tr, 
         model=model, 
@@ -208,6 +217,7 @@ Example:
         skip_grid=True,
         nr_jobs=n_jobs,
         use_grid_bounds=grid_bounds,
+        skip_settings=skip_settings,
         **kwargs)
 
     # start fitter
