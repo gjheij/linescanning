@@ -252,6 +252,7 @@ echo "==========================================================================
 for subID in ${search}; do
 
   # collect subject name
+  nr=""
   if [[ ! -z ${sub} ]]; then
     sub_name=${SUBJECT_PREFIX}${subID}
     sub_id=${subID}
@@ -332,7 +333,8 @@ for subID in ${search}; do
     fi
 
     if [[ -z ${func} ]]; then
-      echo "${sub_name}; missing functional data"
+      echo "${sub_name}; no \"*bold.nii.gz\"-files in \"${input_dir}/func\""
+      echo "If you're running a multi-session setup with ses-1 (default) as anatomical session, you'll need to specify any valid session ID with \"-n <sesID>\". This is just to verify that there are files, but doesn't actually do anything do the fmriprep-call. To select specific sessions for fmriprep, use config-files with \"-u <config_file>\""
       continue
     fi
   fi
