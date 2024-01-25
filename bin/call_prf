@@ -358,7 +358,20 @@ Example:
     # search for bold
     bold_file = opj(outputdir, f"{out}_hemi-LR_desc-avg_bold.npy")
     exclude = None
-    if not isinstance(bold_file, str) or overwrite_bold:
+
+    # decide execution rules
+    # - if bold_file is a string but doesn't exist yet
+    # - overwrite mode
+    execute = False
+    if isinstance(bold_file, str):
+        if not os.path.exists(bold_file):
+            execute = True
+    
+    if overwrite_bold:
+        execute = True
+
+    # execute
+    if execute:
         
         # find all files in input folder
         found_files = utils.FindFiles(inputdir, extension=file_ending).files
