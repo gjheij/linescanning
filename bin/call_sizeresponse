@@ -57,6 +57,7 @@ Example
 ----------
     call_sizeresponse -i sub-01_ses-1_task-2R_model-norm_stage-iter_desc-prf_params.pkl
     call_sizeresponse -i prf_estimates.pkl -o srfs.csv --unique
+    in_file=/data1/projects/MicroFunc/Jurjen/projects/VE-SRF/derivatives/prf/sub-005/ses-1/sub-005_ses-1_task-2R_model-norm_stage-iter_desc-prf_params.pkl; qsub -N $(basename ${in_file} prf_params.pkl)srfs_centered -q long.q -pe smp 20 -wd $(dirname ${in_file}) $DIR_SCRIPTS/bin/call_sizeresponse -i ${in_file} --verbose --parallel
 
 ---------------------------------------------------------------------------------------------------
     """
@@ -130,7 +131,8 @@ Example
         screen_distance_cm=screen_distance_cm,
         screen_size_cm=screen_size_cm,
         screen_size_px=screen_size_px,
-        verbose=verbose)
+        verbose=verbose
+    )
     
     # derive file components
     try:
