@@ -1,5 +1,27 @@
 # Common errors during fMRIPrep
 
+## FreeSurfer resampling
+
+Sometimes fmriprep throws an error trying to resample data to the surface; the output message looks like this:
+
+```bash
+Loading label /data1/projects/MicroFunc/Jurjen/projects/PotentialSubjs/derivatives/freesurfer/fsaverage/label/lh.cortex.label
+Standard error:
+No such file or directory
+mri_vol2surf: could not open label file /data1/projects/MicroFunc/Jurjen/projects/PotentialSubjs/derivatives/freesurfer/fsaverage/label/lh.cortex.label
+Invalid argument
+mri_vol2surf: could not load label file /data1/projects/MicroFunc/Jurjen/projects/PotentialSubjs/derivatives/freesurfer/fsaverage/label/lh.cortex.label
+Invalid argument
+Return code: 255
+```
+
+the solution that I've seen work is to remove the symlink to `fsaverage` in `SUBJECTS_DIR`. When re-running fmriprep, it reinitializes the symlink and sample the data properly. In my case, that would be:
+
+```bash
+rm /data1/projects/MicroFunc/Jurjen/projects/PotentialSubjs/derivatives/freesurfer/fsaverage
+```
+**IMPORTANT**: to remove symlinks, do NOT use `rm -r`, which will attempt to delete the actual folder. Use `rm` without `-r`-flag, and no `forward slash` at the end of the path
+
 ## Fieldmaps
 ### "_Missing `TotalReadoutTime`_"
 Total readout time is required for TOPUP and can be calculated as:
