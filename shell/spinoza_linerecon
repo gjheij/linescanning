@@ -209,7 +209,9 @@ for subID in ${search}; do
           n_par_echo=`read_par ${par_file} "number of echoes"`
           if [[ -z ${echo_flag} ]]; then
             if [[ ! -z ${n_par_echo} ]]; then
-              echo "Reading nr of echoes from PAR-file (${n_par_echo})"
+              if [[ ${SGE} -eq 0 ]]; then
+                echo "Reading nr of echoes from PAR-file (${n_par_echo})"
+              fi
               echo_flag="-m ${n_par_echo}"
             else
               if [[ ${n_echoes} -ne ${n_par_echo} ]]; then
@@ -252,46 +254,53 @@ for subID in ${search}; do
             fi
           fi
 
+          verbose=1
           if [[ ${SGE} -eq 1 ]]; then
             if [[ ! -z ${SGE_QUEUE} ]]; then
               QUEUE=${SGE_QUEUE}
             else
               QUEUE=${SGE_QUEUE_LONG}
             fi             
-            job="qsub -q ${QUEUE} -N ${base}_task-${task}_run-${run}_desc-recon -wd ${OUTPUT}/${base_path}"
+            job="qsub -q ${QUEUE} -N ${base}_task-${task}_run-${run}_desc-recon -wd ${OUTPUT}/${base_path} ${DIR_SCRIPTS}/bin/call_linerecon"
+            verbose=0
           else
             echo "Running recon for run-${run} (task-${task})"
-            job="bash"
+            job="call_linerecon"
           fi
 
-
-          ${job} ${DIR_SCRIPTS}/bin/call_linerecon \
+          # define cmd
+          cmd="""${job} \
             -r ${run} \
             ${echo_flag} \
             ${NORDIC} \
             ${DEBUG} \
             ${bold} \
             ${lsd} \
-            ${outputbase}
+            ${outputbase}"""
 
+          # echo cmd if not on cluster
+          if [[ ${verbose} -eq 1 ]]; then
+            echo ${cmd}
+            echo
+          fi
+
+          # run cmd
+          ${cmd}
+          
           # set variable with which we can retrieve old LSD-image in case we don't have run-specific LSD-images
           old_lsd=${lsd}
 
         else
-
           echo "${outputbase}.mat exists"
-
         fi
 
       done
 
     else
-
       echo "Sneaky, but I told you in the usage that we can run this on the server only;)"
       echo "For good measures:"
       Usage >&2
       exit 1
-
     fi
 
   else

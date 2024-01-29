@@ -121,10 +121,10 @@ if [[ -f ${RAW} && -f ${LSD} ]]; then
   # add stuff that's shared between single-/ and multi-echo
   (
     echo "%% paths"
-    echo "addpath(getenv('MRRECON')) %working without patch or with seline patch"
-    echo "addpath(getenv('MATLAB_DIR'))"
-    echo "addpath('${REPO_DIR}/recon');"
+    echo "addpath('${MRRECON}') %working without patch or with seline patch"
+    echo "addpath(genpath('${REPO_DIR}/recon'));"
     # echo "addpath(genpath(fullfile(getenv('PATH_HOME'), 'programs', 'luisa')))"
+    echo "disp('-----------------------------------------------------------------------------------------------------')"
     echo "disp(\"Starting recon\")"
     echo "filelocation = '$(dirname ${RAW})/';"
     echo ""
@@ -176,7 +176,7 @@ if [[ -f ${RAW} && -f ${LSD} ]]; then
       echo "disp(\"Done\")"
     ) >> ${newrecon}
   fi
-
+  
   if [[ $DEBUG -eq 0 ]]; then
     echo "Initiating call to Matlab"
     call_matlab ${newrecon} 
