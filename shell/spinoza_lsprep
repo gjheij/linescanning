@@ -175,20 +175,25 @@ for subID in ${search}; do
     
     base=${sub_name}_ses-${s_id}
 
-    # decide job execution
+    # define log file
     log_file=${OUTPUT}/lsprep/${sub_name}/${sub_name}_ses-${s_id}_desc-preproc_bold.log
+    if [[ ! -d $(dirname ${log_file}) ]]; then
+      mkdir -p $(dirname ${log_file})
+    fi
+
+    # decide job execution
     if [[ ${SGE} -eq 1 ]]; then
       if [[ ! -z ${SGE_QUEUE} ]]; then
         QUEUE=${SGE_QUEUE}
       else
         QUEUE=${SGE_QUEUE_SHORT}
       fi            
-      job="qsub -q ${QUEUE} -o ${log_file} -pe smp ${n_cpus} -N ${base}_desc-lsprep"
+      job="qsub -q ${QUEUE} -o ${log_file} -pe smp ${n_cpus} -N ${base}_desc-lsprep ${DIR_SCRIPTS}/bin/call_lsprep"
     else
-      job="bash"
+      job="call_lsprep"
     fi
 
-    cmd="""${job} ${DIR_SCRIPTS}/bin/call_lsprep -s sub-${subID} -n ${s_id} ${LSPREP_KWARGS}"""
+    cmd="""${job}  -s sub-${subID} -n ${s_id} ${LSPREP_KWARGS}"""
 
     # echo command
     if [[ ${SGE} -eq 0 ]]; then
