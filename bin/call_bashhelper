@@ -893,7 +893,7 @@ function call_matlab {
     fi
 
     MATLAB_SCRIPT=`fetch_filepath ${1}`
-    ${MATLAB_CMD} "addpath('$(dirname ${MATLAB_SCRIPT})'); $(basename ${MATLAB_SCRIPT} .m)" | tail -n +${skip_lines} # suppress intro text
+    ${MATLAB_CMD} -r "addpath('$(dirname ${MATLAB_SCRIPT})'); $(basename ${MATLAB_SCRIPT} .m); quit" | tail -n +${skip_lines} # suppress intro text
     if [[ $? -ne 0 ]]; then
       exit 1
     fi
