@@ -42,6 +42,8 @@ Arguments:
                       derivatives/fmriprep
   -c <n_slots>        number of slots to use when we're on a cluster
   -p <n_comps>        number of components to use for decomposition. Default = 10
+  -t <task ID>        limit pybest processing to a specific task. Default is all tasks in TASK_SES1
+                      in the spinoza_setup-file Can also be comma-separated list: task1,task2  
   --raw               undo the z-scoring done by pybest (call_unzscore)
 
 Example:
@@ -55,7 +57,7 @@ USAGE
 }
 
 # set defaults that will be overwritten if flags are given
-task_ids=${TASK_SES1[@]}
+task_ids=""
 sub_input=""
 cpu_input=""
 ses_input=""
@@ -108,7 +110,7 @@ while getopts :-:s:n:o:f:c:v:r:t:p: arg; do
           ;;
     c)  n_slots=${OPTARG}
           ;;
-    t)  task_ids=(${OPTARG})
+    t)  task_ids=${OPTARG}
           ;;  
     p)  n_comps=${OPTARG}
           ;;                    
@@ -118,6 +120,15 @@ done
 if [[ $# -lt 4 ]] ; then
   Usage >&2
   exit 1
+fi
+
+if [[ -z ${task_ids} ]]; then
+  task_ids=${TASK_SES1[@]}
+else
+  # read specified tasks into array
+  IFS=', ' read -r -a tasks <<< "${task_ids}"
+  task_ids=${tasks[@]}
+  unset IFS
 fi
 
 # Make sure we run the specified subject or all subjects pybest can find will be

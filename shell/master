@@ -1777,6 +1777,7 @@ if [[ $? -eq 0 ]]; then
     ${pre_flag} \
     ${post_flag} \
     ${pyb_flag} \
+    ${FORCE_FLAG} \
     ${INPUT_DIR} ${DIR_DATA_DERIV}/pybest
 
   if [[ $? -ne 0 ]]; then

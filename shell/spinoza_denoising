@@ -25,7 +25,7 @@ Arguments:
   -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
   -n <session>        session ID (e.g., 1, 2, or none)
   -t <task ID>        limit pybest processing to a specific task. Default is all tasks in TASK_SES1
-                      in the spinoza_setup-file
+                      in the spinoza_setup-file Can also be comma-separated list: task1,task2
   -j <n_cpus>         number of CPUs to use (default = 1)
   -c <n_comps>        overwrite the PYBEST_N_COMPS-variable deciding the number of components for 
                       the PCA (default = 10)
@@ -42,6 +42,7 @@ Arguments:
                       native)
   --func              overwrite PYBEST_SPACE-variable and use 'func'-space for pybest
   --anat              overwrite PYBEST_SPACE-variable and use 'T1w'-space for pybest
+  --force             force execution despite existing files
   <project root>      base directory containing the derivatives and the subject's folders.
   <derivatives>       path to the derivatives folder
 
@@ -67,6 +68,7 @@ ses_flag=""
 post_only=0
 pre_only=0
 pyb_only=0
+force_exec=0
 
 # check if variable is set in setup file
 if [[ -z ${PYBEST_SPACE} ]]; then
@@ -89,7 +91,10 @@ do
           ;;                 
         sge)
           SGE=1
-          ;;          
+          ;;     
+        force_exec)
+          force_exec=1
+          ;;                
         fsaverage)
           PYBEST_SPACE="fsaverage"
           ;; 
@@ -126,7 +131,7 @@ do
           ;;         
     j)  n_cpus=${OPTARG}
           ;;
-    t)  task_flag="-t ${OPTARG}" 
+    t)  task_flag="-t ${OPTARG}"
           ;;
     q)  SGE_QUEUE=${OPTARG}
           ;;       
@@ -235,13 +240,25 @@ for subID in ${search}; do
       execute_cmd=0
       if [[ ! -d ${DENOISE}/${base_path}/denoising ]]; then
         execute_cmd=1
+      else
+        # also execute if a new task was specified
+        if [[ ! -z ${task_flag} ]]; then
+          execute_cmd=1
+        fi
       fi
 
+      # overwrite mode
       if [[ ${OW} -eq 1 ]]; then
         execute_cmd=1
       fi
 
+      # unzscoring options
       if [[ ! -z ${pre_flag} || ! -z ${post_flag} || ! -z ${pyb_flag} ]]; then
+        execute_cmd=1
+      fi
+
+      # mother of all overwrites
+      if [[ ${force_exec} -eq 1 ]]; then
         execute_cmd=1
       fi
 
