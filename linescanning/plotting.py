@@ -862,7 +862,9 @@ class LazyPlot(Defaults):
 
             if not isinstance(self.plot_alpha, list):
                 if self.plot_alpha == None:
-                    self.plot_alpha = [1 for ii in range(len(self.array))]
+                    self.plot_alpha = [1 for _ in range(len(self.array))]
+                elif isinstance(self.plot_alpha, (int,float)):
+                    self.plot_alpha = [self.plot_alpha for _ in range(len(self.array))]
                 else:
                     self.plot_alpha = [self.plot_alpha]
                     if len(self.plot_alpha) != len(self.array):
@@ -873,7 +875,7 @@ class LazyPlot(Defaults):
 
             if not isinstance(self.markers, list):
                 if self.markers == None:
-                    self.markers = [None for ii in range(len(self.array))]
+                    self.markers = [None for _ in range(len(self.array))]
                 else:
                     self.markers = [self.markers for _ in range(len(self.array))]
 
