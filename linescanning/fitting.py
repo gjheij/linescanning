@@ -171,7 +171,7 @@ class InitFitter():
         self.og_onsets = self.onsets.copy()
 
         # create concatenator dictionary
-        self.concat_obj = self.concatenate_runs(self.func,self.onsets)
+        self.concat_obj = self.concat_runs(self.func,self.onsets)
 
         # store new dataframes
         self.func = self.concat_obj["func"]
@@ -268,7 +268,7 @@ class InitFitter():
         self.func.set_index(self.final_index, inplace=True)              
 
     @classmethod
-    def concatenate_func(self, df):
+    def concat_func(self, df):
 
         # check if time matches TR
         t = utils.get_unique_ids(df, id="t")
@@ -284,7 +284,7 @@ class InitFitter():
         return new_func
     
     @classmethod
-    def concatenate_onsets(
+    def concat_onsets(
         self, 
         onsets, 
         func
@@ -305,7 +305,7 @@ class InitFitter():
         return new_onsets    
 
     @classmethod
-    def concatenate_runs(
+    def concat_runs(
         self,
         func,
         onsets
@@ -321,11 +321,11 @@ class InitFitter():
 
             # concatenate functional
             sub_func = utils.select_from_df(func, expression=f"subject = {sub}")
-            sub_dfs["func"].append(self.concatenate_func(sub_func))
+            sub_dfs["func"].append(self.concat_func(sub_func))
 
             # concatenate onsets
             sub_onsets = utils.select_from_df(onsets, expression=f"subject = {sub}")
-            sub_dfs["onsets"].append(self.concatenate_onsets(sub_onsets, sub_func))
+            sub_dfs["onsets"].append(self.concat_onsets(sub_onsets, sub_func))
 
         for key,val in sub_dfs.items():
             sub_dfs[key] = pd.concat(val)
@@ -1062,7 +1062,7 @@ class NideconvFitter(InitFitter):
         # reset index
         old_idx = list(df.index.names)
 
-        tmo = df.copy()
+        tmp = df.copy()
         if not "run" in old_idx:
             tmp = df.reset_index()
             old_idx.insert(loc, "run")
@@ -1100,6 +1100,7 @@ class NideconvFitter(InitFitter):
             confounds=self.confounds, 
             oversample_design_matrix=self.osf,
             add_intercept=self.conf_icpt,
+            concatenate_runs=None,
             **kwargs
         )
     
@@ -2320,7 +2321,7 @@ class HRFMetrics():
         # find columns abs(var)>0
         filtered_variance = (hrf.var(axis=0)>self.thr_var).values
         filtered_df = hrf.iloc[:,filtered_variance]
-        
+        cols = list(filtered_df.columns)
         utils.verbose(f" {filtered_df.shape[1]}/{hrf.shape[1]}\tvertices survived variance threshold of {self.thr_var}", self.debug)
         if len(cols) == 0:
             raise ValueError(f"Variance threshold of {self.thr_var} is too strict; no vertices survived")
