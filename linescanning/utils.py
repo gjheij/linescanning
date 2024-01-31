@@ -469,7 +469,7 @@ def match_lists_on(ref_list, search_list, matcher="run"):
 
     return new_list
 
-def get_unique_ids(df, id=None, sort=True):
+def get_unique_ids(df, id=None, sort=True, as_int=False):
     try:
         df = df.reset_index()
     except:
@@ -482,9 +482,14 @@ def get_unique_ids(df, id=None, sort=True):
         a = df[id].values
         if not sort:
             indexes = np.unique(a, return_index=True)[1]
-            return [a[index] for index in sorted(indexes)]
+            ret_list =  [a[index] for index in sorted(indexes)]
         else:
-            return list(np.unique(a))
+            ret_list = list(np.unique(a))
+
+        if as_int:
+            ret_list = [int(i) for i in ret_list]
+
+        return ret_list
         
     except Exception as e:
         raise RuntimeError(f"Could not find '{id}' in {list(df.columns)}")
