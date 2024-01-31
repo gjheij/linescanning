@@ -6,6 +6,7 @@ from linescanning import (
 )
 import pandas as pd
 from typing import Union
+from scipy import stats,optimize
 
 class ITI():
     
@@ -71,6 +72,8 @@ class ITI():
         TR: Union[int,float]=0.105,
         verbose: bool=False,
         events: Union[str,list]='stim',
+        add_duration: bool= False,
+        n_randomize: int=100,
         seq: list=None):
         
         self.minimal_duration   = tmin
@@ -86,6 +89,8 @@ class ITI():
         self.events             = events
         self.verbose            = verbose
         self.seq                = seq
+        self.add_duration       = add_duration
+        self.n_randomize        = n_randomize
 
         if isinstance(self.events, str):
             self.events = [self.events]
@@ -126,7 +131,10 @@ class ITI():
             stim_duration=self.stim_duration,
             TR=self.TR,
             events=self.events,
-            seq=self.seq)
+            add_duration=self.add_duration,
+            seq=self.seq,
+            n_randomize=self.n_randomize
+        )
         
     def get_itis(self):
         return self.itis
@@ -149,8 +157,8 @@ class ITI():
             # kde=True,
             hist=True,
             fill=False,
-            y_label2="count",
-            x_label2="ITI (s)",
+            y_label="count",
+            x_label="ITI (s)",
             # hist_kwargs={"alpha": 0.4},
             # kde_kwargs={"linewidth": 4},
             *args,
@@ -164,6 +172,8 @@ class ITI():
         TR: Union[int,float]=0.105, 
         events: Union[str,list]='stim',
         seq: Union[list,np.ndarray]=None,
+        add_duration: bool=False,
+        n_randomize: int=100,
         shuffle: bool=True):
 
         """itis_to_onsets
@@ -217,7 +227,11 @@ class ITI():
             # get stim sequence
             if not isinstance(seq, (list,np.ndarray)):
                 presented_stims = np.r_[[np.full(n_trials//n_events, ii, dtype=int) for ii in range(n_events)]].flatten()
-                np.random.shuffle(presented_stims)
+                
+                # randomize a bunch of times
+                if shuffle:
+                    for i in range(n_randomize):
+                        np.random.shuffle(presented_stims)
             else:
                 presented_stims = seq
 
@@ -225,13 +239,16 @@ class ITI():
         else:
             condition = np.full(onsets.shape, events)
 
-        duration = np.full(onsets.shape, stim_duration)
+        onsets = np.hstack((onsets, condition))
+        columns = ['onset', 'event_type']
+        if add_duration:
+            duration = np.full(onsets.shape, stim_duration)
 
-        # combine
-        onsets = np.hstack((onsets, condition, duration))
+            # combine
+            onsets = np.hstack((onsets, duration))
 
-        # make a dataframe
-        columns = ['onset', 'event_type', 'duration']
+            # make a dataframe
+            columns += ['duration']
         
         # add indices
         onsets_df = pd.DataFrame(onsets, columns=columns)
@@ -239,7 +256,9 @@ class ITI():
 
         onsets_df['event_type'] = onsets_df['event_type'].astype(str)
         onsets_df['onset'] = onsets_df['onset'].astype(float)
-        onsets_df['duration'] = onsets_df['duration'].astype(float)
+
+        if add_duration:
+            onsets_df['duration'] = onsets_df['duration'].astype(float)
 
         onsets_df = onsets_df.set_index(["subject","run","event_type"])
         
@@ -269,6 +288,7 @@ class ITI():
         stims: Union[str,list]=None,
         events: Union[str,list]=None,
         make_square: bool=False,
+        stim_duration: Union[int,float]=2,
         n_pix: int=None):
 
         """create_prf_design
@@ -289,6 +309,7 @@ class ITI():
             n_trs = df.n_samples
             tr = df.TR
             df = df.get_onsets()
+            stim_duration = df.iloc[ii].duration
         
         if not isinstance(stims, list):
             stims = [stims]
@@ -318,10 +339,11 @@ class ITI():
             event_type = df.iloc[ii].event_type
 
             # get stimulus
-            add_stim = stims[events.index(event_type)]
+            stim_ix = events.index(event_type)
+            add_stim = stims[stim_ix]
 
             # get duration
-            dur_in_samples = round(df.iloc[ii].duration/tr)
+            dur_in_samples = round(stim_duration/tr)
 
             # inset in design
             # print(f"#{ii+1}= {round(onset_time, 2)}\t| {tr_in_samples} samples\t| duration = {dur_in_samples} samples")
@@ -479,4 +501,4 @@ def optimize_stimulus_isi(
         **kwargs
     )
 
-    return var_def,obj_    
+    return var_def,obj_
