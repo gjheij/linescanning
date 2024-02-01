@@ -24,6 +24,7 @@ import platform
 from bids import BIDSLayout
 from linescanning import utils
 import shutil
+import json
 warnings.filterwarnings("ignore")
 opj = os.path.join
 opb = os.path.basename
@@ -40,8 +41,7 @@ MP2RAGE-sequence (Marques et al., 2010).
 
 Args:
     -i|--inputdir <dir>     project root directory with the subject-directories on which we need 
-                            to run the script. <subject> will be appended, as well as the session 
-                            nr if specified
+                            to run the script. Should be BIDS-compliant, up until 'anat' folder
     -o|--outputdir <dir>    path to output directory; you should specify <subject>/<ses-?> yourself
     -b|--outputbase <name>  if you don't want <subject_ID>_ses-<session>_acq-MP2RAGE, specify a dif-
                             ferent prefix for output files
@@ -54,6 +54,15 @@ Args:
     --skip_bg               Skip background stuff (default = True)
     --beta                  add beta factor to remove noise 
                             see: https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0099676
+    --pars <file>           json-file with custom parameter settings. Should have the following format:
+                            {
+                                "TR": 5.5,
+                                "inv_times": [0.8,2.7],
+                                "fa": [6,6],
+                                "nZ": 200,
+                                "FLASH_tr": [0.0062,0.0062]
+                            }
+                            see: DIR_SCRIPTS/misc/mp2rage_pars.json
 
 Optional args:
     Instead of an input directory, you can also specify the paths to the individual files. The files
@@ -98,9 +107,10 @@ Notes:
     outputbase  = "sample_desc"
     do_stuff    = False
     noise_beta  = None
+    pars_file   = None
 
     try:
-        opts = getopt.getopt(argv, "huci:o:b:", ["help", "inputdir=", "outputdir=", "outputbase=", "inv1=", "inv1ph=", "inv2=", "inv2ph=", "mask", "ups", "beta=", "skip_bg"])[0]
+        opts = getopt.getopt(argv, "huci:o:b:", ["help", "inputdir=", "outputdir=", "outputbase=", "inv1=", "inv1ph=", "inv2=", "inv2ph=", "mask", "ups", "beta=", "skip_bg", "pars="])[0]
     except getopt.GetoptError:
         print("ERROR while handling arguments; did you specify an illegal/non-defined argument?")
         print(main.__doc__)
@@ -132,6 +142,8 @@ Notes:
             inv2ph = arg
         elif opt in ("--beta"):
             noise_beta = int(arg)
+        elif opt in ("--pars"):
+            pars_file = os.path.abspath(arg)
 
     if len(argv) < 3:
         print("NOT ENOUGH ARGUMENTS SPECIFIED")
@@ -162,24 +174,41 @@ Notes:
             inputdir = os.path.dirname(select_fn[0])
 
     # set default 0.7 MP2RAGE Phillips parameters
-    pars = {
-        "TR": 5.5,
-        "inv_times": [0.8,2.7],
-        "fa": [6,6],
-        "nZ": 200,
-        "FLASH_tr": [0.0062,0.0062]
-    }
-
-    # UPs
-    if ups:
-        print("Using parameters for Universal Pulses (UPs)")
+    if not isinstance(pars_file, str):
         pars = {
-            "TR": 6.778,
-            "inv_times": [0.67,3.754],
-            "fa": [4,4],
-            "nZ": 150,
-            "FLASH_tr": [0.0062,0.031273]
+            "TR": 5.5,
+            "inv_times": [0.8,2.7],
+            "fa": [6,6],
+            "nZ": 200,
+            "FLASH_tr": [0.0062,0.0062]
         }
+
+        # UPs
+        if ups:
+            print("Using parameters for Universal Pulses (UPs)")
+            pars = {
+                "TR": 6.778,
+                "inv_times": [0.67,3.754],
+                "fa": [4,4],
+                "nZ": 150,
+                "FLASH_tr": [0.0062,0.031273]
+            }
+    else:
+        required_keys = [
+            "TR",
+            "inv_times",
+            "fa",
+            "nZ",
+            "FLASH_tr"
+        ]
+
+        print(f"Reading parameters from '{pars_file}'")
+        with open(pars_file) as f:
+            pars = json.load(f)
+
+        for i in required_keys:
+            if i not in list(pars.keys()):
+                raise ValueError(f"Missing key '{i}' in {pars_file}")
 
     print("Loading all images to the mp2rage object")
     mp2rage = MP2RAGE(

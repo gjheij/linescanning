@@ -19,11 +19,10 @@ import json
 import warnings
 from bids import BIDSLayout
 from nilearn import image
-import nibabel as nb
 import platform
 from bids import BIDSLayout
 import numpy as np
-from linescanning.utils import get_file_from_substring, remove_files
+from linescanning.utils import get_file_from_substring, remove_files, string2float
 warnings.filterwarnings("ignore")
 opj = os.path.join
 osj = os.sep.join
@@ -41,11 +40,8 @@ sequence (Marques et al., 2010). It can also further correct this map for B1 inh
 a B1 map (Marques et al., 2014) and calculated several parametric maps (R2*, t1map, t2*)
 
 Args:
-    -s|--subject <sub>      subject ID (in digits; 'sub-' is appended) [default = '999']. Needed to 
-                            for the json-files
     -i|--inputdir <dir>     project root directory with the subject-directories on which we need 
-                            to run the script. <subject> will be appended, as well as the session 
-                            nr if specified
+                            to run the script. Should be BIDS-compliant, up until 'anat' folder
     -o|--outputdir <dir>    path to output directory; you should specify <subject>/<ses-?> yourself
     -b|--outputbase <name>  if you don't want <subject_ID>_ses-<session>_acq-MP2RAGE, specify a dif-
                             ferent prefix for output files
@@ -53,7 +49,16 @@ Args:
                             combination of INV-images. Note that not doing this will results in pat-
                             terns of noise around the brain which will confuse automated segmentation 
                             softwares 
-
+    --pars <file>           json-file with custom parameter settings. Should have the following format:
+                            {
+                                "TR": 6.723,
+                                "inv_times": [0.67, 3.68],
+                                "fa": [4,4],
+                                "nZ": 150,
+                                "FLASH_tr": [0.0062,0.31246],
+                                "echo_times": [0.006, 0.0145, 0.023, 0.0315]
+                            }
+                            see: DIR_SCRIPTS/misc/mp2rageme_pars.json
 Outputs:
     r2star (Nifti1Image):       Relaxation map (1/T2*)
     t2star (Nifti1Image):       T2*-weighted image
@@ -63,10 +68,10 @@ Outputs:
     s0 (Nifti1Image):           Residual (S0) map
 
 Example:
-    call_mp2rageme -s sub-999 -i $DIR_DATA_HOME -o $DIR_DATA_DERIV/pymp2rage -b sub-999_acq-MP2-
+    call_mp2rageme -i DIR_DATA_HOME/sub-01/ses-1 -o DIR_DATA_DERIV/pymp2rage -b sub-999_acq-MP2-
     RAGME
-    call_mp2rageme -s sub-999 -i $DIR_DATA_HOME -o $DIR_DATA_DERIV/pymp2rage -b sub-999_acq-MP2-
-    RAGME -c
+    call_mp2rageme -i DIR_DATA_HOME/sub-01/ses-1 -o DIR_DATA_DERIV/pymp2rage -b sub-999_acq-MP2-
+    RAGME --mask
 
 Notes:
     Assumes you ran spinoza_scanner2bids before. If not, change the required filenames in the
@@ -79,14 +84,14 @@ Notes:
 ---------------------------------------------------------------------------------------------------
     """
 
-    inputdir    = ''
-    subject     = ''
+    inputdir    = None
     outputdir   = None
     outputbase  = "sample_desc"
     do_stuff    = False
+    pars_file   = None
 
     try:
-        opts = getopt.getopt(argv,"hci:s:n:o:b:",["help", "inputdir=", "subject=", "outputdir=", "outputbase=", "ups", "mask"])[0]
+        opts = getopt.getopt(argv,"hci:s:n:o:b:",["help", "inputdir=", "subject=", "outputdir=", "outputbase=", "ups", "mask", "pars="])[0]
     except getopt.GetoptError:
         print("ERROR while handling arguments; did you specify an illegal/non-defined argument?")
         print(main.__doc__)
@@ -100,12 +105,12 @@ Notes:
             inputdir = arg
         elif opt in ("-o", "--outputdir"):
             outputdir = arg
-        elif opt in ("-s", "--subject"):
-            subject = arg
         elif opt in ("-b", "--outputbase"):
             outputbase = arg
         elif opt in ("-c", "--mask"):
             do_stuff = True
+        elif opt in ("--pars"):
+            pars_file = os.path.abspath(arg)
 
     if len(argv) < 6:
         print("NOT ENOUGH ARGUMENTS SPECIFIED")
@@ -118,22 +123,48 @@ Notes:
     select_fn.sort()
 
     if len(select_fn) != 10:
-        print("For MEMP2RAGE-reconstruction we should have 10 files; got {}".format(len(select_fn)))
-        sys.exit(1)
+        raise ValueError(f"For MEMP2RAGE-reconstruction we should have 10 files; got {len(select_fn)}; looked for files containing 'inv' and 'acq-MP2RAGEME' in '{inputdir}'")
+
+    if not isinstance(pars_file, str):
+        pars = {
+            "echo_times": [0.006, 0.0145, 0.023, 0.0315],
+            "inv_times": [0.67, 3.68],
+            "mp2rage_tr": 6.723,
+            "fa": [4,4],
+            "nZ": 150,
+            "FLASH_tr": [0.0062,0.31246]
+        }
+    else:
+        required_keys = [
+            "echo_times",
+            "inv_times",
+            "TR",
+            "fa",
+            "nZ",
+            "FLASH_tr"
+        ]
+
+        print(f"Reading parameters from '{pars_file}'")
+        with open(pars_file) as f:
+            pars = json.load(f)
+        
+        for i in required_keys:
+            if i not in list(pars.keys()):
+                raise ValueError(f"Missing key '{i}' in {pars_file}")
 
     print("Loading all images to the memp2rage object")
     memp2rage = MEMP2RAGE(
-        echo_times=[0.006, 0.0145, 0.023, 0.0315], # TEs of second inversion in seconds
-        MPRAGE_tr=6.723,
-        invtimesAB=[0.67, 3.68],
-        flipangleABdegree=[4,4],
-        nZslices=150,
-        FLASH_tr=[0.0062, 0.031246], # TRs of the first and second GRE block are
+        echo_times=pars["echo_times"], # TEs of second inversion in seconds
+        MPRAGE_tr=pars["TR"],
+        invtimesAB=pars["inv_times"],
+        flipangleABdegree=pars["fa"],
+        nZslices=pars["nZ"],
+        FLASH_tr=pars["FLASH_tr"], # TRs of the first and second GRE block are
         inv1=select_fn[0],
         inv1ph=select_fn[1],
         inv2=[select_fn[2],select_fn[4],select_fn[6],select_fn[8]],
         inv2ph=[select_fn[3],select_fn[5],select_fn[7],select_fn[9]]
-        )
+    )
 
     # create output directory
     pathlib.Path(outputdir).mkdir(parents=True, exist_ok=True)
@@ -346,7 +377,7 @@ Notes:
 
             import subprocess
             fsl_cmd = ["fslstats", tmp_file, "-R"]
-            out_ = utils.string2float(subprocess.check_output(fsl_cmd, stderr=subprocess.STDOUT).decode())
+            out_ = string2float(subprocess.check_output(fsl_cmd, stderr=subprocess.STDOUT).decode())
             clip_value = out_[1]
 
             # clip positive values if mininum value != 0

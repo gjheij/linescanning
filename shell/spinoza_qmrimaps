@@ -22,10 +22,20 @@ Usage:
 Arguments:
   -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
   -n <session>        session ID (e.g., 1, 2, or none)
+  -p <pars file>      specify custom json-file with MP2RAGE(ME) parameters. See 
+                      DIR_SCRIPTS/misc for examples. Format should be like so (for mp2rage):
+                      {
+                          "TR": 5.5,
+                          "inv_times": [0.8,2.7],
+                          "fa": [6,6],
+                          "nZ": 1000,
+                          "FLASH_tr": [0.0062,0.0062]
+                      }
   -o|--ow             overwrite existing T1w/T1map files
   -f|--full           overwrite all existing files (including masks)
   -u|--ups            use settings for universal pulse (UP) [parameters are hardcoded]
   --skip_bg           Do not create masks from INV2-image to remove noise from MP2RAGE   
+  --force_exec        Force the execution even if the files exist already
   <project root>      directory containing the T1w and T2w files; should generally be pymp2rage-
                       folder
   <derivatives>       path to output mask directory  
@@ -45,8 +55,10 @@ USAGE
 UPs=""
 OW=0
 FULL_OW=0
-SKIP_BG="-c"
-while getopts :-:oufs:n: argument
+SKIP_BG="--mask"
+PARS_FLAG=""
+FORCE_EXEC=0
+while getopts :-:oufs:n:p: argument
 do
   case ${argument} in
     -)
@@ -62,7 +74,10 @@ do
           ;;     
         skip_bg)
           SKIP_BG="--skip_bg"
-          ;;                                                                                                 
+          ;;
+        force_exec)
+          FORCE_EXEC=1
+          ;;           
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}, did you mean \"--lines\"?"
@@ -79,7 +94,9 @@ do
     o)  OW=1
           ;;         
     f)  FULL_OW=1
-          ;;                           
+          ;;        
+    p)  PARS_FLAG="--pars ${OPTARG}"
+          ;;                               
   esac
 done
 
@@ -166,7 +183,7 @@ for subID in ${search}; do
       rm ${t1w} ${t1map} 2>/dev/null
     fi
 
-    if [[ ! -f ${t1w} || ! -f ${t1map} ]]; then
+    if [[ ! -f ${t1w} || ! -f ${t1map} || ${FORCE_EXEC} -eq 1 ]]; then
 
       if [[ ${NoF} -eq 0 ]]; then
         echo "${sub_name}: ${NoF} files available for ${a^^}"
@@ -180,6 +197,7 @@ for subID in ${search}; do
           -i ${input_dir} \
           -o ${output_dir} \
           -b ${output_base} \
+          ${PARS_FLAG} \
           ${UPs} \
           ${SKIP_BG}"""
         

@@ -106,6 +106,7 @@ SEARCH_DEPTH=""           # spinoza_scanner2bids
 UPs=""                    # spinoza_qmrimaps
 BIAS_FLAG=""              # spinoza_qmrimaps
 BG_FLAG=""                # spinoza_qmrimaps
+PARS_FILE=""              # spinoza_qmrimaps
 PROT_FLAG=""              # spinoza_scanner2bids
 FS_stage="all"            # spinoza_freesurfer
 FORCE_FLAG=""             # spinoza_freesurfer
@@ -485,6 +486,7 @@ do
     v)  VERTICES=${OPTARG}
           ;;
     p)  PRF_MODEL=${OPTARG}
+        PARS_FILE="-p `readlink -f ${OPTARG}`"
           ;;
     c)  C_FLAG=${OPTARG}
           ;;
@@ -600,8 +602,18 @@ Arguments:
                     all sessions will be processed
   -o|--ow           turn on overwrite mode; removes subject-specific directories or crucial files so 
                     that the process is re-ran.
-  -p <prf_model>    switch to specify what type of model to use for the pRF-modeling. Enabled for spi-
-                    noza_fitprfs & spinoza_bestvertex
+  -p <input>        Used for:
+                      - spinoza_fitprfs/spinoza_bestvertex: switch to specify what type of model to use 
+                        for the pRF-modeling. Should be either 'gauss', 'dog', 'css', or 'norm'
+                      - spinoza_qmrimaps: specify custom json-file with MP2RAGE(ME) parameters. See 
+                        DIR_SCRIPTS/misc for examples. Format should be like so (for mp2rage):
+                        {
+                            "TR": 5.5,
+                            "inv_times": [0.8,2.7],
+                            "fa": [6,6],
+                            "nZ": 1000,
+                            "FLASH_tr": [0.0062,0.0062]
+                        }
   -q <sge queue>    send jobs to specific queue other than the default queues specified in the setup
                     file.
   -r <roi|stage>    Used for:
@@ -1202,6 +1214,8 @@ if [[ $? -eq 0 ]]; then
     ${UPs} \
     ${FULL_OW} \
     ${BG_FLAG} \
+    ${PARS_FILE} \
+    ${FORCE_FLAG} \
     ${DIR_DATA_HOME} ${DIR_DATA_DERIV}/pymp2rage
 
   if [[ $? -ne 0 ]]; then
