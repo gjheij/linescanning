@@ -107,11 +107,9 @@ if [[ -z ${subj_ID} ]]; then
   exit 1
 else
   if [[ ${subj_ID} == "group" ]]; then
-    proc_label="group"
-    proc_level=""
+    proc_level="group"
   else
-    proc_label="participant"
-    proc_level="--participant-label ${subj_ID}"
+    proc_level="participant --participant-label ${subj_ID}"
   fi
 fi
 
@@ -208,7 +206,6 @@ if [[ ${fd_only} -eq 0 ]]; then
     ${proc_level} \
     ${ses_flag} \
     ${mod_flag} \
-    ${proc_label} \
     --nprocs ${n_cpus} \
     --omp-nthreads 1 \
     -w ${work} \

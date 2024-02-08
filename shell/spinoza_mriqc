@@ -17,7 +17,7 @@ Quality control using MRIqc. It uses the singularity container defined in the se
 MRIQC_SIMG).
 
 Usage:
-  spinoza_fmriprep [options] <project dir> <derivatives>
+  spinoza_mriqc [options] <project dir> <derivatives>
 
 Arguments:
   --local         don't submit to SGE, run locally
@@ -31,12 +31,12 @@ Arguments:
   -j <cpus>       number of cores to use (default is 1)
   -q <queue>      submit jobs to a specific queue. Defaults to SGE_QUEUE_LONG in spinoza_setup
   <project dir>   directory containing the anatomical data. Can also be the regular project root
-                  folder if you want fMRIprep do the surface reconstruction
-  <derivatives>   output folder for fMRIprep; generally this will be <project>/derivatives
+                  folder if you want MRIqc do the surface reconstruction
+  <derivatives>   output folder for MRIqc; generally this will be <project>/derivatives
 
 Example:
-  spinoza_fmriprep <project>/derivatives/masked_mp2rage <project>/derivatives anat
-  spinoza_fmriprep -s 001 -n 1 -f <project> <project>/derivatives/masked_mp2rage <project>/deri-
+  spinoza_mriqc <project>/derivatives/masked_mp2rage <project>/derivatives anat
+  spinoza_mriqc -s 001 -n 1 -f <project> <project>/derivatives/masked_mp2rage <project>/deri-
                    vatives anat
 
 ---------------------------------------------------------------------------------------------------
