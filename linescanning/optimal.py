@@ -811,6 +811,11 @@ class pRFCalc():
 
             else:
                 raise FileNotFoundError(f"Could not find file '{self.prf_file}'")
+            
+        
+            # find max r2
+            self.max_r2 = np.amax(self.df_prf["r2"].values)
+            self.max_r2_vert = np.where(self.df_prf["r2"].values == self.max_r2)[0][0]
 
             if not self.skip_cortex:
                 if isinstance(self.subject, str):
