@@ -483,12 +483,13 @@ class Defaults():
         
     def _add_line(
         self,
-        ax=None
+        ax=None,
+        **kwargs
         ):
 
         for ii in ["hline","vline"]:
             
-            kwargs = {}
+            line_kw = {}
             test_attr = getattr(self, f"add_{ii}")
             if isinstance(test_attr, (float,int,dict,str,list)):
 
@@ -549,10 +550,10 @@ class Defaults():
                                 kwargs_list
                                 ):
 
-                                kwargs[val] = self._return_element(test_attr, key, ix=ix)
+                                line_kw[val] = self._return_element(test_attr, key, ix=ix)
 
                             # run func
-                            ffunc(line, **kwargs)
+                            ffunc(line, **line_kw, **kwargs)
 
 class LazyPRF(Defaults):
     """LazyPRF
