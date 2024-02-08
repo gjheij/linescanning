@@ -1027,7 +1027,10 @@ class NideconvFitter(InitFitter):
 
         # check run ID
         self.tc_subjects = self.check_for_run_index(self.tc_subjects)
-        self.tc_subjects = self.change_name_set_index(self.tc_subjects, index=['subject','run','event_type','covariate','time'])     
+        self.tc_subjects = self.change_name_set_index(self.tc_subjects, index=['subject','run','event_type','covariate','time'])
+
+        if "task" in list(self.tc_subjects.columns):
+            self.tc_subjects.drop(["task"], inplace=True, axis=1)
 
         # get time axis
         self.time = self.tc_condition.groupby(['time']).mean().reset_index()['time'].values
