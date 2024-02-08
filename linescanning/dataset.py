@@ -2857,7 +2857,7 @@ The data was then low-pass filtered using a Savitsky-Golay filter [removes high 
 
             utils.verbose(f" tSNR [{info}]: {round(mean_tsnr_pre,2)}\t| variance: {round(mean_var_pre,2)}", self.verbose)
 
-        if self.clean_tag == "acompcor" or self.clean_tag == "ica":
+        if self.clean_tag in ["acompcor","ica"]:
 
             # get aCompCor/ICA'ed tSNR
             tsnr_post = utils.calculate_tsnr(getattr(self, f"hp_{self.clean_tag}_raw"),-1)
