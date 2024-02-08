@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+#$ -j Y
+#$ -cwd
+#$ -V
 
 # # ME-MP2RAGE
 #

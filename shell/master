@@ -119,7 +119,7 @@ t_specified=0             # keep track when t-flag is specified or --func is use
 
 # use long options in bash:
 # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options
-declare -a array=("--no_bbr" "--local" "--ups" "--biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv" "--no_fit" "--fmriprep" "--fprep" "--v1" "--v2" "--save_grid" "--debug" "--no_nordic" "--ow" "--no_bounds" "--no_tsnr" "--mag" "--no_highres" "--xopts-use" "--xopts-clean" "--xopts-overwrite" "--take-avg-tr" "--force_exec" "--no_t2" "--merge_ses" "--fsaverage" "--fsnative" "--ap" "--pa" "--lr" "--rl" "--no_lpi" "--anat_only" "--func_only" "--no_boldref" "--gauss" "--dog" "--css" "--norm" "--no_srf" "--srf_file" "--gallery" "--abc" "--abd" "--manual" "--ctx" "--func" "--help" "--ofsl" "--clean" "--fd" "--fetch_fsl" "--anat" "--no_epi" "--no_manual" "--aparc" "--phys" "--skip_bg" "--docker" "--rh" "--lh" "--identity" "--ident" "--dcm_fix" "--try" "--fetch_anat" "--fetch_func" "--post_only" "--pre_only" "--pyb_only" "--masks" "--mask" "--skip_prf_info" "--refit" "--separate_hrf" "--bold" "--cmd" "--skip_settings")
+declare -a array=("--no_bbr" "--local" "--ups" "--biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv" "--no_fit" "--fmriprep" "--fprep" "--v1" "--v2" "--save_grid" "--debug" "--no_nordic" "--ow" "--no_bounds" "--no_tsnr" "--mag" "--no_highres" "--xopts-use" "--xopts-clean" "--xopts-overwrite" "--take-avg-tr" "--force_exec" "--no_t2" "--merge_ses" "--fsaverage" "--fsnative" "--ap" "--pa" "--lr" "--rl" "--no_lpi" "--anat_only" "--func_only" "--no_boldref" "--gauss" "--dog" "--css" "--norm" "--no_srf" "--srf_file" "--gallery" "--abc" "--abd" "--manual" "--ctx" "--func" "--help" "--ofsl" "--clean" "--fd" "--fetch_fsl" "--anat" "--no_epi" "--no_manual" "--aparc" "--phys" "--skip_bg" "--docker" "--rh" "--lh" "--identity" "--ident" "--dcm_fix" "--try" "--fetch_anat" "--fetch_func" "--post_only" "--pre_only" "--pyb_only" "--masks" "--mask" "--skip_prf_info" "--refit" "--separate_hrf" "--bold" "--cmd" "--skip_settings" "--mni_fsl" "--mni_2009")
 
 # sort options array
 IFS=$'\n' opts=($(sort <<<"${array[*]}"))
@@ -296,6 +296,12 @@ do
         fsnative)
           space_flag="--fsnative"
           ;;        
+        mni_fsl)
+          space_flag="--mni_fsl"
+          ;;  
+        mni_2009)
+          space_flag="--mni_2009"
+          ;;                      
         ap)
           pe_dir_flag="--ap"
           ;;          
@@ -1216,6 +1222,9 @@ if [[ $? -eq 0 ]]; then
     ${BG_FLAG} \
     ${PARS_FILE} \
     ${FORCE_FLAG} \
+    ${SGE} \
+    ${SGE_QUEUE} \
+    ${jobs_flag} \
     ${DIR_DATA_HOME} ${DIR_DATA_DERIV}/pymp2rage
 
   if [[ $? -ne 0 ]]; then

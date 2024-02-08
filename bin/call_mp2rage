@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+#$ -j Y
+#$ -cwd
+#$ -V
 
 # # ME-MP2RAGE
 #
@@ -291,6 +294,7 @@ Notes:
             try:
                 print("Make mask with FSL from INV2-image")
                 cmd = f"bet2 {select_fn[2]} {opj(inputdir, 'tmp')} -m -f 0.2"
+                print(cmd)
                 os.system(cmd)
             except:
                 pass
@@ -298,6 +302,7 @@ Notes:
             try:
                 print("Make mask with SPM from INV2-image")
                 cmd = f'call_spmmask --clean {select_fn[2]} {brainmask}'
+                print(cmd)
                 os.system(cmd)
             except:
                 pass
@@ -316,7 +321,9 @@ Notes:
 
         # remove pepper noise pattern around brain
         print("Removing noise pattern around the brain")
-        os.system(f"call_rmbackground -t {OUTPUT['t1w_uni']} -m {brainmask} -i {select_fn[2]} -o {OUTPUT['t1w_uni']}")
+        cmd = f"call_rmbackground -t {OUTPUT['t1w_uni']} -m {brainmask} -i {select_fn[2]} -o {OUTPUT['t1w_uni']}"
+        print(cmd)
+        os.system(cmd)
         print("TIP: check the brain mask; if needed, edit it, remove T1w.nii.gz-file and re-run")
 
         # truncate image intensities
@@ -325,6 +332,7 @@ Notes:
         cmd = f"ImageMath 3 {tmp_file} TruncateImageIntensity {t1_file} 0 0.999 256"
         try:
             print("Truncating image intensities [0,0.999] with 256 bins")
+            print(cmd)
             os.system(cmd)
 
             import subprocess
@@ -336,6 +344,7 @@ Notes:
             if out_[0] != 0:
                 print(f"Clipping original output at {clip_value}")
                 cmd = f"call_clipimage {t1_file} {clip_value}"
+                print(cmd)
                 os.system(cmd)
 
                 # remove tmp file

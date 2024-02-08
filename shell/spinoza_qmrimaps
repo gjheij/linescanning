@@ -34,6 +34,8 @@ Arguments:
   -o|--ow             overwrite existing T1w/T1map files
   -f|--full           overwrite all existing files (including masks)
   -u|--ups            use settings for universal pulse (UP) [parameters are hardcoded]
+  -q <queue>          submit jobs to a specific queue. Defaults to SGE_QUEUE_SHORT in spinoza_setup
+  --sge               submit job to cluster (called with 'master -m <module> --sge')  
   --skip_bg           Do not create masks from INV2-image to remove noise from MP2RAGE   
   --force_exec        Force the execution even if the files exist already
   <project root>      directory containing the T1w and T2w files; should generally be pymp2rage-
@@ -58,7 +60,8 @@ FULL_OW=0
 SKIP_BG="--mask"
 PARS_FLAG=""
 FORCE_EXEC=0
-while getopts :-:oufs:n:p: argument
+SGE=0
+while getopts :-:oufs:n:p:q:j: argument
 do
   case ${argument} in
     -)
@@ -77,7 +80,10 @@ do
           ;;
         force_exec)
           FORCE_EXEC=1
-          ;;           
+          ;;
+        sge)
+          SGE=1
+          ;;            
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}, did you mean \"--lines\"?"
@@ -96,7 +102,11 @@ do
     f)  FULL_OW=1
           ;;        
     p)  PARS_FLAG="--pars ${OPTARG}"
-          ;;                               
+          ;;
+    j)  n_cpus=${OPTARG}
+          ;;
+    q)  SGE_QUEUE=${OPTARG}
+          ;;             
   esac
 done
 
@@ -193,7 +203,18 @@ for subID in ${search}; do
           mkdir -p ${output_dir}
         fi
 
-        cmd="""call_${a,,} \
+        if [[ ${SGE} -eq 1 ]]; then
+          if [[ ! -z ${SGE_QUEUE} ]]; then
+            QUEUE=${SGE_QUEUE}
+          else
+            QUEUE=${SGE_QUEUE_SHORT}
+          fi            
+          job="qsub -q ${QUEUE} -wd ${DIR_LOGS} -pe smp ${n_cpus} -N ${output_base}_desc-${a,,} ${DIR_SCRIPTS}/bin/call_${a,,}"
+        else
+          job="call_${a,,}"
+        fi
+
+        cmd="""${job} \
           -i ${input_dir} \
           -o ${output_dir} \
           -b ${output_base} \
@@ -202,7 +223,9 @@ for subID in ${search}; do
           ${SKIP_BG}"""
         
         # Execute command
-        echo ${cmd}
+        if [[ ${SGE} -eq 0 ]]; then
+          echo ${cmd}
+        fi
         ${cmd}
       fi
 
