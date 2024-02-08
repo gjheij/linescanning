@@ -135,6 +135,8 @@ class Defaults():
             "x_lim",
             "x_ticks",
             "y_ticks",
+            "x_ticklabels",
+            "y_ticklabels",
             "axs",
             "color",
             "y_dec",
@@ -177,6 +179,8 @@ class Defaults():
         self.x_lim = None
         self.x_ticks = None
         self.y_ticks = None
+        self.x_ticklabels = None
+        self.y_ticklabels = None
         self.axs = None
         self.color = None
         self.y_dec = None
@@ -218,23 +222,20 @@ class Defaults():
         for axis in ['top', 'bottom', 'left', 'right']:
             ax.spines[axis].set_linewidth(self.axis_width)
 
-    def _set_xlabel(self, ax, lbl, **kwargs):
-        """set x-label"""
-        if isinstance(lbl, (str,list)):
-            ax.set_xlabel(
-                lbl, 
-                fontsize=self.font_size,
-                fontname=self.fontname,
-                **kwargs)
-
-    def _set_ylabel(self, ax, lbl, **kwargs):
+    def _set_axlabel(self, ax, lbl, axis="x", **kwargs):
         """set y-label"""
+        if axis == "x":
+            ffunc = ax.set_xlabel
+        else:
+            ffunc = ax.set_ylabel
+
         if isinstance(lbl, (str,list)):
-            ax.set_ylabel(
+            ffunc(
                 lbl, 
                 fontsize=self.font_size, 
                 fontname=self.fontname,
-                **kwargs)
+                **kwargs
+            )
 
     def _set_tick_params(self, ax, **kwargs):
         """set width/length/labelsize of ticks"""
@@ -302,8 +303,14 @@ class Defaults():
             fc(ax, ticks)
 
     @staticmethod
-    def _set_xticks(ax, ticks):
-        """set x-ticks"""
+    def _set_ticks(ax, ticks, axis="x"):
+        """set ticks"""
+
+        if axis == "x":
+            ffunc = ax.set_xticks
+        else:
+            ffunc = ax.set_yticks
+
         if isinstance(ticks, (pd.Series,pd.DataFrame)):
             ticks = ticks.values
 
@@ -311,12 +318,22 @@ class Defaults():
             ticks = [float(i) for i in ticks]
 
         if isinstance(ticks, (list)):
-            ax.set_xticks(ticks)
+
+            # check if elements are output of get_?ticklabels()
+            if all([isinstance(i, mpl.text.Text) for i in ticks]):
+                ticks = [float(i._text) for i in ticks]
+
+            ffunc(ticks)
 
     @staticmethod
-    def _set_yticks(ax, ticks):
-        """set y-ticks"""
+    def _set_ticklabels(ax, ticks, axis="x", **kwargs):
 
+        """set ticklabels"""
+        if axis == "x":
+            ffunc = ax.set_xticklabels
+        else:
+            ffunc = ax.set_yticklabels
+            
         if isinstance(ticks, (pd.Series,pd.DataFrame)):
             ticks = ticks.values
 
@@ -324,7 +341,7 @@ class Defaults():
             ticks = [float(i) for i in ticks]
 
         if isinstance(ticks, list):
-            ax.set_yticks(ticks)
+            ffunc(ticks, **kwargs)
 
     @staticmethod
     def _set_ylim(ax,lim):
@@ -351,18 +368,16 @@ class Defaults():
             **kwargs)
 
     @staticmethod
-    def _set_y_ticker(ax, dec):
+    def _set_ticker(ax, dec, axis="x"):
         """set all y-ticks to decimal"""
-        if isinstance(dec, int):
-            from matplotlib.ticker import FormatStrFormatter
-            ax.yaxis.set_major_formatter(FormatStrFormatter(f"%.{dec}f"))
+        if axis == "x":
+            add_ax = ax.xaxis
+        else:
+            add_ax = ax.yaxis
 
-    @staticmethod
-    def _set_x_ticker(ax, dec):
-        """set all x-ticks to decimal"""
         if isinstance(dec, int):
             from matplotlib.ticker import FormatStrFormatter
-            ax.xaxis.set_major_formatter(FormatStrFormatter(f"%.{dec}f"))
+            add_ax.set_major_formatter(FormatStrFormatter(f"%.{dec}f"))
 
     def _set_shaded_error(
         self, 
@@ -459,14 +474,21 @@ class Defaults():
             
             for ii in save_as:
                 self._save_as(ii)
-  
+    
+    def _return_element(self, ddict, el, ix=0):
+        if isinstance(ddict[el], list):
+            return ddict[el][ix]
+        else:
+            return ddict[el]
+        
     def _add_line(
         self,
-        ax=None,
-        **kwargs):
+        ax=None
+        ):
 
         for ii in ["hline","vline"]:
-
+            
+            kwargs = {}
             test_attr = getattr(self, f"add_{ii}")
             if isinstance(test_attr, (float,int,dict,str,list)):
 
@@ -512,31 +534,25 @@ class Defaults():
                     # loop through elements
                     if isinstance(test_attr['pos'], (list,np.ndarray)):
                         for ix,line in enumerate(test_attr['pos']):
-                            if isinstance(test_attr['color'], list):
-                                color = test_attr['color'][ix]
-                            else:
-                                color = test_attr['color']
-
+                            
+                            # define function
                             if ii == "hline":
-                                ax.axhline(
-                                    line,
-                                    color=color,
-                                    lw=test_attr['lw'], 
-                                    ls=test_attr['ls'],
-                                    xmin=test_attr["min"],
-                                    xmax=test_attr["max"],
-                                    **kwargs
-                                )
+                                ffunc = ax.axhline
+                                kwargs_list = ["color","lw","ls","xmin","xmax"]
                             else:
-                                ax.axvline(
-                                    line,
-                                    color=color,
-                                    lw=test_attr['lw'], 
-                                    ls=test_attr['ls'],
-                                    ymin=test_attr["min"],
-                                    ymax=test_attr["max"],
-                                    **kwargs
-                                )            
+                                ffunc = ax.axvline
+                                kwargs_list = ["color","lw","ls","ymin","ymax"]
+
+                            # update kwargs
+                            for key,val in zip(
+                                ["color","lw","ls","min","max"],
+                                kwargs_list
+                                ):
+
+                                kwargs[val] = self._return_element(test_attr, key, ix=ix)
+
+                            # run func
+                            ffunc(line, **kwargs)
 
 class LazyPRF(Defaults):
     """LazyPRF
@@ -1024,12 +1040,6 @@ class LazyPlot(Defaults):
         # axis labels and titles
         self._set_legend_labels(self.axs, labels=self.labels)
 
-        # set x-label
-        self._set_xlabel(self.axs, self.x_label)
-
-        # set x-label
-        self._set_ylabel(self.axs, self.y_label)
-
         # set title
         self._set_title(self.axs, self.title)
         
@@ -1064,15 +1074,24 @@ class LazyPlot(Defaults):
             self.axs.set_ylim(self.y_lim)      
 
         # set ticks
-        self._set_xticks(self.axs, self.x_ticks)
-        self._set_yticks(self.axs, self.y_ticks)
-        
+        loop_funcs = [
+            "_set_ticks",
+            "_set_ticklabels",
+            "_set_ticker",
+            "_set_axlabel"
+        ]
+        for x in ["x","y"]:
+            for ff,el in zip(
+                loop_funcs,
+                ["ticks","ticklabels","dec","label"]):
+
+                add_to_ax = getattr(self, f"{x}_{el}")
+                getattr(self, ff)(self.axs, add_to_ax, axis=x)
+                
         # draw horizontal/vertical lines with ax?line
         self._add_line(ax=self.axs)
 
-        # set tickers & despine
-        self._set_y_ticker(self.axs, self.y_dec)
-        self._set_x_ticker(self.axs, self.x_dec)
+        # despine
         self._despine(self.axs)
 
 class LazyCorr(Defaults):
@@ -1240,7 +1259,6 @@ class LazyCorr(Defaults):
             transform=self.axs.transAxes
         )
 
-
     def _run_regression(self):
         
         try:
@@ -1334,7 +1352,7 @@ class LazyCorr(Defaults):
                 self._set_tick_params(self.cbar.ax)
                 self._set_spine_width(self.cbar.ax)
 
-                self._set_y_ticker(self.cbar.ax, self.y_dec)
+                self._set_ticker(self.cbar.ax, self.y_dec, x="y")
 
                 # remove outside edge from colorbar
                 self.cbar.ax.set_frame_on(False)
@@ -1363,35 +1381,38 @@ class LazyCorr(Defaults):
             **self.reg_kwargs
         )
 
-        # set labels and titles
-        for lbl,func in zip(
-            [self.x_label, self.y_label, self.title],
-            [self._set_xlabel, self._set_ylabel, self._set_title]):
-
-            if isinstance(lbl, (str,dict)):
-                func(self.axs, lbl)
-
         # sort out ticks
         self._set_spine_width(self.axs)
         self._set_tick_params(self.axs)
+        self._set_title(self.axs, self.title)
 
-        for lbl,func in zip(
-            [self.x_ticks, self.y_ticks],
-            [self._set_xticks, self._set_yticks]):
-            func(self.axs, lbl)
+        for x in ["x","y"]:
+            for ff,el in zip(
+                [self._set_ticks,self._set_ticklabels,self._set_ticker],
+                ["ticks","ticklabels","dec"]):
 
-        for lim,func in zip(
-            [self.x_lim, self.y_lim], 
-            [self._set_xlim, self._set_ylim]):
-            if lim:
-                func(self.axs, lim)
+                add_to_ax = getattr(self, f"{x}_{el}")
+                ff(self.axs, add_to_ax, axis=x)
+
+        # set ticks
+        loop_funcs = [
+            "_set_ticks",
+            "_set_ticklabels",
+            "_set_ticker",
+            "_set_axlabel"
+        ]
+        for x in ["x","y"]:
+            for ff,el in zip(
+                loop_funcs,
+                ["ticks","ticklabels","dec","label"]):
+
+                add_to_ax = getattr(self, f"{x}_{el}")
+                getattr(self, ff)(self.axs, add_to_ax, axis=x)
 
         # draw horizontal/vertical lines with ax?line
         self._add_line(ax=self.axs)
 
         # set tickers & despine
-        self._set_y_ticker(self.axs, self.y_dec)
-        self._set_x_ticker(self.axs, self.x_dec)
         self._despine(self.axs)
 
 class LazyBar():
@@ -1493,6 +1514,7 @@ class LazyBar():
         fancy_aspect: float=None,
         fancy_denom: int=4,
         bar_legend: bool=False,
+        lbl_legend: list=None,
         strip_kw: dict={},
         **kwargs):
 
@@ -1507,6 +1529,7 @@ class LazyBar():
         self.lim                = lim
         self.ticks              = ticks
         self.bar_legend         = bar_legend
+        self.lbl_legend         = lbl_legend
         self.add_points         = add_points
         self.points_color       = points_color
         self.points_palette     = points_palette
@@ -1764,7 +1787,7 @@ class LazyBar():
                     
                     if multi_strip:
                         handles = handles[-len(cond):]
-                        labels = labels[-len(cond):]                       
+                        labels = labels[-len(cond):]
 
             else:
                 if not self.add_points:
@@ -1775,6 +1798,10 @@ class LazyBar():
 
         # fill in legend
         if self.add_legend:
+            
+            if isinstance(self.lbl_legend, list):
+                labels = self.lbl_legend
+                
             self.ff.legend(
                 handles,
                 labels,
@@ -1791,9 +1818,9 @@ class LazyBar():
 
         if not self.add_labels:
             if self.sns_ori == 'h':
-                self.ff.set_yticks([])
-            elif self.sns_ori == "v":                
-                self.ff.set_xticks([])
+                self.kw_defaults._set_ticks(self.ff, [], axis="y")
+            elif self.sns_ori == "v":        
+                self.kw_defaults._set_ticks(self.ff, [], axis="x")
             else:
                 raise ValueError(f"sns_ori must be 'v' or 'h', not '{self.sns_ori}'")
         elif isinstance(self.add_labels,list):
@@ -1801,15 +1828,21 @@ class LazyBar():
 
         if isinstance(self.sns_rot, (int,float)):
             if self.sns_ori == 'h':
-                self.ff.set_yticklabels(
+                self.kw_defaults._set_ticklabels(
+                    self.ff,
                     self.ff.get_yticklabels(), 
                     rotation=self.sns_rot,
-                    fontname=self.fontname)
+                    fontname=self.fontname,
+                    axis="y"
+                )
             elif self.sns_ori == "v":
-                self.ff.set_xticklabels(
+                self.kw_defaults._set_ticklabels(
+                    self.ff,
                     self.ff.get_xticklabels(), 
+                    axis="x",
                     rotation=self.sns_rot,
-                    fontname=self.fontname)
+                    fontname=self.fontname
+                )
             else:
                 raise ValueError(f"sns_ori must be 'v' or 'h', not '{self.sns_ori}'")
 
@@ -1881,10 +1914,7 @@ class LazyBar():
             self.ff.set(xlabel=None)
 
         if isinstance(self.y, str) and not isinstance(self.y_label, str):
-            self.ff.set(ylabel=None)            
-
-        self.kw_defaults._set_xlabel(self.ff, self.x_label)
-        self.kw_defaults._set_ylabel(self.ff, self.y_label)
+            self.ff.set(ylabel=None)
 
         # set these explicitly; remove left axis is orientation = horizontal | remove bottom axis if orientation is vertical
         if hasattr(self, "trim_left"):
@@ -1901,8 +1931,19 @@ class LazyBar():
         self.kw_defaults._add_line(ax=self.ff)
 
         # set tickers & despine
-        self.kw_defaults._set_y_ticker(self.ff, self.y_dec)
-        self.kw_defaults._set_x_ticker(self.ff, self.x_dec)
+        # set ticks
+        loop_funcs = [
+            "_set_ticker",
+            "_set_axlabel"
+        ]
+        for x in ["x","y"]:
+            for ff,el in zip(
+                loop_funcs,
+                ["dec","label"]):
+
+                add_to_ax = getattr(self, f"{x}_{el}")
+                getattr(self.kw_defaults, ff)(self.ff, add_to_ax, axis=x)
+                
         self.kw_defaults._despine(
             self.ff,
             left=trim_left,
@@ -2116,19 +2157,27 @@ class LazyHist(Defaults):
         self._set_xlim(self.active_axs, self.x_lim)
         self._set_ylim(self.active_axs, self.y_lim)
         
-        # set ticks
-        self._set_xticks(self.active_axs, self.x_ticks)
-        self._set_yticks(self.active_axs, self.y_ticks)        
+        # set tickers & despine
+        loop_funcs = [
+            "_set_ticks",
+            "_set_ticklabels",
+            "_set_ticker",
+            "_set_axlabel"
+        ]
+        for x in ["x","y"]:
+            for ff,el in zip(
+                loop_funcs,
+                ["ticks","ticklabels","dec","label"]):
+
+                add_to_ax = getattr(self, f"{x}_{el}")
+                getattr(self, ff)(self.active_axs, add_to_ax, axis=x)
 
         # set axis labels
         if not isinstance(self.x_label, str):
             self.active_axs.set(xlabel=None)
 
         if  not isinstance(self.y_label, str):
-            self.active_axs.set(ylabel=None)            
-
-        self._set_xlabel(self.active_axs, self.x_label)
-        self._set_ylabel(self.active_axs, self.y_label)
+            self.active_axs.set(ylabel=None)
 
         if hasattr(self, "trim_left"):
             trim_left = self.trim_left
@@ -2203,24 +2252,25 @@ def conform_ax_to_obj(
     if not isinstance(obj.x_label, str):
         obj.x_label = ax.get_xlabel()           
 
-    # format labels and titles
-    for lbl,func in zip(
-        [obj.x_label, obj.y_label, obj.title],
-        [obj._set_xlabel, obj._set_ylabel, obj._set_title]):
-
-        if isinstance(lbl, (str,dict)):
-            func(ax, lbl)
-
     # format ticks
     obj._set_spine_width(ax)
     obj._set_tick_params(ax)
+    obj._set_title(ax, obj.title)
 
-    for lbl,func in zip(
-        [obj.x_ticks, obj.y_ticks],
-        [obj._set_xticks, obj._set_yticks]):
+    loop_funcs = [
+        "_set_ticks",
+        "_set_ticklabels",
+        "_set_ticker",
+        "_set_axlabel"
+    ]
 
-        if isinstance(lbl, list):
-            func(ax, lbl)
+    for x in ["x","y"]:
+        for ff,el in zip(
+            loop_funcs,
+            ["ticks","ticklabels","dec","label"]):
+
+            add_to_ax = getattr(obj, f"{x}_{el}")
+            getattr(obj, ff)(ax, add_to_ax, axis=x)
 
     # format limits
     for lim,func in zip(
@@ -2232,9 +2282,7 @@ def conform_ax_to_obj(
     # draw horizontal/vertical lines with ax?line
     obj._add_line(ax=ax)
 
-    # set tickers & despine
-    obj._set_y_ticker(ax, obj.y_dec)
-    obj._set_x_ticker(ax, obj.x_dec)
+    # despine
     obj._despine(ax)
 
     return ax,obj
