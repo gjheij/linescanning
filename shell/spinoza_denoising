@@ -38,10 +38,11 @@ Arguments:
   --no_raw            do NOT unzscore the output from pybest (default is to do so)
   --fsaverage         overwrite PYBEST_SPACE-variable and use FSAverage for pybest (defaults to fs-
                       native)
-  --fsnative          overwrite PYBEST_SPACE-variable and use FSNative for pybest (defaults to fs-
-                      native)
-  --func              overwrite PYBEST_SPACE-variable and use 'func'-space for pybest
-  --anat              overwrite PYBEST_SPACE-variable and use 'T1w'-space for pybest
+  --fsnative          overwrite PYBEST_SPACE-variable and use FSNative (defaults to fsnative)
+  --func              overwrite PYBEST_SPACE-variable and use 'func'-space
+  --anat              overwrite PYBEST_SPACE-variable and use 'T1w'-space
+  --mni_fsl           overwrite PYBEST_SPACE-variable and use 'MNI152NLin6Asym_res-1'-space
+  --mni_2009          overwrite PYBEST_SPACE-variable and use 'MNI152NLin2009cAsym_res-1'-space
   --force             force execution despite existing files
   <project root>      base directory containing the derivatives and the subject's folders.
   <derivatives>       path to the derivatives folder
@@ -50,6 +51,10 @@ Eample:
   spinoza_denoising DIR_DATA_HOME DIR_DATA_DERIV
   spinoza_denoising -s 001 -n 1 DIR_DATA_HOME DIR_DATA_DERIV
   spinoza_denoising -o DIR_DATA_HOME DIR_DATA_DERIV
+
+Notes:
+  There are multiple flags to change the PYBEST_SPACE-variable. If your desired space is not speci-
+  fied, update the variable in the setup file.
 
 ---------------------------------------------------------------------------------------------------
 
@@ -107,6 +112,12 @@ do
         anat)
           PYBEST_SPACE="T1w"
           ;;      
+        mni_fsl)
+          PYBEST_SPACE="MNI152NLin6Asym_res-1"
+          ;;      
+        mni_2009)
+          PYBEST_SPACE="MNI152NLin2009cAsym_res-1"
+          ;;                            
         post_only)
           post_flag="--post_only"
           ;;
@@ -245,7 +256,24 @@ for subID in ${search}; do
         if [[ ! -z ${task_flag} ]]; then
           execute_cmd=1
         fi
+
+        # also check if there's files in the directories
+        searchdir=${DENOISE}/${base_path}/denoising
+        if [[ ${PYBEST_SPACE} == "func" ]]; then
+          func_files=`find ${searchdir} -type f -name "*_desc-denoised_bold.nii.gz" -and -not -name "*space-*" 2>/dev/null`
+        else
+          func_files=`find ${searchdir} -type f -name "*space-${PYBEST_SPACE}*" -and -name "*_desc-denoised_bold.nii.gz" 2>/dev/null`
+        fi
+
+        if [[ -z ${func_files} ]]; then
+          execute_cmd=1
+        fi
       fi
+
+      # echo $searchdir
+      # echo ${func_files[@]}
+      # echo ${execute_cmd}
+      # exit 1
 
       # overwrite mode
       if [[ ${OW} -eq 1 ]]; then

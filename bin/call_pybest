@@ -330,7 +330,12 @@ for task_id in ${task_ids[@]}; do
 
     # apply mask; safe in 'masked'
     out_dir=${output_dir}/${base_dir}
-    mask=(`find -L ${out_dir}/preproc -type f -name "*task-${task_id}*" -and -name "*desc-preproc_mask.nii.gz" 2>/dev/null`)
+
+    if [[ ${in_space} == "func" ]]; then
+      mask=(`find -L ${out_dir}/preproc -type f -name "*task-${task_id}*" -and -name "*desc-preproc_mask.nii.gz" -and -not -name "*space-*" 2>/dev/null`)
+    else
+      mask=(`find -L ${out_dir}/preproc -type f -name "*task-${task_id}*" -and -name "*space-${in_space}*" -and -name "*desc-preproc_mask.nii.gz" 2>/dev/null`)
+    fi
 
     n_masks=${#mask[@]}
     if [[ ${n_masks} -gt 0 ]]; then
@@ -340,8 +345,6 @@ for task_id in ${task_ids[@]}; do
           echo " $i"
         done
       else
-        echo "Applying \"${mask}\" to nifti-files"
-
         # dir is different depending on unzcoring or not.
         if [[ ${raw} -eq 1 ]]; then
           ddir="unzscored"
@@ -350,7 +353,13 @@ for task_id in ${task_ids[@]}; do
         fi
 
         # search for bold files
-        bold_files=(`find -L ${out_dir}/${ddir} -type f -name "*task-${task_id}*" -and -name "*desc-denoised_bold.nii.gz" 2>/dev/null`)
+        if [[ ${in_space} == "func" ]]; then
+          bold_files=(`find -L ${out_dir}/${ddir} -type f -name "*task-${task_id}*" -and -name "*desc-denoised_bold.nii.gz" -and -not -name "*space-*" 2>/dev/null`)
+        else
+          bold_files=(`find -L ${out_dir}/${ddir} -type f -name "*task-${task_id}*" -and -name "*space-${in_space}*" -and -name "*desc-denoised_bold.nii.gz" 2>/dev/null`)
+        fi
+
+        echo "Applying \"${mask}\" to ${#bold_files[@]} nifti-files"
         if [[ ${#bold_files[@]} -gt 0 ]]; then
 
           for bold in ${bold_files[@]}; do
