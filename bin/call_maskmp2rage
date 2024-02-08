@@ -28,18 +28,14 @@ Example:
 
     """
 
-    t1w      = None
-    t1map    = None
-    output   = None
-
     if len(argv) < 2:
         print("NOT ENOUGH ARGUMENTS SPECIFIED")
         print(main.__doc__)
         sys.exit()
 
-    t1w_img     = argv[0]
-    t1map_img   = argv[1]
-    output      = argv[2]
+    t1w_img     = os.path.abspath(argv[0])
+    t1map_img   = os.path.abspath(argv[1])
+    output      = os.path.abspath(argv[2])
 
     if os.path.exists(t1w_img) and os.path.exists(t1map_img):
 
@@ -50,6 +46,7 @@ Example:
 
         t1w_masked  = t1w_raw.dataobj.get_unscaled() * t1map_mask
         nb.Nifti1Image(t1w_masked, t1w_raw.affine, t1w_raw.header).to_filename(output)
+        print(f"Wrote '{output}'")
 
 if __name__ == "__main__":
     main(sys.argv[1:])
