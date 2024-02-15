@@ -25,11 +25,17 @@ from nilearn import image
 import platform
 from bids import BIDSLayout
 import numpy as np
+from nipype.interfaces import fsl
 from linescanning.utils import get_file_from_substring, remove_files, string2float
 warnings.filterwarnings("ignore")
 opj = os.path.join
 osj = os.sep.join
 opb = os.path.basename
+
+def get_minmax(file):
+    stats = fsl.ImageStats(in_file=file, op_string="-R")
+    res = stats.run()
+    return res.outputs.out_stat
 
 def main(argv):
 
@@ -378,9 +384,7 @@ Notes:
             print("Truncating image intensities [0,0.999] with 256 bins")
             os.system(cmd)
 
-            import subprocess
-            fsl_cmd = ["fslstats", tmp_file, "-R"]
-            out_ = string2float(subprocess.check_output(fsl_cmd, stderr=subprocess.STDOUT).decode())
+            out_ = get_minmax(tmp_file)
             clip_value = out_[1]
 
             # clip positive values if mininum value != 0

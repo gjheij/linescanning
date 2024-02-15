@@ -28,9 +28,15 @@ from bids import BIDSLayout
 from linescanning import utils
 import shutil
 import json
+from nipype.interfaces import fsl
 warnings.filterwarnings("ignore")
 opj = os.path.join
 opb = os.path.basename
+
+def get_minmax(file):
+    stats = fsl.ImageStats(in_file=file, op_string="-R")
+    res = stats.run()
+    return res.outputs.out_stat
 
 def main(argv):
 
@@ -335,9 +341,7 @@ Notes:
             print(cmd)
             os.system(cmd)
 
-            import subprocess
-            fsl_cmd = ["fslstats", tmp_file, "-R"]
-            out_ = utils.string2float(subprocess.check_output(fsl_cmd, stderr=subprocess.STDOUT).decode())
+            out_ = get_minmax(tmp_file)
             clip_value = out_[1]
 
             # clip positive values if mininum value != 0
