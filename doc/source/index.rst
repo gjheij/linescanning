@@ -33,6 +33,7 @@ Contents
    examples/lazyplot
    examples/nideconv
    examples/prfmodelfitter
+   examples/prf_verify
    
 .. toctree::
    :maxdepth: 2
