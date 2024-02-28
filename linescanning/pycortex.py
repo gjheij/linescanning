@@ -35,7 +35,7 @@ def set_ctx_path(p=None, opt="update"):
     >>> set_ctx_path('path/to/pycortex', "update")
     """
 
-    if p == None:
+    if not isinstance(p, str):
         p = os.environ.get('CTX')
 
     if not os.path.exists(p):
@@ -935,8 +935,13 @@ class Vertex2D_fix():
             # do this to avoid artifacts where curvature gets color of 0 valur of colormap
             self.curv_rgb[:,np.where((self.vx_rgb > 0))[-1]] = self.curv_rgb[:,np.where((self.vx_rgb > 0))[-1]] * (1-self.alpha)[np.where((self.vx_rgb > 0))[-1]]
 
-            # Alpha mask
-            self.display_data = self.curv_rgb + self.vx_rgb 
+            # Map to RGB
+            self.vx_rgb = np.vstack([self.vx.raw.red.data, self.vx.raw.green.data, self.vx.raw.blue.data])
+
+            self.display_data = self.curv_rgb * (1-self.alpha) + self.vx_rgb * self.alpha
+
+            # Force uint8, otherwise it gets upset
+            self.display_data = self.display_data.astype(np.uint8)
 
             # display_data = curv_rgb * (1-alpha) + vx_rgb * alpha
             if self.roi_borders is not None:
