@@ -1235,6 +1235,7 @@ class Posthoc(Defaults):
     def run_posthoc(
         self, 
         test: str="tukey",
+        ano: dict=None,
         *args, 
         **kwargs):
         
@@ -1277,8 +1278,16 @@ class Posthoc(Defaults):
             self.posthoc = pg.pairwise_tests(
                 *args,
                 **kwargs)
-
-            self.p_tag = "p-corr"
+            
+            if "p-corr" in list(self.posthoc.columns):
+                self.p_tag = "p-corr"
+            else:
+                self.p_tag = "p-unc"
+    
+        if self.test == "inherit":
+            if len(ano)>0:
+                if kwargs['between'] in list(ano.keys()):
+                    self.posthoc[self.p_tag] = ano[kwargs['between']]
 
         # internalize all kwargs
         self.__dict__.update(kwargs)
@@ -1438,21 +1447,24 @@ class ANOVA(Posthoc):
         alpha: float=0.05, 
         axs: mpl.axes._axes.Axes=None,
         posthoc_kw: dict={},
+        plot_kw={},
+        bar_kw={},
         *args, 
         **kwargs):
         
-        # set posthoc kwargs        
         self.posthoc_kw = posthoc_kw
-        if not "alpha" in list(self.posthoc_kw.keys()):
-            self.alpha = 0.05
-
-        # run anova
+        self.bar_kw = bar_kw
+        self.plot_kw = plot_kw
+        self.alpha = alpha
         self.run_anova(
             alpha=self.alpha,
             posthoc_kw=self.posthoc_kw,
+            bar_kw=self.bar_kw,
             axs=axs,
+            plot_kw=self.plot_kw,
             *args,
-            **kwargs)
+            **kwargs
+        )
         
     def _get_results(
         self, 
@@ -1474,6 +1486,8 @@ class ANOVA(Posthoc):
         alpha: float=0.05,
         axs: mpl.axes._axes.Axes=None,
         posthoc_kw={},
+        plot_kw={},
+        bar_kw={},
         *args, 
         **kwargs):
         
@@ -1494,14 +1508,14 @@ class ANOVA(Posthoc):
 
         # found sig results; do posthoc
         self.ph_obj = {}
-        if len(self.results)>0:
-            super().__init__(**kwargs)
-            self.run_posthoc(*args, **kwargs)
+        super().__init__(**plot_kw)
+        self.run_posthoc(ano=self.results, **kwargs, **posthoc_kw)
 
-            if isinstance(axs, mpl.axes._axes.Axes):
-                self.plot_bars(
-                    axs=axs,
-                    **posthoc_kw)
+        if isinstance(axs, mpl.axes._axes.Axes):
+            self.plot_bars(
+                axs=axs,
+                **bar_kw
+            )
                 
 class ANCOVA(Posthoc):
 
@@ -1538,25 +1552,31 @@ class ANCOVA(Posthoc):
         alpha: float=0.05, 
         axs: mpl.axes._axes.Axes=None,
         posthoc_kw: dict={},
+        bar_kw: dict={},
+        plot_kw: dict={},
         *args, 
         **kwargs):
         
         self.posthoc_kw = posthoc_kw
+        self.plot_kw = plot_kw
+        self.bar_kw = bar_kw
         self.alpha = alpha
-        self.run_anova(
+        self.run_ancova(
             alpha=self.alpha,
             axs=axs,
             posthoc_kw=self.posthoc_kw,
+            bar_kw=self.bar_kw,
+            plot_kw=self.plot_kw,
             *args,
             **kwargs)
         
-    def _get_results(self,df, alpha=0.05):
+    def _get_results(self, df, alpha=0.05):
         effects = df["Source"].to_list()
         p_vals = {}
         for ef in effects:
             p_ = df.loc[(df["Source"] == ef)]["p-unc"].values[0]
 
-            if p_ < self.alpha:
+            if p_ < alpha:
                 p_vals[ef] = p_
 
         return p_vals
@@ -1566,6 +1586,8 @@ class ANCOVA(Posthoc):
         alpha: float=0.05,
         axs: mpl.axes._axes.Axes=None,
         posthoc_kw={},
+        plot_kw={},
+        bar_kw={},
         *args, 
         **kwargs):
 
@@ -1576,7 +1598,7 @@ class ANCOVA(Posthoc):
             raise ImportError(f"Could not import 'pingouin'")
         
         # do stats
-        self.ano = pg.anova(
+        self.ano = pg.ancova(
             *args,
             **kwargs
         )
@@ -1585,12 +1607,19 @@ class ANCOVA(Posthoc):
         self.results = self._get_results(self.ano, alpha=self.alpha)
 
         # found sig results; do posthoc
-        self.ph_obj = {}
-        if len(self.results)>0:
-            super().__init__(**kwargs)
-            self.run_posthoc(*args, **kwargs)
+        filter_kwargs = [
+            "covar",
+        ]
 
-            if isinstance(axs, mpl.axes._axes.Axes):
-                self.plot_bars(
-                    axs=axs,
-                    **posthoc_kw)
+        for i in filter_kwargs:
+            if i in list(kwargs.keys()):
+                kwargs.pop(i)
+                
+        super().__init__(**plot_kw)
+        self.run_posthoc(ano=self.results, **kwargs, **posthoc_kw)
+
+        if isinstance(axs, mpl.axes._axes.Axes):
+            self.plot_bars(
+                axs=axs,
+                **bar_kw
+            )
