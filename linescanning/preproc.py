@@ -1,7 +1,8 @@
-from . import utils, plotting
+from . import utils, plotting, fitting
 from .segmentations import Segmentations
 from kneed import KneeLocator
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 from nilearn.signal import clean
 from nilearn.glm.first_level.design_matrix import _cosine_drift
 from nitime.timeseries import TimeSeries
@@ -389,7 +390,7 @@ direction) were assigned to this tissue type. This limited the possibility for p
 
 class RegressOut():
 
-    def __init__(self, data, regressors):
+    def __init__(self, data, regressors, **kwargs):
         """RegressOut
 
         Class to regress out nuisance regressors from data.
@@ -426,13 +427,24 @@ class RegressOut():
         else:
             self.regressors_array = self.regressors.copy()
         
-        self.clean_array = clean(self.data_array, standardize=False, confounds=self.regressors_array)
+        self.clean_array = clean(
+            self.data_array, 
+            standardize=False, 
+            confounds=self.regressors_array,
+            **kwargs
+        )
 
         if self.add_index:
             self.clean_df = pd.DataFrame(self.clean_array, index=self.data.index, columns=self.data.columns)
 
 
-def highpass_dct(func, lb, TR=0.105, modes_to_remove=None):
+def highpass_dct(
+    func, 
+    lb=0.01, 
+    TR=0.105, 
+    modes_to_remove=None,
+    remove_constant=False,
+    ):
     """highpass_dct
 
     Discrete cosine transform (DCT) is a basis set of cosine regressors of varying frequencies up to a filter cutoff of a specified number of seconds. Many software use 100s or 128s as a default cutoff, but we encourage caution that the filter cutoff isn't too short for your specific experimental design. Longer trials will require longer filter cutoffs. See this paper for a more technical treatment of using the DCT as a high pass filter in fMRI data analysis (https://canlab.github.io/_pages/tutorials/html/high_pass_filtering.html).
@@ -441,8 +453,8 @@ def highpass_dct(func, lb, TR=0.105, modes_to_remove=None):
     ----------
     func: np.ndarray
         <n_voxels, n_timepoints> representing the functional data to be fitered
-    lb: float
-        cutoff-frequency for low-pass
+    lb: float, optional
+        cutoff-frequency for low-pass (default = 0.01 Hz)
     TR: float, optional
         Repetition time of functional run, by default 0.105
     modes_to_remove: int, optional
@@ -474,12 +486,13 @@ def highpass_dct(func, lb, TR=0.105, modes_to_remove=None):
         hp_set[:,:modes_to_remove]
     else:
         # remove constant column
-        hp_set = hp_set[:,:-1]
+        if remove_constant:
+            hp_set = hp_set[:,:-1]
 
     dct_data = clean(func.T, detrend=False, standardize=False, confounds=hp_set).T
     return dct_data, hp_set
 
-def lowpass_savgol(func, window_length=None, polyorder=None):
+def lowpass_savgol(func, window_length=7, polyorder=3):
 
     """lowpass_savgol
 
@@ -492,9 +505,9 @@ def lowpass_savgol(func, window_length=None, polyorder=None):
     func: np.ndarray
         <n_voxels, n_timepoints> representing the functional data to be fitered
     window_length: int
-        Length of window to use for filtering. Must be an uneven number according to the scipy-documentation
+        Length of window to use for filtering. Must be an uneven number according to the scipy-documentation (default = 7)
     poly_order: int
-        Order of polynomial fit to employ within `window_length`.
+        Order of polynomial fit to employ within `window_length`. Default = 3
 
     Returns
     ----------
@@ -1007,3 +1020,773 @@ class ICA():
                 bbox_inches="tight", 
                 dpi=300, 
                 facecolor="white")
+
+class DataFilter():
+
+    def __init__(
+        self, 
+        func,
+        **kwargs
+        ):
+
+        # filter data based on present identifiers (e.g., task/run)
+        self.func = func
+        self.filter_input(**kwargs)
+
+    def filter_runs(
+        self,
+        df_func,
+        **kwargs
+        ):
+
+        # loop through runs
+        self.run_ids = utils.get_unique_ids(df_func, id="run")
+        # print(f"task-{task}\t| runs = {run_ids}")
+        run_df = []
+        for run in self.run_ids:
+            
+            expr = f"run = {run}"
+            run_func = utils.select_from_df(df_func, expression=expr)
+
+            # get regresss
+            df = self.single_filter(
+                run_func,
+                **kwargs
+            )
+
+            run_df.append(df)
+
+        run_df = pd.concat(run_df)
+
+        return run_df
+    
+    def filter_tasks(
+        self,
+        df_func,
+        **kwargs
+        ):
+
+        # read task IDs
+        self.task_ids = utils.get_unique_ids(df_func, id="task")
+
+        # loop through task IDs
+        task_df = [] 
+        for task in self.task_ids:
+
+            # extract task-specific dataframes
+            expr = f"task = {task}"
+            task_func = utils.select_from_df(df_func, expression=expr)
+
+            df = self.filter_runs(
+                task_func,
+                **kwargs
+            )
+
+            task_df.append(df)
+
+
+        return pd.concat(task_df)
+    
+    def filter_subjects(
+        self,
+        df_func,
+        **kwargs
+        ):
+
+        self.sub_ids = utils.get_unique_ids(df_func, id="subject")
+        
+        # loop through subject IDs
+        sub_df = [] 
+        for sub in self.sub_ids:
+                
+            # extract task-specific dataframes
+            expr = f"subject = {sub}"
+            self.sub_func = utils.select_from_df(df_func, expression=expr)
+
+            try:
+                self.task_ids = utils.get_unique_ids(self.sub_func, id="task")
+            except:
+                self.task_ids = None
+
+            if isinstance(self.task_ids, list):
+                ffunc = self.filter_tasks
+            else:
+                ffunc = self.filter_runs
+
+            sub_filt = ffunc(
+                self.sub_func, 
+                **kwargs
+            )
+
+            sub_df.append(sub_filt)
+
+        sub_df = pd.concat(sub_df)
+
+        return sub_df
+    
+    def filter_input(self, **kwargs):
+
+        self.df_filt = self.filter_subjects(
+            self.func,
+            **kwargs
+        )
+
+    @classmethod
+    def single_filter(
+        self, 
+        func, 
+        filter_strategy="hp", 
+        hp_kw={},
+        lp_kw={},
+        **kwargs
+        ):
+        
+        allowed_lp = ["lp","lowpass","low-pass","low_pass"]
+        allowed_hp = ["hp","highpass","high-pass","high_pass"]
+
+        if isinstance(filter_strategy, str):
+            filter_strategy = [filter_strategy]
+        
+        use_kws = {
+            "hp": hp_kw,
+            "lp": lp_kw
+        }
+
+        use_df = func
+        for ix,strat in enumerate(filter_strategy):
+
+            if strat in allowed_hp:
+                ffunc = highpass_dct
+                kws = use_kws["hp"]
+            elif strat in allowed_lp:
+                ffunc = lowpass_savgol
+                kws = use_kws["lp"]
+            else:
+                raise ValueError(f"Unknown option '{strat}'. Must be one of {allowed_hp} for high-pass filtering or one of {allowed_lp} for low-pass filtering")
+            
+            # input dataframe will be <time,voxels>; for filter functions, this should be transposed
+            filt_data = ffunc(
+                use_df.T.values,
+                **kws
+            )
+
+            if strat in allowed_hp:
+                filt_data = filt_data[0]
+
+            use_df = pd.DataFrame(filt_data.T, index=func.index)
+            use_df.columns = func.columns
+
+        return use_df
+    
+    def get_result(self):
+        return self.df_filt
+    
+    def plot_task_avg(
+        self, 
+        orig=None,
+        filt=None,
+        t_col="t", 
+        avg=True, 
+        plot_title=None,
+        **kwargs
+        ):
+
+        if not isinstance(orig, pd.DataFrame):
+            orig = self.func
+
+        if not isinstance(filt, pd.DataFrame):
+            filt = self.df_filt
+        
+        task_ids = utils.get_unique_ids(orig, id="task")
+        fig,axs = plt.subplots(
+            nrows=len(task_ids), 
+            figsize=(14,len(task_ids)*3), 
+            constrained_layout=True, 
+            sharey=True, 
+            sharex=True
+        )
+
+        avg_df = []
+        for ix,task in enumerate(task_ids):
+
+            if len(task_ids)>1:
+                ax = axs[ix]
+            else:
+                ax = axs
+
+            for df,col,ms,lw,lbl in zip(
+                [orig, filt],
+                ["#cccccc","r"],
+                [".",None],
+                [0.5,3],
+                ["original","filtered"]):
+
+                task_avg = df.groupby(["subject","task",t_col]).mean()
+                task_tcs = utils.select_from_df(task_avg, expression=f"task = {task}")
+                t_axs = utils.get_unique_ids(df, id=t_col)
+
+                if avg:
+                    task_tcs = pd.DataFrame(task_tcs.mean(axis=1))
+
+                if (ix+1) == len(task_ids):
+                    x_lbl = "time (s)"
+                else:
+                    x_lbl = None
+
+                pl = plotting.LazyPlot(
+                    task_tcs.values,
+                    axs=ax,
+                    color=col,
+                    markers=ms,
+                    line_width=lw,
+                    label=[lbl],
+                    title={
+                        "title": f"task-{task}",
+                    },
+                    add_hline=0,
+                    x_label=x_lbl,
+                    y_label="magnitude",
+                    **kwargs
+                )
+
+                avg_df.append(task_tcs.copy())
+        
+        if isinstance(plot_title, (str,dict)):
+            if isinstance(plot_title, str):
+                plot_txt = plot_title
+                plot_title = {}
+            else:
+                plot_txt = plot_title["title"]
+                plot_title.pop("title")
+
+            fig.suptitle(
+                plot_txt, 
+                fontsize=pl.title_size*1.1,
+                **plot_title
+            )
+
+        avg_df = pd.concat(avg_df)
+        return fig,avg_df
+
+class EventRegression(fitting.InitFitter):
+
+    def __init__(
+        self, 
+        func,
+        onsets,
+        TR=0.105,
+        merge=False,
+        evs=None,
+        ses=None,
+        prediction_plot:bool=False,
+        result_plot:bool=False,
+        save_ext:str="svg",
+        reg_kw:dict={},
+        **kwargs
+        ):
+
+        self.func = func
+        self.onsets = onsets
+        self.evs = evs
+        self.TR = TR
+        self.merge = merge
+        self.ses = ses
+        self.prediction_plot = prediction_plot
+        self.result_plot = result_plot
+        self.save_ext = save_ext
+        self.reg_kw = reg_kw
+
+        # prepare data
+        super().__init__(
+            self.func, 
+            self.onsets, 
+            self.TR,
+            merge=self.merge
+        )
+
+        # epoch data based on present identifiers (e.g., task/run)
+        self.regress_input(**kwargs)
+
+    def regress_runs(
+        self,
+        df_func,
+        df_onsets, 
+        basename=None,
+        final_ev=True,
+        make_figure=False,
+        plot_kw={},
+        reg_kw={},
+        **kwargs
+        ):
+
+        # loop through runs
+        self.run_ids = utils.get_unique_ids(df_func, id="run")
+        print(f"  run_ids: {self.run_ids}")
+        # print(f"task-{task}\t| runs = {run_ids}")
+        run_df = []
+        for run in self.run_ids:
+            
+            expr = f"run = {run}"
+            run_func = utils.select_from_df(df_func, expression=expr)
+            run_stims = utils.select_from_df(df_onsets, expression=expr)
+
+            # get regresss
+            df,model = self.single_regression(
+                run_func,
+                run_stims,
+                reg_kw=reg_kw,
+                **kwargs
+            )
+
+            if isinstance(basename, str):
+                run_name = f"{basename}_run-{run}"
+
+            if make_figure:
+                if final_ev:
+                    self.plot_result(
+                        run_func,
+                        df,
+                        basename=run_name,
+                        TR=model.TR,
+                        **plot_kw
+                    )
+
+                    self.plot_model_fits(
+                        model,
+                        basename=run_name,
+                        TR=model.TR,
+                        **plot_kw
+                    )
+
+            run_df.append(df)
+
+        run_df = pd.concat(run_df)
+
+        return run_df
+    
+    def regress_tasks(
+        self,
+        df_func,
+        df_onsets,
+        basename=None,
+        reg_kw={},
+        **kwargs
+        ):
+
+        # read task IDs
+        self.task_ids = utils.get_unique_ids(df_func, id="task")
+
+        # loop through task IDs
+        task_df = [] 
+        for task in self.task_ids:
+
+            # extract task-specific dataframes
+            utils.verbose(f"  task_id: {task}", True)
+            expr = f"task = {task}"
+            task_func = utils.select_from_df(df_func, expression=expr)
+            task_stims = utils.select_from_df(df_onsets, expression=expr)
+
+            if isinstance(basename, str):
+                task_name = f"{basename}_task-{task}"
+            
+            df = self.regress_runs(
+                task_func,
+                task_stims,
+                basename=task_name,
+                reg_kw=reg_kw,
+                **kwargs
+            )
+
+            task_df.append(df)
+
+
+        return pd.concat(task_df)
+    
+    def regress_subjects(
+        self,
+        df_func,
+        df_onsets,
+        evs=None,
+        ses=None,
+        reg_kw={},
+        **kwargs
+        ):
+
+        self.sub_ids = utils.get_unique_ids(df_func, id="subject")
+        
+        # loop through subject IDs
+        sub_df = [] 
+        for sub in self.sub_ids:
+            
+            utils.verbose(f"sub_id: {sub}", True)
+            # fetch evs to regress out
+            if not isinstance(evs, (str,list)):
+                evs = utils.get_unique_ids(df_onsets, id="event_type")
+            else:
+                if isinstance(evs, str):
+                    evs = [evs]
+
+            use_func = df_func.copy()
+            for ix,ev in enumerate(evs):
+                utils.verbose(f" event: {ev}", True)
+                # extract task-specific dataframes
+                expr = f"subject = {sub}"
+                self.sub_func = utils.select_from_df(use_func, expression=expr)
+                self.sub_stims = utils.select_from_df(df_onsets, expression=(expr,"&",f"event_type = {ev}"))
+
+                try:
+                    self.task_ids = utils.get_unique_ids(self.sub_func, id="task")
+                except:
+                    self.task_ids = None
+
+                if isinstance(self.task_ids, list):
+                    ffunc = self.regress_tasks
+                else:
+                    ffunc = self.regress_runs
+                
+                basename = f"sub-{sub}"
+                if isinstance(ses, (int,str)):
+                    basename += f"_ses-{ses}"
+
+                # only start plotting after the last event has been regressed
+                if (ix+1)==len(evs):
+                    final_ev = True
+                else:
+                    final_ev = False
+
+                ev_regress = ffunc(
+                    self.sub_func, 
+                    self.sub_stims,
+                    basename=basename,
+                    final_ev=final_ev,
+                    reg_kw=reg_kw,
+                    **kwargs
+                )
+
+                # set func as regressed output of previous ev
+                use_func = ev_regress.copy()
+
+                # append last regressed ev
+                if ix+1 == len(evs):
+                    sub_df.append(ev_regress)
+
+        sub_df = pd.concat(sub_df)
+
+        return sub_df
+    
+    def regress_input(self, **kwargs):
+
+        self.df_regress = self.regress_subjects(
+            self.func,
+            self.onsets,
+            evs=self.evs,
+            ses=self.ses,
+            reg_kw=self.reg_kw,
+            **kwargs
+        )
+
+    @classmethod
+    def single_regression(
+        self, 
+        func, 
+        onsets, 
+        reg_kw={},
+        **kwargs
+        ):
+        
+        # fit FIR model
+        model = fitting.NideconvFitter(
+            func,
+            onsets,
+            **kwargs
+        )
+
+        model.timecourses_condition()
+        
+        # regress out
+        cleaned = RegressOut(
+            model.func,
+            model.sub_pred_full,
+            **reg_kw
+        )
+
+        return cleaned.clean_df, model
+
+    def plot_timecourse_prediction(
+        tc1,
+        tc2,
+        axs=None,
+        figsize=(16,4),
+        time_col="t",
+        t_axis=None,
+        TR=0.105,
+        **kwargs
+        ):
+
+        if not isinstance(axs, mpl.axes._axes.Axes):
+            fig,axs = plt.subplots(figsize=figsize)
+
+        data_list = []
+        for i in [tc1,tc2]:
+            if isinstance(i, pd.DataFrame):
+                data_list.append(i.values.squeeze())
+            elif isinstance(i, np.ndarray):
+                data_list.append(i)
+            else:
+                raise TypeError(f"Unrecognized input type {type(i)}.. Must be numpy array or dataframe")
+
+        if not isinstance(t_axis, (list,np.ndarray)):
+            if isinstance(tc1, pd.DataFrame):
+                t_axis = utils.get_unique_ids(i, id=time_col)
+            else:
+                t_axis = list(np.arange(0,data_list[0].shape[0])*TR)
+        
+        pl = plotting.LazyPlot(
+            data_list,
+            xx=t_axis,
+            axs=axs,
+            markers=[".",None],
+            line_width=[0.5,2],
+            x_label="time (s)",
+            y_label="magnitude (%)",
+            **kwargs
+        )
+
+        return pl
+    
+    def plot_power_spectrum(
+        tc1,
+        tc2,
+        axs=None,
+        TR=0.105,
+        figsize=(5,5),
+        **kwargs
+        ):
+
+        if not isinstance(axs, mpl.axes._axes.Axes):
+            fig,axs = plt.subplots(figsize=figsize)
+
+        if not "clip_power" in list(kwargs.keys()):
+            clip_power = 100
+        else:
+            clip_power = kwargs["clip_power"]
+            kwargs.pop("clip_power")
+        
+        pw = []
+        for tc in [tc1,tc2]:
+            tc_freq = get_freq(
+                tc.values.squeeze(), 
+                TR=TR, 
+                spectrum_type='fft', 
+                clip_power=clip_power
+            )
+            pw.append(tc_freq)
+
+        pl = plotting.LazyPlot(
+            [i[1] for i in pw],
+            xx=pw[0][0],
+            axs=axs,
+            markers=[".",None],
+            line_width=[0.5,2],
+            x_label="frequency (Hz)",
+            y_label="power (a.u.)",
+            **kwargs
+        )
+
+        return pl
+
+    @classmethod
+    def plot_model_fits(
+        self,
+        model,
+        save=False,
+        fig_dir=None,
+        basename=None,
+        TR=0.105,
+        cm="inferno",
+        ext="svg",
+        time_col="time",
+        w_ratio=[0.8,0.2],
+        evs=None,
+        loc=[0,1],
+        **kwargs
+        ):
+
+        # parse to list
+        func_list = list(model.func.T.values)
+        pred_list = list(model.sub_pred_full.T.values)
+        prof_list = list(model.tc_condition.T.values)
+        sem_list = list(model.sem_condition.T.values)
+
+        n_plots = model.func.shape[-1]
+        if n_plots > 20:
+            raise ValueError(f"Max number of plots = 20, you requested {n_plots}..")
+        
+        fig = plt.figure(figsize=(16,n_plots*4), constrained_layout=True)
+        sf = fig.subfigures(nrows=n_plots)
+        cms = sns.color_palette(cm, n_plots)
+        for i in range(n_plots):
+
+            if n_plots == 1:
+                sf_ix = sf
+            else:
+                sf_ix = sf[i]
+
+            axs = sf_ix.subplots(
+                ncols=2, 
+                width_ratios=w_ratio
+            )
+
+            # plot timecourse+prediction
+            tc_plot = self.plot_timecourse_prediction(
+                func_list[i],
+                pred_list[i],
+                axs=axs[0],
+                color=["#cccccc",cms[i]],
+                labels=["data","prediction"],
+                **kwargs
+            )
+
+            # plot response profile
+            resp_plot = plotting.LazyPlot(
+                prof_list[i],
+                xx=utils.get_unique_ids(model.tc_condition, id=time_col),
+                axs=axs[1],
+                add_hline=0,
+                color=cms[i],
+                error=sem_list[i],
+                line_width=tc_plot.line_width[-1],
+                x_label="time",
+                TR=TR,
+                **kwargs
+            )
+
+            axs[1].axvspan(
+                *loc, 
+                ymin=0,
+                ymax=1, 
+                alpha=0.3, 
+                color="#cccccc",
+            )
+
+            sf_ix.suptitle(
+                f"vox-{i+1}", 
+                fontsize=resp_plot.title_size,
+                fontweight="bold"
+            )
+
+        if save:
+            if not isinstance(fig_dir, str):
+                raise ValueError("Please specify output directory for figure")
+
+            if not isinstance(basename, str):
+                raise ValueError("Please specify basename for figure filename")
+
+            fname = opj(fig_dir, f"{basename}_desc-modelfit.{ext}")
+            utils.verbose(f" Writing {fname}", True)
+            fig.savefig(
+                fname, 
+                bbox_inches="tight", 
+                dpi=300, 
+                facecolor="white"
+            )
+
+            plt.close()
+
+    @classmethod
+    def plot_result(
+        self,
+        raw,
+        regr,
+        avg=True,
+        save=False,
+        fig_dir=None,
+        basename=None,
+        TR=0.105,
+        ext="svg",
+        w_ratio=[0.8,0.2],
+        cols=["#cccccc","r"],
+        evs=None,
+        **kwargs
+        ):
+
+        if avg:
+            n_plots = 1
+        else:
+            n_plots = raw.shape[-1]
+
+        fig = plt.figure(figsize=(16,n_plots*4), constrained_layout=True)
+        sf = fig.subfigures(nrows=n_plots)
+        for i in range(n_plots):
+
+            if n_plots == 1:
+                sf_ix = sf
+            else:
+                sf_ix = sf[i]
+
+            axs = sf_ix.subplots(
+                ncols=2, 
+                width_ratios=w_ratio
+            )
+
+            if avg:
+                tc1 = pd.DataFrame(raw.mean(axis=1), columns=["avg"])
+                tc2 = pd.DataFrame(regr.mean(axis=1), columns=["avg"])
+                set_title = "average"
+            else:
+                tc1 = utils.select_from_df(raw, expression="ribbon", indices=[i])
+                tc2 = utils.select_from_df(regr, expression="ribbon", indices=[i])
+                set_title = f"vox-{i+1}"
+            
+            # plot timecourse+prediction
+            tc_plot = self.plot_timecourse_prediction(
+                tc1,
+                tc2,
+                axs=axs[0],
+                color=cols,
+                labels=["pre","post"],
+                **kwargs
+            )
+
+            # plot power spectrum
+            freq_plot = self.plot_power_spectrum(
+                tc1,
+                tc2,
+                axs=axs[1],
+                TR=TR,
+                color=cols,
+                x_lim=[0,1.5],
+                **kwargs
+            )
+
+            sf_ix.suptitle(set_title, fontsize=freq_plot.title_size)
+            
+        if isinstance(evs, (str,list)):
+            add_txt = f": {evs}"
+        else:
+            add_txt = ""
+
+        fig.suptitle(
+            f"effect of regressing out event{add_txt}", 
+            fontsize=freq_plot.title_size*1.1, 
+            fontweight="bold"
+        )
+
+        if save:
+            if not isinstance(fig_dir, str):
+                raise ValueError("Please specify output directory for figure")
+
+            if not isinstance(basename, str):
+                raise ValueError("Please specify basename for figure filename")
+
+            fname = opj(fig_dir, f"{basename}_desc-regression.{ext}")
+            utils.verbose(f" Writing {fname}", True)
+            fig.savefig(
+                fname, 
+                bbox_inches="tight", 
+                dpi=300, 
+                facecolor="white"
+            )
+
+            plt.close()
+            
