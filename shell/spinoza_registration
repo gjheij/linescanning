@@ -230,7 +230,7 @@ for subID in ${search}; do
     txt="Registering ${ACQ[0]^^}-T1w to MNI152 template"
     suffix=MNI152NLin6Asym
     fixed=${FSLDIR}/data/standard/MNI152_T1_1mm.nii.gz
-    moving=`find -L "${input_dir}" -type f \( -iname "*acq-${DATA}_*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
+    moving=`find -L "${input_dir}" -type f \( -iname "*acq-${DATA}_*" -and -name "*T1w.nii.gz" -and -not -name "._*" \) 2>/dev/null`
     ext="from-${suffix}_to-T1w"
     output=$(dirname ${moving})/$(basename ${moving} _T1w.nii.gz)_space-${suffix}_T1w.nii.gz
     write_output=0
@@ -238,6 +238,13 @@ for subID in ${search}; do
     echo "Incorrect usage. Please specify mp2rage or mni"
     Usage >&2
     exit 1
+  fi
+
+  # decide registration strategy
+  if [[ -z ${reg_type} ]]; then
+    if [[ ${TYPE,,} == "mni" ]]; then
+      reg_type="--syn"
+    fi
   fi
 
   outWarp=${output_dir}/${base}_${ext}_mode-image_warp.nii.gz
@@ -260,13 +267,6 @@ for subID in ${search}; do
 
     if [[ ! -f ${outGenAff} ]]; then
       if [[ ! -f ${output_dir}/${base}_${ext}genaff.mat ]]; then
-        
-        # decide registration strategy
-        if [[ -z ${reg_type} ]]; then
-          if [[ ${TYPE,,} == "mni" ]]; then
-            reg_type="--syn"
-          fi
-        fi
 
         # decide how to execute 
         if [[ ${SGE} -eq 1 ]]; then
@@ -275,7 +275,7 @@ for subID in ${search}; do
           else
             QUEUE=${SGE_QUEUE_LONG}
           fi           
-          job_name="reg_${sub_id}"
+          job_name="$(basename ${moving} T1w.nii.gz)desc_registration"
           job="qsub -q ${QUEUE} -wd ${DIR_LOGS} -pe smp ${n_cpu} -N ${job_name} ${DIR_SCRIPTS}/bin/call_antsregistration --verbose"
         else
           job="call_antsregistration"
@@ -313,7 +313,7 @@ for subID in ${search}; do
             fi
           fi
 
-          if [[ ${reg_type} == *"syn"* ]]; then
+          if [[ ${reg_type} == "--syn" ]]; then
             mv ${output_dir}/${base}_${ext}1Warp.nii.gz ${outWarp} 2>/dev/null
             mv ${output_dir}/${base}_${ext}1InverseWarp.nii.gz ${outInvWarp} 2>/dev/null
           fi
@@ -329,7 +329,12 @@ for subID in ${search}; do
       else
         echo "Renaming \"${base}_${ext}genaff.mat\" to \"`basename ${outGenAff}`\""
         mv ${output_dir}/${base}_${ext}genaff.mat ${outGenAff} 2>/dev/null
-        mv ${output_dir}/${base}_${ext}command.txt ${cmd_file} 2>/dev/null    
+        mv ${output_dir}/${base}_${ext}command.txt ${cmd_file} 2>/dev/null   
+
+        if [[ ${reg_type} == "--syn" ]]; then
+          mv ${output_dir}/${base}_${ext}1Warp.nii.gz ${outWarp} 2>/dev/null
+          mv ${output_dir}/${base}_${ext}1InverseWarp.nii.gz ${outInvWarp} 2>/dev/null
+        fi 
       fi
 
       # check if we got fsl output
@@ -398,7 +403,7 @@ for subID in ${search}; do
     if [[ ! -f ${fixed} ]]; then
       echo "Missing fixed image"
     elif [[ ! -f ${moving} ]]; then
-      echo "Missing moving image"
+      echo "Could not find moving image in \"${input_dir}\""
     fi
 
   fi
