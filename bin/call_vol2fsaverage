@@ -67,6 +67,8 @@ set_tr=0
 INT="--lin"
 VERB=0
 proj_frac=0.5
+do_fsaverage=0
+exec_spaces=("fsnative" "fsaverage")
 # Check for subject & session flags
 while getopts :-:r:o:p:t:i:f:x: argument
 do
@@ -109,7 +111,11 @@ do
         verbose)
           VERBOSE="--verbose"
           VERB=1
-          ;;                  
+          ;; 
+        no_fsaverage)
+          do_fsaverage=0
+          exec_spaces=("fsnative")
+          ;;                            
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}, did you mean \"--lines\"?"
@@ -137,6 +143,10 @@ done
 SUBJECT=${@:$OPTIND:1}
 INPUT=${@:$OPTIND+1:1}
 SUFFIX=${@:$OPTIND+2:1}
+
+if [[ ! -z ${SUFFIX} ]]; then
+  SUFFIX="_${SUFFIX}"
+fi
 
 if [[ -z ${reg_file} ]]; then
   REG="--regheader ${SUBJECT}"
@@ -180,7 +190,7 @@ fi
 if [[ ! -z ${trafos} ]]; then
   fixed=${SUBJECTS_DIR}/${SUBJECT}/mri/orig.mgz
   moving=${INPUT}
-  out=${fsnative_dir}/${PREF}_space-fsnative_${SUFFIX}.nii.gz
+  out=${fsnative_dir}/${PREF}_space-fsnative.nii.gz
 
   cmd="call_antsapplytransforms ${VERBOSE} ${INT} ${invert} ${fixed} ${moving} ${out} ${trafos}"
   if [[ ${VERB} -eq 1 ]]; then
@@ -214,7 +224,7 @@ for ii in "lh" "rh"; do
   fi
 
   # project volume to subject-specific space
-  fsnative=${fsnative_dir}/${PREF}_space-fsnative_${hemi}_${SUFFIX}.gii
+  fsnative=${fsnative_dir}/${PREF}_space-fsnative_${hemi}${SUFFIX}.gii
   mri_vol2surf --src ${INPUT} --out ${fsnative} ${REG} --hemi ${ii} --projfrac ${proj_frac}
 
   if [[ $? -ne 0 ]]; then
@@ -222,29 +232,31 @@ for ii in "lh" "rh"; do
     exit 1
   fi
 
-  # project the output to fsaverage
-  fsaverage=${fsaverage_dir}/${PREF}_space-fsaverage_${hemi}_${SUFFIX}.gii
-  if [[ ! -d ${fsaverage_dir} ]]; then
-    mkdir -p ${fsaverage_dir}
-  fi
+  if [[ ${do_fsaverage} -eq 1 ]]; then
+    # project the output to fsaverage
+    fsaverage=${fsaverage_dir}/${PREF}_space-fsaverage_${hemi}${SUFFIX}.gii
+    if [[ ! -d ${fsaverage_dir} ]]; then
+      mkdir -p ${fsaverage_dir}
+    fi
 
-  mri_surf2surf \
-    --srcsubject ${SUBJECT} \
-    --trgsubject fsaverage \
-    --hemi ${ii} \
-    --sval ${fsnative} \
-    --tval ${fsaverage}
+    mri_surf2surf \
+      --srcsubject ${SUBJECT} \
+      --trgsubject fsaverage \
+      --hemi ${ii} \
+      --sval ${fsnative} \
+      --tval ${fsaverage}
 
-  if [[ $? -ne 0 ]]; then
-    echo "ERROR in `basename ${0}`: mri_surf2surf exited with non-zero status"
-    exit 1
+    if [[ $? -ne 0 ]]; then
+      echo "ERROR in `basename ${0}`: mri_surf2surf exited with non-zero status"
+      exit 1
+    fi
   fi
 
 done
 
 echo "Stacking gifti's into numpy-array"
 # stacking giftis into numpy array so we can load them in with Pycortex
-for space in 'fsnative' 'fsaverage'; do
+for space in ${exec_spaces[@]}; do
 
   if [ ${space} == "fsaverage" ]; then
     output_path=${fsaverage_dir}
@@ -252,9 +264,9 @@ for space in 'fsnative' 'fsaverage'; do
     output_path=${fsnative_dir}
   fi
 
-  lh=${output_path}/${PREF}_space-${space}_hemi-L_${SUFFIX}.gii
-  rh=${output_path}/${PREF}_space-${space}_hemi-R_${SUFFIX}.gii
-  both_hemis=${output_path}/${PREF}_space-${space}_hemi-LR_${SUFFIX}.npy
+  lh=${output_path}/${PREF}_space-${space}_hemi-L${SUFFIX}.gii
+  rh=${output_path}/${PREF}_space-${space}_hemi-R${SUFFIX}.gii
+  both_hemis=${output_path}/${PREF}_space-${space}_hemi-LR${SUFFIX}.npy
   call_stackgifti ${lh} ${rh} ${both_hemis}
 
   if [[ $? -ne 0 ]]; then
