@@ -186,29 +186,61 @@ class InitFitter():
         self.orig_onsets = self.onsets.copy()
         
         # put in dataframe
+        self.old_index = []
         if isinstance(self.onsets, np.ndarray):
-            self.onsets = pd.DataFrame(self.onsets, columns=["onsets"])
+            self.onsets = pd.DataFrame(self.onsets)
         else:
             try:
-                self.onsets = self.onsets.reset_index()
+                # check old index
+                try:
+                    self.old_index = list(self.onsets.index.names)
+                except:
+                    pass
+                self.onsets.reset_index(inplace=True)
             except:
                 pass
             
         # format dataframe with subject, run, and t
+        try:
+            self.task_ids = utils.get_unique_ids(self.onsets, id="task")
+            self.final_index = [
+                "subject",
+                "task",
+                "run",
+                "event_type"
+            ]
+
+            self.final_elements = [1,None,1,"stim"]
+
+        except:
+            self.task_ids = None
+            self.final_index = [
+                "subject",
+                "run",
+                "event_type"
+            ]
+            self.final_elements = [1,1,"stim"]
+            
         self.onset_index = [
             "subject",
             "run",
             "event_type"
         ]
 
-        for key,val in zip(self.onset_index, [1,1,"stim"]):
+        for key,val in zip(self.final_index, self.final_elements):
             if not key in list(self.onsets.columns):
                 self.onsets[key] = val
-            else:
-                if key == "run":
-                    self.onsets["run"] = self.onsets["run"].astype(int)
 
-        self.onsets.set_index(self.onset_index, inplace=True)   
+        self.drop_cols = []
+        if len(self.old_index)>0:
+            for ix in self.old_index:
+                if ix not in self.final_index:
+                    self.drop_cols.append(ix)
+
+        if len(self.drop_cols)>0:
+            self.onsets = self.onsets.drop(self.drop_cols, axis=1)
+
+        self.onsets.set_index(self.final_index, inplace=True)   
     
     def prepare_data(self):
         
@@ -1115,9 +1147,8 @@ class NideconvFitter(InitFitter):
         utils.verbose(f"Selected '{self.basis_sets}'-basis sets (with {self.n_regressors} regressors)", self.verbose)
 
         # define events
-        self.cond = self.used_onsets.reset_index().event_type.unique()
-        self.run_ids = self.used_onsets.reset_index().run.unique()
-        self.cond = np.array(sorted([event for event in self.cond if event != 'nan']))
+        self.cond = utils.get_unique_ids(self.used_onsets , id="event_type")
+        self.run_ids = utils.get_unique_ids(self.used_onsets, id="run")
 
         # add events to model
         if self.fit_type.lower() == "ols":
@@ -3256,6 +3287,33 @@ class Epoch(InitFitter):
         self.epoch_input()
 
     @staticmethod
+    def correct_baseline(
+        d_, 
+        bsl=20, 
+        verbose=False
+        ):
+
+        if isinstance(d_, pd.DataFrame):
+            d_vals = d_.values
+            return_df = True
+        else:
+            d_vals = d_.copy()
+            return_df = False
+
+        m_ = d_vals[:bsl].mean()
+        if m_ < 0:
+            utils.verbose(f"Shifting profile UP with {round(abs(m_),2)}s", verbose)
+            d_shift = d_vals+abs(m_)
+        else:
+            utils.verbose(f"Shifting profile DOWN with {round(m_,2)}s", verbose)
+            d_shift = d_vals-m_
+
+        if return_df:
+            return pd.DataFrame(d_shift, index=d_.index)
+        else:
+            return d_shift
+
+    @staticmethod
     def _get_epoch_timepoints(interval,TR):
         total_length = interval[1] - interval[0]
         timepoints = np.linspace(
@@ -3417,7 +3475,11 @@ class Epoch(InitFitter):
     
     def epoch_input(self):
 
+        # run Epoching
         self.df_epoch = self.epoch_subjects(
             self.func,
             self.onsets
         )
+
+        # copy column names
+        self.df_epoch.columns = self.func.columns
