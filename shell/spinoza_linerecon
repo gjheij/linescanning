@@ -200,8 +200,16 @@ for subID in ${search}; do
         task=`task_id ${bold}`
 
         # get task from corresponding PAR-file, which is more accurate than gtpackngo's export names
-        par_file=`find $(dirname ${bold}) -type f -name "*run-${run}*" -and -name "*task-${task}*" -and -name "*bold*" -and -iname "*.par" 2>/dev/null`
+        par_file=(`find $(dirname ${bold}) -type f -name "*run-${run}*" -and -name "*task-${task}*" -and -name "*bold*" -and -iname "*.par" -and -not -iname "*3DEPI*" 2>/dev/null`)
         if [[ -f ${par_file} ]]; then
+          if [[ ${#par_file[@]} -gt 1 ]]; then
+            echo "Found multiple instances for a file with \"run-${run}\", \"task-${task}\", and \"*bold.par\" in \"$(dirname ${bold})\":"
+            for i in ${par_file[@]}; do echo " ${i}"; done
+            exit 1
+          else
+            par_file=${par_file[0]}
+          fi
+          
           fileparts=`read_par ${par_file} "Protocol name"`
           task=`task_id ${fileparts}`
 
