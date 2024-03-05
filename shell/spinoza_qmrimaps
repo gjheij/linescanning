@@ -61,6 +61,7 @@ SKIP_BG="--mask"
 PARS_FLAG=""
 FORCE_EXEC=0
 SGE=0
+n_cpus=1
 while getopts :-:oufs:n:p:q:j: argument
 do
   case ${argument} in
@@ -173,8 +174,10 @@ for subID in ${search}; do
     echo "${sub_name}: could not find input directory \"${input_dir}\""
     continue
   else
-    echo
-    echo "**************************************** Processing ${sub_name} ***************************************"
+    if [[ ${SGE} -eq 0 ]]; then
+      echo
+      echo "**************************************** Processing ${sub_name} ***************************************"
+    fi
   fi
   
   # loop through available datatype (see spinoza_setup)
