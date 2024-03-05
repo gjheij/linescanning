@@ -469,7 +469,7 @@ def match_lists_on(ref_list, search_list, matcher="run"):
 
     return new_list
 
-def get_unique_ids(df, id=None, sort=True, as_int=False):
+def get_unique_ids(df, id=None, sort=True, as_int=False, drop_na=True):
     try:
         df = df.reset_index()
     except:
@@ -486,9 +486,12 @@ def get_unique_ids(df, id=None, sort=True, as_int=False):
         else:
             ret_list = list(np.unique(a))
 
+        # https://stackoverflow.com/a/50297200
+        if drop_na:
+            ret_list = [x for x in ret_list if x == x]
+
         if as_int:
             ret_list = [int(i) for i in ret_list]
-
         return ret_list
         
     except Exception as e:
@@ -1793,3 +1796,12 @@ def SDT(hits, misses, fas, crs):
     out['fa'] = fa_rate
     
     return(out)
+
+def update_kwargs(kwargs, el, val, force=False):
+    if not force:
+        if not el in list(kwargs.keys()):
+            kwargs[el] = val
+    else:
+        kwargs[el] = val
+        
+    return kwargs
