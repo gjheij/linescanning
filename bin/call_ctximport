@@ -18,6 +18,7 @@ ducial surfaces are stored in <subject>/surf/?h.fiducial!
 Args:
     -s (--subj=)        subject name (e.g., sub-xxx)
     -f (--fsdir=)       path to freesurfer dir (e.g., derivatives/freesurfer)
+    -c (--cxdir=)       pycortex's filestore path (default = DIR_DATA_DERIV/pycortex) 
     -o                  overwrite if directory already exists
 
 Example:
@@ -28,10 +29,11 @@ Example:
 
     subject = None
     fs_dir  = None
+    ctx_dir = os.environ.get("CTX")
     overwrite = False
 
     try:
-        opts = getopt.getopt(argv,"ohs:f:",["help=", "subj=", "fsdir="])[0]
+        opts = getopt.getopt(argv,"ohs:f:c:",["help=", "subj=", "fsdir=","cxdir="])[0]
     except getopt.GetoptError:
         print(main.__doc__)
         sys.exit(2)
@@ -44,6 +46,8 @@ Example:
             subject = arg
         elif opt in ("-f", "--fsdir"):
             fs_dir = arg
+        elif opt in ("-c", "--cxdir"):
+            ctx_dir = arg            
         elif opt in ("-o"):
             overwrite = True
 
@@ -52,23 +56,27 @@ Example:
         print(main.__doc__)
         sys.exit()
 
-    if not fs_dir:
-        try:
-            fs_dir = os.environ['SUBJECTS_DIR']
-        except:
-            raise ValueError("SUBJECTS_DIR is empty and no other FreeSurfer-directory is specified")
+    if not isinstance(fs_dir, str):
+        fs_dir = os.environ.get('SUBJECTS_DIR')
 
-    ctx_dir = set_ctx_path(opt="update")
+    if isinstance(ctx_dir, str):
+        ctx_dir = set_ctx_path(p=ctx_dir, opt="update")
+    else:
+        ctx_dir = set_ctx_path(opt="show_fs")
+
+    print(f"Filestore: {ctx_dir}")
     if overwrite:
         if ose(opj(ctx_dir, subject)):
             os.system(f'rm -r {opj(ctx_dir, subject)}')
             
     if not ose(opj(ctx_dir, subject)):
         if ose(opj(fs_dir, subject)):
-            cortex.freesurfer.import_subj(fs_subject=subject,
-                                         cx_subject=subject,
-                                         freesurfer_subject_dir=fs_dir,
-                                         whitematter_surf='smoothwm')
+            cortex.freesurfer.import_subj(
+                fs_subject=subject,
+                cx_subject=subject,
+                freesurfer_subject_dir=fs_dir,
+                whitematter_surf='smoothwm'
+            )
         else:
             raise ValueError(f'Could not find {subject} in {fs_dir}')
     else:
