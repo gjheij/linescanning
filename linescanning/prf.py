@@ -2209,9 +2209,9 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
 
         Parameters
         ----------
-        params_file: str, pandas.DataFrame, numpy.ndarray
-            Input to load in. You'll get the most out of it when you use a `pkl`-file created with :class:`linescanning.prf.pRFmodelFitting`, as you'll have access to the predictions, timecourses, parameters, and settings. If you do not have this, you can also enter a `numpy.ndarray` or `pandas.DataFrame`. The later is assumed to be a result from :class:`linescanning.prf.SizeResponse`, in that it's a *Divisive-Normalization* model result, with the following columns: `['x','y','prf_size','A','bold_bsl','B','C','surr_size','D','r2']` and indexed by `hemi` (`L`/`R`).
-        model: str, optional
+        params_file: str, dict, pandas.DataFrame, numpy.ndarray
+            Input to load in. You'll get the most out of it when you use a `pkl`-file created with :class:`linescanning.prf.pRFmodelFitting`, as you'll have access to the predictions, timecourses, parameters, and settings. If you do not have this, you can also enter a `numpy.ndarray` or `pandas.DataFrame`. The later is assumed to be a result from :class:`linescanning.prf.SizeResponse`, in that it's a *Divisive-Normalization* model result, with the following columns: `['x','y','prf_size','A','bold_bsl','B','C','surr_size','D','r2']` and indexed by `hemi` (`L`/`R`). Can also be a dictionary collecting filenames as values, and model names (e.g., 'gauss','norm') as keys. 
+        model: str, list optional
             Model from which the pRF-estimates came from, by default 'gauss'
         stage: str, optional
             Stage from which the pRF-estimates came from, by default 'iter'
@@ -2243,69 +2243,87 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         Also see https://linescanning.readthedocs.io/en/latest/examples/prfmodelfitter.html
         """
 
-        if isinstance(params_file, str):
-            if params_file.endswith('npy'):
-                params = np.load(params_file)
-            elif params_file.endswith('pkl'):
-                with open(params_file, 'rb') as input:
-                    data = pickle.load(input)
-                    
-                params = data['pars']
-                for el in ["predictions","hrf"]:
-                    if el in list(data.keys()):
-                        setattr(self, f'{model}_{stage}_predictions', data['predictions'])
-            
-                if not skip_settings:
-                    utils.verbose(f"Reading settings from '{params_file}' (safest option; overwrites other settings)", self.verbose)
-                    self.settings = data['settings']
-
-                    # print important settings
-                    utils.verbose("\n---------------------------------------------------------------------------------------------------", self.verbose)
-                    utils.verbose("Check these important updated settings!", self.verbose)
-                    utils.verbose(f" Screen distance: {self.settings['screen_distance_cm']}cm", self.verbose)
-                    utils.verbose(f" Screen size: {self.settings['screen_size_cm']}cm", self.verbose)
-                    utils.verbose(f" TR: {self.settings['TR']}s", self.verbose)
-                    utils.verbose("---------------------------------------------------------------------------------------------------\n", self.verbose)
-
-            # try to read model- from the filename
-            if not isinstance(model, str):
-                try:
-                    comps = utils.split_bids_components(params_file)
-                except:
-                    comps = []
-                
-                if "model" in comps:
-                    model = comps["model"]
-
-        elif isinstance(params_file, np.ndarray):
-            params = params_file.copy()
-        elif isinstance(params_file, list):
-            params = np.array(params_file)
-        elif isinstance(params_file, pd.DataFrame):
-            if hemi:
-                # got normalization parameter file
-                params = np.array((
-                    params_file['x'][hemi],
-                    params_file['y'][hemi],
-                    params_file['prf_size'][hemi],
-                    params_file['A'][hemi],
-                    params_file['bold_bsl'][hemi],
-                    params_file['C'][hemi],
-                    params_file['surr_size'][hemi],
-                    params_file['B'][hemi],
-                    params_file['D'][hemi],
-                    params_file['r2'][hemi]))
+        if not isinstance(params_file, list):
+            if isinstance(params_file, (str, np.ndarray, pd.DataFrame)):
+                params_file = [params_file]
+            elif isinstance(params_file, dict):
+                model = list(params_file.keys())
+                params_file = [params_file[i] for i in model]
             else:
-                params = Parameters(params_file, model=model).to_array()
+                raise TypeError(f"Cannot deal with {params_file} of type {type(params_file)}")
+        
+        for ix,par_file in enumerate(params_file):
+            
+            mm = model
+            if isinstance(par_file, str):
 
-        else:
-            raise ValueError(f"Unrecognized input type for '{params_file}' ({type(params_file)})")
+                # try to read model- from the filename
+                if not isinstance(model, (list,str)):
+                    try:
+                        comps = utils.split_bids_components(par_file)
+                    except:
+                        comps = []
+                    
+                    if "model" in comps:
+                        mm = comps["model"]
+                else:
+                    if isinstance(model, list):
+                        mm = model[ix]
+                    else:
+                        mm = model
 
-        if return_pars:
-            return params
-        else:
-            utils.verbose(f"Inserting parameters from {type(params_file)} as '{model}_{stage}' in {self}", self.verbose)
-            setattr(self, f'{model}_{stage}', params)
+                if par_file.endswith('npy'):
+                    params = np.load(par_file)
+                elif par_file.endswith('pkl'):
+                    with open(par_file, 'rb') as input:
+                        data = pickle.load(input)
+                        
+                    params = data['pars']
+                    for el in ["predictions","hrf"]:
+                        if el in list(data.keys()):
+                            setattr(self, f'{mm}_{stage}_predictions', data['predictions'])
+                
+                    if not skip_settings:
+                        utils.verbose(f"Reading settings from '{par_file}' (safest option; overwrites other settings)", self.verbose)
+                        self.settings = data['settings']
+
+                        # print important settings
+                        utils.verbose("\n---------------------------------------------------------------------------------------------------", self.verbose)
+                        utils.verbose("Check these important updated settings!", self.verbose)
+                        utils.verbose(f" Screen distance: {self.settings['screen_distance_cm']}cm", self.verbose)
+                        utils.verbose(f" Screen size: {self.settings['screen_size_cm']}cm", self.verbose)
+                        utils.verbose(f" TR: {self.settings['TR']}s", self.verbose)
+                        utils.verbose("---------------------------------------------------------------------------------------------------\n", self.verbose)
+
+            elif isinstance(par_file, np.ndarray):
+                params = par_file.copy()
+            elif isinstance(par_file, list):
+                params = np.array(par_file)
+            elif isinstance(par_file, pd.DataFrame):
+                if hemi:
+                    # got normalization parameter file
+                    params = np.array((
+                        par_file['x'][hemi],
+                        par_file['y'][hemi],
+                        par_file['prf_size'][hemi],
+                        par_file['A'][hemi],
+                        par_file['bold_bsl'][hemi],
+                        par_file['C'][hemi],
+                        par_file['surr_size'][hemi],
+                        par_file['B'][hemi],
+                        par_file['D'][hemi],
+                        par_file['r2'][hemi]))
+                else:
+                    params = Parameters(par_file, model=mm).to_array()
+
+            else:
+                raise ValueError(f"Unrecognized input type for '{par_file}' ({type(par_file)})")
+
+            if return_pars:
+                return params
+            else:
+                utils.verbose(f"Inserting parameters from {type(par_file)} as '{mm}_{stage}' in {self}", self.verbose)
+                setattr(self, f'{mm}_{stage}', params)
 
     def make_predictions(self, vox_nr=None, model='gauss', stage='iter'):
         
@@ -3068,6 +3086,7 @@ class SizeResponse():
         t="max", 
         dt="fill",
         sizes=None,
+        max_size=5,
         return_ampl=False):
         """find_stim_sizes
 
@@ -3139,8 +3158,9 @@ class SizeResponse():
             else:
                 ffunc = np.amin
 
-            extr_val = ffunc(curve1)
-            size_index = np.where(curve1 == extr_val)[0][0]
+            max_idx = utils.find_nearest(sizes, max_size)[0]
+            extr_val = ffunc(curve1[:max_idx])
+            size_index = np.where(curve1[:max_idx]==extr_val)[0][0]
             
             if not isinstance(sizes, (list,np.ndarray)):
                 sizes = getattr(self, f"stims_{dt}_sizes")
