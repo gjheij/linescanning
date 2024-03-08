@@ -131,7 +131,7 @@ for subID in ${search}; do
   # fetch the input based on input folder
   declare -a INPUTS=()
   for r in ${EXRTACT[@]}; do
-    file=`find "${p}" -type f \( -name "*acq-${DATA^^}*" -and -iname "*-${r}*" -and -not -name "*manual*" -and -name "*.nii.gz" \) 2>/dev/null`
+    file=`find -L "${p}" -type f \( -name "*acq-${DATA^^}*" -and -iname "*-${r}*" -and -not -name "*manual*" -and -name "*.nii.gz" \) 2>/dev/null`
     if [[ -f ${file} ]]; then
       INPUTS+=(${file})
     else
@@ -195,7 +195,7 @@ for subID in ${search}; do
 
         declare -a NIGH_OUT=(cortex gwb cgb avg thick pwm pgm pcsf)
         for f in ${NIGH_OUT[@]}; do
-          out=`find "$(dirname ${output})" -type f \( -name "*acq-${DATA^^}*" -and -name "*${f}*" \) 2>/dev/null`
+          out=`find -L "$(dirname ${output})" -type f \( -name "*acq-${DATA^^}*" -and -name "*${f}*" \) 2>/dev/null`
 
           if [[ ! -f ${output_root}-cruise_${f}.nii.gz ]]; then
             if [[ ! -z ${out} ]]; then
@@ -229,7 +229,7 @@ for subID in ${search}; do
         mv ${output_root}-p2l_surf.nii.gz ${cgb} 2>/dev/null
 
         # copy cruise image from manual_masks to cruise directory
-        file=`find "${p}" -type f \( -name "*acq-${DATA^^}*" -and -name "*cruise_cortex.nii.gz" \) 2>/dev/null`
+        file=`find -L "${p}" -type f \( -name "*acq-${DATA^^}*" -and -name "*cruise_cortex.nii.gz" \) 2>/dev/null`
         cp ${file} ${output} 2>/dev/null
       else
         echo "ERROR in `basename ${0}`: Unknown method \"${COMBINE_SEGMENTATIONS}\". Specify \"weighted\" or \"hard\" as COMBINE_SEGMENTATIONS in ${DIR_SCRIPTS}/shell/spinoza_setup"
