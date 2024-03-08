@@ -243,6 +243,7 @@ for subID in ${search}; do
     INTRO="Overwrite mode disabled"
   fi
 
+  executed_nighres=0
   if [[ ${COMB_ONLY} -eq 0 ]]; then
     if [[ ! -f ${output} ]]; then
 
@@ -268,6 +269,8 @@ for subID in ${search}; do
           continue
         fi
 
+        executed_nighres=1
+
       else
         echo "Skipping nighres. Found something that looks like output"
       fi
@@ -279,13 +282,13 @@ for subID in ${search}; do
     fi
   fi
 
-  if [[ ! -f ${gm_prob} ]]; then
+  if [[ ! -f ${gm_prob} || ${COMB_ONLY} -eq 1 ]]; then
 
     if [[ ${mask_dir} == *"nighres"* ]]; then
       :
     else
 
-      if [[ ${COMB_ONLY} -eq 1 ]]; then
+      if [[ ${executed_nighres} -eq 0 ]]; then
         echo
         echo "**************************************** Processing ${sub_name} ***************************************"
       fi
