@@ -167,38 +167,48 @@ Notes:
     print("Combining segmentations")
     print(" wm..")
     if manual['wm'] != None:
-        wm = image.math_img('fmriprep + cat + freesurfer + manual*5',
-                            cat=cat['wm'],
-                            fmriprep=fmriprep['wm'],
-                            freesurfer=freesurfer['wm'],
-                            manual=image.resample_to_img(manual['wm'], nighres['wm'], interpolation='nearest'))
+        wm = image.math_img(
+            'fmriprep + cat + freesurfer + manual*5',
+            cat=cat['wm'],
+            fmriprep=fmriprep['wm'],
+            freesurfer=freesurfer['wm'],
+            manual=image.resample_to_img(manual['wm'], nighres['wm'], interpolation='nearest')
+        )
     else:
-        wm = image.math_img('fmriprep + cat + freesurfer',
-                            cat=cat['wm'],
-                            fmriprep=fmriprep['wm'],
-                            freesurfer=freesurfer['wm'])
+        wm = image.math_img(
+            'fmriprep + cat + freesurfer',
+            cat=cat['wm'],
+            fmriprep=fmriprep['wm'],
+            freesurfer=freesurfer['wm']
+        )
 
     print(" gm..")
     if manual['gm'] != None:
-        gm = image.math_img('fmriprep + cat*3 + freesurfer + manual*5',
-                            fmriprep=fmriprep['gm'],
-                            cat=cat['gm'],
-                            freesurfer=freesurfer['gm'],
-                            manual=image.resample_to_img(manual['gm'], nighres['gm']))
+        gm = image.math_img(
+            'fmriprep + cat*3 + freesurfer + manual*5',
+            fmriprep=fmriprep['gm'],
+            cat=cat['gm'],
+            freesurfer=freesurfer['gm'],
+            manual=image.resample_to_img(manual['gm'], nighres['gm'])
+        )
     else:
-        gm = image.math_img('fmriprep + cat + freesurfer',
-                            fmriprep=fmriprep['gm'],
-                            cat=cat['gm'],
-                            freesurfer=freesurfer['gm'])
+        gm = image.math_img(
+            'fmriprep + cat + freesurfer',
+            fmriprep=fmriprep['gm'],
+            cat=cat['gm'],
+            freesurfer=freesurfer['gm']
+        )
 
     print(" csf..")
     csf = image.math_img('3 * cat', cat=cat['csf'])
 
     print(" total..")
-    total_prob = image.math_img('wm + gm + csf',
-                                wm=wm,
-                                gm=gm,
-                                csf=csf)
+    total_prob = image.math_img(
+        'wm + gm + csf',
+        wm=wm,
+        gm=gm,
+        csf=csf
+    )
 
     print("Calculate new probabilities and save files")
     wm  = image.math_img('wm / total_prob', wm=wm, total_prob=total_prob)
@@ -222,8 +232,9 @@ Notes:
     os.system(f"call_setmasktozero -i {gm_file} -m {freesurfer['wm']}")
     
     # get rid of outside stuff
-    print("Set 'outside' mask to zero")
-    os.system(f"call_setmasktozero -i {gm_file} -m {manual['outside']}")
+    if isinstance(manual['outside'], str):
+        print("Set 'outside' mask to zero")
+        os.system(f"call_setmasktozero -i {gm_file} -m {manual['outside']}")
 
     # make inside mask
     print("Create 'inside' mask")

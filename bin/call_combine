@@ -191,13 +191,18 @@ Notes:
     csf.to_filename(csf_file); print(" wrote new CSF-probability map")
 
     # exclude midbrain, sinus, and CSF-stuff from GM-segmentation
-    os.system(f"call_setmasktozero -i {gm_file} -m {freesurfer['wm']}")
-    os.system(f"call_setmasktozero -i {gm_file} -m {manual['outside']}")
-    os.system(f"call_setmasktozero -i {gm_file} -m {get_file_from_substring('p3', cat_prob)}")
-
+    for mask in [freesurfer['wm'],manual['outside',get_file_from_substring('p3', cat_prob)]]:
+        try:
+            os.system(f"call_setmasktozero -i {gm_file} -m {mask}")
+        except:
+            pass
+        
     # exclude midbrain from CSF-segmentation
-    os.system(f"call_setmasktozero -i {csf_file} -m {freesurfer['wm']}")
-    os.system(f"call_setmasktozero -i {csf_file} -m {gm_file}")
+    for mask in [freesurfer['wm'],gm_file]:
+        try:
+            os.system(f"call_setmasktozero -i {csf_file} -m {mask}")
+        except:
+            pass        
 
     # get rid of cerebellum
     os.system(f"call_setmasktozero -i {gm_file} -m {csf_file}")        
