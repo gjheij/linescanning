@@ -23,8 +23,10 @@ Arguments:
   -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
   -n <session>        session ID (e.g., 1, 2, or n)
   -o                  overwrite existing files
-  --full              do full processing with CAT12 including iterative SANLM filtering and bias
-                      correction. Default is just tissue segmentation.  
+  --full              do full processing with CAT12 including iterative SANLM filtering and bias 
+                      correction. Default is just tissue segmentation. 
+  --fs                use rawavg.mgz from FreeSurfer; overwrites the specified input
+                      directory 
   <input directory>   directory for inputs
   <skullstrip>        directory for skull-stripped outputs
   <mask>              directory for masks
@@ -44,6 +46,7 @@ USAGE
 # Check for subject & session flags
 OW=0
 mode=""
+use_fs=0
 while getopts :-:os:n:m: argument
 do
   case ${argument} in
@@ -52,6 +55,9 @@ do
         full)
           mode="--full"
           ;;
+        fs)
+          use_fs=1
+          ;;          
     *)
       if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
         echo "Unknown option --${OPTARG}. Did you mean \"--full\"?"
@@ -132,8 +138,10 @@ for subID in ${search}; do
 
   # check if input directory exists
   if [[ ! -d ${INPUTDIR} ]]; then
-    echo "ERROR in `basename ${0}`: ${INPUTDIR} does not exist"
-    exit 1
+    if [[ ${use_fs} -eq 0 ]]; then
+      echo "ERROR in `basename ${0}`: ${INPUTDIR} does not exist"
+      exit 1
+    fi
   fi
   
   if [ ! -d ${MASKS} ]; then
@@ -293,7 +301,6 @@ for subID in ${search}; do
 
   elif [[ ${SOFTWARE,,} == "cat12" ]]; then
 
-    input=`find "${INPUTDIR}" -type f \( -name "*T1w*" -and -name "*${DATA^^}*" -and -name "*.nii.gz" \) 2>/dev/null`
     brainmask=${MASKS}/${base}_acq-${DATA^^}_desc-cat_mask.nii.gz
     spm=${MASKS}/${base}_acq-${DATA^^}_desc-spm_mask.nii.gz
     corrected_t1w=${BET}/${base}_acq-${DATA^^}_T1w.nii.gz
@@ -308,7 +315,6 @@ for subID in ${search}; do
       fi
     fi
     
-    
     if [[ ! -f ${corrected_t1w} ]]; then
 
       echo
@@ -319,6 +325,30 @@ for subID in ${search}; do
         mkdir -p $(dirname ${corrected_t1w})
       fi
 
+      # decide on input; convert FreeSurfer file if necessary
+      if [[ ${use_fs} -eq 0 ]]; then
+        input=`find "${INPUTDIR}" -type f \( -name "*T1w*" -and -name "*${DATA^^}*" -and -name "*.nii.gz" \) 2>/dev/null`
+      else
+        fs_anat=${SUBJECTS_DIR}/${sub_name}/mri/rawavg.mgz
+        fs_nii=${SUBJECTS_DIR}/${sub_name}/mri/rawavg.nii.gz
+        if [[ ! -f ${fs_nii} ]]; then
+          if [[ -f ${fs_anat} ]]; then
+            call_mriconvert ${fs_anat}
+          fi
+        else
+          echo "ERROR in `basename ${0}`: Could not find FreeSurfer anatomy \"${fs_anat}\""
+          exit 1
+        fi
+
+        # double check
+        if [[ -f ${fs_nii} ]]; then
+          input=${fs_nii}
+        else
+          echo "ERROR in `basename ${0}`: \"${fs_nii}\" was not created.."
+          exit 1
+        fi
+      fi
+    
       if [[ ! -z ${input} ]]; then
 
         mask_img=`find ${INPUTDIR} -type f -name "mask*" -print -quit 2>/dev/null`
@@ -335,12 +365,9 @@ for subID in ${search}; do
           fi
 
           if [[ ! -f ${brainmask} ]]; then
-
-            echo "CAT12 was selected, using following parameters:"
-            echo " -input  = \"${input}\""
-            echo " -output = \"${brainmask}\""
-            
-            call_cat12 ${mode} -s ${SPM_PATH} ${input} ${BET}
+            cmd="""call_cat12 ${mode} -s ${SPM_PATH} ${input} ${BET}"""
+            echo ${cmd}
+            ${cmd}
 
             if [[ $? != 0 ]]; then
               echo
@@ -477,7 +504,7 @@ for subID in ${search}; do
     fi
 
     # still copy SPM-mask even if heavy CAT12-processing was turned off
-    spm_mask=`find $(dirname ${input}) -type f -name "*spm_mask*" -and -name "*.nii.gz" 2>/dev/null`
+    spm_mask=`find ${INPUTDIR} -type f -name "*spm_mask*" -and -name "*.nii.gz" 2>/dev/null`
     IFS=$'\n' spm_sorted=($(sort <<<"${spm_mask[*]}"))
     unset IFS 
     count=0; for ii in ${spm_sorted[@]}; do ((count++)); done
