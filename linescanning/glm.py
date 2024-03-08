@@ -267,7 +267,9 @@ class GenericGLM():
         plot_full_only=False,
         plot_full=False,
         add_intercept=True,
-        save_as=None):
+        save_as=None,
+        **kwargs
+        ):
 
         self.nilearn_method = nilearn_method
         self.xkcd = xkcd
@@ -352,7 +354,9 @@ class GenericGLM():
                 plot_full_only=self.plot_full_only,
                 plot_full=self.plot_full,
                 add_intercept=add_intercept,
-                save_as=self.save_as)
+                save_as=self.save_as,
+                **kwargs
+            )
 
     def plot_contrast_matrix(self, save_as=None):
         if self.nilearn_method:
@@ -495,8 +499,7 @@ def make_stimulus_vector(
 
     # check conditions we have
     try:
-        names_cond = onset_df['event_type'].unique()
-        names_cond.sort()
+        names_cond = utils.get_unique_ids(onset_df, id="event_type")
     except:
         raise ValueError('Could not extract condition names; are you sure you formatted the dataframe correctly?')
 
@@ -910,6 +913,8 @@ def fit_first_level(
     plot_full_only=False,
     plot_full=False,
     add_intercept=True,
+    axs=None,
+    figsize=(16,4),
     **kwargs):
 
     """fit_first_level
@@ -1053,6 +1058,9 @@ def fit_first_level(
 
     if make_figure:
 
+        if not isinstance(axs, mpl.axes._axes.Axes):
+            fig,axs = plt.subplots(figsize=figsize)
+
         # set defaults for actual datapoints
         markers = ['.']
         colors = ["#cccccc"]
@@ -1096,25 +1104,31 @@ def fit_first_level(
             linewidth.append(1)
             colors.append("k")
 
-        LazyPlot(
+        if not "title" in list(kwargs.keys()):
+            kwargs = utils.update_kwargs(
+                kwargs,
+                "title",
+                f"model fit vox {best_vox+1}/{data.shape[1]} (r2={round(r2[best_vox],4)})",
+            )
+
+        pl = LazyPlot(
             signals,
             y_label="Activity (a.u.)",
             x_label="volumes",
-            title=f"model fit vox {best_vox+1}/{data.shape[1]} (r2={round(r2[best_vox],4)})",
             labels=labels,
-            figsize=(20,5),
-            font_size=20,
-            xkcd=xkcd,
+            axs=axs,
             markers=markers,
             color=colors,
             line_width=linewidth,
             **kwargs)
 
-    return {'betas': betas_conv,
-            'x_conv': X_conv,
-            'tstats': tstat,
-            'r2': r2,
-            'copes': C}
+    return {
+        'betas': betas_conv,
+        'x_conv': X_conv,
+        'tstats': tstat,
+        'r2': r2,
+        'copes': C
+    }
 
 def design_variance(X, which_predictor=1):
     ''' Returns the design variance of a predictor (or contrast) in X.
