@@ -35,9 +35,10 @@ MAN_EPI=""                # spinoza_bestvertex
 EPI_FILE=""               # spinoza_bestvertex
 LS_SES=""                 # spinoza_bestvertex
 skip_prf_info=""          # spinoza_bestvertex
-PROC=""                   # spinoza_brainextraction
 SELECTION_FLAG=""         # spinoza_bestvertex
 OPEN_WITH_FLAG=""         # spinoza_bestvertex
+PROC=""                   # spinoza_brainextraction
+FS_FLAG=""                # spinoza_brainextraction
 pre_flag=""               # spinoza_denoising
 post_flag=""              # spinoza_denoising
 pyb_flag=""               # spinoza_denoising
@@ -96,7 +97,7 @@ GDH_FLAG=""               # spinoza_mgdm
 MAN_FLAG=""               # spinoza_masking
 REG_TYPE=""               # spinoza_registration
 FSL_FLAG=""               # spinoza_registration
-DRAW_SAG="itk"            # spinzoa_sagittalsinus
+DRAW_SAG=""               # spinzoa_sagittalsinus
 SES_TYPE=""               # spinoza_scanner2bids
 ADD_INV=""                # spinoza_scanner2bids
 pe_dir_flag=""            # spinoza_scanner2bids
@@ -119,7 +120,7 @@ t_specified=0             # keep track when t-flag is specified or --func is use
 
 # use long options in bash:
 # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options
-declare -a array=("--no_bbr" "--local" "--ups" "--biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv" "--no_fit" "--fmriprep" "--fprep" "--v1" "--v2" "--save_grid" "--debug" "--no_nordic" "--ow" "--no_bounds" "--no_tsnr" "--mag" "--no_highres" "--xopts-use" "--xopts-clean" "--xopts-overwrite" "--take-avg-tr" "--force_exec" "--no_t2" "--merge_ses" "--fsaverage" "--fsnative" "--ap" "--pa" "--lr" "--rl" "--no_lpi" "--anat_only" "--func_only" "--no_boldref" "--gauss" "--dog" "--css" "--norm" "--no_srf" "--srf_file" "--gallery" "--abc" "--abd" "--manual" "--ctx" "--func" "--help" "--ofsl" "--clean" "--fd" "--fetch_fsl" "--anat" "--no_epi" "--no_manual" "--aparc" "--phys" "--skip_bg" "--docker" "--rh" "--lh" "--identity" "--ident" "--dcm_fix" "--try" "--fetch_anat" "--fetch_func" "--post_only" "--pre_only" "--pyb_only" "--masks" "--mask" "--skip_prf_info" "--refit" "--separate_hrf" "--bold" "--cmd" "--skip_settings" "--mni_fsl" "--mni_2009")
+declare -a array=("--no_bbr" "--local" "--ups" "--biascorr" "--remove_wf" "--remove_surf_wf" "--sge" "--no_freeview" "--comb_only" "--grid" "--multi_design" "--hrf" "--rigid" "--syn" "--affine" "--lines" "--gdh" "--nighres" "--surface" "--warp_only" "--no_raw" "--verbose" "--zcore" "--full" "--no_clip" "--tc" "--bgfs" "--inv" "--no_fit" "--fmriprep" "--fprep" "--v1" "--v2" "--save_grid" "--debug" "--no_nordic" "--ow" "--no_bounds" "--no_tsnr" "--mag" "--no_highres" "--xopts-use" "--xopts-clean" "--xopts-overwrite" "--take-avg-tr" "--force_exec" "--no_t2" "--merge_ses" "--fsaverage" "--fsnative" "--ap" "--pa" "--lr" "--rl" "--no_lpi" "--anat_only" "--func_only" "--no_boldref" "--gauss" "--dog" "--css" "--norm" "--no_srf" "--srf_file" "--gallery" "--abc" "--abd" "--manual" "--ctx" "--func" "--help" "--ofsl" "--clean" "--fd" "--fetch_fsl" "--anat" "--no_epi" "--no_manual" "--aparc" "--phys" "--skip_bg" "--docker" "--rh" "--lh" "--identity" "--ident" "--dcm_fix" "--try" "--fetch_anat" "--fetch_func" "--post_only" "--pre_only" "--pyb_only" "--masks" "--mask" "--skip_prf_info" "--refit" "--separate_hrf" "--bold" "--cmd" "--skip_settings" "--mni_fsl" "--mni_2009" "--fs")
 
 # sort options array
 IFS=$'\n' opts=($(sort <<<"${array[*]}"))
@@ -455,7 +456,10 @@ do
           ;;    
         transpose)
           TRANS_FLAG="--transpose"
-          ;;                   
+          ;; 
+        fs)
+          FS_FLAG="--fs"
+          ;;                             
         dcm_fix)
           echo "This functionality is now default and therefore the flag is deprecated"
           exit 1
@@ -1389,7 +1393,16 @@ if [[ $? -eq 0 ]]; then
   # find anatomy directory hierarchically
   INPUT_DIR=`find_hierarchical_anatomy 2`
 
-  ${job} spinoza_sinusfrommni ${SUBJECT} ${SESSION} ${OW} ${INPUT_DIR} ${DIR_DATA_DERIV}/ants ${DIR_DATA_DERIV}/manual_masks
+  if [[ ! -z ${DRAW_SAG} ]]; then
+    DRAW_SAG="--${DRAW_SAG}"
+  fi
+  
+  ${job} spinoza_sinusfrommni \
+    ${SUBJECT} \
+    ${SESSION} \
+    ${OW} \
+    ${DRAW_SAG} \
+    ${INPUT_DIR} ${DIR_DATA_DERIV}/ants ${DIR_DATA_DERIV}/manual_masks
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in `basename ${0}`: spinoza_sinusfrommni exited with non-zero status"
@@ -1455,12 +1468,23 @@ if [[ $? -eq 0 ]]; then
 
   DO_STUFF="cat12"
   if [[ ${DO_STUFF} ==  "inv2" ]]; then
-    ${job} spinoza_brainextraction ${SUBJECT} ${SESSION} ${DIR_DATA_DERIV}/ants ${DIR_DATA_DERIV}/skullstripped ${DIR_DATA_DERIV}/manual_masks FSL
+  
+    ${job} spinoza_brainextraction \
+      ${SUBJECT} \
+      ${SESSION} \
+      ${DIR_DATA_DERIV}/ants ${DIR_DATA_DERIV}/skullstripped ${DIR_DATA_DERIV}/manual_masks FSL
+
   elif [[ ${DO_STUFF} == "cat12" ]]; then
     # find anatomy directory hierarchically
     INPUT_DIR=`find_hierarchical_anatomy 3`
 
-    ${job} spinoza_brainextraction ${SUBJECT} ${SESSION} ${OW} ${PROC} ${INPUT_DIR} ${DIR_DATA_DERIV}/cat12 ${DIR_DATA_DERIV}/manual_masks cat12
+    ${job} spinoza_brainextraction \
+      ${SUBJECT} \
+      ${SESSION} \
+      ${OW} \
+      ${PROC} \
+      ${FS_FLAG} \
+      ${INPUT_DIR} ${DIR_DATA_DERIV}/cat12 ${DIR_DATA_DERIV}/manual_masks cat12
   fi
 
   if [[ $? -ne 0 ]]; then
@@ -2014,7 +2038,14 @@ if [[ $? -eq 0 ]]; then
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] MGDM segmentation with nighres"
 
-  spinoza_mgdm ${SUBJECT} ${SESSION} ${OW} ${GDH_FLAG} ${DIR_DATA_DERIV}/skullstripped ${DIR_DATA_DERIV}/nighres ${DIR_DATA_DERIV}/manual_masks
+  spinoza_mgdm \
+    ${SUBJECT} \
+    ${SESSION} \
+    ${OW} \
+    ${GDH_FLAG} \
+    ${SGE} \
+    ${SGE_QUEUE} \
+    ${DIR_DATA_DERIV}/skullstripped ${DIR_DATA_DERIV}/nighres ${DIR_DATA_DERIV}/manual_masks
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR in master: spinoza_mgdm exited with non-zero status"
