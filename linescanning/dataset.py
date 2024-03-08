@@ -2549,7 +2549,7 @@ Functional data preprocessing
 
                 utils.verbose(f" DCT-high pass filter [removes low frequencies <{self.lb} Hz] to correct low-frequency drifts.", self.verbose)
 
-                self.hp_raw, self._cosine_drift = preproc.highpass_dct(self.data_raw, self.lb, TR=self.TR)
+                self.hp_raw, self._cosine_drift = preproc.highpass_dct(self.data_raw, lb=self.lb, TR=self.TR)
                 self.hp_raw_df = self.index_func(
                     self.hp_raw,
                     columns=self.vox_cols, 
@@ -2618,7 +2618,12 @@ Functional data preprocessing
 
                     if hasattr(self, "run_2_run"):
                         if isinstance(self.run_2_run, list):
-                            run_trafo =  utils.get_file_from_substring(f"to-run{self.run}", self.run_2_run)
+                            
+                            search_slc = [f"to-run{self.run}"]
+                            if isinstance(task, str):
+                                search_slc += [f"task-{task}"]
+
+                            run_trafo =  utils.get_file_from_substring(search_slc, self.run_2_run)
                             self.trafos = [self.ses1_2_ls, run_trafo]
                         else:
                             if self.run_2_run != None:
@@ -3003,7 +3008,14 @@ The data was then low-pass filtered using a Savitsky-Golay filter [removes high 
             fname = opj(self.lsprep_figures, f"{self.base_name}_desc-tissue_classification.{self.save_ext}")
             fig.savefig(fname, bbox_inches='tight', dpi=300)
 
-    def get_data(self, filter_strategy=None, index=False, dtype="psc", acompcor=False, ica=False):
+    def get_data(
+        self, 
+        filter_strategy=None,
+        index=False, 
+        dtype="psc",
+        acompcor=False, 
+        ica=False
+        ):
 
         if dtype not in ["psc","zscore","raw"]:
             raise ValueError(f"Requested data type '{dtype}' is not supported. Use 'psc', 'zscore', or 'raw'")
@@ -3230,8 +3242,8 @@ class Dataset(ParseFuncFile,SetAttributes):
             utils.verbose("No eyetracking-data was provided", True)
 
     def fetch_blinks(self, strip_index=False):
-        if hasattr(self, 'blink_events'):
-            return self.blink_events
+        if hasattr(self, 'df_blinks'):
+            return self.df_blinks
         else:
             utils.verbose("No eyetracking-data was provided", True)
 
