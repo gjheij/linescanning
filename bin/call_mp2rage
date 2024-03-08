@@ -142,13 +142,13 @@ Notes:
         elif opt in ("--skip_bg"):
             do_stuff = False            
         elif opt in ("--inv1"):
-            inv1 = arg
+            inv1 = os.path.abspath(arg)
         elif opt in ("--inv1ph"):
-            inv1ph = arg
+            inv1ph = os.path.abspath(arg)
         elif opt in ("--inv2"):
-            inv2 = arg
+            inv2 = os.path.abspath(arg)
         elif opt in ("--inv2ph"):
-            inv2ph = arg
+            inv2ph = os.path.abspath(arg)
         elif opt in ("--beta"):
             noise_beta = int(arg)
         elif opt in ("--pars"):
@@ -233,6 +233,9 @@ Notes:
     )
 
     # make output directory
+    if not isinstance(outputdir, str):
+        outputdir = os.path.dirname(select_fn[0])
+
     pathlib.Path(outputdir).mkdir(parents=True, exist_ok=True)
 
     # Calculate and right multiparametric maps to outputdir
