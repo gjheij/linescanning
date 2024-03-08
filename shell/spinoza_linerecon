@@ -251,14 +251,27 @@ for subID in ${search}; do
             exit 1
           fi
 
+          # check run-specific LSD?
           if [[ -z ${lsd} ]]; then
+            # old LSD?
             if [[ ${old_lsd} != "" ]]; then
               lsd=${old_lsd}
             else
-              echo
-              echo "---------------------------------------------------------------------------------------------------"
-              echo "ERROR in `basename ${0}`: could not find LSD-file"
-              exit 1
+              # try any LSD file..
+              lsd=(`find "${lab_func}" -maxdepth 1 -type f \( -name "*desc-recon*" -and -name "*.lab" \) 2>/dev/null`)
+              if [[ -z ${lsd} ]]; then
+                echo
+                echo "---------------------------------------------------------------------------------------------------"
+                echo "ERROR in `basename ${0}`: could not find LSD image.."
+                exit 1
+              else
+                ct=0; for i in ${lsd[@]}; do ((ct++)); done
+                if [[ ${ct} -gt 1 ]]; then
+                  echo "ERROR in `basename ${0}`: Found multiple LSD images.."
+                  for i in ${lsd[@]}; do echo " $i"; done
+                  exit 1
+                fi
+              fi
             fi
           fi
 
