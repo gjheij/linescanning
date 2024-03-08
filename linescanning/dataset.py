@@ -805,6 +805,8 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
         Specify a custom list of button presses to extract. Default = `['b']`
     expr: str, tuple, optional
         Add additional conditions for your extracted onset times. This follows the formulation of :func:`linescanning.utils.select_from_df()`. E.g., `expr="movie_type != blank`. Acts as an extra filter to extract the relevant onsets
+    filter_na: bool, optional
+        Try to filter out NaN-events from the onset dataframe
 
     Examples
     ----------
@@ -843,6 +845,7 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
         duration_col="duration",
         key_press=["b"],
         expr=None,
+        filter_na=False,
         **kwargs):
 
         self.tsv_file                       = tsv_file
@@ -872,6 +875,8 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
         self.duration_col                   = duration_col
         self.add_cols                       = add_cols
         self.cov_amplitude                  = cov_amplitude
+        self.filter_na                      = filter_na
+        
         # filter kwargs
         tmp_kwargs = filter_kwargs(
             [
@@ -979,7 +984,8 @@ class ParseExpToolsFile(ParseEyetrackerFile,SetAttributes):
             self.df_onsets = pd.concat(self.df_onsets).set_index(self.onset_index)
             
             # filter for NaNs to be sure
-            self.df_onsets = utils.select_from_df(self.df_onsets, expression="event_type != nan")
+            if self.filter_na:
+                self.df_onsets = utils.select_from_df(self.df_onsets, expression="event_type != nan")
 
             # rts
             try:
