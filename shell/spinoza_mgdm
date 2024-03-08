@@ -28,8 +28,10 @@ Usage:
 Arguments:
   -s <subject>      subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
   -n <session>      session ID (e.g., 1, 2, or none)
-  -o                overwrite existing files
-  --gdh             run GdH-pipeline version (call_gdhmgdm). Default = regular MGDM
+  -o|--ow           overwrite existing files
+  --gdh             run GdH-pipeline version (call_gdhmgdm). 
+
+  Default = regular MGDM
   <skullstripped>   path to skullstripped data
   <mgdm>            path to output directory
   <masks>           path to masks
@@ -53,14 +55,22 @@ fi
 # Check for subject & session flags
 OW=0
 type=""
-while getopts :-:os:n:t: argument
+SGE=0
+n_cpus=1
+while getopts :-:os:n:t:q:j: argument
 do
   case ${argument} in
     -)
       case "${OPTARG}" in
         gdh)
           type="gdh"
-          ;;                                                       
+          ;;                  
+        ow)
+          OW=1
+          ;;
+        sge)
+          SGE=1
+          ;;                                     
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}"
@@ -75,7 +85,11 @@ do
     t)  type=${OPTARG}
           ;;
     o)  OW=1
-          ;;          
+          ;;     
+    j)  n_cpus=${OPTARG}
+          ;;
+    q)  SGE_QUEUE=${OPTARG}
+          ;;                 
   esac
 done
 
@@ -153,69 +167,55 @@ for subID in ${search}; do
 
   # OVERWRITE ALL CREATED FILES; SHOULD BE DEFAULT AND CAN BE DISABLE BY SPECIFYING MASTER -M <MODULE> -O N
   if [[ ${OW} -eq 1 ]]; then
-    txt="Overwrite mode: deleting files with \"${output_root}\""
+    # txt="Overwrite mode: deleting files with \"${output_root}\""
     if [[ -d ${masked_seg} ]]; then
       rm -r ${masked_seg}/${output_root}* 2>/dev/null
     fi
-  else
-    txt="Overwrite mode disabled"
   fi
 
   # if we want the GdH-mgdm script, run it directly.
+  execute_cmd=0
   if [[ ${type} == "gdh" ]]; then
-
     if [[ ! -f ${mgdm_seg} ]]; then
+      execute_cmd=1
 
-      echo
-      echo "**************************************** Processing ${sub_name} ***************************************"
-      echo "Running GhD-version of MGDM with call_gdhmgdm"
-      echo ${txt}
-
-      if [[ ! -f ${mask_outside} ]]; then
-        echo "Could not find \"outside\" mask.."
-        continue
+      run_mode="Running GhD-version of MGDM with call_gdhmgdm"
+      if [[ ${SGE} -eq 1 ]]; then
+        run_cmd="${DIR_SCRIPTS}/bin/call_gdhmgdm"
+      else
+        run_cmd="call_gdhmgdm"
       fi
 
-      fs_mask=${SUBJECTS_DIR}/$(basename ${dir})/mri/brainmask.mgz
-      brainmask=`find "${input_dir}" -type f \( -name "mask*" -and -name "*acq-${DATA^^}*" \) 2>/dev/null`
+      if [[ ! -f ${mask_outside} ]]; then
+        reason="Could not find \"outside\" mask.. [GdH]"
+        execute_cmd=0
+      fi
+
+      fs_mask=${SUBJECTS_DIR}/${sub_name}/mri/brainmask.mgz
+      brainmask=`find -L "${input_dir}" -type f \( -name "mask*" -and -name "*acq-${DATA^^}*" \) 2>/dev/null`
       if [[ -f ${fs_mask} ]]; then
         use_mask="fs"
       else
         if [[ ! -z ${brainmask} ]]; then
           use_mask=${brainmask}
         else
-          echo "ERROR: not sure what mask to use.."
-          exit 1
+          reason="not sure what mask to use.. [GdH]"
+          execute_cmd=0
         fi
       fi
 
-      call_gdhmgdm \
-        -s $(basename ${dir}) \
+      cmd="""${run_cmd} \
+        -s ${sub_name} \
         -n ${nr} \
         -a ${input_dir} \
         -b ${use_mask} \
         -d ${mask_outside} \
-        -o ${masked_seg}
-
-      if [[ $? != 0 ]]; then
-        echo "ERROR in `basename ${0}`: call_gdhmgdm exited with non-zero status"
-        exit 1
-      fi
+        -o ${masked_seg}"""
 
     else
-      echo "${sub_name}: segmentation already present"
+      reason="segmentation already present [GdH]"
     fi
   else
-
-    if [[ -z ${bet_uni} ]]; then
-      echo "${sub_name}: Could not find skullstripped T1-image.. "
-      continue
-    fi
-
-    if [[ -z ${bet_t1m} ]]; then
-      echo "${sub_name}: Could not find skullstripped T1map-image.. "
-      continue
-    fi
 
     if [[ ! -d $(dirname ${mgdm_seg}) ]]; then
       mkdir -p $(dirname ${mgdm_seg})
@@ -223,29 +223,75 @@ for subID in ${search}; do
 
     if [[ ! -f ${mgdm_seg} ]]; then
 
-      echo
-      echo "**************************************** Processing ${sub_name} ***************************************"
-      echo "Running regular version of MGDM with call_nighresmgdm"
-      echo "Creating `basename ${mgdm_seg}`"
+      execute_cmd=1
+      run_mode="Running regular version of MGDM with call_nighresmgdm"
 
-      call_nighresmgdm \
+      if [[ -z ${bet_uni} ]]; then
+        execute_cmd=0
+        reason="Could not find skullstripped T1-image.. "
+      fi
+
+      if [[ -z ${bet_t1m} ]]; then
+        execute_cmd=0
+        reason="Could not find skullstripped T1map-image.. "
+      fi
+
+      if [[ ${SGE} -eq 1 ]]; then
+        run_cmd="${DIR_SCRIPTS}/bin/call_nighresmgdm"
+      else
+        run_cmd="call_nighresmgdm"
+      fi
+
+      cmd="""${run_cmd} \
         -t ${bet_uni} \
         -m ${bet_t1m} \
         -o ${masked_seg} \
-        -b ${output_root}
-
-      if [[ $? != 0 ]]; then
-        echo
-        echo "---------------------------------------------------------------------------------------------------"
-        echo "ERROR in `basename ${0}`: call_nighresmgdm exited with non-zero status"
-        exit 1
-      fi
+        -b ${output_root}"""
 
     else
-      echo "${sub_name}: segmentation already present"
+      execute_cmd=0
+      reason="segmentation already present"
     fi
   fi
 
+  if [[ ${execute_cmd} -eq 1 ]]; then
+    if [[ ${SGE} -eq 0 ]]; then
+
+      echo
+      echo "**************************************** Processing ${sub_name} ***************************************"
+      echo ${run_mode}
+      echo "Creating `basename ${mgdm_seg}`"
+    fi
+
+    if [[ ${SGE} -eq 1 ]]; then
+      if [[ ! -z ${SGE_QUEUE} ]]; then
+        QUEUE=${SGE_QUEUE}
+      else
+        QUEUE=${SGE_QUEUE_SHORT}
+      fi            
+      job="qsub -q ${QUEUE} -wd ${DIR_LOGS} -pe smp ${n_cpus} -N ${output_root}-nighres_mgdm"
+    else
+      job=""
+    fi
+
+    final_cmd="""${job} ${cmd}"""
+    if [[ ${SGE} -eq 0 ]]; then
+      echo ${final_cmd}
+    fi
+
+    # execute command
+    ${final_cmd}
+
+    if [[ $? != 0 ]]; then
+      echo
+      echo "---------------------------------------------------------------------------------------------------"
+      echo "ERROR in `basename ${0}`: ${run_cmd} exited with non-zero status"
+      exit 1
+    fi
+
+  else
+    echo "${sub_name}: Not executing MGDM; ${reason}"
+  fi
 done
 
 #-----------------------------------------------------------------------------
