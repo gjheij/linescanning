@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+#$ -cwd
+#$ -j Y
+#$ -V
 
 from nighres.brain import mgdm_segmentation
 import sys, getopt

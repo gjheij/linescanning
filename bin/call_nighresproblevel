@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+#$ -cwd
+#$ -j Y
+#$ -V
 
 from nighres.surface import probability_to_levelset
 import sys, getopt

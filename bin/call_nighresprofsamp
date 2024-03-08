@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+#$ -cwd
+#$ -j Y
+#$ -V
 
 from nighres.laminar import profile_sampling
 import sys, getopt

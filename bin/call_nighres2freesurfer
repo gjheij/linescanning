@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+#$ -cwd
+#$ -j Y
+#$ -V
 
 import nighres
 import sys, getopt

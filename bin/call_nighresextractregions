@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+#$ -cwd
+#$ -j Y
+#$ -V
 
 from nighres.brain import extract_brain_region
 from linescanning import utils
@@ -127,23 +130,27 @@ Notes:
 
     #---------------------------------------------------------------------------------------------------
     # Just plop everything in dir of segmentation
-    cortex = extract_brain_region(segmentation=files["segm"],
-                                  levelset_boundary=files["dist"],
-                                  maximum_membership=files["mems"],
-                                  maximum_label=files["lbls"],
-                                  extracted_region=roi,
-                                  file_name=outputbase,
-                                  save_data=True,
-                                  output_dir=outputdir)
+    cortex = extract_brain_region(
+        segmentation=files["segm"],
+        levelset_boundary=files["dist"],
+        maximum_membership=files["mems"],
+        maximum_label=files["lbls"],
+        extracted_region=roi,
+        file_name=outputbase,
+        save_data=True,
+        output_dir=outputdir
+    )
 
-    suff = {'cerebrum':'cr',
-            'left_cerebrum':'lcr',
-            'right_cerebrum':'rcr',
-            'cerebellum':'cb',
-            'cerebellum_brainstem':'cbs',
-            'subcortex':'sub',
-            'tissues(anat)':'an',
-            'tissues(func)':'fn'}
+    suff = {
+        'cerebrum':'cr',
+        'left_cerebrum':'lcr',
+        'right_cerebrum':'rcr',
+        'cerebellum':'cb',
+        'cerebellum_brainstem':'cbs',
+        'subcortex':'sub',
+        'tissues(anat)':'an',
+        'tissues(func)':'fn'
+    }
 
     for i in cortex:
         for t in ['xmask','xproba','xlvl']:

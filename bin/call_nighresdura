@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+#$ -cwd
+#$ -j Y
+#$ -V
 
 from nighres.brain import mp2rage_dura_estimation
 import sys, getopt
