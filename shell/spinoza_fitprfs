@@ -382,7 +382,12 @@ for subID in ${search}; do
     else
       use_dir="unzscored" # we requested percent signal change; use output from call_unzscore
     fi
-    full_input=${input_dir}/${use_dir}
+
+    if [[ -z ${merge_flag} ]]; then 
+      full_input=${input_dir}/${use_dir}
+    else
+      full_input=${input_dir}
+    fi
   elif [[ $(basename ${INPUT}) == "fmriprep" ]]; then
     # internally, call_prf uses utils.FindFiles, which searches for files recursively. No futher addition is required
     full_input=${input_dir}

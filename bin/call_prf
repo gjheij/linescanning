@@ -484,6 +484,10 @@ Example:
             # vertices per hemi
             n_verts = tcs.get_verts()
 
+            # take first two elements in case of multi-session averaging
+            if merge_sessions:
+                n_verts = n_verts[:2]
+
             # check if this matches with FreeSurfer surfaces
             n_verts_fs = utils.get_vertex_nr(f"sub-{sub}", as_list=True)
 
