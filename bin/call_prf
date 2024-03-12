@@ -121,6 +121,9 @@ Options:
                     change, the input directory needs to be unzscored data.
                     PSC will be calculated following M. Aqil's strategy:
                         psc = signals*100/(mean(signals)) - median(signals_without_stimulus)
+    --pyb_type      used in combination with '--merge_ses' to differentiate 'unzscored' or 'de-
+                    noised' files. Should be one of 'unzscored' or 'denoised'. If '--merge_ses' is
+                    not specified, the correct session files will be selected automatically
 
 Models:
     --gauss         run standard Gaussian model (default) [Dumoulin & Wandell, 2008]
@@ -166,9 +169,10 @@ Example:
     separate_hrf = False
     overwrite_bold = False
     n_folds = None
+    pybest_type = None
 
     try:
-        opts = getopt.getopt(argv,"ghs:n:t:o:i:p:m:x:u:c:v:j:f:",["help", "sub=", "model=", "ses=", "task=", "out=", "in=", "png=", "kwargs=", "grid", "space=", "no_hrf", "n_pix=", "clip=", "verbose", "file_ending=", "zscore", "overwrite", "constr=", "tc", "bgfs", "no_fit", "raw", "cut_vols=", "v1", "v2", "save_grid", "merge_ses", "n_jobs=", "gauss", "dog", "css", "norm", "abc", "abd", "tr=","separate_hrf","bold","folds="])[0]
+        opts = getopt.getopt(argv,"ghs:n:t:o:i:p:m:x:u:c:v:j:f:",["help", "sub=", "model=", "ses=", "task=", "out=", "in=", "png=", "kwargs=", "grid", "space=", "no_hrf", "n_pix=", "clip=", "verbose", "file_ending=", "zscore", "overwrite", "constr=", "tc", "bgfs", "no_fit", "raw", "cut_vols=", "v1", "v2", "save_grid", "merge_ses", "n_jobs=", "gauss", "dog", "css", "norm", "abc", "abd", "tr=","separate_hrf","bold","folds=","pyb_type="])[0]
     except getopt.GetoptError:
         print("ERROR while reading arguments; did you specify an illegal argument?")
         print(main.__doc__)
@@ -262,7 +266,9 @@ Example:
         elif opt in ("--save_grid"):
             save_grid = True   
         elif opt in ("--tr"):
-            tr = float(arg)                                
+            tr = float(arg)         
+        elif opt in ("--pyb_type"):
+            pybest_type = arg
 
     if len(argv) < 2:
         print(main.__doc__)
@@ -377,6 +383,11 @@ Example:
         found_files = utils.FindFiles(inputdir, extension=file_ending).files
         files = utils.get_file_from_substring(search_for, found_files)
         if merge_sessions:
+            
+            # check if we should use unzscored/denoised from pybest
+            if isinstance(pybest_type, str):
+                files = utils.get_file_from_substring([pybest_type], files)
+
             # fetch which session IDs
             ses = []
             for ff in files:

@@ -385,8 +385,10 @@ for subID in ${search}; do
 
     if [[ -z ${merge_flag} ]]; then 
       full_input=${input_dir}/${use_dir}
+      pyb_flag=""
     else
       full_input=${input_dir}
+      pyb_flag="--pyb_type ${use_dir}"
     fi
   elif [[ $(basename ${INPUT}) == "fmriprep" ]]; then
     # internally, call_prf uses utils.FindFiles, which searches for files recursively. No futher addition is required
@@ -618,6 +620,7 @@ for subID in ${search}; do
             --${use_model} \
             --n_jobs ${n_jobs} \
             --n_pix ${n_pix} \
+            ${pyb_flag} \
             ${folds_flag} \
             ${tr_flag} \
             ${kwargs_file} \
