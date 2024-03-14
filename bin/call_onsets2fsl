@@ -26,18 +26,18 @@ Just give a path, and all tsv-files found will be convertedor a very select part
 
 Parameters
 ----------        
-  -i|--in     subject-directory containing the files that need to be run through Topup. Defaults 
-              to DIR_DATA_HOME as per spinoza_setup; can also by a tsv-file
-  -o|--out    output directory containing the topup'ed data. Easiest is to give the fMRIPrep fol-
-              der, it will be formatted accordingly automatically. Defaults to <input_dir>/events
-  --verbose   turn on verbose
-  --ix        take number of ev as output name, rather than actual event name. This can be useful
-              in cases where your events consist of long float numbers
-  --phase     flag to define the phase from which to extract the onset files. Usually, you have 
-              an experiment with 2 phases: stimulus (0) and inter-trial intervals (1). Sometimes 
-              these phases are swapped, so you can use this flag to tell the function which phase
-              was the stimulus onset
-
+  -i|--in       subject-directory containing the files that need to be run through Topup. Defaults 
+                to DIR_DATA_HOME as per spinoza_setup; can also by a tsv-file
+  -o|--out      output directory containing the topup'ed data. Easiest is to give the fMRIPrep fol-
+                der, it will be formatted accordingly automatically. Defaults to <input_dir>/events
+  --verbose     turn on verbose
+  --ix          take number of ev as output name, rather than actual event name. This can be useful
+                in cases where your events consist of long float numbers
+  --phase_onset flag to define the phase from which to extract the onset files. Usually, you have 
+                an experiment with 2 phases: stimulus (0) and inter-trial intervals (1). Sometimes 
+                these phases are swapped, so you can use this flag to tell the function which phase
+                was the stimulus onset
+    
 Example
 ----------
 >>> call_onsets2fsl --in $DIR_DATA_HOME/sub-001/ses-2
@@ -152,7 +152,8 @@ Example
     exp_.onsets_to_fsl(
         output_dir=outputdir,
         duration=duration,
-        from_event=from_event)
+        from_event=from_event
+    )
     
 if __name__ == "__main__":
     main(sys.argv[1:])
