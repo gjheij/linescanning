@@ -197,13 +197,7 @@ for subID in ${search}; do
     base=${sub_name}
   fi
 
-  # check if input directory was pymp2rage or not
-  if [[ ${INPUT} != *"pymp2rage"* ]]; then
-    input_dir=${INPUT}/${base_path}/anat
-  else
-    input_dir=${INPUT}/${base_path}
-  fi
-  
+  input_dir=${INPUT}/${base_path}
   output_dir=${OUTPUT}/${base_path}
 
   if [[ ${TYPE,,} == ${ACQ[0],,} ]]; then
@@ -220,9 +214,9 @@ for subID in ${search}; do
     dd=("FLAIR")
     # https://stackoverflow.com/a/15394738
     if [[ " ${dd[*]} " =~ " ${ACQ[1]^^} " ]]; then
-      moving=`find -L "${input_dir}" -type f \( -iname "*_${ACQ[1]^^}.nii.gz" -and -not -name "*space-*" \) 2>/dev/null`
+      moving=`find -L "${input_dir}" -type f \( -name "${base}*" -and -iname "*_${ACQ[1]^^}.nii.gz" -and -not -name "*space-*" \) 2>/dev/null`
     else
-      moving=`find -L "${input_dir}" -type f \( -iname "*${ACQ[1]^^}_*" -and -name "*.nii.gz" -and -not -name "*space-*" \) 2>/dev/null`    
+      moving=`find -L "${input_dir}" -type f \( -name "${base}*" -iname "*${ACQ[1]^^}_*" -and -name "*.nii.gz" -and -not -name "*space-*" \) 2>/dev/null`    
     fi
     write_output=1
 
@@ -230,7 +224,7 @@ for subID in ${search}; do
     txt="Registering ${ACQ[0]^^}-T1w to MNI152 template"
     suffix=MNI152NLin6Asym
     fixed=${FSLDIR}/data/standard/MNI152_T1_1mm.nii.gz
-    moving=`find -L "${input_dir}" -type f \( -iname "*acq-${DATA}_*" -and -name "*T1w.nii.gz" -and -not -name "._*" \) 2>/dev/null`
+    moving=`find -L "${input_dir}" -type f \( -name "${base}*" -iname "*acq-${DATA}_*" -and -name "*T1w.nii.gz" -and -not -name "._*" \) 2>/dev/null`
     ext="from-${suffix}_to-T1w"
     output=$(dirname ${moving})/$(basename ${moving} _T1w.nii.gz)_space-${suffix}_T1w.nii.gz
     write_output=0
