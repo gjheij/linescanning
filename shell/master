@@ -117,6 +117,7 @@ space_flag=""             # spinoza_denoising
 mod_flag=""               # spinoza_mriqc
 fd_flag=""                # spinoza_mriqc
 t_specified=0             # keep track when t-flag is specified or --func is used (alias for -t func)
+ANAT_DEPTH=""             # all anatomical steps
 
 # use long options in bash:
 # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options
@@ -477,6 +478,7 @@ do
     m)  MOD=${OPTARG}
           ;;
     d)  SEARCH_DEPTH="-d ${OPTARG}"
+        ANAT_DEPTH=${OPTARG}
           ;;          
     s)  SUB=${OPTARG}
           ;;
@@ -581,10 +583,22 @@ Arguments:
                         you added control points. See 'call_freesurfer' for more information
                       - spinoza_bestvertex; specify manual EPI-file
                       - spinoza_fitprfs: set the number of pixels (default = 100)
+  -d <depth>        used for:
+                      - spinoza_scanner2bids; search depth for dcm2niix for converting to nifti
+                      - all anatomical steps; controls from which anatomical step we should select
+                        for the T1w-file. For example: normally, you arrive at the registration
+                        step to MNI after pymp2rage (combining the INV-images). In this case, it
+                        can only select this T1w-file. However, if you've done further processing
+                        already (e.g., denoising/CAT12/masking), then you could use those T1w-files
+                        for registration instead.
   -h <hemisphere>   used for lineplanning, denotes which hemisphere to process
-  -f <n_folds>      if your pRF experiment contains multiple equal sequences, you can use this flag
-                    to perform within-run averaging before percent-changing in call_prf. This should
-                    be in concert with number of volumes removed from the beginning of the timeseries
+  -f <n_folds>      use for:
+                      - spinoza_linerecon: use a custom suffix for the output BOLD file (overwrites
+                        "bold")
+                      - spinoza_fitprfs: if your pRF experiment contains multiple equal sequences, 
+                        you can use this flag to perform within-run averaging before percent-changing 
+                        in call_prf. This should be in concert with number of volumes removed from 
+                        the beginning of the timeseries
   -i <image path>   specify custom path to:
                       - spinoza_fitprfs: PNG's for pRF-fitting. This allows deviation from the stan-
                         dard path that 'spinoza_fitprfs' will be looking for
@@ -1135,6 +1149,12 @@ if [[ $? -eq 0 ]]; then
     N_ECHOES="-m ${n_echoes}"
   fi    
 
+  # set PCA components
+  NORDIC_COMPS=0
+  if [[ ! -z ${C_FLAG} ]]; then
+    NORDIC_COMPS=${C_FLAG}
+  fi
+
   ${job} spinoza_linerecon \
     ${SUBJECT} \
     ${SESSION} \
@@ -1144,6 +1164,10 @@ if [[ $? -eq 0 ]]; then
     ${SGE} \
     ${SGE_QUEUE} \
     ${NORDIC} \
+    ${RUNS} \
+    ${N_COMPS} \
+    ${FOLDS_FLAG} \
+    -c ${NORDIC_COMPS} \
     ${DIR_DATA_HOME} ${DIR_DATA_SOURCE}
 
   if [[ $? -ne 0 ]]; then
@@ -1267,7 +1291,11 @@ if [[ $? -eq 0 ]]; then
   echo "[${module}] Register ${ACQ[1]} to ${ACQ[0]}"
 
   # check where inputs live
-  INPUT_DIR=`find_hierarchical_anatomy 2`
+  if [[ -z ${ANAT_DEPTH} ]]; then
+    ANAT_DEPTH=2
+  fi
+
+  INPUT_DIR=`find_hierarchical_anatomy ${ANAT_DEPTH}`
 
   ${job} spinoza_registration \
     ${REG_TYPE} \
@@ -1309,8 +1337,12 @@ if [[ $? -eq 0 ]]; then
   echo "[${module}] Register T1 from mp2rage to MNI152 for sagittal sinus mask"
   
   # check where inputs live
-  INPUT_DIR=`find_hierarchical_anatomy 2`
-  
+  if [[ -z ${ANAT_DEPTH} ]]; then
+    ANAT_DEPTH=2
+  fi
+
+  INPUT_DIR=`find_hierarchical_anatomy ${ANAT_DEPTH}`  
+
   ${job} spinoza_registration \
     ${REG_TYPE} \
     ${SUBJECT} \
@@ -1390,8 +1422,12 @@ if [[ $? -eq 0 ]]; then
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Create sagittal sinus mask using the MNI-mask & T1w/T2w-ratio"
 
-  # find anatomy directory hierarchically
-  INPUT_DIR=`find_hierarchical_anatomy 2`
+  # check where inputs live
+  if [[ -z ${ANAT_DEPTH} ]]; then
+    ANAT_DEPTH=2
+  fi
+
+  INPUT_DIR=`find_hierarchical_anatomy ${ANAT_DEPTH}`
 
   if [[ ! -z ${DRAW_SAG} ]]; then
     DRAW_SAG="--${DRAW_SAG}"
@@ -1430,8 +1466,12 @@ if [[ $? -eq 0 ]]; then
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Perform bias field correction and SANLM-filtering"
   
-  # find anatomy directory hierarchically
-  INPUT_DIR=`find_hierarchical_anatomy 2`
+  # check where inputs live
+  if [[ -z ${ANAT_DEPTH} ]]; then
+    ANAT_DEPTH=2
+  fi
+
+  INPUT_DIR=`find_hierarchical_anatomy ${ANAT_DEPTH}`  
   
   ${job} spinoza_biassanlm \
     ${SUBJECT} \
@@ -1475,8 +1515,13 @@ if [[ $? -eq 0 ]]; then
       ${DIR_DATA_DERIV}/ants ${DIR_DATA_DERIV}/skullstripped ${DIR_DATA_DERIV}/manual_masks FSL
 
   elif [[ ${DO_STUFF} == "cat12" ]]; then
-    # find anatomy directory hierarchically
-    INPUT_DIR=`find_hierarchical_anatomy 3`
+
+    # check where inputs live
+    if [[ -z ${ANAT_DEPTH} ]]; then
+      ANAT_DEPTH=3
+    fi
+
+    INPUT_DIR=`find_hierarchical_anatomy ${ANAT_DEPTH}`  
 
     ${job} spinoza_brainextraction \
       ${SUBJECT} \
@@ -1551,8 +1596,12 @@ if [[ $? -eq 0 ]]; then
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Use nighres to get skull and dura mask"
   
-  # find anatomy directory hierarchically
-  INPUT_DIR=`find_hierarchical_anatomy 4`
+  # check where inputs live
+  if [[ -z ${ANAT_DEPTH} ]]; then
+    ANAT_DEPTH=4
+  fi
+
+  INPUT_DIR=`find_hierarchical_anatomy ${ANAT_DEPTH}`  
 
   ${job} spinoza_dura \
     ${SUBJECT} \
@@ -1590,8 +1639,12 @@ if [[ $? -eq 0 ]]; then
   # DATA = MEMP2RAGE  > arg1 = DIR_DATA_DERIV/pymp2rage
   # DATA = AVERAGE    > arg1 = DIR_DATA_DERIV/ants
 
-  # find anatomy directory hierarchically
-  INPUT_DIR=`find_hierarchical_anatomy 4`
+  # check where inputs live
+  if [[ -z ${ANAT_DEPTH} ]]; then
+    ANAT_DEPTH=4
+  fi
+
+  INPUT_DIR=`find_hierarchical_anatomy ${ANAT_DEPTH}`  
   
   ${job} spinoza_sagittalsinus ${SUBJECT} ${SESSION} ${OW} ${INPUT_DIR} ${DIR_DATA_DERIV}/manual_masks ${DRAW_SAG}
 
@@ -1621,8 +1674,12 @@ if [[ $? -eq 0 ]]; then
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Combine all masks and apply to image"
 
-  # find anatomy directory hierarchically
-  INPUT_DIR=`find_hierarchical_anatomy 4`
+  # check where inputs live
+  if [[ -z ${ANAT_DEPTH} ]]; then
+    ANAT_DEPTH=4
+  fi
+
+  INPUT_DIR=`find_hierarchical_anatomy ${ANAT_DEPTH}`  
 
   ${job} spinoza_masking \
     ${SUBJECT} \
@@ -1657,8 +1714,12 @@ if [[ $? -eq 0 ]]; then
   echo "---------------------------------------------------------------------------------------------------"
   echo "[${module}] Run FreeSurfer outside of fMRIprep"
 
-  # find anatomy directory hierarchically
-  INPUT_DIR=`find_hierarchical_anatomy 5`
+  # check where inputs live
+  if [[ -z ${ANAT_DEPTH} ]]; then
+    ANAT_DEPTH=5
+  fi
+
+  INPUT_DIR=`find_hierarchical_anatomy ${ANAT_DEPTH}`  
 
   # check for expert file
   if [ ! -z ${KWARGS} ]; then
@@ -1734,8 +1795,12 @@ if [[ $? -eq 0 ]]; then
     confFile=""
   fi
 
-  # find anatomy directory hierarchically; look for masked_? otherwise default to home folder
-  INPUT_DIR=`find_hierarchical_anatomy 6`
+  # check where inputs live
+  if [[ -z ${ANAT_DEPTH} ]]; then
+    ANAT_DEPTH=6
+  fi
+
+  INPUT_DIR=`find_hierarchical_anatomy ${ANAT_DEPTH}`  
 
   ${job} spinoza_fmriprep \
     ${WARP_ONLY} \
