@@ -1191,6 +1191,7 @@ class LazyCorr(Defaults):
         result_ec: tuple=(1.,0.5,0.5),
         result_fc: tuple=(1.,0.8,0.8),
         result_dec: int=2,
+        verbose=False,
         *args,
         **kwargs):
 
@@ -1216,6 +1217,7 @@ class LazyCorr(Defaults):
         self.result_fc      = result_fc
         self.result_ec      = result_ec
         self.result_dec     = result_dec
+        self.verbose        = verbose
 
         if self.xkcd:
             with plt.xkcd():
@@ -1230,6 +1232,10 @@ class LazyCorr(Defaults):
         # run quick correlation with pingouin
         if self.correlation:
             self._run_correlation()            
+
+        # print results?
+        if self.verbose:
+            self.print_results()
 
         # check if we should add text box 
         if self.result_to_plot:
@@ -1275,7 +1281,7 @@ class LazyCorr(Defaults):
         else:
             meth_txt = ""
 
-        utils.verbose(f"Test={res['test']}{meth_txt}{col_txt} | {res['metric']}={round(res['value'],2)},\tp={round(res['p'],2)}", True)
+        utils.verbose(f"Test={res['test']}{meth_txt}{col_txt} | {res['metric']}={round(res['value'],self.result_dec)},\tp={round(res['p'],self.result_dec)}", True)
 
         if return_result:
             return res
@@ -2490,7 +2496,7 @@ def fig_annot(
     for ix,ax in enumerate(ax_list):
         bbox = ax.get_window_extent().transformed(fig.dpi_scale_trans.inverted())
 
-        if isinstance(x_corr, int):
+        if isinstance(x_corr, (float,int)):
             use_x_pos = x_corr
         else:
             if len(x_corr) != len(ax_list)-1:
