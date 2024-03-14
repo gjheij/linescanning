@@ -44,6 +44,8 @@ Parameters
                     that we're sampling from our intended line. This flag allows you to shift the
                     slice with that same factor so that the white matter/CSF voxels are selected
                     appropriately. Default is 0 (no shift)
+  --filters         additional filters to search for functional files
+  --suff(ix)        custom suffix for h5-output file (default = "desc-preproc_bold.h5")
 
 Options
 ----------
@@ -91,10 +93,12 @@ Example
     del_last        = 0
     bsl_length      = 24
     phase_onset     = 0
+    filters         = None
+    suff            = "desc-preproc_bold.h5"
 
     # long options without argument: https://stackoverflow.com/a/54170513
     try:
-        opts = getopt.getopt(argv,"qgvh:b:d:n:r:o:f:l:i:s:c:",["help", "subject=", "bids_dir=", "session=", "ses_trafo=", "output_dir=", "filter_pca=", "run=", "no_report", "verbose", "no_acompcor", "tr=", "overwrite", "ow", "shift=","lp", "no_button", "n_comps=", "window=", "poly_order=", "ica", "first=", "last=", "bsl", "phase_onset="])[0]
+        opts = getopt.getopt(argv,"qgvh:b:d:n:r:o:f:l:i:s:c:",["help", "subject=", "bids_dir=", "session=", "ses_trafo=", "output_dir=", "filter_pca=", "run=", "no_report", "verbose", "no_acompcor", "tr=", "overwrite", "ow", "shift=","lp", "no_button", "n_comps=", "window=", "poly_order=", "ica", "first=", "last=", "bsl", "phase_onset=", "filters=","suff=","suffix="])[0]
     except getopt.GetoptError:
         print("ERROR while handling arguments.. Did you specify an 'illegal' argument..?")
         print(main.__doc__)
@@ -156,8 +160,16 @@ Example
                 shift = [float(i) for i in utils.string2list(shift)]
             else:
                 shift = float(shift)
+        elif opt in ("--filters"):
+            filters = arg
+            if "," in filters:
+                filters = [i for i in utils.string2list(filters)]
+            else:
+                filters = [filters]
         elif opt in ("--ow", "--overwrite"):
             overwrite = True
+        elif opt in ("--suff", "--suffix"):
+            suff = arg
 
     if len(argv) == 0:
         print(main.__doc__)
@@ -204,7 +216,12 @@ Example
         tsv_search  = ["task-", ".tsv"]
         anat_search = ["acq-1slice", ".nii.gz"]
 
-    func_files  = utils.get_file_from_substring(func_search, funcs, exclude="acq-3DEPI", return_msg=None)
+    if isinstance(filters, list):
+      final_filters = func_search+filters
+    else:
+      final_filters = func_search
+
+    func_files  = utils.get_file_from_substring(final_filters, funcs, exclude="acq-3DEPI", return_msg=None)
     eye_files   = utils.get_file_from_substring(eye_search, funcs, return_msg=None)
     tsv_files   = utils.get_file_from_substring(tsv_search, funcs, exclude="acq-3DEPI", return_msg=None)
     ref_slices  = utils.get_file_from_substring(anat_search, anats, exclude="._", return_msg=None)
@@ -299,7 +316,10 @@ Example
     )
 
     # save h5 if needed; filename will be derived from inputs
-    obj_.to_hdf(overwrite=overwrite)
+    obj_.to_hdf(
+        overwrite=overwrite,
+        suffix=suff
+    )
 
 if __name__ == "__main__":
     main(sys.argv[1:])    
