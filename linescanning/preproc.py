@@ -1188,6 +1188,9 @@ class DataFilter():
         t_col="t", 
         avg=True, 
         plot_title=None,
+        incl_task=None,
+        axs=None,
+        use_cols=["#cccccc","r"],
         **kwargs
         ):
 
@@ -1198,25 +1201,36 @@ class DataFilter():
             filt = self.df_filt
         
         task_ids = utils.get_unique_ids(orig, id="task")
-        fig,axs = plt.subplots(
-            nrows=len(task_ids), 
-            figsize=(14,len(task_ids)*3), 
-            constrained_layout=True, 
-            sharey=True, 
-            sharex=True
-        )
+        if isinstance(incl_task, (str,list)):
+            if isinstance(incl_task, str):
+                incl_task = [incl_task]
+
+            task_ids = [i for i in task_ids if i in incl_task]
+        
+        if isinstance(axs, (mpl.axes._axes.Axes, list)):
+            if isinstance(axs, mpl.axes._axes.Axes):
+                axs = [axs]
+
+            if len(axs) != len(task_ids):
+                raise ValueError(f"Number of specified axes ({len(axs)}) does not match number of plots ({len(task_ids)})")
+        else:
+            fig,axs = plt.subplots(
+                nrows=len(task_ids), 
+                figsize=(14,len(task_ids)*3), 
+                constrained_layout=True, 
+                sharey=True, 
+                sharex=True
+            )
+
+            axs = [axs]
 
         avg_df = []
         for ix,task in enumerate(task_ids):
 
-            if len(task_ids)>1:
-                ax = axs[ix]
-            else:
-                ax = axs
-
+            ax = axs[ix]
             for df,col,ms,lw,lbl in zip(
                 [orig, filt],
-                ["#cccccc","r"],
+                use_cols,
                 [".",None],
                 [0.5,3],
                 ["original","filtered"]):
@@ -1233,6 +1247,14 @@ class DataFilter():
                 else:
                     x_lbl = None
 
+                kwargs = utils.update_kwargs(
+                    kwargs, 
+                    "title",
+                    {
+                        "title": f"task-{task}",
+                    }
+                )
+
                 pl = plotting.LazyPlot(
                     task_tcs.values,
                     axs=ax,
@@ -1240,9 +1262,6 @@ class DataFilter():
                     markers=ms,
                     line_width=lw,
                     label=[lbl],
-                    title={
-                        "title": f"task-{task}",
-                    },
                     add_hline=0,
                     x_label=x_lbl,
                     y_label="magnitude",
@@ -1259,14 +1278,22 @@ class DataFilter():
                 plot_txt = plot_title["title"]
                 plot_title.pop("title")
 
-            fig.suptitle(
-                plot_txt, 
-                fontsize=pl.title_size*1.1,
-                **plot_title
-            )
+            try:
+                fig.suptitle(
+                    plot_txt, 
+                    fontsize=pl.title_size*1.1,
+                    **plot_title
+                )
+                ret_fig = True
+            except:
+                ret_fig = False
 
         avg_df = pd.concat(avg_df)
-        return fig,avg_df
+
+        if ret_fig:
+            return fig,avg_df
+        else:
+            return avg_df
 
 class EventRegression(fitting.InitFitter):
 
