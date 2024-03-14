@@ -3277,7 +3277,12 @@ class Dataset(ParseFuncFile,SetAttributes):
 
         hdf_store.close()         
 
-    def to_hdf(self, output_file=None, overwrite=False):
+    def to_hdf(
+        self, 
+        output_file=None, 
+        overwrite=False, 
+        suffix="desc-preproc_bold"
+        ):
 
         if output_file == None:
             if hasattr(self, "lsprep_dir"):
@@ -3291,7 +3296,7 @@ class Dataset(ParseFuncFile,SetAttributes):
                     else:
                         out_name = self.base_name
                                     
-                self.h5_file = opj(self.lsprep_dir, f'sub-{self.sub}', f"{out_name}_desc-preproc_bold.h5")
+                self.h5_file = opj(self.lsprep_dir, f'sub-{self.sub}', f"{out_name}_{suffix}.h5")
             else:
                 raise ValueError("No output file specified")
         else:
