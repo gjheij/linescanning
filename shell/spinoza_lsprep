@@ -193,7 +193,10 @@ for subID in ${search}; do
       job="call_lsprep"
     fi
 
-    cmd="""${job}  -s sub-${subID} -n ${s_id} ${LSPREP_KWARGS}"""
+    cmd="""${job} \
+      -s sub-${subID} \
+      -n ${s_id} \
+      ${LSPREP_KWARGS}"""
 
     # echo command
     if [[ ${SGE} -eq 0 ]]; then
@@ -203,7 +206,7 @@ for subID in ${search}; do
     (
       echo ""
       echo "### New invocation of call_lsprep @ `date`"
-      echo "${cmd}"
+      echo "`echo ${cmd} | tr '\n' ' '`"
       echo ""
     ) >> ${log_file}
     
