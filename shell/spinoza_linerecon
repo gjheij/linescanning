@@ -25,11 +25,15 @@ Arguments:
   -n <session>        session ID (e.g., 1, 2, or n)
   -m <n_echoes>       number of echoes in the acquisition (e.g., 5); by default we try to read it 
                       from the PAR-file (field 'number of echoes')
-  -c|--sge            submit job to cluster (SGE)
+  -r <runIDs>         specific runs to preproces; can be comma-separated list                      
   -q <queue>          submit jobs to a specific queue. Defaults to SGE_QUEUE_LONG in spinoza_setup
+  -c <comps>          percentage of components to remove using NORDIC (default is to use scree 
+                      plot to remove appropriae number of components)
+  -f <suffix>         add custom suffix; overwrites default of "bold"
+  -o|--ow             overwrite existing files
   --debug             don't submit job, just print inputs/outputs
   --no_nordic         turn off NORDIC denoising during reconstruction
-  -o                  overwrite existing files
+  --sge               submit job to cluster (SGE)
   <project root>      base directory containing the derivatives and the subject's folders.
   <sourcedata>        base directory containing the raw data for reconstruction
 
@@ -64,7 +68,10 @@ fi
 OW=0
 SGE=0
 NORDIC=""
-while getopts :-:ocs:n:m:q: argument
+runIDs=""
+comps_flag=""
+suffix="bold"
+while getopts :-:os:n:c:m:q:r:f: argument
 do
   case ${argument} in
     -)
@@ -77,7 +84,10 @@ do
           ;;         
         sge)
           SGE=1
-          ;;                                                                   
+          ;;               
+        ow)
+          OW=1
+          ;;                                                                    
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}"
@@ -93,10 +103,15 @@ do
           ;;
     o)  OW=1
           ;;
-    c)  SGE=1
+    c)  comps_flag="-c ${OPTARG}"
           ;;   
     q)  SGE_QUEUE=${OPTARG}
-          ;;                     
+          ;;
+    r)  runs=${OPTARG}
+          ;;
+    f)  suffix=${OPTARG}
+          ;;
+
   esac
 done
 
@@ -125,6 +140,13 @@ if [[ ! -z ${n_echoes} ]]; then
   echo_flag="-m ${n_echoes}"
 else
   echo_flag=""
+fi
+
+# sort out runs
+if [[ ! -z ${runs} ]]; then
+  # read specified subjects into array
+  IFS=', ' read -r -a n_runs <<< "${runs}"
+  unset IFS
 fi
 
 #-----------------------------------------------------------------------------
@@ -172,7 +194,25 @@ for subID in ${search}; do
     fi
 
     # fetch and sort the lab-files
-    bold_files=(`find -L "${lab_func}" -maxdepth 1 -type f \( -name "*bold_*" -and -name "*.lab" \) | sort 2>/dev/null`)
+    if [[ ! -z ${runs} ]]; then
+      b_files=()
+      for r in ${n_runs[@]}; do
+        run_f=`find -L "${lab_func}" -maxdepth 1 -type f \( -name "*bold_*" -and -name "*.lab" -and -name "*run-${r}*" \) 2>/dev/null`
+        b_files+=(${run_f})
+      done
+
+      # sort array (https://stackoverflow.com/questions/7442417/how-to-sort-an-array-in-bash)
+      IFS=$'\n' bold_files=($(sort <<<"${b_files[*]}"))
+      unset IFS
+
+    else
+      bold_files=(`find -L "${lab_func}" -maxdepth 1 -type f \( -name "*bold_*" -and -name "*.lab" \) | sort 2>/dev/null`)
+    fi
+    
+    # echo "BOLD files"
+    # for i in ${bold_files[@]}; do echo " $i"; done
+    # exit 1
+
     if [[ -z ${bold_files} ]]; then
       echo "${sub_name}: Could not find BOLD-data"
       continue
@@ -231,12 +271,22 @@ for subID in ${search}; do
         fi
 
         # set output name
-        outputbase=${bidsfunc}/${base}_task-${task}_run-${run}_bold
+        outputbase=${bidsfunc}/${base}_task-${task}_run-${run}_${suffix}
         if [[ ${OW} -eq 1 ]]; then
           rm -r ${outputbase}.mat 2>/dev/null
         fi
 
+        # decide when to execute command
+        execute_cmd=0
         if [[ ! -f ${outputbase}.mat ]]; then
+          execute_cmd=1
+        fi
+
+        if [[ ! -z ${DEBUG} ]]; then
+          execute_cmd=1
+        fi
+
+        if [[ ${execute_cmd} -eq 1 ]]; then
 
           # find corresponding LSD-image
           lsd=`find "${lab_func}" -maxdepth 1 -type f \( -name "*run-${run}*" -and -name "*desc-recon*" -and -name "*.lab" \) 2>/dev/null`
@@ -258,7 +308,7 @@ for subID in ${search}; do
               lsd=${old_lsd}
             else
               # try any LSD file..
-              lsd=(`find "${lab_func}" -maxdepth 1 -type f \( -name "*desc-recon*" -and -name "*.lab" \) 2>/dev/null`)
+              lsd=(`find -L "${lab_func}" -maxdepth 1 -type f \( -name "*desc-recon*" -and -name "*.lab" \) 2>/dev/null`)
               if [[ -z ${lsd} ]]; then
                 echo
                 echo "---------------------------------------------------------------------------------------------------"
@@ -276,13 +326,14 @@ for subID in ${search}; do
           fi
 
           verbose=1
+          log_file=$(dirname ${bidsfunc})/$(basename ${outputbase}).log
           if [[ ${SGE} -eq 1 ]]; then
             if [[ ! -z ${SGE_QUEUE} ]]; then
               QUEUE=${SGE_QUEUE}
             else
-              QUEUE=${SGE_QUEUE_LONG}
+              QUEUE=${SGE_QUEUE_SHORT}
             fi             
-            job="qsub -q ${QUEUE} -N ${base}_task-${task}_run-${run}_desc-recon -wd ${OUTPUT}/${base_path} ${DIR_SCRIPTS}/bin/call_linerecon"
+            job="qsub -q ${QUEUE} -o ${log_file} -N $(basename ${log_file} .log) ${DIR_SCRIPTS}/bin/call_linerecon"
             verbose=0
           else
             echo "Running recon for run-${run} (task-${task})"
@@ -292,6 +343,7 @@ for subID in ${search}; do
           # define cmd
           cmd="""${job} \
             -r ${run} \
+            ${comps_flag} \
             ${echo_flag} \
             ${NORDIC} \
             ${DEBUG} \
@@ -303,6 +355,15 @@ for subID in ${search}; do
           if [[ ${verbose} -eq 1 ]]; then
             echo ${cmd}
             echo
+          fi
+
+          if [[ ${SGE} -eq 1 || ${verbose} -eq 1 ]]; then
+            (
+              echo ""
+              echo "### New invocation of call_linerecon @ `date`"
+              echo "`echo ${cmd} | tr '\n' ' '`"
+              echo ""
+            ) >> ${log_file}
           fi
 
           # run cmd

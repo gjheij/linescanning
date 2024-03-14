@@ -25,6 +25,8 @@ Arguments:
                     single-echo
   -r <run>          When running multiple reconstructions in parallel, it can help to add a run ID 
                     so that the script-naming doesn't get mixed up.
+  -c <comps>        percentage of components to remove with NORDIC. The default is to remove compo-
+                    nents based on the scree plot
   <raw data>        path to raw files on which to run reconstruction. Needs to contain .lab files of
                     the "recon"-slice (slice with rest-slabs on) and the .lab file of the functional
                     run ("bold"-file)
@@ -50,7 +52,8 @@ USAGE
 do_nordic="on"
 DEBUG=0
 n_echos=1
-while getopts :-:hnm:r: argument
+n_comps=0
+while getopts :-:hnm:r:c: argument
 do
   case ${argument} in
     -)
@@ -73,6 +76,11 @@ do
     r)  run_id=${OPTARG}
           ;;
     n)  do_nordic="off"
+          ;;
+    c)  n_comps=${OPTARG}
+        if [[ ${n_comps} == "elbow" ]]; then
+          n_comps=0
+        fi
           ;;
   esac
 done
@@ -115,7 +123,7 @@ if [[ -f ${RAW} && -f ${LSD} ]]; then
   echo " bold   = ${RAW}"
   echo " LSD    = ${LSD}"
   echo " Out    = ${OUT}.mat"
-  echo " Nordic = ${do_nordic}"
+  echo " Nordic = ${do_nordic} (comps=${n_comps} | 0=elbow-method)"
   echo " Echos  = ${n_echos}"
 
   # add stuff that's shared between single-/ and multi-echo
@@ -140,7 +148,7 @@ if [[ -f ${RAW} && -f ${LSD} ]]; then
     echo ""
     echo "Data_pc        = basic_recon(py_lab,filelocation, Nc);"
     echo "csm4ls_sm_cplx = coil_sens_MELS(abs(Data_pc), gausskernel);"
-    echo "nord_tresh     = 9; %not used now, since you are selecting the NORDIC threshold based on the scree plot"
+    echo "nord_tresh     = ${n_comps}; % if 0, use scree-plot"
     echo "varargin_par   = {'before', nord_tresh};"    
   ) >> ${newrecon}
 
