@@ -1,0 +1,69 @@
+#!/usr/bin/env python
+
+import json
+import os
+import sys
+def main(argv):
+
+    """
+---------------------------------------------------------------------------------------------------
+call_makeconfig
+
+Create a configuration file for fMRIprep. Mainly used foro multi-session setups where you want to 
+point to one session for the anatomies, and to another for the BOLD files. You'll only need to spe-
+cify the json file used as output
+
+Usage
+----------
+    call_makeconfig config.json
+
+Example
+----------
+    call_makeconfig sub-001_desc-fmriprep.json
+
+---------------------------------------------------------------------------------------------------
+    """
+
+    if len(argv)==0:
+        print(main.__doc__)
+        sys.exit(1)
+    else:
+        json_file = os.path.abspath(argv[0])
+
+    if not json_file.endswith("json"):
+        raise TypeError(f"Must be json file, not '{json_file}'")
+    
+    elements = ["t1w","bold","fmap"]
+    datatypes = ["anat","func","fmap"]
+    request_keys = ["session","suffix","acquisition"]
+    suffix = ["T1w","bold","epi"]
+
+    ddict = {}
+    for el,tag,suff in zip(elements,datatypes,suffix):
+        ddict[el] = {}
+        ddict[el]["datatype"] = tag
+
+        print(f"{el}:")
+        for key in request_keys:
+            if key == "suffix":
+                default = suff
+            else:
+                default = "None"
+            val = input(f" '{key[:4]}' (default='{default}'):\t") or default
+
+            if isinstance(val, str):
+                if len(val)>0 and val != "None":
+                    ddict[el][key] = val
+
+    # Serializing json
+    json_object = json.dumps(ddict, indent=4)
+    
+    # Writing to sample.json
+    with open(json_file, "w") as outfile:
+        outfile.write(json_object)
+    
+    print(f"Wrote '{json_file}'")
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
+
