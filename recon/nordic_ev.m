@@ -1,5 +1,5 @@
 %% NORDIC implementation for line-scanning with explained variance or wirth eigenvalues plot
-function [denoised_data, removed_comp] = nordic_ev(data)
+function [denoised_data, removed_perc] = nordic_ev(data)
 
     data = squeeze(data);
    
@@ -16,6 +16,7 @@ function [denoised_data, removed_comp] = nordic_ev(data)
     % singular values to be set to zero
     amount = (eig_elbow:size(data,2)); %with eigenvalues elbow
     removed_comp = length(amount);
+    removed_perc = removed_comp/size(data,2)*100;
     %amount = (length(svalues) - elbow_idx):size(data,2); %with explained
     %variance elbow
     denoised_svalues = svalues;

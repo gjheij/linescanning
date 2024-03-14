@@ -77,20 +77,45 @@ Data_nordic = zeros(size(Data_nopy_norev));
 
 if strcmp(NORDIC,'on') && strcmp(varargin{1}{1,1},'before')
     disp ('NORDIC before FT')
+    n_thresh = varargin{1}{1,2};
+    if n_thresh>0
+
+        % multiply by 100 if proportion was given
+        if n_thresh<1
+            n_thresh = n_thresh*100
+        end
+
+        % use single quotes!
+        X = ['Removing ', num2str(n_thresh), '% of components '];
+        disp(X)
+    else
+        disp("Using scree-plot to remove components")
+    end
+
     rem_comp = zeros(Nc*Nechos,1);
     ii = 1;
     for ch =1:Nc
         for e = 1:Nechos
-             %Data_nordic(:,:,ch,e) = nordic_psr(varargin{1}{1,2},Data_nopy_norev(:,:,ch,e));
-             [Data_nordic(:,:,ch,e), rem_comp(ii)] = nordic_ev(Data_nopy_norev(:,:,ch,e));
-             ii = ii + 1;         
+
+            % use nordic_psr to remove specific percentage of components; if n_thresh==0, use elbow criteria
+            if n_thresh>0
+                % use single quotes!
+                % X = ['Removing ', num2str(n_thresh), '% of components '];
+                % disp(X)
+                [Data_nordic(:,:,ch,e), rem_comp(ii)] = nordic_psr(n_thresh,Data_nopy_norev(:,:,ch,e));
+            else
+                % disp("Using scree-plot to remove components")
+                [Data_nordic(:,:,ch,e), rem_comp(ii)] = nordic_ev(Data_nopy_norev(:,:,ch,e));
+                % X = ['Removed ', num2str(rem_comp(ii),'%4.2f') '% of components'];
+            end
+            ii = ii + 1;         
         end
     end
     varargout{1} = rem_comp;
     Data_nopy_norev = Data_nordic;
     
 elseif strcmp(NORDIC,'off')
-     disp ('NORDIC off')
+    disp ('NORDIC off')
     Data_nopy_norev = Data_nopy_norev;
 end
 
@@ -103,7 +128,7 @@ Data_nopy_norev = Snopy.Data;
 %% NORDIC after FT but before coil combination 
 Data_nopy_norev_nordic = zeros(size(Data_nopy_norev));
 if strcmp(NORDIC,'on') && strcmp(varargin{1}{1,1},'after')
-     disp ('NORDIC after FT')
+    disp ('NORDIC after FT')
     for ch =1:Nc
         for e = 1:Nechos
             Data_nopy_norev_nordic(:,:,ch,e) = nordic_psr(varargin{1}{1,2},Data_nopy_norev(:,:,ch,e));
@@ -147,5 +172,5 @@ caxis([0 35]);
 colorbar;
 end
 
- recon = Data_wcsmtSNR;
+recon = Data_wcsmtSNR;
  

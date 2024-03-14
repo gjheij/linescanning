@@ -1,16 +1,34 @@
 %% NORDIC implementation for line-scanning with percentage signal removed (psr)
-function [denoised_data] = nordic_psr(removing,data)
+function [denoised_data,removed_perc] = nordic_psr(removing,data)
 
     data = squeeze(data);
     % singular values to be set to zero
-    amount = (1+round((10-removing)*size(data,2)/10):size(data,2)); 
-    
+    % amount = (1+round((10-removing)*size(data,2)/10):size(data,2)); 
+    if removing>1
+        rem_comp = (removing/100)*size(data,2);
+    else
+        rem_comp = removing*size(data,2);
+    end
+
+    % enforce integer
+    rem_comp = int16(rem_comp);
+
+    amount = (1+size(data,2)-rem_comp:size(data,2)); % with percentage
+    % amount is an array which stores the indexes of the components to be
+    % removed. If you want to remove a number of components = rem_comp you
+    % have to calculate the amout indexes from total_comp-rem_comp+1 till the
+    % total_comp. 
+
+    removed_perc = rem_comp/size(data,2)*100;
+
     % singular value decomposition
     [U,S,V] = svd(data);
     svalues = diag(S);
 
     denoised_svalues = svalues;
+    removed_comp = length(amount);
     denoised_svalues(amount) = 0; % set some of the singular values to zero
+    % denoised_svalues(end-amount+1:end) = 0;
 
     denoised_S = diag(denoised_svalues);
     
@@ -34,4 +52,3 @@ function [denoised_data] = nordic_psr(removing,data)
     denoised_data = U*new_denoised_S*V';
 
 end
-
