@@ -66,7 +66,8 @@ def ants_applytrafo(
     interp='nn', 
     output=None, 
     return_type="file", 
-    verbose=False):
+    verbose=False
+    ):
     
     """ants_applytrafo
 
@@ -161,7 +162,11 @@ def ants_applytrafo(
         os.system(cmd_txt)
     except:
         raise OSError("Could not execute call_antsapplytransforms; check your distribution or install the linescanning repository")
-
+    
+    # copy geometry
+    cmd = f"fslcpgeom {fixed} {output}"
+    os.system(cmd)
+    
     # remove temporary files
     if os.path.exists("fixed.nii.gz"):
         os.remove("fixed.nii.gz")
