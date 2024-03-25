@@ -1805,3 +1805,46 @@ def update_kwargs(kwargs, el, val, force=False):
         kwargs[el] = val
         
     return kwargs
+
+def create_sinewave(
+    amplitude=1,
+    frequency=1,
+    phase=0,
+    sampling_rate=100,
+    duration=1
+    ):
+
+    """create_sinewave
+
+    Parameters
+    ----------
+    amplitude: int,float
+        Amplitude of the wave. Default = 1
+    frequency: int,float
+        Frequency of the wave in Hertz. Default = 1
+    phase: int,float
+        Phase shift of the wave in radians
+    sampling_rate: int
+        Number of samples per second
+    duration: int
+        Duration of the wave in seconds
+
+    Returns
+    ----------
+    A tuple with first element the numpy array containing the sine wave. The second element is the time axis
+
+    Example
+    ----------
+    >>> from linescanning import utils
+    >>> wave,time = utils.create_sinewave()
+
+    >>> from linescanning import utils
+    >>> wave,time = utils.create_sinewave(
+    >>>     frequency=4,
+    >>>     amplitude=0.2
+    >>> )
+    """
+
+    time = np.linspace(0, duration, int(duration * sampling_rate), endpoint=False)
+    sine_wave = amplitude * np.sin(2*np.pi*frequency*time+phase)
+    return sine_wave,time
