@@ -27,6 +27,7 @@ Arguments:
                       correction. Default is just tissue segmentation. 
   --fs                use rawavg.mgz from FreeSurfer; overwrites the specified input
                       directory 
+  --fprep             use desc-preproc_T1w from fMRIprep. The input is linked the '-n' flag
   <input directory>   directory for inputs
   <skullstrip>        directory for skull-stripped outputs
   <mask>              directory for masks
@@ -47,6 +48,7 @@ USAGE
 OW=0
 mode=""
 use_fs=0
+use_fprep=0
 while getopts :-:os:n:m: argument
 do
   case ${argument} in
@@ -58,6 +60,9 @@ do
         fs)
           use_fs=1
           ;;          
+        fprep)
+          use_fprep=1
+          ;;           
     *)
       if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
         echo "Unknown option --${OPTARG}. Did you mean \"--full\"?"
@@ -137,10 +142,12 @@ for subID in ${search}; do
   MASKS=${SKULL}/${base_path}
 
   # check if input directory exists
-  if [[ ! -d ${INPUTDIR} ]]; then
-    if [[ ${use_fs} -eq 0 ]]; then
-      echo "ERROR in `basename ${0}`: ${INPUTDIR} does not exist"
-      exit 1
+  if [[ ${use_fprep} -eq 0 && ${use_fs} -eq 0 ]]; then
+    if [[ ! -d ${INPUTDIR} ]]; then
+      if [[ ${use_fs} -eq 0 ]]; then
+        echo "ERROR in `basename ${0}`: ${INPUTDIR} does not exist"
+        exit 1
+      fi
     fi
   fi
   
@@ -148,7 +155,7 @@ for subID in ${search}; do
     mkdir -p ${MASKS}
   fi
 
-  inv2_mask=`find ${INPUTDIR} -type f -name "*brain_mask.nii.gz" 2>/dev/null`
+  inv2_mask=`find -L ${INPUTDIR} -type f -name "*brain_mask.nii.gz" 2>/dev/null`
   if [[ ! -z ${inv2_mask} ]]; then
     cp ${inv2_mask} ${MASKS}/${base}_acq-${DATA^^}_desc-spm_mask.nii.gz 2>/dev/null
   fi
@@ -156,7 +163,7 @@ for subID in ${search}; do
   # Decide input/output/command based on the third argument flag (FSL/ANTs)
   if [[ ${SOFTWARE,,} == "ants" ]]; then
 
-    input=`find "${INPUTDIR}" -type f \( -name "*T1w*" -and -name "*.nii.gz" \) 2>/dev/null`
+    input=`find -L "${INPUTDIR}" -type f \( -name "*T1w*" -and -name "*.nii.gz" \) 2>/dev/null`
 
     if [[ -f ${input} ]]; then
 
@@ -223,7 +230,7 @@ for subID in ${search}; do
 
   elif [[ ${SOFTWARE,,} == "fsl" ]]; then
 
-    input=`find "${INPUTDIR}" -type f \( -name "*inv-2*" -and -name "*${DATA^^}*" -and -name "*bfc*" \) 2>/dev/null`
+    input=`find -L "${INPUTDIR}" -type f \( -name "*inv-2*" -and -name "*${DATA^^}*" -and -name "*bfc*" \) 2>/dev/null`
     output_root=${BET}/${base}_acq-${DATA^^}_inv-2_desc-bet
     output_brain=${output_root}_brain.nii.gz
     output_mask=${MASKS}/$(basename ${output_brain} _brain.nii.gz)_mask.nii.gz
@@ -326,11 +333,18 @@ for subID in ${search}; do
       fi
 
       # decide on input; convert FreeSurfer file if necessary
-      if [[ ${use_fs} -eq 0 ]]; then
-        input=`find "${INPUTDIR}" -type f \( -name "*T1w*" -and -name "*${DATA^^}*" -and -name "*.nii.gz" \) 2>/dev/null`
-      else
-        fs_anat=${SUBJECTS_DIR}/${sub_name}/mri/rawavg.mgz
-        fs_nii=${SUBJECTS_DIR}/${sub_name}/mri/rawavg.nii.gz
+      rename_base=0
+      if [[ ${use_fs} -eq 1 ]]; then
+        in_dir=${SUBJECTS_DIR}/${sub_name}/mri
+        if [[ ! -d ${in_dir} ]]; then
+          echo "ERROR in `basename ${0}`: FreeSurfer directory \"${in_dir}\" does not exist"
+          exit 1
+        fi
+
+        echo "Using FreeSurfer input"
+        fs_anat=${in_dir}/rawavg.mgz
+        fs_nii=${in_dir}/rawavg.nii.gz
+        rename_base=1
         if [[ ! -f ${fs_nii} ]]; then
           if [[ -f ${fs_anat} ]]; then
             call_mriconvert ${fs_anat}
@@ -347,11 +361,22 @@ for subID in ${search}; do
           echo "ERROR in `basename ${0}`: \"${fs_nii}\" was not created.."
           exit 1
         fi
+      elif [[ ${use_fprep} -eq 1 ]]; then
+        echo "Using fMRIprep input"
+        in_dir=${DIR_DATA_DERIV}/fmriprep/${base_path}/anat
+        if [[ ! -d ${in_dir} ]]; then
+          echo "ERROR in `basename ${0}`: fMRIprep directory \"${in_dir}\" does not exist"
+          exit 1
+        fi
+        input=`find -L "${DIR_DATA_DERIV}/fmriprep/${base_path}/anat" -type f \( -name "${base}*" -and -name "*_desc-preproc_T1w.nii.gz" -and -not -name "*space*" \) 2>/dev/null`
+        rename_base=1
+      else
+        input=`find -L "${INPUTDIR}" -type f \( -name "*T1w*" -and -name "*${DATA^^}*" -and -name "*.nii.gz" \) 2>/dev/null`
       fi
     
       if [[ ! -z ${input} ]]; then
 
-        mask_img=`find ${INPUTDIR} -type f -name "mask*" -print -quit 2>/dev/null`
+        mask_img=`find -L ${INPUTDIR} -type f -name "mask*" -print -quit 2>/dev/null`
         if [[ -z ${mask_img} ]]; then
 
           if [[ ! -d ${BET} ]]; then
@@ -376,7 +401,11 @@ for subID in ${search}; do
               exit 1
             fi
 
-            mask_img=`find ${BET} -type f -name "mask*" -print -quit 2>/dev/null`
+            if [[ ${rename_base} -eq 1 ]]; then 
+              cmd="rename $(basename ${input} .nii.gz) ${base}_acq-${DATA^^}_T1w ${BET}/*"
+            fi
+
+            mask_img=`find -L ${BET} -type f -name "mask*" -print -quit 2>/dev/null`
             if [[ ! -z ${mask_img} ]]; then
               cp ${mask_img} ${brainmask}
             fi
@@ -389,7 +418,7 @@ for subID in ${search}; do
         fi
 
         # this gets T1-weighted and T1map in one directory for spinoza_masking
-        t1map=`find "${INPUTDIR}" -type f \( -name "*T1map*" -and -name "*${DATA^^}*" -and -name "*.nii.gz" \) 2>/dev/null`
+        t1map=`find -L "${INPUTDIR}" -type f \( -name "*T1map*" -and -name "*${DATA^^}*" -and -name "*.nii.gz" \) 2>/dev/null`
         if [[ ! -z ${t1map} ]]; then
           echo "Copying T1map needed for spinoza_segmentmgdm"
           cp ${t1map} ${BET} 2>/dev/null
@@ -398,7 +427,7 @@ for subID in ${search}; do
         fi
 
         # clip and rescale m-image if needed:
-        biascorr=`find ${BET} -type f -name "m${sub_name}*" 2>/dev/null`
+        biascorr=`find -L ${BET} -type f -name "m${sub_name}*" 2>/dev/null`
         if [[ ! -z ${biascorr} ]]; then
           
           # val=`fslstats ${biascorr} -R | awk '{print $2}'`
@@ -434,13 +463,13 @@ for subID in ${search}; do
           fslorient -copyqform2sform ${corrected_t1w}
 
           # Apply mask to T1w/T1map for MDGM input
-          mask_img=`find ${BET} -type f -name "mask*" -print -quit 2>/dev/null`
+          mask_img=`find -L ${BET} -type f -name "mask*" -print -quit 2>/dev/null`
           if [[ ! -z ${mask_img} ]]; then
             cp ${mask_img} ${brainmask}
           fi
 
           # CAT12 can introduce background stuff; mask that out with SPM-mask
-          spm_mask=`find $(dirname ${input}) -type f -name "*spm_mask*" -and -name "*.nii.gz" -print -quit 2>/dev/null`
+          spm_mask=`find -L $(dirname ${input}) -type f -name "*spm_mask*" -and -name "*.nii.gz" -print -quit 2>/dev/null`
           if [[ ! -z ${spm_mask} ]]; then
             echo "Getting rid of CAT12-induced background with SPM-mask"
 
@@ -504,7 +533,7 @@ for subID in ${search}; do
     fi
 
     # still copy SPM-mask even if heavy CAT12-processing was turned off
-    spm_mask=`find ${INPUTDIR} -type f -name "*spm_mask*" -and -name "*.nii.gz" 2>/dev/null`
+    spm_mask=`find -L ${INPUTDIR} -type f -name "*spm_mask*" -and -name "*.nii.gz" 2>/dev/null`
     IFS=$'\n' spm_sorted=($(sort <<<"${spm_mask[*]}"))
     unset IFS 
     count=0; for ii in ${spm_sorted[@]}; do ((count++)); done
