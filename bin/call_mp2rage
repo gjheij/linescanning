@@ -161,7 +161,11 @@ Notes:
 
     if inputdir != None:
         # we got an input directory; look for files with "acq-MP2RAGE"
-        bids_fn = BIDSLayout(opj(inputdir), validate=False).get(datatype='anat', extension=['nii.gz'], return_type='file')
+        if inputdir.endswith("anat"):
+            bids_fn = BIDSLayout(inputdir, validate=False).get(datatype='anat', extension=['nii.gz'], return_type='file')
+        else:
+            bids_fn = BIDSLayout(inputdir, validate=False).get(extension=['nii.gz'], return_type='file')
+            
         select_fn = utils.get_file_from_substring(['acq-MP2RAGE_', 'inv'], bids_fn)
     else:
         select_fn = []
