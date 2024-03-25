@@ -31,6 +31,8 @@ Parameters
   -b|--bids_dir     project root folder; defaults to DIR_DATA_HOME
   -o|--output_dir   output directory; defaults to DIR_DATA_DERIV/lsprep
   -c|--n_comps      number of components for ICA/PCA
+  --coil <value>    maps onto 'voxel_cutoff', which dictates which voxels are considered in the
+                    linescanning.segmentations.Segmentations-class. Default = 300.
   --phase_onset     phase index which denotes stimulus onsets (default = 1, but can be 0 too)
   --ses_trafo       transformation matrix from ses-1 to line-scanning session (defaults to 'ses{ses}
                     _rec-motion1' in DIR_DATA_DERIV/pycortex/<subject>/transforms)
@@ -94,11 +96,12 @@ Example
     bsl_length      = 24
     phase_onset     = 0
     filters         = None
-    suff            = "desc-preproc_bold.h5"
+    suff            = "desc-preproc_bold"
+    coil_cutoff     = 300
 
     # long options without argument: https://stackoverflow.com/a/54170513
     try:
-        opts = getopt.getopt(argv,"qgvh:b:d:n:r:o:f:l:i:s:c:",["help", "subject=", "bids_dir=", "session=", "ses_trafo=", "output_dir=", "filter_pca=", "run=", "no_report", "verbose", "no_acompcor", "tr=", "overwrite", "ow", "shift=","lp", "no_button", "n_comps=", "window=", "poly_order=", "ica", "first=", "last=", "bsl", "phase_onset=", "filters=","suff=","suffix="])[0]
+        opts = getopt.getopt(argv,"qgvh:b:d:n:r:o:f:l:i:s:c:",["help", "subject=", "bids_dir=", "session=", "ses_trafo=", "output_dir=", "filter_pca=", "run=", "no_report", "verbose", "no_acompcor", "tr=", "overwrite", "ow", "shift=","lp", "no_button", "n_comps=", "coil=", "window=", "poly_order=", "ica", "first=", "last=", "bsl", "phase_onset=", "filters=","suff=","suffix="])[0]
     except getopt.GetoptError:
         print("ERROR while handling arguments.. Did you specify an 'illegal' argument..?")
         print(main.__doc__)
@@ -153,7 +156,9 @@ Example
         elif opt in ("--poly_order"):
             poly_order = int(arg)
         elif opt in ("--phase_onset"):
-            phase_onset = int(arg)            
+            phase_onset = int(arg)     
+        elif opt in ("--coil"):
+            coil_cutoff = int(arg)                     
         elif opt in ("--shift"):
             shift = arg
             if "," in shift:
@@ -244,7 +249,11 @@ Example
     # match lists to exlude 3DEPI stuff
     for ii in ["eye","tsv"]:
         if isinstance(collect_dict[ii], list):
-            collect_dict[ii] = utils.match_lists_on(collect_dict["func"], collect_dict[ii], matcher=["task","run"])
+            collect_dict[ii] = utils.match_lists_on(
+                collect_dict["func"], 
+                collect_dict[ii], 
+                matcher=["task","run"]
+            )
     
     # set acompcor to false if ica == True
     if do_ica:
@@ -312,7 +321,8 @@ Example
         deleted_first_timepoints=del_first,
         deleted_last_timepoints=del_last,
         baseline=bsl_length,
-        phase_onset=phase_onset
+        phase_onset=phase_onset,
+        voxel_cutoff=coil_cutoff
     )
 
     # save h5 if needed; filename will be derived from inputs
