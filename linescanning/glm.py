@@ -147,7 +147,9 @@ class GenericGLM():
         add_intercept=True,
         fit=True,
         copes=None,
-        cmap='inferno'):
+        cmap='inferno',
+        kw_conv={}
+        ):
         
         # instantiate 
         self.onsets             = onsets
@@ -168,90 +170,92 @@ class GenericGLM():
         self.dispersion         = dispersion
         self.derivative         = derivative
         self.add_intercept      = add_intercept
+        self.regressors         = regressors
         self.cmap               = cmap
         self.run_fit            = fit
         self.copes              = copes
         self.plot_fit           = plot_fit
         self.plot_design        = plot_design
         self.plot_convolve      = plot_convolve
+        self.kw_conv            = kw_conv
 
         if isinstance(data, np.ndarray):
             self.data = data.copy()
         elif isinstance(data, pd.DataFrame):
+            self.orig = data.copy()
             self.data = data.values
         else:
             raise ValueError("Data must be 'np.ndarray' or 'pandas.DataFrame'")
         
         # define HRF
-        if verbose:
-            print(f"Defining HRF with option '{hrf_pars}'")
+        self.hrf = self.define_hrf()
+
+        # make the stimulus vectors
+        self.stims = self.define_stimvector()
         
-        self.hrf = define_hrf(
-            hrf_pars=hrf_pars,
+        # convolve stimulus vectors
+        self.stims_convolved = self.convolve_stims(**self.kw_conv)
+
+        # resample
+        self.stims_convolved_resampled = self.resample_stimvector()
+
+        # get condition names
+        self.condition_names = list(self.stims_convolved_resampled.keys())
+
+    def define_hrf(self):
+
+        utils.verbose(f"Defining HRF with option '{self.hrf_pars}'", self.verbose)
+        return define_hrf(
+            hrf_pars=self.hrf_pars,
             osf=self.osf,
             TR=self.TR,
             dispersion=self.dispersion,
-            derivative=self.derivative)
+            derivative=self.derivative
+        )
 
-        # make the stimulus vectors
-        if verbose:
-            print("Creating stimulus vector(s)")
-
-        self.stims = make_stimulus_vector(
+    def define_stimvector(self):
+        utils.verbose("Creating stimulus vector(s)", self.verbose)
+        return make_stimulus_vector(
             self.onsets, 
             scan_length=self.data.shape[0], 
             osf=self.osf, 
             type=self.exp_type, 
             TR=self.TR,
             block_length=self.block_length,
-            amplitude=self.amplitude)
-        
-        # convolve stimulus vectors
-        if verbose:
-            print("Convolve stimulus vectors with HRF")
+            amplitude=self.amplitude
+        )
 
-        self.stims_convolved = convolve_hrf(
+    def convolve_stims(self, **kwargs):
+        utils.verbose("Convolve stimulus vectors with HRF", self.verbose)
+        return convolve_hrf(
             self.hrf, 
             self.stims, 
             TR=self.TR,
             osf=self.osf,
             make_figure=self.plot_convolve, 
             xkcd=self.xkcd,
-            line_width=2,
-            add_hline=0)
+            **kwargs
+        )
 
+    def resample_stimvector(self):
         if self.osf > 1:
-            if verbose:
-                print("Resample convolved stimulus vectors")
-
-            self.stims_convolved_resampled = resample_stim_vector(self.stims_convolved, self.data.shape[0])
+            utils.verbose("Resample convolved stimulus vectors", self.verbose)
+            return resample_stim_vector(self.stims_convolved, self.data.shape[0])
         else:
-            self.stims_convolved_resampled = self.stims_convolved.copy()
+            return self.stims_convolved.copy()
 
-        self.condition_names = list(self.stims_convolved_resampled.keys())
-
-    def create_design(
-        self, 
-        regressors=None, 
-        add_intercept=True,
-        verbose=False,
-        make_figure=False):
-        
-        self.regressors = regressors
-        self.add_intercept = add_intercept
-        self.verbose = verbose
-        self.make_figure = make_figure
+    def create_design(self, make_figure=False):
 
         # finalize design matrix (with regressors)
-        if verbose:
-            print("Creating design matrix")
+        utils.verbose("Creating design matrix", self.verbose)
 
         self.design = first_level_matrix(
             self.stims_convolved_resampled, 
             regressors=self.regressors, 
-            add_intercept=self.add_intercept)
+            add_intercept=self.add_intercept
+        )
 
-        if self.make_figure:
+        if make_figure:
             self.plot_design_matrix()
         
     def fit(
@@ -262,11 +266,9 @@ class GenericGLM():
         plot_vox=None, 
         plot_event=None, 
         cmap="inferno",
-        verbose=False,
         copes=None,
         plot_full_only=False,
         plot_full=False,
-        add_intercept=True,
         save_as=None,
         **kwargs
         ):
@@ -276,7 +278,6 @@ class GenericGLM():
         self.plot_vox = plot_vox
         self.plot_event = plot_event
         self.cmap = cmap
-        self.verbose = verbose 
         self.copes = copes
         self.make_figure = make_figure
         self.plot_full_only = plot_full_only
@@ -353,7 +354,7 @@ class GenericGLM():
                 copes=self.copes,
                 plot_full_only=self.plot_full_only,
                 plot_full=self.plot_full,
-                add_intercept=add_intercept,
+                add_intercept=self.add_intercept,
                 save_as=self.save_as,
                 **kwargs
             )
@@ -501,7 +502,7 @@ def make_stimulus_vector(
     try:
         names_cond = utils.get_unique_ids(onset_df, id="event_type")
     except:
-        raise ValueError('Could not extract condition names; are you sure you formatted the dataframe correctly?')
+        raise ValueError('Could not extract condition names; are you sure you formatted the dataframe correctly? Mostly likely you passed the functional dataframe as onset dataframe. Please switch')
 
     # check if we should use covariate as amplitude
     if isinstance(cov_as_ampl, (bool,list)):
@@ -953,6 +954,7 @@ def fit_first_level(
     >>> betas_left,x_conv_left = fit_first_level(convolved_stim_vector_left_ds, data, make_figure=True, xkcd=True, plot_events=[1,2]) # plots first two events
     """
 
+    utils.verbose("Running GLM", verbose)
     if isinstance(data, (pd.DataFrame, pd.Series)):
         data = data.values
 
@@ -1042,7 +1044,8 @@ def fit_first_level(
 
     if verbose:
         for co_ix in range(C.shape[0]):
-            print(f"t-stat {C[co_ix,:]}: {tstat[co_ix]}")
+            if tstat[co_ix].shape[0]<10:
+                print(f"t-stat {C[co_ix,:]}: {tstat[co_ix]}")
 
     def best_voxel(r2):
         # get max over voxels and find max
@@ -1127,7 +1130,8 @@ def fit_first_level(
         'x_conv': X_conv,
         'tstats': tstat,
         'r2': r2,
-        'copes': C
+        'copes': C,
+        'dm': X_matrix
     }
 
 def design_variance(X, which_predictor=1):
