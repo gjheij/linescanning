@@ -26,15 +26,18 @@ Usage:
   spinoza_mgdm [options] <skullstripped> <mgdm> <masks>
 
 Arguments:
-  -s <subject>      subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
-  -n <session>      session ID (e.g., 1, 2, or none)
-  -o|--ow           overwrite existing files
-  --gdh             run GdH-pipeline version (call_gdhmgdm). 
+  -s <subject>        subject ID (e.g., 01). Can also be comma-separated list: 01,02,05
+  -n <session>        session ID (e.g., 1, 2, or none)
+  -o|--ow             overwrite existing files
+  --gdh               run GdH-pipeline version (call_gdhmgdm). 
+  -j <n_cpus>         number of CPUs to use (default = 1)
+  -q <queue>          submit jobs to a specific queue. Defaults to SGE_QUEUE_LONG in spinoza_setup
+  --sge               submit job to cluster (SGE)
 
   Default = regular MGDM
-  <skullstripped>   path to skullstripped data
-  <mgdm>            path to output directory
-  <masks>           path to masks
+  <skullstripped>     path to skullstripped data
+  <mgdm>              path to output directory
+  <masks>             path to masks
 
 Example:
   spinoza_mgdm SKULLSTRIP NIGHRES/mgdm MASKS
@@ -155,9 +158,6 @@ for subID in ${search}; do
   # Look for files
   bet_uni=`find "${input_dir}" -type f \( -name "*acq-${DATA^^}*" -and -not -name "*gdh*" -and -name "*T1w.nii.gz" \) 2>/dev/null`
   bet_t1m=`find "${input_dir}" -type f \( -name "*acq-${DATA^^}*" -and -not -name "*gdh*" -and -name "*T1map.nii.gz" \) 2>/dev/null`
-  mask_sinus=`find "${mask_dir}" -type f \( -name "*acq-${DATA^^}*" -and -name "*sagittalsinus*" -and -name "*.nii.gz" \) 2>/dev/null`
-  mask_dura=`find "${mask_dir}" -type f \( -name "*acq-${DATA^^}*" -and -name "*desc-outside*" -and -name "*.nii.gz" \) 2>/dev/null`
-  mask_skull=`find "${mask_dir}" -type f \( -name "*acq-${DATA^^}*" -and -name "*spm_mask*" -and -name "*.nii.gz" \) 2>/dev/null`
   mask_outside=`find "${mask_dir}" -type f \( -name "*acq-${DATA^^}*" -and -name "*-outside*" -and -name "*.nii.gz" \) 2>/dev/null`
 
   # Define nighres output names
