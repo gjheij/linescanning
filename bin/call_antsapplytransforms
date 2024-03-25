@@ -158,6 +158,10 @@ if [[ ${MOV_ext} == "mgz" ]]; then
   MOV=$(dirname ${MOV})/$(basename ${MOV} .mgz).nii.gz
 fi
 
+if [[ ! -d $(dirname ${OUT}) ]]; then
+  mkdir -p $(dirname ${OUT})
+fi
+
 cmd="antsApplyTransforms -d 3 --float 1 ${VERBOSE} -n ${INT} -e 3 -r ${REF} -i ${MOV} ${ARRAY[@]} -o ${OUT}"
 
 if [ ${VERB} -eq 1 ]; then
