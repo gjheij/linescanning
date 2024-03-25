@@ -42,6 +42,7 @@ Arguments:
                       derivatives/fmriprep
   -c <n_slots>        number of slots to use when we're on a cluster
   -p <n_comps>        number of components to use for decomposition. Default = 10
+  -x <kwargs>         other arguments that should be passed to pybest
   -t <task ID>        limit pybest processing to a specific task. Default is all tasks in TASK_SES1
                       in the spinoza_setup-file Can also be comma-separated list: task1,task2  
   --raw               undo the z-scoring done by pybest (call_unzscore)
@@ -69,7 +70,8 @@ n_comps=10
 post_only=0
 pre_only=0
 pyb_only=0
-while getopts :-:s:n:o:f:c:v:r:t:p: arg; do
+kwargs=""
+while getopts :-:s:n:o:f:c:v:r:t:p:x: arg; do
   case $arg in
     -)
       case "${OPTARG}" in
@@ -113,9 +115,16 @@ while getopts :-:s:n:o:f:c:v:r:t:p: arg; do
     t)  task_ids=${OPTARG}
           ;;  
     p)  n_comps=${OPTARG}
-          ;;                    
+          ;;              
+    x)  kwargs=${OPTARG}
+          ;;                   
   esac
 done
+
+# sort out kwargs
+if [[ ! -z ${kwargs} ]]; then
+  kwargs=`echo $kwargs | tr ',' ' ' | tr '=' ' '`
+fi
 
 if [[ $# -lt 4 ]] ; then
   Usage >&2
@@ -225,7 +234,8 @@ for task_id in ${task_ids[@]}; do
           --save-all \
           --out-dir ${outputdir} \
           ${input_dir} \
-          --n-comps ${n_comps}"""
+          --n-comps ${n_comps} \
+          ${kwargs}"""
 
         echo ${cmd}
         ${cmd}
@@ -293,7 +303,8 @@ for task_id in ${task_ids[@]}; do
         --verbose ERROR \
         --save-all \
         ${input_dir} \
-        --n-comps ${n_comps}"""
+        --n-comps ${n_comps} \
+          ${kwargs}"""
 
       echo ${cmd}
       ${cmd}

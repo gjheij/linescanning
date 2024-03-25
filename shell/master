@@ -1522,10 +1522,15 @@ if [[ $? -eq 0 ]]; then
     fi
 
     INPUT_DIR=`find_hierarchical_anatomy ${ANAT_DEPTH}`  
+    fprep_flag=""
+    if [[ ${fprep_input} -eq 1 ]]; then
+      fprep_flag="--fprep"
+    fi
 
     ${job} spinoza_brainextraction \
       ${SUBJECT} \
       ${SESSION} \
+      ${fprep_flag} \
       ${OW} \
       ${PROC} \
       ${FS_FLAG} \
@@ -1872,7 +1877,12 @@ if [[ $? -eq 0 ]]; then
   # set PCA components
   if [[ ! -z ${C_FLAG} ]]; then
     PCA_COMPS="-c ${C_FLAG}"
-  fi  
+  fi
+
+  # check for expert options
+  if [ ! -z ${KWARGS} ]; then
+    expert_flag="-x ${KWARGS}"
+  fi
 
   ${job} spinoza_denoising \
     ${raw_flag} \
@@ -1890,6 +1900,7 @@ if [[ $? -eq 0 ]]; then
     ${post_flag} \
     ${pyb_flag} \
     ${FORCE_FLAG} \
+    ${expert_flag} \
     ${INPUT_DIR} ${DIR_DATA_DERIV}/pybest
 
   if [[ $? -ne 0 ]]; then

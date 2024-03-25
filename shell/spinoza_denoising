@@ -34,6 +34,7 @@ Arguments:
   --full              Overwrite (i.e., remove) existing output. In case of "-r 'all'", the entire
                       subject directory is removed
   -q <queue>          submit jobs to a specific queue. Defaults to SGE_QUEUE_LONG in spinoza_setup
+  -x <kwargs>         other arguments that should be passed to pybest
   --sge               submit job to cluster (called with 'master -m <module> --sge')
   --no_raw            do NOT unzscore the output from pybest (default is to do so)
   --fsaverage         overwrite PYBEST_SPACE-variable and use FSAverage for pybest (defaults to fs-
@@ -74,13 +75,14 @@ post_only=0
 pre_only=0
 pyb_only=0
 force_exec=0
+kwargs_flags=""
 
 # check if variable is set in setup file
 if [[ -z ${PYBEST_SPACE} ]]; then
   PYBEST_SPACE="fsnative"
 fi
 
-while getopts :-:os:n:t:q:j:c: argument
+while getopts :-:os:n:t:q:j:c:x: argument
 do
   case ${argument} in
     -)
@@ -147,7 +149,9 @@ do
     q)  SGE_QUEUE=${OPTARG}
           ;;       
     c)  PYBEST_N_COMPS=${OPTARG}
-          ;;                 
+          ;;          
+    x)  kwargs_flags="-x ${OPTARG}"
+          ;;                  
   esac
 done
 
@@ -316,6 +320,7 @@ for subID in ${search}; do
           -f ${FPREP} \
           -c ${n_cpus} \
           -p ${PYBEST_N_COMPS} \
+          ${kwargs_flags} \
           ${task_flag} \
           ${pre_flag} \
           ${post_flag} \
