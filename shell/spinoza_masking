@@ -255,13 +255,16 @@ for subID in ${search}; do
       if [[ ! -z ${mask_img} ]]; then
         echo "Skullstripping files for mgdm-input"
         if [[ ! -z ${MASKED} ]]; then
-          echo " apply mask to masked T1-weighted image"
-          fslmaths ${MASKED} -mas ${mask_img} ${bet_t1w}
+          # echo " apply mask to masked T1-weighted image"
+          cmd="""fslmaths ${MASKED} -mas ${mask_img} ${bet_t1w}"""
+          echo $cmd
+          $cmd
         fi
 
         if [[ ! -z ${t1map} ]]; then
-          echo " apply mask to masked T1map image"
-          fslmaths ${t1map} -mas ${mask_img} ${bet_t1m}
+          cmd="""fslmaths ${t1map} -mas ${mask_img} ${bet_t1m}"""
+          echo $cmd
+          $cmd
         fi
 
       fi
