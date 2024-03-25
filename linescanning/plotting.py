@@ -2299,7 +2299,11 @@ def conform_ax_to_obj(
             obj.x_label = ax.get_xlabel()           
 
     # format ticks
-    obj._set_spine_width(ax)
+    try:
+        obj._set_spine_width(ax)
+    except:
+        pass
+
     obj._set_tick_params(ax)
     obj._set_title(ax, obj.title)
 
@@ -2329,7 +2333,10 @@ def conform_ax_to_obj(
     obj._add_line(ax=ax)
 
     # despine
-    obj._despine(ax)
+    try:
+        obj._despine(ax)
+    except:
+        pass
 
     return ax,obj
 
