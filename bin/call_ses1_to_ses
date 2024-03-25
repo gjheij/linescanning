@@ -16,20 +16,28 @@ It will look for the following files:
   - ses-1 anat: derivatives/<anat_stage>/<subject>/ses-1  (uses 'find_hierarchical_anatomy' func-
                 tion if certain stages are not present. Will look in 'denoised' first, then 'pymp-
                 2rage', then 'anat' in DIR_DATA_HOME)
-  - ses-2 anat: $DIR_DATA_HOME/<subject>/ses-<ses_nr>/anat/*acq-MP2RAGE*_T1w.nii.gz
+  - ses-2 anat: DIR_DATA_HOME/<subject>/ses-<ses_nr>/anat/*acq-MP2RAGE*_T1w.nii.gz
 
 And output a transformation matrix as:
-  $CTX/transforms/<subject>_from-ses1_to-ses2_desc-genaff.mat
+  CTX/transforms/<subject>_from-ses1_to-ses2_desc-genaff.mat
 
 Arguments:
-  --inv       invert the matrix 
-  <subject>   subject ID, e.g., sub-001
-  <ses nr>    session number, e.g., 2
+  --inv         invert the matrix 
+  --sge         submit job to SoGE
+  --verbose     print stuff to the terminal
+  --clear       remove existing log-file
+  --debug       just print command, don't execute
+  -s <subject>  subject ID, e.g., sub-001
+  -n <ses nr>   session number, e.g., 2
+  -d <depth>    passed along to 'find_hierarchical_anatomy'. Defaults to DIR_DATA_DERIV/pymp2rage
+  -q <queue>    queue name for when --sge is passed. Default = short.q
+  -j <n_cpus>   number of cores to use (default = 1)
+
 Usage:
-  call_ses1_to_ses <subject> <ses_nr>
+  call_ses1_to_ses [options] -s <subject> -n <ses_nr> -q <queue> -d <depth> -j <n_cpus>
 
 Example:
-  call_ses1_to_ses sub-001 2
+  call_ses1_to_ses -s sub-001 -n 2
 
 ---------------------------------------------------------------------------------------------------
 
@@ -39,7 +47,13 @@ USAGE
 
 invert=0
 verbose=""
-while getopts :-:vh argument
+SGE=0
+n_cpus=1
+search_depth=3
+QUEUE="short.q"
+clear=0
+debug=0
+while getopts :-:vh:s:n:q:j:d: argument
 do
   case ${argument} in
     -)
@@ -47,9 +61,18 @@ do
         inv)
           invert=1
           ;;
+        sge)
+          SGE=1
+          ;;          
         verbose)
           verbose="--verbose"
-          ;;          
+          ;;        
+        clear)
+          clear=1
+          ;;       
+        debug)
+          debug=1
+          ;;                         
         *)
           if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
             echo "Unknown option --${OPTARG}"
@@ -57,19 +80,25 @@ do
           fi
           ;;
       esac;;        
+    s)  sub_id=${OPTARG}
+          ;;  
+    n)  ses_id=${OPTARG}
+          ;;                          
     i)  invert=1
+          ;;   
+    q)  QUEUE=${OPTARG}
+          ;;
+    j)  n_cpus=${OPTARG}
           ;;       
+    d)  search_depth=${OPTARG}
+          ;;               
   esac
 done
 
-if [[ $# -lt 1 ]] ; then
+if [[ $# -lt 2 ]] ; then
   Usage >&2
   exit 1
 fi
-
-
-sub_id=${@:$OPTIND:1}
-ses_id=${@:$OPTIND+1:1}
 
 #-----------------------------------------------------------------------------
 # Check some directories/files
@@ -77,14 +106,19 @@ if [[ ! -d $CTX/${sub_id} ]]; then
   call_ctximport -s ${sub_id}
 fi
 
-# find anatomy directory hierarchically
-INPUT_DIR=`find_hierarchical_anatomy 3`
 
+# find anatomy directory hierarchically
+INPUT_DIR=`find_hierarchical_anatomy ${search_depth}`
 ses1=`find ${INPUT_DIR}/${sub_id}/ses-1 -type f -name "${sub_id}*" -and -name "*T1w.nii.gz" 2>/dev/null`
 ses2=`find ${DIR_DATA_HOME}/${sub_id}/ses-${ses_id}/anat -type f -name "${sub_id}*" -and -name "*acq-MP2RAGE*" -and -name "*T1w.nii.gz" 2>/dev/null`
 
-if [[ -z ${ses1} ]] || [[ -z ${ses2} ]]; then
-  echo "ERROR in `basename ${0}`: could not find ses-1 or ses-${ses_id} anatomy"
+if [[ -z ${ses1} ]]; then
+  echo "ERROR in `basename ${0}`: no T1w file in \"${INPUT_DIR}/${sub_id}/ses-1\""
+  exit 1
+fi
+
+if [[ -z ${ses2} ]]; then
+  echo "ERROR in `basename ${0}`: ses-${ses_id} in \"${DIR_DATA_HOME}/${sub_id}/ses-${ses_id}/anat\""
   exit 1
 fi
 
@@ -99,19 +133,48 @@ else
   tag=ses1_to-ses${ses_id}
 fi
 
+# set output name and make directory
 aff=${CTX}/${sub_id}/transforms/${sub_id}_from-${tag}_desc-genaff.mat
 if [[ ! -d $(dirname ${aff}) ]]; then
   mkdir -p $(dirname ${aff})
 fi
 
-cmd="""call_antsregistration \
+# define log-file
+log_file=$(dirname ${aff})/$(basename ${aff} .mat).log
+if [[ ${clear} -eq 1 ]]; then
+  if [[ -f ${log_file} ]]; then
+    rm ${log_file} 2>/dev/null
+  fi
+fi
+
+# define job execution
+if [[ ${SGE} -eq 1 ]]; then
+  job="qsub -q ${QUEUE} -o ${log_file} -pe smp ${n_cpus} -N $(basename ${aff}) ${DIR_SCRIPTS}/bin/call_antsregistration"
+  verbose="--verbose"
+else
+  job="call_antsregistration"
+fi
+
+# define command
+cmd="""${job} \
+  -j ${n_cpus} \
   ${verbose} \
   ${ref} \
   ${mov} \
   $(dirname ${aff})/$(basename ${aff} genaff.mat)"""
 
-if [[ ! -z ${verbose} ]]; then
+# echo command
+if [[ ${SGE} -eq 0 || ${debug} -eq 1 ]]; then
   echo ${cmd}
 fi
 
-eval ${cmd}
+# execute
+if [[ ${debug} -eq 0 ]]; then
+  (
+  echo ""
+  echo "### New invocation of call_antsregistration @ `date`"
+  echo "`echo ${cmd} | tr '\n' ' '`"
+  echo ""
+  ) >> ${log_file}
+  ${cmd}
+fi
