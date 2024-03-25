@@ -150,7 +150,8 @@ class InitFitter():
         TR,
         merge=False,
         *args,
-        **kwargs):
+        **kwargs
+        ):
 
         self.func = func
         self.onsets = onsets
@@ -3483,3 +3484,491 @@ class Epoch(InitFitter):
 
         # copy column names
         self.df_epoch.columns = self.func.columns
+
+class GLM(InitFitter):
+
+    def __init__(
+        self, 
+        func, 
+        onsets, 
+        TR=0.105, 
+        merge=False,
+        **kwargs
+        ):
+        
+        self.func = func
+        self.onsets = onsets
+        self.TR = TR
+        self.merge = merge
+
+        # prepare data
+        super().__init__(
+            self.func, 
+            self.onsets, 
+            self.TR,
+            merge=self.merge
+        )
+
+        # epoch data based on present identifiers (e.g., task/run)
+        self.glm_input(**kwargs)
+
+    @classmethod
+    def get_copes(
+        self,
+        evs,
+        derivative=False,
+        dispersion=False,
+        add_intercept=True,
+        **kwargs
+        ):
+
+        copes = []
+        if not dispersion and not derivative:
+            copes = np.eye(len(evs))
+        else:
+            start = 0
+            for i in enumerate(evs):
+                if dispersion and derivative:
+                    fc = 3
+                elif dispersion or derivative:
+                    fc = 2
+                else:
+                    fc = 1
+
+                n_cols = len(evs)*fc
+                arr = np.zeros((n_cols))
+                arr[start:start+fc] = 1
+                copes.append(arr)
+
+                start += fc
+            
+        copes = np.array(copes)
+        if add_intercept:
+            icpt = np.zeros((len(evs),1))
+            copes = np.hstack((icpt,copes))
+
+        return copes
+
+    @classmethod
+    def single_glm(
+        self,
+        func,
+        onsets,
+        **kwargs
+        ):
+
+        defaults = {
+            "add_intercept": True,
+            "hrf_pars": "glover",
+            "derivative": True,
+            "TR": 0.105,
+            "osf": 100
+        }
+
+        # update kwargs with defaults
+        for key,val in defaults.items():
+            kwargs = utils.update_kwargs(
+                kwargs,
+                key,
+                val
+            )
+
+        # decide contrasts
+        evs = utils.get_unique_ids(onsets, id="event_type")
+        c_vec = self.get_copes(
+            evs,
+            **kwargs
+        )
+
+        fitter = glm.GenericGLM(
+            onsets, 
+            func,
+            **kwargs
+        )
+
+        fitter.create_design()
+        fitter.fit(copes=c_vec)
+
+        fm = self.format_output(fitter)
+        return fm
+    
+    @classmethod
+    def format_fm(self, glm_obj):
+
+        # full model predictions = dot product of design matrix & betas
+        pred_fm = glm_obj.results["x_conv"]@glm_obj.results["betas"]
+
+        # input will be dataframe, per definition, so copy indices
+        return pd.DataFrame(pred_fm, index=glm_obj.orig.index)    
+
+    @classmethod
+    def format_ev(self, glm_obj):
+
+        evs = utils.get_unique_ids(glm_obj.onsets, id="event_type")
+        dm_columns = glm_obj.results["dm"].columns.to_list()
+        preds = []
+
+        for ix,ev in enumerate(evs):
+
+            beta_idx = [ix for ix,ii in enumerate(dm_columns) if ev in ii or "regressor" in ii or "intercept" in ii]
+
+            # get betas for all voxels
+            betas = glm_obj.results["betas"][beta_idx]
+            event = glm_obj.results["x_conv"][:,beta_idx]
+            ev_preds = event@betas  
+
+            df_ev = pd.DataFrame(ev_preds, index=glm_obj.orig.index)
+            idx = list(df_ev.index.names)
+            df_ev["event_type"] = ev
+            df_ev.reset_index(inplace=True)
+            idx.insert(-1, "event_type")
+            df_ev.set_index(idx, inplace=True)
+            preds.append(df_ev)
+
+        # get predictions
+        return pd.concat(preds)
+
+    @classmethod
+    def format_r2(self, glm_obj):
+        idx = {}
+        for i in ["subject","task","run"]:
+            try:
+                IDs = utils.get_unique_ids(glm_obj.orig, id=i)
+            except:
+                IDs = []
+
+            if len(IDs)>0:
+                idx[i] = IDs[0]
+
+        df_r2 = pd.DataFrame(glm_obj.results["r2"][np.newaxis,...])
+        for key,val in idx.items():
+            df_r2[key] = val
+
+        df_r2.set_index(list(idx.keys()), inplace=True)
+        return df_r2
+    
+    @classmethod
+    def format_tstats(self, glm_obj):
+        idx = {}
+        for i in ["subject","task","run"]:
+            try:
+                IDs = utils.get_unique_ids(glm_obj.orig, id=i)
+            except:
+                IDs = []
+
+            if len(IDs)>0:
+                idx[i] = IDs[0]
+
+        evs = utils.get_unique_ids(glm_obj.onsets, id="event_type")
+        df_t = pd.DataFrame(glm_obj.results["tstats"])
+        for key,val in idx.items():
+            df_t[key] = val
+
+        df_t["event_type"] = evs
+        ix_list = list(idx.keys())
+        ix_list.insert(-1, "event_type")
+        df_t.set_index(ix_list, inplace=True)
+        return df_t    
+
+    @classmethod
+    def format_obj(self, glm_obj):
+        idx = {}
+        for i in ["subject","task","run"]:
+            try:
+                IDs = utils.get_unique_ids(glm_obj.orig, id=i)
+            except:
+                IDs = []
+
+            if len(IDs)>0:
+                idx[i] = IDs[0]
+
+        evs = utils.get_unique_ids(glm_obj.onsets, id="event_type")
+        df_t = pd.DataFrame(glm_obj.results["tstats"])
+        for key,val in idx.items():
+            df_t[key] = val
+
+        df_t["event_type"] = evs
+        ix_list = list(idx.keys())
+        ix_list.insert(-1, "event_type")
+        df_t.set_index(ix_list, inplace=True)
+        return df_t 
+    
+    @classmethod
+    def format_output(self, glm_obj):
+        
+        # full model
+        df_fm = self.format_fm(glm_obj)
+
+        # sort out ev-predictions
+        df_em = self.format_ev(glm_obj)
+        
+        # format r2
+        df_r2 = self.format_r2(glm_obj)
+
+        # format r2
+        df_tstats = self.format_tstats(glm_obj)
+
+        ddict = {
+            "obj": glm_obj,
+            "full_model": df_fm,
+            "ev_model": df_em,
+            "r2": df_r2,
+            "tstats": df_tstats
+        }
+
+        return ddict
+
+    @classmethod
+    def glm_runs(
+        self,
+        df_func,
+        df_onsets, 
+        **kwargs
+        ):
+
+        # loop through runs
+        self.run_ids = utils.get_unique_ids(df_func, id="run")
+        # print(f"task-{task}\t| runs = {run_ids}")
+        run_df = []
+        for run in self.run_ids:
+            
+            expr = f"run = {run}"
+            run_func = utils.select_from_df(df_func, expression=expr)
+            run_stims = utils.select_from_df(df_onsets, expression=expr)
+
+            # get glms
+            df = self.single_glm(
+                run_func,
+                run_stims,
+                **kwargs
+            )
+
+            run_df.append(df)
+
+        return run_df
+    
+    @classmethod
+    def glm_tasks(
+        self,
+        df_func,
+        df_onsets,
+        **kwargs
+        ):
+
+        # read task IDs
+        self.task_ids = utils.get_unique_ids(df_func, id="task")
+
+        # loop through task IDs
+        task_df = [] 
+        for task in self.task_ids:
+
+            # extract task-specific dataframes
+            expr = f"task = {task}"
+            task_func = utils.select_from_df(df_func, expression=expr)
+            task_stims = utils.select_from_df(df_onsets, expression=expr)
+
+            df = self.glm_runs(
+                task_func,
+                task_stims,
+                **kwargs
+            )
+
+            task_df += df
+        
+        return task_df
+
+    @classmethod
+    def glm_subjects(
+        self,
+        df_func,
+        df_onsets,
+        **kwargs
+        ):
+
+        self.sub_ids = utils.get_unique_ids(df_func, id="subject")
+        
+        # loop through subject IDs
+        sub_df = [] 
+        for sub in self.sub_ids:
+
+            # extract task-specific dataframes
+            expr = f"subject = {sub}"
+            self.sub_func = utils.select_from_df(df_func, expression=expr)
+            self.sub_stims = utils.select_from_df(df_onsets, expression=expr)
+
+            try:
+                self.task_ids = utils.get_unique_ids(self.sub_func, id="task")
+            except:
+                self.task_ids = None
+
+            if isinstance(self.task_ids, list):
+                sub_glm = self.glm_tasks(
+                    self.sub_func, 
+                    self.sub_stims,
+                    **kwargs
+                )
+                self.idx = ["subject","task","run"]
+            else:
+                sub_glm = self.glm_runs(
+                    self.sub_func, 
+                    self.sub_stims,
+                    **kwargs
+                )
+                self.idx = ["subject","run"]
+
+            # sub_glm.set_index(self.idx, inplace=True)        
+            sub_df += sub_glm
+
+        # sub_df = pd.concat(sub_df)
+        return sub_df
+    
+    def glm_input(self, **kwargs):
+
+        # run glm
+        self.df_glm = self.glm_subjects(
+            self.func,
+            self.onsets,
+            **kwargs
+        )
+
+        concat_elements = [
+            "full_model",
+            "ev_model",
+            "r2",
+            "tstats"
+        ]
+
+        self.glm_output = {}
+        for conc in concat_elements:
+            self.glm_output[conc] = []
+            for i in self.df_glm:
+                self.glm_output[conc].append(i[conc])
+
+            if len(self.glm_output[conc])>0:
+                self.glm_output[conc] = pd.concat(self.glm_output[conc])
+
+    def get_result(self):
+        return self.glm_output
+    
+    def find_max_r2(self, df=None):
+        if not isinstance(df, pd.DataFrame):
+            df = self.glm_output["r2"]
+
+        max_r2 = np.amax(df.values)
+        max_idx = np.where(df.values==max_r2)[-1][0]
+        return max_r2,max_idx
+    
+    def find_r2(self, vox_nr, df=None):
+
+        if not isinstance(df, pd.DataFrame):
+            df = self.glm_output["r2"]
+
+        r2 = df.iloc[:,vox_nr].values
+        if len(r2)>0:
+            r2 = r2.mean()
+        else:
+            r2 = r2[0]
+
+        return r2
+    
+    def plot_ev_predictions(
+        self,
+        data=None,
+        subject=None,
+        task=None,
+        run=None,
+        vox_nr="max",
+        cmap="inferno",
+        axs=None,
+        figsize=(14,4),
+        full=False,
+        full_only=False,
+        full_color="k",
+        r2_dec=4,
+        **kwargs
+        ):
+
+        # get data
+        preds = self.glm_output["ev_model"]
+        r2 = self.glm_output["r2"]
+        full_preds = self.glm_output["full_model"]
+        evs = utils.get_unique_ids(preds, id="event_type")
+        if not isinstance(data, pd.DataFrame):
+            data = self.func.copy()
+
+        # apply some filters
+        expr = []
+        if isinstance(subject, str):
+            expr.append(f"subject = {subject}")
+        
+        if isinstance(task, str):
+            expr.append(f"task = {task}")
+
+        if isinstance(run, (int,str)):
+            expr.append(f"run = {run}")
+
+        if len(expr)>0:
+            preds = utils.multiselect_from_df(preds, expression=expr)
+            r2 = utils.multiselect_from_df(r2, expression=expr)
+            data = utils.multiselect_from_df(data, expression=expr)
+            full_preds = utils.multiselect_from_df(full_preds, expression=expr)
+
+        if not isinstance(axs, mpl.axes._axes.Axes):
+            fig,axs = plt.subplots(figsize=figsize)
+
+        # set defaults for actual datapoints
+        markers = ['.']
+        colors = ["#cccccc"]
+        linewidth = [0.5]
+        if not isinstance(vox_nr, int):
+            r2_val,vox_nr = self.find_max_r2(df=r2)
+        else:
+            r2_val = self.find_r2(vox_nr, df=r2)
+    
+        signals = [data.iloc[:,vox_nr].values]
+        labels = ['input signal']
+        if not full_only:
+
+            for ev in evs:
+
+                # get predictions
+                ev_preds = utils.select_from_df(
+                    preds,
+                    expression=f"event_type = {ev}"
+                )
+
+                signals.append(ev_preds.iloc[:,vox_nr].values)
+                labels.append(f"Event '{ev}'")
+                markers.append(None)
+                linewidth.append(3)
+
+            colors = [*colors, *sns.color_palette(cmap, len(evs))]
+        else:
+            full = True
+
+        # append full model
+        if full:
+            signals.append(full_preds.iloc[:,vox_nr].values)
+            labels.append(f"full model")
+            markers.append(None)
+            linewidth.append(2)
+            colors.append(full_color)
+
+        if not "title" in list(kwargs.keys()):
+            kwargs = utils.update_kwargs(
+                kwargs,
+                "title",
+                f"model fit vox {vox_nr+1}/{data.shape[1]} (r2={round(r2_val,r2_dec)})",
+            )
+
+        pl = plotting.LazyPlot(
+            signals,
+            y_label="Activity (a.u.)",
+            x_label="volumes",
+            labels=labels,
+            axs=axs,
+            markers=markers,
+            color=colors,
+            line_width=linewidth,
+            **kwargs
+        )
