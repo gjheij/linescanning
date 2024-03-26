@@ -135,8 +135,10 @@ class Defaults():
             "x_lim",
             "x_ticks",
             "y_ticks",
+            "z_ticks",
             "x_ticklabels",
             "y_ticklabels",
+            "z_ticklabels",
             "axs",
             "color",
             "y_dec",
@@ -171,20 +173,10 @@ class Defaults():
         self.xlim_right = None
         self.set_xlim_zero = False
         self.legend_handletext = 0.25
-        self.x_label = None
-        self.y_label = None
         self.title = None
         self.save_as = None
-        self.y_lim = None
-        self.x_lim = None
-        self.x_ticks = None
-        self.y_ticks = None
-        self.x_ticklabels = None
-        self.y_ticklabels = None
         self.axs = None
         self.color = None
-        self.y_dec = None
-        self.x_dec = None
         self.add_vline = None
         self.add_hline = None
         self.dpi = 300
@@ -192,8 +184,11 @@ class Defaults():
         self.bbox_inches = "tight"
         self.fontname = None
         self.legend_kwargs = {}
-        
 
+        for i in ["label","lim","ticks","ticklabels","dec"]:
+            for ii in ["x","y","z"]:
+                setattr(self, f"{ii}_{i}", None)
+        
         # update kwargs
         self.__dict__.update(kwargs)
         
@@ -224,18 +219,21 @@ class Defaults():
 
     def _set_axlabel(self, ax, lbl, axis="x", **kwargs):
         """set y-label"""
-        if axis == "x":
-            ffunc = ax.set_xlabel
-        else:
-            ffunc = ax.set_ylabel
+        if hasattr(ax, f"set_{axis}label"):
+            if axis == "x":
+                ffunc = ax.set_xlabel
+            elif axis == "y":
+                ffunc = ax.set_ylabel
+            else:
+                ffunc = ax.set_zlabel
 
-        if isinstance(lbl, (str,list)):
-            ffunc(
-                lbl, 
-                fontsize=self.font_size, 
-                fontname=self.fontname,
-                **kwargs
-            )
+            if isinstance(lbl, (str,list)):
+                ffunc(
+                    lbl, 
+                    fontsize=self.font_size, 
+                    fontname=self.fontname,
+                    **kwargs
+                )
 
     def _set_tick_params(self, ax, **kwargs):
         """set width/length/labelsize of ticks"""
@@ -255,7 +253,8 @@ class Defaults():
         if isinstance(title, (str,dict)):
             default_dict = {
                 'color': 'k', 
-                'fontweight': 'normal'}
+                'fontweight': 'normal'
+            }
 
             if isinstance(title, str):
                 title_dict = {"title": self.title}
@@ -306,42 +305,47 @@ class Defaults():
     def _set_ticks(ax, ticks, axis="x"):
         """set ticks"""
 
-        if axis == "x":
-            ffunc = ax.set_xticks
-        else:
-            ffunc = ax.set_yticks
+        if hasattr(ax, f"set_{axis}ticks"):
+            if axis == "x":
+                ffunc = ax.set_xticks
+            elif axis == "y":
+                ffunc = ax.set_yticks
+            else:
+                ffunc = ax.set_zticks
 
-        if isinstance(ticks, (pd.Series,pd.DataFrame)):
-            ticks = ticks.values
+            if isinstance(ticks, (pd.Series,pd.DataFrame)):
+                ticks = ticks.values
 
-        if isinstance(ticks, np.ndarray):
-            ticks = [float(i) for i in ticks]
+            if isinstance(ticks, np.ndarray):
+                ticks = [float(i) for i in ticks]
 
-        if isinstance(ticks, (list)):
+            if isinstance(ticks, (list)):
 
-            # check if elements are output of get_?ticklabels()
-            if all([isinstance(i, mpl.text.Text) for i in ticks]):
-                ticks = [float(i._text) for i in ticks]
+                # check if elements are output of get_?ticklabels()
+                if all([isinstance(i, mpl.text.Text) for i in ticks]):
+                    ticks = [float(i._text) for i in ticks]
 
-            ffunc(ticks)
+                ffunc(ticks)
 
     @staticmethod
     def _set_ticklabels(ax, ticks, axis="x", **kwargs):
+        
+        if hasattr(ax, f"set_{axis}ticklabels"):
+            if axis == "x":
+                ffunc = ax.set_xticklabels
+            elif axis == "y":
+                ffunc = ax.set_yticklabels
+            else:
+                ffunc = ax.set_zticklabels
+                
+            if isinstance(ticks, (pd.Series,pd.DataFrame)):
+                ticks = ticks.values
 
-        """set ticklabels"""
-        if axis == "x":
-            ffunc = ax.set_xticklabels
-        else:
-            ffunc = ax.set_yticklabels
-            
-        if isinstance(ticks, (pd.Series,pd.DataFrame)):
-            ticks = ticks.values
+            if isinstance(ticks, np.ndarray):
+                ticks = [float(i) for i in ticks]
 
-        if isinstance(ticks, np.ndarray):
-            ticks = [float(i) for i in ticks]
-
-        if isinstance(ticks, list):
-            ffunc(ticks, **kwargs)
+            if isinstance(ticks, list):
+                ffunc(ticks, **kwargs)
 
     @staticmethod
     def _set_ylim(ax,lim):
@@ -370,14 +374,18 @@ class Defaults():
     @staticmethod
     def _set_ticker(ax, dec, axis="x"):
         """set all y-ticks to decimal"""
-        if axis == "x":
-            add_ax = ax.xaxis
-        else:
-            add_ax = ax.yaxis
 
-        if isinstance(dec, int):
-            from matplotlib.ticker import FormatStrFormatter
-            add_ax.set_major_formatter(FormatStrFormatter(f"%.{dec}f"))
+        if hasattr(ax, f"set_{axis}axis"):
+            if axis == "x":
+                ffunc = ax.xaxis
+            elif axis == "y":
+                ffunc = ax.yaxis
+            else:
+                ffunc = ax.zaxis
+
+            if isinstance(dec, int):
+                from matplotlib.ticker import FormatStrFormatter
+                ffunc.set_major_formatter(FormatStrFormatter(f"%.{dec}f"))
 
     def _set_shaded_error(
         self, 
@@ -2314,7 +2322,7 @@ def conform_ax_to_obj(
         "_set_axlabel"
     ]
 
-    for x in ["x","y"]:
+    for x in ["x","y","z"]:
         for ff,el in zip(
             loop_funcs,
             ["ticks","ticklabels","dec","label"]):
