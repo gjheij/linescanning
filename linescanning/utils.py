@@ -979,7 +979,9 @@ def make_stats_cm(
     lower_neg=(51,0,248),
     upper_neg=(151,253,253), 
     lower_pos=(217,36,36),
-    upper_pos=(251,255,72)):
+    upper_pos=(251,255,72),
+    invert=False,
+    ):
 
     if direction not in ["pos","neg"]:
         raise ValueError(f"direction must be one of 'pos' or 'neg', not '{direction}'")
@@ -988,6 +990,9 @@ def make_stats_cm(
         input_list = [lower_pos,upper_pos]
     else:
         input_list = [lower_neg, upper_neg]
+
+    if invert:
+        input_list = input_list[::-1]
 
     # scale to 0-1
     col_list = []
