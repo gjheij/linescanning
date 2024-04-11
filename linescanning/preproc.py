@@ -884,7 +884,7 @@ class Segmentations():
             # line-img already exists in 'func'
             if key not in ["line","seg"]:
                 ref_img = nb.load(self.segmentation_df[self.subject]['ref'])
-                out_fn = opj(os.path.dirname(val), f"{self.subject}_ses-{self.target_session}_acq-beam_desc-{seg}.nii.gz")
+                out_fn = opj(os.path.dirname(val), f"{self.subject}_ses-{self.target_session}_acq-beam_desc-{key}.nii.gz")
                 print(f"Writing {out_fn}")
                 nb.Nifti1Image(val[..., np.newaxis], affine=ref_img.affine, header=ref_img.header).to_filename(out_fn)
 
