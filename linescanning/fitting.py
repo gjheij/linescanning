@@ -3301,16 +3301,29 @@ class Epoch(InitFitter):
             d_vals = d_.copy()
             return_df = False
 
-        m_ = d_vals[:bsl].mean()
-        if m_ < 0:
-            utils.verbose(f"Shifting profile UP with {round(abs(m_),2)}s", verbose)
-            d_shift = d_vals+abs(m_)
-        else:
-            utils.verbose(f"Shifting profile DOWN with {round(m_,2)}s", verbose)
-            d_shift = d_vals-m_
+        if d_vals.ndim<2:
+            d_vals = d_vals[...,np.newaxis]
+        
+        shift_cols = []
+        for col in range(d_vals.shape[-1]):
+            
+            col_vals = d_vals[:,col]
+            m_ = col_vals[:bsl].mean()
+            if m_ < 0:
+                utils.verbose(f"Shifting profile UP with {round(abs(m_),2)}", verbose)
+                d_shift = col_vals+abs(m_)
+            else:
+                utils.verbose(f"Shifting profile DOWN with {round(m_,2)}", verbose)
+                d_shift = col_vals-m_
 
+            if d_shift.ndim<2:
+                d_shift = d_shift[...,np.newaxis]
+
+            shift_cols.append(d_shift)
+
+        shift_cols = np.concatenate(shift_cols, axis=1)
         if return_df:
-            return pd.DataFrame(d_shift, index=d_.index)
+            return pd.DataFrame(shift_cols, index=d_.index)
         else:
             return d_shift
 
@@ -3359,7 +3372,11 @@ class Epoch(InitFitter):
                     time = self._get_epoch_timepoints(self.interval, self.TR)
 
                     df_stim_epoch = pd.DataFrame(stim_epoch)
-                    df_stim_epoch["t"],df_stim_epoch["epoch"],df_stim_epoch["event_type"] = time,i,ev
+
+                    if len(time) != len(stim_epoch):
+                        print(f"WARNING: could not extract full epoch around event; onset={round(t,2)}s, t_start={round(t_start,2)}s with {n_sampl} samples ({samples}s). Epoch has {len(stim_epoch)} samples")
+
+                    df_stim_epoch["t"],df_stim_epoch["epoch"],df_stim_epoch["event_type"] = time[:len(stim_epoch)],i,ev
                     epochs.append(df_stim_epoch)
             
             # concatenate into 3d array (time,ev,stimulus_nr), average, and store in dataframe
