@@ -375,7 +375,7 @@ class Defaults():
     def _set_ticker(ax, dec, axis="x"):
         """set all y-ticks to decimal"""
 
-        if hasattr(ax, f"set_{axis}axis"):
+        if hasattr(ax, f"{axis}axis"):
             if axis == "x":
                 ffunc = ax.xaxis
             elif axis == "y":
@@ -744,12 +744,19 @@ class LazyPRF(Defaults):
                 self.use_ticks = self.vf_extent
 
             # set ticks
-            self._set_xticks(self.axs, self.use_ticks)
-            self._set_yticks(self.axs, self.use_ticks)
+            loop_funcs = [
+                "_set_ticks",
+                "_set_ticklabels",
+                "_set_ticker"
+            ]
+            for x in ["x","y"]:
+                for ff,el in zip(
+                    loop_funcs,
+                    ["ticks","ticklabels","dec"]):
 
-            # set tickers & despine
-            self._set_y_ticker(self.axs, self.y_dec)
-            self._set_x_ticker(self.axs, self.x_dec)
+                    add_to_ax = getattr(self, f"{x}_{el}")
+                    getattr(self, ff)(self.axs, add_to_ax, axis=x)
+
             self._despine(self.axs)
 
 class LazyPlot(Defaults):
@@ -1092,7 +1099,8 @@ class LazyPlot(Defaults):
         for x in ["x","y"]:
             for ff,el in zip(
                 loop_funcs,
-                ["ticks","ticklabels","dec","label"]):
+                ["ticks","ticklabels","dec","label"]
+                ):
 
                 add_to_ax = getattr(self, f"{x}_{el}")
                 getattr(self, ff)(self.axs, add_to_ax, axis=x)
@@ -1438,14 +1446,6 @@ class LazyCorr(Defaults):
         self._set_spine_width(self.axs)
         self._set_tick_params(self.axs)
         self._set_title(self.axs, self.title)
-
-        for x in ["x","y"]:
-            for ff,el in zip(
-                [self._set_ticks,self._set_ticklabels,self._set_ticker],
-                ["ticks","ticklabels","dec"]):
-
-                add_to_ax = getattr(self, f"{x}_{el}")
-                ff(self.axs, add_to_ax, axis=x)
 
         # set ticks
         loop_funcs = [
@@ -2248,6 +2248,9 @@ class LazyHist(Defaults):
             bottom=trim_bottom
         )
 
+        # draw horizontal/vertical lines with ax?line
+        self._add_line(ax=self.active_axs)
+
         # set title
         self._set_title(self.active_axs, self.title)
 
@@ -2358,12 +2361,14 @@ class LazyColorbar(Defaults):
         vmax=10,
         ori="vertical",
         ticks=None,
+        labels=None,
         flip_ticks=False,
         flip_label=False,
         figsize=(6,0.5),
         save_as=None,
         cm_nr=5,
         cm_decimal=3,
+        cb_kws={},
         **kwargs):
 
         self.cmap = cmap
@@ -2378,7 +2383,10 @@ class LazyColorbar(Defaults):
         self.save_as = save_as
         self.cm_nr = cm_nr
         self.cm_decimal = cm_decimal
+        self.labels = labels
         
+        if self.ori == "vertical":
+            self.figsize = (self.figsize[1],self.figsize[0])
 
         super().__init__(**kwargs)
 
@@ -2406,18 +2414,23 @@ class LazyColorbar(Defaults):
                 key=self.txt,
                 dec=self.cm_decimal,
                 nr=self.cm_nr
-            )   
+            )
 
         # plop everything in class
-        mpl.colorbar.ColorbarBase(
+        mpl.colorbar.Colorbar(
             self.axs, 
             orientation=self.ori, 
             cmap=self.cmap,
             norm=mpl.colors.Normalize(vmin,vmax),
             label=self.txt,
-            ticks=self.ticks)
+            ticks=self.ticks,
+            **cb_kws
+        )
 
         if self.ori == "vertical":
+            
+            tick_ax = "y"
+
             # set font stuff
             if self.flip_ticks:
                 self.axs.yaxis.set_ticks_position("left")
@@ -2427,6 +2440,7 @@ class LazyColorbar(Defaults):
 
             text = self.axs.yaxis.label
         else:
+            tick_ax = "x"
             if self.flip_ticks:
                 self.axs.xaxis.set_ticks_position("top")
 
@@ -2440,6 +2454,14 @@ class LazyColorbar(Defaults):
 
         # fix ticks
         self._set_tick_params(self.axs)   
+
+        # set tick labels?
+        if isinstance(self.labels, (np.ndarray,list)):
+            self._set_ticklabels(
+                self.axs, 
+                self.labels, 
+                axis=tick_ax
+            )
 
         # turn off frame
         self.axs.set_frame_on(False)
