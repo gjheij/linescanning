@@ -2455,6 +2455,7 @@ class DataFilter():
         sf=None,
         use_cols=["#cccccc","r"],
         power_kws={},
+        make_figure=True,
         **kwargs
         ):
 
@@ -2471,39 +2472,42 @@ class DataFilter():
 
             task_ids = [i for i in task_ids if i in incl_task]
         
-        if isinstance(sf, (mpl.figure.SubFigure, list)):
-            if isinstance(sf, mpl.figure.SubFigure):
-                sf = [sf]
+        if make_figure:
+            if isinstance(sf, (mpl.figure.SubFigure, list)):
+                if isinstance(sf, mpl.figure.SubFigure):
+                    sf = [sf]
 
-            if len(sf) != len(task_ids):
-                raise ValueError(f"Number of specified SubFigures ({len(sf)}) does not match number of plots ({len(task_ids)})")
-        else:
-            fig = plt.figure(
-                figsize=(14,len(task_ids)*3), 
-                constrained_layout=True,
-            )
+                if len(sf) != len(task_ids):
+                    raise ValueError(f"Number of specified SubFigures ({len(sf)}) does not match number of plots ({len(task_ids)})")
+            else:
+                fig = plt.figure(
+                    figsize=(14,len(task_ids)*3), 
+                    constrained_layout=True,
+                )
 
-            sf = fig.subfigures(nrows=len(task_ids))
+                sf = fig.subfigures(nrows=len(task_ids))
 
-            if not isinstance(sf, (list,np.ndarray)):
-                sf = [sf]
+                if not isinstance(sf, (list,np.ndarray)):
+                    sf = [sf]
 
         avg_df = []
         for ix,task in enumerate(task_ids):
+            
+            if make_figure:
+                sff = sf[ix]
+                axs = sff.subplots(
+                    ncols=2,
+                    width_ratios=[0.1,0.9]
+                )
 
-            sff = sf[ix]
-            print(sff)
-            axs = sff.subplots(
-                ncols=2,
-                width_ratios=[0.1,0.9]
-            )
-
+            task_df = []
+            col_names = ["original","filtered"]
             for df,col,ms,lw,lbl in zip(
                 [orig, filt],
                 use_cols,
                 [".",None],
                 [0.5,3],
-                ["original","filtered"]):
+                col_names):
 
                 task_avg = df.groupby(["subject","task",t_col]).mean()
                 task_tcs = utils.select_from_df(task_avg, expression=f"task = {task}")
@@ -2512,73 +2516,82 @@ class DataFilter():
                 if avg:
                     task_tcs = pd.DataFrame(task_tcs.mean(axis=1))
 
-                if (ix+1) == len(task_ids):
-                    x_lbl = "time (s)"
-                else:
-                    x_lbl = None
+                task_df.append(task_tcs.copy())
 
-                kwargs = utils.update_kwargs(
-                    kwargs,
-                    "add_hline",
-                    0
-                )
-
-                title = None
-                if "title" in list(kwargs.keys()):
-                    title = kwargs["title"]
-                    kwargs.pop("title")
-
-                pl = plotting.LazyPlot(
-                    task_tcs.values,
-                    axs=axs[1],
-                    color=col,
-                    markers=ms,
-                    line_width=lw,
-                    label=[lbl],
-                    x_label=x_lbl,
-                    y_label="magnitude",
-                    **kwargs
-                )
-
-
-                avg_df.append(task_tcs.copy())
-            
-                if isinstance(title, (str, dict)):
-                    if isinstance(title, str):
-                        set_title = {}
-                        set_title["t"] = title
+                if make_figure:
+                    if (ix+1) == len(task_ids):
+                        x_lbl = "time (s)"
                     else:
-                        set_title = title
-                        
-                    sff.suptitle(**set_title)
+                        x_lbl = None
 
-            ps = self.power_spectrum(
-                avg_df[0],
-                avg_df[1],
-                color=use_cols,
-                axs=axs[0],
-                **power_kws
-            )
+                    kwargs = utils.update_kwargs(
+                        kwargs,
+                        "add_hline",
+                        0
+                    )
 
-        if isinstance(plot_title, (str,dict)):
-            if isinstance(plot_title, str):
-                plot_txt = plot_title
-                plot_title = {}
-            else:
-                plot_txt = plot_title["title"]
-                plot_title.pop("title")
+                    title = None
+                    if "title" in list(kwargs.keys()):
+                        title = kwargs["title"]
+                        kwargs.pop("title")
 
-            try:
-                fig.suptitle(
-                    plot_txt, 
-                    fontsize=pl.title_size*1.1,
-                    **plot_title
+                    pl = plotting.LazyPlot(
+                        task_tcs.values,
+                        axs=axs[1],
+                        color=col,
+                        markers=ms,
+                        line_width=lw,
+                        label=[lbl],
+                        x_label=x_lbl,
+                        y_label="magnitude",
+                        **kwargs
+                    )
+
+                    if isinstance(title, (str, dict)):
+                        if isinstance(title, str):
+                            set_title = {}
+                            set_title["t"] = title
+                        else:
+                            set_title = title
+                            
+                        sff.suptitle(**set_title)
+
+            if make_figure:
+                ps = self.power_spectrum(
+                    task_df[0],
+                    task_df[1],
+                    color=use_cols,
+                    axs=axs[0],
+                    **power_kws
                 )
-                ret_fig = True
-            except:
-                ret_fig = False
+            
+            if len(task_df)>0:
+                task_df = pd.concat(task_df, axis=1)
+                task_df.columns = col_names
+                avg_df.append(task_df)
 
-        avg_df = pd.concat(avg_df, axis=1)
+        ret_fig = False
+        if make_figure:
+            if isinstance(plot_title, (str,dict)):
+                if isinstance(plot_title, str):
+                    plot_txt = plot_title
+                    plot_title = {}
+                else:
+                    plot_txt = plot_title["title"]
+                    plot_title.pop("title")
+
+                try:
+                    fig.suptitle(
+                        plot_txt, 
+                        fontsize=pl.title_size*1.1,
+                        **plot_title
+                    )
+                    ret_fig = True
+                except:
+                    pass
+
+        if len(avg_df)>0:
+            avg_df = pd.concat(avg_df)
 
         if ret_fig:
             return fig,avg_df
