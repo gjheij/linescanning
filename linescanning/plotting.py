@@ -2369,6 +2369,7 @@ class LazyColorbar(Defaults):
         cm_nr=5,
         cm_decimal=3,
         cb_kws={},
+        font_kws={},
         **kwargs):
 
         self.cmap = cmap
@@ -2384,7 +2385,8 @@ class LazyColorbar(Defaults):
         self.cm_nr = cm_nr
         self.cm_decimal = cm_decimal
         self.labels = labels
-        
+        self.font_kws = font_kws
+
         if self.ori == "vertical":
             self.figsize = (self.figsize[1],self.figsize[0])
 
@@ -2449,11 +2451,25 @@ class LazyColorbar(Defaults):
                 
             text = self.axs.xaxis.label
 
-        font = mpl.font_manager.FontProperties(size=self.font_size)
+        if "color" in list(self.font_kws.keys()):
+            ft_color = self.font_kws["color"]
+            self.font_kws.pop('color')
+        else:
+            ft_color = "black"
+
+        font = mpl.font_manager.FontProperties(
+            size=self.font_size,
+            **self.font_kws
+        )
+        
         text.set_font_properties(font)
+        text.set_color(ft_color)
 
         # fix ticks
-        self._set_tick_params(self.axs)   
+        self._set_tick_params(
+            self.axs, 
+            labelcolor=ft_color
+        ) 
 
         # set tick labels?
         if isinstance(self.labels, (np.ndarray,list)):
