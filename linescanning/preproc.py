@@ -29,7 +29,7 @@ class Segmentations():
 
     Class to project segmentations created using the pipeline described on https://linescanning.readthedocs.io/en/latest/ to a single slice image of a new session (typically a line-scanning session). By default, it will look for files in the *Nighres*-directory, as these segmentations are generally of most interest. The output of the class will be a pickle-file containing the following segmentations: CRUISE-tissue segmentation (as per the output of https://github.com/gjheij/linescanning/blob/main/shell/spinoza_cortexreconstruction), the layer+depth segmentation (https://github.com/gjheij/linescanning/blob/main/shell/spinoza_layering), the brain mask, tissue probability maps (https://github.com/gjheij/linescanning/blob/main/shell/spinoza_extractregions), the reference slice, and the line as acquired in the session.
 
-    To warp the files, you'll need to specify a forward-transformation matrix (e.g., from *reference session* to *target session*), the reference slice, and the foldover direction (e.g., FH or AP) describing the nature of the applied saturation slabs. You can also specify an earlier pickle file, in which case the segmentations embedded in that file are loaded in for later manipulation with e.g., :func:`pRFline.segmentations.plot_segmentations` to create overview figures.
+    To warp the files, you'll need to specify a forward-transformation matrix (e.g., from *reference session* to *target session*), the reference slice, and the foldover direction (e.g., FH or AP) describing the nature of the applied saturation slabs. You can also specify an earlier pickle file, in which case the segmentations embedded in that file are loaded in for later manipulation with e.g., :func:`linescanning.preproc.plot_segmentations` to create overview figures.
 
     Parameters
     ----------
@@ -68,19 +68,19 @@ class Segmentations():
     Example
     ----------
     >>> # load existing pickle file
-    >>> from pRFline import segmentations
+    >>> from linescanning import preproc
     >>> ff = "<some_path>/segmentations.pkl"
     >>> ref = "<some_path>/ref_slice.nii.gz"
-    >>> segs = segmentations.Segmentations(<subject>, pickle_file=ff, reference_slice=ref)
+    >>> segs = preproc.Segmentations(<subject>, pickle_file=ff, reference_slice=ref)
 
     >>> # create pickle file with segmentations for a  single subject
-    >>> from linescanning import segmentations
+    >>> from linescanning import preproc
     >>> import os
     >>> ref = "<some_path>/ref_slice.nii.gz"
     >>> to_ses = 3
     >>> sub = "sub-003"
     >>> derivatives = os.environ.get('DIR_DATA_DERIV')
-    >>> segs = segmentations.Segmentations(sub, reference_slice=ref, trafo_file=trafo, target_session=to_ses, foldover="FH")
+    >>> segs = preproc.Segmentations(sub, reference_slice=ref, trafo_file=trafo, target_session=to_ses, foldover="FH")
 
     >>> # loop over a bunch of subjects
     >>> subject_list = ['sub-001','sub-003','sub-004','sub-005','sub-006']
@@ -88,10 +88,8 @@ class Segmentations():
     >>> for ii in subject_list:
     >>>     ref = f"{subject}_ref_slice.nii.gz"
     >>>     matrix_file = f"{subject}_from-ses1_to-ses2.mat"
-    >>>     segs = segmentations.Segmentations(ii, reference_slice=ref, trafo_file=matrix_file)
-    >>>     all_segmentations[ii] = segs.segmentations_df.copy
-    >>> # plot all subjects
-    >>> segmentations.plot_segmentations(all_segmentations, , max_val_ref=3000, figsize=(15,5*len(subject_list))))
+    >>>     segs = preproc.Segmentations(ii, reference_slice=ref, trafo_file=matrix_file)
+    >>>     all_segmentations[ii] = segs.segmentations_df.copy()
 
     Notes
     ----------
@@ -349,7 +347,7 @@ class Segmentations():
         Parameters
         ----------
         segmentation_df: dict
-            Dictionary as per the output of :class:`pRFline.segmentations.Segmentation`, specifically the attribute `:attr:`pRFline.segmentations.Segmentation.segmentation_df`. This is a nested dictionary with the head key being the subject ID specified in the class, and within that there's a dictionary with keys pointing to the various segmentations: ['wm', 'gm', 'csf', 'cortex', 'layers', 'depth', 'mask', 'ref', 'line']
+            Dictionary as per the output of :class:`linescanning.preproc.Segmentations`, specifically the attribute `:attr:`linescanning.preproc.Segmentations.segmentation_df`. This is a nested dictionary with the head key being the subject ID specified in the class, and within that there's a dictionary with keys pointing to the various segmentations: ['wm', 'gm', 'csf', 'cortex', 'layers', 'depth', 'mask', 'ref', 'line']
         include: list, optional
             Filter for segmentations to include, by default ['ref', 'cortex', 'layers']. These should match the keys outlined above.
         cmaps: list, optional
@@ -367,11 +365,11 @@ class Segmentations():
 
         Example
         ----------
-            >>> from pRFline import segmentations
-            >>> ff = "<some_path>/segmentations.pkl"
-            >>> ref = "<some_path>/ref_slice.nii.gz"
-            >>> segs = segmentations.Segmentations(<subject>, pickle_file=ff, reference_slice=ref)
-            >>> segmentations.plot_segmentations(segs.segmentation_df, max_val_ref=3000, figsize=(15,5))
+        >>> from linescanning import preproc
+        >>> ff = "<some_path>/segmentations.pkl"
+        >>> ref = "<some_path>/ref_slice.nii.gz"
+        >>> segs = preproc.Segmentations(<subject>, pickle_file=ff, reference_slice=ref)
+        >>> segs.plot_segmentations(segs.segmentation_df, max_val_ref=3000, figsize=(15,5))
         """
         
         # because 'segmentation_df' can contain multiple subjects, decide on number of columns & rows for figure
@@ -461,12 +459,12 @@ class Segmentations():
 
         """plot_line_segmentations
 
-        Plot and return the 16 middle voxel rows representing the content of the line for each of the selected segmentations. These segmentations are indexed with keys as per the attribute :class:`pRFline.segmentations.Segmentations.segmentations_df`. The most complex part of this function is the plotting indexing, but the voxel selection is pretty straightforward: in the output dictionary we have a key *line*. This line is converted to a boolean and multiplied with the segmentations to extract 16 middle voxels. The output of this is stored in *beam[<subject>][<segmentation key>]* and returned to the user after plotting the segmentations. If you have multiple subjects in your input dataframe, make sure to tinker with *move_factor*, which represents a factor of moving the subject-specific plots to the right of the total figure. By default, it's some factor over the number of subjects, but it's good to change this parameter and see what happens to understand it. 
+        Plot and return the 16 middle voxel rows representing the content of the line for each of the selected segmentations. These segmentations are indexed with keys as per the attribute :class:`linescanning.preproc.Segmentations.segmentations_df`. The most complex part of this function is the plotting indexing, but the voxel selection is pretty straightforward: in the output dictionary we have a key *line*. This line is converted to a boolean and multiplied with the segmentations to extract 16 middle voxels. The output of this is stored in *beam[<subject>][<segmentation key>]* and returned to the user after plotting the segmentations. If you have multiple subjects in your input dataframe, make sure to tinker with *move_factor*, which represents a factor of moving the subject-specific plots to the right of the total figure. By default, it's some factor over the number of subjects, but it's good to change this parameter and see what happens to understand it. 
 
         Parameters
         ----------
         segmentation_df: dict
-            Dictionary as per the output of :class:`pRFline.segmentations.Segmentation`, specifically the attribute `:attr:`pRFline.segmentations.Segmentation.segmentation_df`. This is a nested dictionary with the head key being the subject ID specified in the class, and within that there's a dictionary with keys pointing to the various segmentations: ['wm', 'gm', 'csf', 'cortex', 'layers', 'depth', 'mask', 'ref', 'line']
+            Dictionary as per the output of :class:`linescanning.preproc.Segmentations`, specifically the attribute `:attr:`linescanning.preproc.Segmentations.segmentation_df`. This is a nested dictionary with the head key being the subject ID specified in the class, and within that there's a dictionary with keys pointing to the various segmentations: ['wm', 'gm', 'csf', 'cortex', 'layers', 'depth', 'mask', 'ref', 'line']
         include: list, optional
             Filter for segmentations to include, by default ['ref', 'cortex', 'layers']. These should match the keys outlined above.
         cmap_color_mask: str, tuple, optional
@@ -497,7 +495,7 @@ class Segmentations():
 
         Example
         ----------
-        >>> from pRFline import segmentations
+        >>> from linescanning import segmentations
         >>> ff = "<some_path>/segmentations.pkl"
         >>> ref = "<some_path>/ref_slice.nii.gz"
         >>> segs = segmentations.Segmentations(<subject>, pickle_file=ff, reference_slice=ref)
@@ -825,7 +823,8 @@ class Segmentations():
 
         Example
         ----------
-        >>> segs = segmentations.Segmentations(<subject>, pickle_file=<pickle file>, reference_slice=<reference slice>, target_session=<target session>)
+        >>> from linescanning import preproc
+        >>> segs = preproc.Segmentations(<subject>, pickle_file=<pickle file>, reference_slice=<reference slice>, target_session=<target session>)
         >>> segs.plot_beam_in_slice(save=True)
         """
 
@@ -907,7 +906,7 @@ class Align():
                 obj.segmentations_to_beam()
             except:
                 allowed_types = ["linescanning.dataset.Dataset", "linescanning.preproc.Segmentations", "linescanning.preproc.aCompCor"]
-                raise TypeError(f"Input must be one of {allowed_types}, or linescanning.preproc.Segmentations, not '{type(obj)}'")
+                raise TypeError(f"Input must be one of {allowed_types}, not '{type(obj)}'")
 
         # get the CRUISE segmentation
         self.moving_cortex  = self.moving_object.segmentations_in_beam[self.moving_object.subject]['cortex']
@@ -1147,7 +1146,7 @@ class aCompCor(Segmentations):
     subject: str, optional
         Full subject identifier (e.g., 'sub-001'), by default None
     wm_voxels: list, optional
-        List of voxel IDs that are classified as white matter, by default None. Can be specified if you don't have a line-scanning session and, therefore, no :class:`linescanning.preproc.Segmentation` object
+        List of voxel IDs that are classified as white matter, by default None. Can be specified if you don't have a line-scanning session and, therefore, no :class:`linescanning.preproc.Segmentations` object
     csf_voxels: list, optional
         List of voxel IDs that are classified as CSF, by default None. Can be specified if you don't have a line-scanning session and, therefore, no :class:`linescanning.preproc.Segmentations` object
     n_components: int, optional
@@ -1827,20 +1826,20 @@ class ICA():
         
     """ICA
 
-    Wrapper around :class:`sklearn.decomposition.FastICA`, with a few visualization options. The basic input needs to be a `pandas.DataFrame` or `numpy.ndarray` describing a 2D dataset (e.g., the output of :class:`linescanning.dataset.Dataset` or :class:`linescanning.dataset.ParseFuncFile`). :function:`linescanning.preproc.ICA.summary()` outputs a figure describing the effects of ICA denoising on the input data (similar to :function:`linescanning.preproc.aCompCor.summary()`). 
+    Wrapper around :class:`sklearn.decomposition.FastICA`, with a few visualization options. The basic input needs to be a `pandas.DataFrame` or `numpy.ndarray` describing a 2D dataset (e.g., the output of :class:`linescanning.dataset.Dataset` or :class:`linescanning.dataset.ParseFuncFile`). :func:`linescanning.preproc.ICA.summary()` outputs a figure describing the effects of ICA denoising on the input data (similar to :func:`linescanning.preproc.aCompCor.summary()`). 
 
     Parameters
     ----------
     subject: str, optional
-        Subject ID to use when saving figures (e.g., `sub-001`)
+        Subject ID to use when saving figures (e.g., ``sub-001``)
     data: Union[pd.DataFrame,np.ndarray]
-        Dataset to be ICA'd in the format if `<time,voxels>`
+        Dataset to be ICA'd in the format if ``<time,voxels>``
     n_components: int, optional
         Number of components to use, by default 10
     filter_confs: float, optional
-        Specify a high-pass frequency cut off to retain task-related frequencies, by default 0.02. If you do not want to high-pass filter the components, set `filter_confs=None` and `keep_comps` to the the components you want to retain (e.g., `keep_comps=[0,1]` to retain the first two components)
+        Specify a high-pass frequency cut off to retain task-related frequencies, by default 0.02. If you do not want to high-pass filter the components, set ``filter_confs=None`` and ``keep_comps`` to the the components you want to retain (e.g., ``keep_comps=[0,1]`` to retain the first two components)
     keep_comps: list, optional
-        Specify a list of components to keep from the data, rather than all high-pass components. If `filter_confs` == None, but `keep_comps` is given, no high-pass filtering is applied to the components. If `filter_confs` & `keep_comps` == None, an error will be thrown. You must either specify `filter_confs` and/or `keep_comps`
+        Specify a list of components to keep from the data, rather than all high-pass components. If ``filter_confs=None``, but `keep_comps` is given, no high-pass filtering is applied to the components. If ``filter_confs=None`` & ``keep_comps=None``, an error will be thrown. You must either specify ``filter_confs`` and/or ``keep_comps``
     verbose: bool, optional
         Turn on verbosity; prints some stuff to the terminal, by default False
     TR: float, optional
@@ -1848,15 +1847,15 @@ class ICA():
     save_as: str, optional
         Path pointing to the location where to save the figures. `sub-<subject>_run-{self.run}_desc-ica.{self.save_ext}"), by default None
     session: int, optional
-        Session ID to use when saving figures (e.g., `1`), by default 1
+        Session ID to use when saving figures (e.g., ``1``), by default 1
     run: int, optional
-        Run ID to use when saving figures (e.g., `1`), by default 1
+        Run ID to use when saving figures (e.g., ``1``), by default 1
     summary_plot: bool, optional
         Make a figure regarding the efficacy of the ICA denoising, by default False
     melodic_plot: bool, optional
         Make a figure regarding the information about the components themselves, by default False
     ribbon: tuple, optional
-        Range of gray matter voxels. If `None`, we'll check the efficacy of ICA denoising over the average across the data, by default None
+        Range of gray matter voxels. If ``None``, we'll check the efficacy of ICA denoising over the average across the data, by default None
     save_ext: str, optional
         Extension to use when saving figures, by default "svg"
 
@@ -1875,9 +1874,6 @@ class ICA():
     >>>     verbose=True,
     >>>     ribbon=None
     >>> )
-    >>> # regress components from data. if `filter_confs` & `keep_comps` != None, we'll take the high-passed `keep_comps`components
-    >>> # if `filter_confs` == None, but `keep_comps` is given, no high-pass filtering is applied to the components
-    >>> # 
     >>> ica_obj.regress()
     """
 

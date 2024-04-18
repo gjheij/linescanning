@@ -18,16 +18,16 @@ from alive_progress import alive_bar
 class CurveFitter():
     """CurveFitter
 
-    Simple class to perform a quick curve fitting procedure on `y_data`. You can either specify your own function with `func`, or select a polynomial of order `order` (currently up until 3rd-order is included). Internally uses `lmfit.Model` to perform the fitting, allowing for access to confidence intervals.
+    Simple class to perform a quick curve fitting procedure on ``y_data``. You can either specify your own function with ``func``, or select a polynomial of order ``order`` (currently up until 3rd-order is included). Internally uses ``lmfit.Model`` to perform the fitting, allowing for access to confidence intervals.
 
     Parameters
     ----------
     y_data: np.ndarray
         Data-points to perform fitting on
     x: np.ndarray, optional
-        Array describing the x-axis, by default None. If `None`, we'll take `np.arange` of `y_data.shape[0]`. 
+        Array describing the x-axis, by default None. If ``None``, we'll take ``np.arange`` of ``y_data.shape[0]``. 
     func: <function> object, optional
-        Use custom function describing the behavior of the fit, by default None. If `none`, we'll assume either a linear or polynomial fit (up to 3rd order)
+        Use custom function describing the behavior of the fit, by default None. If ``none``, we'll assume either a linear or polynomial fit (up to 3rd order)
     order: str, int, optional
         Order of polynomial fit, by default "3rd". Can either be '1st'|1, '2nd'|2, or '3rd'|3
     verbose: bool, optional
@@ -38,7 +38,7 @@ class CurveFitter():
     Raises
     ----------
     NotImplementedError
-        If `func=None` and no valid polynomial order (see above) was specified
+        If ``func=None`` and no valid polynomial order (see above) was specified
 
     Example
     ----------

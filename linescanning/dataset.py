@@ -3091,9 +3091,9 @@ The data was then low-pass filtered using a Savitsky-Golay filter [removes high 
 class Dataset(ParseFuncFile,SetAttributes):
     """Dataset
 
-    Main class for retrieving, formatting, and preprocessing of all datatypes including fMRI (2D), eyetracker (*.edf), physiology (*.log [WIP]), and experiment files derived from `Exptools2` (*.tsv). If you leave `subject` and `run` empty, these elements will be derived from the file names. So if you have BIDS-like files, leave them empty and the dataframe will be created for you with the correct subject/run IDs. 
+    Main class for retrieving, formatting, and preprocessing of all datatypes including fMRI (2D), eyetracker (.edf), physiology (.log [WIP]), and experiment files derived from `Exptools2` (.tsv). If you leave `subject` and `run` empty, these elements will be derived from the file names. So if you have BIDS-like files, leave them empty and the dataframe will be created for you with the correct subject/run IDs. 
 
-    Inherits from :class:`linescanning.dataset.ParseFuncFile`, so all arguments from that class are available and are passed on via `**kwargs`.	Only `func_file` and `verbose` are required. The first one is necessary because if the input is an **h5**-file, we'll set the attributes accordingly. Otherwise :class:`linescanning.dataset.ParseFuncFile` is invoked. `verbose` is required for aesthetic reasons. Given that :class:`linescanning.dataset.ParseFuncFile` inherits in turn from :class:`linescanning.dataset.ParseExpToolsFile`, you can pass the arguments for that class here as well.
+    Inherits from :class:`linescanning.dataset.ParseFuncFile`, so all arguments from that class are available and are passed on via `kwargs`. Only `func_file` and `verbose` are required. The first one is necessary because if the input is an **h5**-file, we'll set the attributes accordingly. Otherwise :class:`linescanning.dataset.ParseFuncFile` is invoked. `verbose` is required for aesthetic reasons. Given that :class:`linescanning.dataset.ParseFuncFile` inherits in turn from :class:`linescanning.dataset.ParseExpToolsFile`, you can pass the arguments for that class here as well.
     
     Parameters
     ----------

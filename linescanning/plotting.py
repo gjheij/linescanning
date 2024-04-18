@@ -764,12 +764,12 @@ class LazyPRF(Defaults):
 class LazyPlot(Defaults):
     """LazyPlot
 
-    Class for plotting because I'm lazy and I don't want to go through the `matplotlib` motion everything I quickly want to visualize something. This class makes that a lot easier. It allows single inputs, lists with multiple timecourses, labels, error shadings, and much more.
+    Class for plotting because I'm lazy and I don't want to go through the ``matplotlib`` motion everything I quickly want to visualize something. This class makes that a lot easier. It allows single inputs, lists with multiple timecourses, labels, error shadings, and much more.
 
     Parameters
     ----------
     ts: list, numpy.ndarray
-        Input data. Can either be a single list, or a list of multiple numpy arrays. If you want labels, custom colors, or error bars, these inputs must come in lists of similar length as `ts`!
+        Input data. Can either be a single list, or a list of multiple numpy arrays. If you want labels, custom colors, or error bars, these inputs must come in lists of similar length as ``ts``!
     xx: list, numpy.ndarray, optional
         X-axis array
     error: list, numpy.ndarray, optional
@@ -781,15 +781,15 @@ class LazyPlot(Defaults):
     figsize: tuple, optional
         Figure dimensions as per usual matplotlib conventions, by default (25,5)
     markers: str, list, optional
-        Use markers during plotting. A single option will be applied to all elements in `ts`. A separate list for each element of `ts` is also accepted. If one array in `ts` should not have markers, use `None`. E.g., if `len(ts) == 3`, and we want only the first timecourse to have markers use: `markers=['.',None,None]
+        Use markers during plotting. A single option will be applied to all elements in ``ts``. A separate list for each element of ``ts`` is also accepted. If one array in ``ts`` should not have markers, use `None`. E.g., if `len(ts) == 3`, and we want only the first timecourse to have markers use: ``markers=['.',None,None]``
     markersize: str, list, optional
-        Specify marker sizes during plotting. A single option will be applied to all elements in `ts`. A separate list for each element of `ts` is also accepted. If one array in `ts` should not have markers, use `None`. E.g., if `len(ts) == 3`, and we want only the first timecourse to have markers use: `markers=['.',None,None]
+        Specify marker sizes during plotting. A single option will be applied to all elements in ``ts``. A separate list for each element of ``ts`` is also accepted. If one array in ``ts`` should not have markers, use `None`. E.g., if ``len(ts) == 3``, and we want only the first timecourse to have markers use: ``markers=['.',None,None]``
     markerfc: str, list, optional
-        Specify marker facecolor during plotting. A single option will be applied to all elements in `ts`. A separate list for each element of `ts` is also accepted     
+        Specify marker facecolor during plotting. A single option will be applied to all elements in ``ts``. A separate list for each element of ``ts`` is also accepted     
     markerec: str, list, optional
-        Specify marker edgecolor during plotting. A single option will be applied to all elements in `ts`. A separate list for each element of `ts` is also accepted
+        Specify marker edgecolor during plotting. A single option will be applied to all elements in ``ts``. A separate list for each element of ``ts`` is also accepted
     plot_kw: dict, optional
-        Further plotting options passed to `matplotlib.pyplot.plot`, such as `markerfacecolor` (removes fill from markers, leaving only the edges), and `markeredgewidth` (sets the width of the marker outline). These options are passed to **every** elements in `ts`.
+        Further plotting options passed to ``matplotlib.pyplot.plot``, such as ``markerfacecolor`` (removes fill from markers, leaving only the edges), and ``markeredgewidth`` (sets the width of the marker outline). These options are passed to **every** elements in ``ts``.
     x_ticks: list, optional
         Locations where to put the ticks on the x-axis
     y_ticks: list, optional
@@ -1116,18 +1116,18 @@ class LazyPlot(Defaults):
 class LazyCorr(Defaults):
     """LazyCorr
 
-    Wrapper around seaborn's regplot. Plot data and a linear regression model fit. In addition to creating the plot, you can also run a regression or correlation using pingouin by setting the corresponding argument to `True`.
+    Wrapper around seaborn's regplot. Plot data and a linear regression model fit. In addition to creating the plot, you can also run a regression or correlation using pingouin by setting the corresponding argument to ``True``.
 
     Parameters
     ----------
     data: pd.DataFrame, optional
-        Input DataFrame. In this case, use strings representing column names for `x`, `y`, and `color_by`. Internally, the dataframe is parsed into arrays so that it's compatible with matplotlib's scatter-/ color-by functions
+        Input DataFrame. In this case, use strings representing column names for ``x``, ``y``, and ``color_by``. Internally, the dataframe is parsed into arrays so that it's compatible with matplotlib's scatter-/ color-by functions
     x: str, np.ndarray, list
-        First variable to include in plot/regression. Can be a list/array representing data, or a column name from `data`
+        First variable to include in plot/regression. Can be a list/array representing data, or a column name from ``data``
     y: str, np.ndarray, list
-        Second variable to include in plot/regression. Can be a list/array representing data, or a column name from `data`
+        Second variable to include in plot/regression. Can be a list/array representing data, or a column name from ``data``
     color_by: str, np.ndarray, list
-        Color the points according to a separate array. Can be a list/array representing data, or a column name from `data`. Default color map for this is 'viridis', and can be changed by passing arguments to `scatter_kwargs`
+        Color the points according to a separate array. Can be a list/array representing data, or a column name from ``data``. Default color map for this is 'viridis', and can be changed by passing arguments to `scatter_kwargs`
     color: str, list, optional
         String representing a color, by default "#ccccccc" to color the regression fit
     figsize: tuple, optional
@@ -1135,16 +1135,16 @@ class LazyCorr(Defaults):
     axs: <AxesSubplot:>, optional
         Matplotlib axis to store the figure on
     correlation: bool, optional
-        Run a correlation between `x` and `y`. The result is stored in `self.correlation_result`
+        Run a correlation between ``x`` and ``y``. The result is stored in ``self.correlation_result``
     regression: bool, optional
-        Run a regression between `x` and `y`. The result is stored in `self.regression_result`
+        Run a regression between ``x`` and ``y``. The result is stored in ``self.regression_result``
     scatter_kwargs: dict, optional
-        Additional options passed on to the `scatter` function from matplotlib. Set colorbar to nothing by passing:
+        Additional options passed on to the ``scatter`` function from matplotlib. Set colorbar to nothing by passing:
+        
+        >>> scatter_kwargs={"cbar": False}
+
     result_to_plot: bool, optional
         Add the correlation/regression result to the plot
-
->>> scatter_kwargs={"cbar": False}
-
     stat_kwargs: dict, optional
         Options passed on to pingouin's stats functions
     reg_kwargs: dict, optional
