@@ -15,6 +15,5 @@ Python functions
    prf
    pycortex
    scanner
-   segmentations
    transform
    utils
