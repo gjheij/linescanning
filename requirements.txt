@@ -4,6 +4,9 @@ nibabel>=3.1.1
 scipy>1.8.1
 jinja2==3.0.1
 scikit-image==0.19.2
+nilearn==0.10.0,
+alive_progress=1.2.2
+scipy=1.9.1
 scikit-learn
 nbsphinx
 kneed
