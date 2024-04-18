@@ -8,7 +8,9 @@ from linescanning import (
     utils, 
     plotting, 
     dataset, 
-    preproc)
+    fitting,
+    preproc
+)
 import math
 import matplotlib.image as mpimg
 import matplotlib.patches as patches
@@ -640,15 +642,22 @@ def norm_1d_sr_function(a,b,c,d,s_1,s_2,x,stims,mu_x=0):
 
 
 # Adapted from psychopy
-def pix2deg(pixels, prf_object, scrSizePix=[270, 270]):
+def pix2deg(
+    pixels, 
+    prf_object=None, 
+    scrSizePix=[270, 270],
+    scrWidthCm=39.8,
+    scrDist=196
+    ):
     """Convert size in pixels to size in degrees for a given Monitor object""" 
 
     # get monitor params and raise error if necess
-    scrWidthCm = prf_object.screen_size_cm
-    dist = prf_object.screen_distance_cm
+    if not isinstance(scrWidthCm, (int,float)) and not isinstance(scrDist, (int,float)):
+        scrWidthCm = prf_object.screen_size_cm
+        scrDist = prf_object.screen_distance_cm
 
     cmSize = pixels * float(scrWidthCm) / scrSizePix[0]
-    return old_div(cmSize, (dist * 0.017455))
+    return old_div(cmSize, (scrDist * 0.017455))
 
 
 # Adapted from psychopy
@@ -2372,9 +2381,13 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         save_as=None,
         axis_type="time",
         resize_pix=270,
+        n_time=5,
         add_tc={"tc": None},
         axs=None,
         normalize=False,
+        figsize=(15,5),
+        wratios=None,
+        force_int=False,
         **kwargs):    
         
         """plot_vox
@@ -2512,11 +2525,17 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
         if make_figure:
             
             if not isinstance(axs, list):
-                fig = plt.figure(constrained_layout=True, figsize=(15,5))
+                fig = plt.figure(constrained_layout=True, figsize=figsize)
                 if freq_spectrum:
-                    gs = fig.add_gridspec(1,3, width_ratios=[10,20,10])
+                    if not isinstance(wratios, list):
+                        wratios = [10,20,10]
+
+                    gs = fig.add_gridspec(1,3, width_ratios=wratios)
                 else:
-                    gs = fig.add_gridspec(1,2, width_ratios=[10,20])
+                    if not isinstance(wratios, list):
+                        wratios = [10,20]
+
+                    gs = fig.add_gridspec(1,2, width_ratios=wratios)
 
                 ax1 = fig.add_subplot(gs[0])
                 ax2 = fig.add_subplot(gs[1])
@@ -2552,7 +2571,8 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
             if "x_label" in list(kwargs.keys()):
                 x_label = kwargs["x_label"]
                 kwargs.pop("x_label")
-                
+            
+            print(self.prediction.shape[0])
             # add additional timecourse
             if isinstance(add_tc, np.ndarray):
                 add_tc = {"tc": add_tc}
@@ -2575,6 +2595,30 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
 
                         ll += [add_tc[it]]
 
+            diff = x_axis[-1]-x_axis[0]
+            step_size = diff/n_time
+
+            x_ticks = np.linspace(
+                x_axis[0],
+                x_axis.shape[0], 
+                num=n_time, 
+                endpoint=True
+            )
+
+            if force_int:
+                x_ticks = [int(round(i,0)) for i in x_ticks]
+
+            ddict = {
+                "x_ticks": x_ticks
+            }
+
+            for key,val in ddict.items():
+                kwargs = utils.update_kwargs(
+                    kwargs,
+                    key,
+                    val
+                )
+
             plotting.LazyPlot(
                 data_list,
                 xx=x_axis,
@@ -2588,9 +2632,9 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                 xkcd=xkcd,
                 line_width=lw_list,
                 markers=marker_list,
-                x_lim=[0,x_axis[-1]],
-                x_ticks=[0,x_axis[-1]],
-                **kwargs)
+                # x_lim=[0,x_axis.shape[0]],
+                **kwargs
+            )
 
             if freq_spectrum:
                 if not isinstance(axs, list):
@@ -3798,3 +3842,133 @@ class FormatTimeCourses():
             )
 
         return hemi_data,n_verts
+
+class Profile1D(pRFmodelFitting):
+
+    def __init__(
+        self,
+        pars,
+        n_pix=100,
+        center=True,
+        plot_kws={},
+        metrics_kws={},
+        **kwargs
+        ):
+
+        self.pars = pars
+        self.n_pix = n_pix
+        self.center = center
+        self.plot_kws = plot_kws
+        self.metrics_kws = metrics_kws
+
+        self.dm = self.create_dm(
+            n_pix=self.n_pix,
+            center=self.center
+        )
+
+        super().__init__(
+            None,
+            design_matrix=self.dm,
+            TR=1,
+            hrf="direct",
+            **kwargs
+        )
+
+        if isinstance(self.pars, pd.DataFrame):
+            self.pars = Parameters(self.pars, model=self.model).to_array().squeeze()
+
+        if self.center:
+            self.pars[:2] = 0
+
+        # skip plot by default
+        ddict = {
+            "make_figure": False,
+            "axis_type": "volumes"
+        }
+
+        for key,val in ddict.items():
+            plot_kws = utils.update_kwargs(
+                plot_kws,
+                key,
+                val
+            )
+
+        self.load_params(self.pars, model=self.model)
+        _,self.prf_o,_,self.prof_1d = self.plot_vox(
+            vox_nr=0, 
+            model=self.model, 
+            **plot_kws
+        )
+
+        # find fwhm in pixels
+        self.metrics = fitting.HRFMetrics(
+            self.prof_1d, 
+            TR=self.TR,
+            **self.metrics_kws
+        ).return_metrics()
+
+        self.fwhm = self.metrics.iloc[0].fwhm
+
+        self.fwhm_deg = pix2deg(
+            self.fwhm,
+            scrSizePix=(self.n_pix,self.n_pix),
+            scrWidthCm=self.settings["screen_size_cm"],
+            scrDist=self.settings["screen_distance_cm"]
+        )
+        
+        # try to find zero crossings
+        try:
+            self.zero_cross = self.find_crossings(self.prof_1d)
+        except:
+            print(f'Could not find zero-crossings of 1d profile..')
+
+        if hasattr(self, "zero_cross"):
+            self.zero_cross_pix = [i[0][0] for i in self.zero_cross]
+            self.zero_diff = self.zero_cross_pix[-1]-self.zero_cross_pix[0]
+            self.zero_deg = pix2deg(
+                self.zero_diff,
+                scrSizePix=(self.n_pix,self.n_pix),
+                scrWidthCm=self.settings["screen_size_cm"],
+                scrDist=self.settings["screen_distance_cm"]
+            )
+            
+    @classmethod
+    def create_dm(
+        self, 
+        n_pix=100,
+        center=True
+        ):
+
+        # create impulse design matrix (single pixel traversing left-to-right)
+        if center:
+            y_pos = n_pix//2
+        else:
+            raise NotImplementedError(f"Still need to implement translating a position in DVA to pixel")
+
+        tiny_dm = np.zeros((n_pix,n_pix,n_pix))
+        for ii in range(tiny_dm.shape[-1]):
+            tiny_dm[y_pos,ii,ii] = 1
+
+        return tiny_dm
+
+    def plot_dm(self, **kwargs):
+
+        for key,val in zip(["interval","n_cols","figsize"],[2,10,(16,8)]):
+            kwargs = utils.update_kwargs(
+                kwargs,
+                key,
+                val
+            )
+
+        plot_stims(
+            self.dm, 
+            **kwargs
+        )
+
+    @classmethod
+    def find_crossings(self, curve):
+        return utils.find_intersection(
+            np.arange(0,curve.shape[0]), 
+            curve, 
+            np.zeros_like(curve)
+        )
