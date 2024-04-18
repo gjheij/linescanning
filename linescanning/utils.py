@@ -5,7 +5,7 @@ import math
 import matplotlib.colors as mcolors
 from matplotlib import cm
 import nibabel as nb
-from nilearn.signal import _standardize
+from nilearn import signal
 import numpy as np
 import operator
 import os
@@ -1074,9 +1074,9 @@ def percent_change(
     else:
         if nilearn:
             if ax == 0:
-                psc = _standardize(ts, standardize='psc')
+                psc = signal._standardize(ts, standardize='psc')
             else:
-                psc = _standardize(ts.T, standardize='psc').T
+                psc = signal._standardize(ts.T, standardize='psc').T
         else:
 
             # first step of PSC; set NaNs to zero if dividing by 0 (in case of crappy timecourses)

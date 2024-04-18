@@ -1,7 +1,6 @@
 from . import glm, plotting, preproc, utils
 import matplotlib.pyplot as plt
 import nibabel as nb
-from nilearn import signal
 from niworkflows.reports import core
 import json
 import numpy as np
@@ -2524,7 +2523,8 @@ Functional data preprocessing
                 self.data_raw, 
                 1, 
                 baseline=baseline_vols,
-                nilearn=self.psc_nilearn)
+                nilearn=self.psc_nilearn
+            )
 
             self.data_psc_df = self.index_func(
                 self.data_psc,
@@ -2536,7 +2536,7 @@ Functional data preprocessing
                 set_index=True)
 
             # dataframe of unfiltered z-scored data
-            self.data_zscore = signal._standardize(self.data_raw.T, standardize='zscore').T
+            self.data_zscore = (self.data_raw-self.data_raw.mean(axis=1, keepdims=True))/self.data_raw.std(axis=1, keepdims=True)
             self.data_zscore_df = self.index_func(
                 self.data_zscore,
                 columns=self.vox_cols, 
@@ -2582,7 +2582,7 @@ Functional data preprocessing
                     set_index=True)
 
                 # dataframe of high-passed z-scored data
-                self.hp_zscore = signal._standardize(self.hp_raw.T, standardize='zscore').T
+                self.hp_zscore = (self.hp_raw-self.hp_raw.mean(axis=1, keepdims=True))/self.hp_raw.std(axis=1, keepdims=True)
                 self.hp_zscore_df = self.index_func(
                     self.hp_zscore,
                     columns=self.vox_cols, 
