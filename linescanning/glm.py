@@ -1320,6 +1320,8 @@ class Posthoc(Defaults):
         ast_frac: float=0.2,
         ns_annot: bool=False,
         ns_frac: bool=5,
+        leg_size: float=0.02,
+        color: str="black",
         *args,
         **kwargs):
 
@@ -1343,6 +1345,10 @@ class Posthoc(Defaults):
             Also annotate non-significant contrasts with 'ns', by default False
         ns_frac: bool, optional
             Additional factor to scale the distance between the significance lines and text as `ast_frac` will yield different results for text and asterixes, by default 5
+        leg_size: float, optional
+            Size of the overhang from the significance bars. Default = 0.02 and is defined as a fraction of the total limit of the y-axis
+        color: str, optional
+            Define color. Default is black
         """
 
         # internalize args
@@ -1353,7 +1359,9 @@ class Posthoc(Defaults):
         self.ast_frac = ast_frac
         self.ns_annot = ns_annot
         self.ns_frac = ns_frac
-        
+        self.leg_size = leg_size
+        self.color = color
+
         # run posthoc if not present
         if not hasattr(self, "posthoc"):
             self.run_posthoc(*args,**kwargs)
@@ -1403,7 +1411,7 @@ class Posthoc(Defaults):
                 x2 = self.conditions.index(B)
 
                 diff = self.minmax[1]-self.minmax[0]
-                y,h,col =  (diff*self.y_pos)+self.minmax[0], diff*0.02, 'k'
+                y,h,col =  (diff*self.y_pos)+self.minmax[0], diff*self.leg_size, self.color
                 self.axs.plot(
                     [x1,x1,x2,x2], 
                     [y,y+h,y+h,y], 
@@ -1412,7 +1420,8 @@ class Posthoc(Defaults):
                 )
 
                 x_txt = (x1+x2)*.5
-                y_txt = y+h*dist
+                y_txt = y+(y*dist)
+                # print(y,h)
                 self.axs.text(
                     x_txt, 
                     y_txt, 
