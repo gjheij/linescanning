@@ -231,6 +231,9 @@ Example
     tsv_files   = utils.get_file_from_substring(tsv_search, funcs, exclude="acq-3DEPI", return_msg=None)
     ref_slices  = utils.get_file_from_substring(anat_search, anats, exclude="._", return_msg=None)
 
+    if not isinstance(func_files, (str,list)):
+        raise ValueError(f"Could not find functional files (*.mat) in '{opj(bids_dir, 'func')}'; run 'master -m 03a -s {subject.split('-')[-1]} -n {ses} --sge'")
+    
     # check which inputs are available, set to None otherwise
     collect_dict = {}
     for tag,val in zip(
@@ -254,6 +257,7 @@ Example
                 collect_dict[ii], 
                 matcher=["task","run"]
             )
+    
     
     # set acompcor to false if ica == True
     if do_ica:
