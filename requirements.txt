@@ -5,7 +5,7 @@ jinja2==3.0.1
 scikit-image==0.20.0
 nilearn==0.10.0
 alive_progress==3.1.1
-scipy=1.9.1
+scipy==1.9.1
 scikit-learn==1.2.2
 nbsphinx
 kneed
