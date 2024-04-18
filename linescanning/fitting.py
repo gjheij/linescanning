@@ -2131,9 +2131,39 @@ class CVDeconv(InitFitter):
         self,
         func,
         onsets,
-        merge=False,
         TR=0.105):
 
+        """CVDeconv
+
+        Wrapper class around :class:`nideconv.NideconvFitter` to run deconvolution in a cross-validated r2-framework. Inputs are similar to :class:`nideconv.NideconvFitter`. The basic gist of the class is to find all possible run-specific combinations, average those, and run deconvolution. This is repeated until all combinations have been used, resulting in a final dataframe containing the r2-values for each subject.
+
+        Parameters
+        ----------
+        func: pd.DataFrame
+            Dataframe as per the output of :func:`linescanning.dataset.Datasets.fetch_fmri()`, containing the fMRI data indexed on subject, run, and t.
+        onsets: pd.DataFrame
+            Dataframe as per the output of :func:`linescanning.dataset.Datasets.fetch_onsets()`, containing the onset timings data indexed on subject, run, and event_type.
+        TR: float, optional
+            Repetition time, by default 0.105. Use to calculate the sampling frequency (1/TR)
+
+        Example
+        ----------
+        >>> # import stuff
+        >>> from linescanning import fitting
+        >>> cv_ = fitting.CVDeconv(
+        >>>     func,
+        >>>     onsets,
+        >>>     TR=1.32
+        >>> )
+        >>> # run the crossvalidation
+        >>> cv_.crossvalidate(
+        >>>     basis_sets="Fourier",
+        >>>     n_regressors=9,
+        >>>     interval=[-2,24]
+        >>> )
+        >>> # final dataframe:
+        >>> cr = cv_.r2_
+        """
         self.func = func
         self.onsets = onsets
         self.TR = TR
@@ -2144,7 +2174,7 @@ class CVDeconv(InitFitter):
             self.func, 
             self.onsets, 
             self.TR,
-            merge=self.merge
+            merge=False
         )
 
     def return_combinations(self, split=2):
@@ -2299,17 +2329,62 @@ class HRFMetrics():
     def __init__(
         self,
         hrf,
-        TR=None,
-        force_pos=False,
-        force_neg=False,
-        plot=False,
-        nan_policy=True,
-        debug=False,
-        progress=False,
-        thr_var=0,
-        shift=0
+        TR: float=None,
+        force_pos: Union[list,bool]=False,
+        force_neg=Union[list,bool]=False,
+        plot: bool=False,
+        nan_policy: bool=True,
+        debug: bool=False,
+        progress: bool=False,
+        thr_var: Union[int,float]=0,
+        shift: Union[int,float]=0
         ):
+        """HRFMetrics
 
+        Main class for extracting various parameters from a given profiles. Optimized for the hemodynamic response function (HRF) but is agnostic to the type of input. It will therefore try to extract parameters from any shape of profile. Input can be a `pd.DataFrame` or `numpy.array`. Internally, a DataFrame will be created to facilitate usage across various operations. By default, parameters will be derived from the largest peak in the profile. This can be positive or negative. If you want to force the parameters to reflect a positive response, use the `force_pos` flag. Conversely, if you want to enfore negative values, use `force_neg`. This can be set for each column in the dataframe using lists.
+
+        The following parameters are extracted and formatted into a dataframe:
+            - magnitude:        largest response in the profile
+            - magnitude_ix:     time index at which largest response occurred
+            - fwhm:             full-width at half-max
+            - fwhm_obj:         the `class:linescanning.fitting.FWHM`-object
+            - time_to_peak:     time to reach `magnitude`
+            - half_rise_time:   time to reach half maximum
+            - half_max:         half maximum
+            - rise_slope:       steepness of the rising edge towards the maximum response
+            - rise_slope_t:     onset of rising edge
+            - positive_area:    area-under-curve of the positive response
+            - undershoot:       area-under-curve of negative undershoot
+
+        Parameters
+        ----------
+        hrf: pd.DataFrame, np.ndarray
+            Input profile. Can be 1D or 2D.
+        TR: float, optional
+            If `hrf` is an array, the `TR` should be supplied to create a dataframe with correct time indications, by default None
+        force_pos: list, bool, optional
+            Force the output to use a positive outcome, by default False.
+        force_neg: list, bool, optional
+            Force the output to use a negative outcome, by default False.
+        plot: bool, optional
+            Plot the profile if parameter extraction fails, by default False. This is useful during debugging
+        nan_policy: bool, optional
+            Set parameters from zero-timecourses to zero, by default True
+        debug: bool, optional
+            Print extra descriptive information to the terminal during parameter extraction, by default False
+        progress: bool, optional
+            Print a fancy progress bar using `alive_progress`, by default False
+        thr_var: int, float, optional
+            Specify a variance threshold the input profiles must adhere to, by default 0. This avoids that flat timecourses are entered into the extraction
+        shift: int, float, optional
+            Sometimes profiles contain negative parts. This flag shifts the profile to a certain value first before parameter extraction, by default 0
+
+        Example
+        ----------
+        >>> from linescanning import fitting
+        >>> metrics_kws = {} # extra parameters
+        >>> metrics = fitting.HRFMetrics(some_profile).return_metrics()
+        """
         self.hrf = hrf
         self.TR = TR
         self.force_pos = force_pos
@@ -2851,19 +2926,32 @@ class HRFMetrics():
         return df,fwhm_obj
 
 class FWHM():
-
     def __init__(
         self, 
         x, 
         hrf, 
         negative=False,
-        y_tol=0.01,
         resample=500,
         ):
-        
+
+        """FWHM
+
+        Class to extract the full-width at half-max of a given profile. The profile can either have a positive or negative peak, in which case the `negative`-flag should be set accordingly. The final output is stored in the `fwhm` attribute of the class.
+
+        Parameters
+        ----------
+        x: np.ndarray
+            Generally this an array reflecting the time dimension
+        hrf: np.ndarray
+            Input profile (it says `hrf`, but it can be anything; also 1D pRF profiles)
+        negative: bool, optional
+            Assume the FWHM needs to be extracted from a negative bump or not
+        resample: int, optional
+            Resample the input to a higher grid so that the intersection between the profile and half-max can be drawn more accurately
+        """
+                
         self.x = x
         self.hrf = hrf
-        self.y_tol = y_tol
         self.resample = resample
         self.negative = negative
         
@@ -3016,8 +3104,8 @@ def iterative_search(
 
     Parameters
     ----------
-    data: _type_
-        _description_
+    data: np.ndarray
+        Input data to the fitted
     onsets: _type_
         _description_
     starting_params: list, optional
@@ -3283,6 +3371,27 @@ class FitHRFparams():
 
 class Epoch(InitFitter):
 
+    """Epoch
+
+    Class to extract timepoints within a certain interval given onset times for all subjects, tasks, and runs in a dataframe. 
+
+    Parameters
+    ----------
+    func: pd.DataFrame
+        Dataframe as per the output of :func:`linescanning.dataset.Datasets.fetch_fmri()`, containing the fMRI data indexed on subject, run, and t.
+    onsets: pd.DataFrame
+        Dataframe as per the output of :func:`linescanning.dataset.Datasets.fetch_onsets()`, containing the onset timings data indexed on subject, run, and event_type.
+    TR: float, optional
+        Repetition time, by default 0.105. Use to calculate the sampling frequency (1/TR)
+    interval: list, optional
+        Interval to fit the regressors over, by default [0,12]
+    merge: bool, optional
+        Concatenate the runs before extracting the epochs
+
+    Example
+    ----------
+    """
+
     def __init__(
         self, 
         func, 
@@ -3525,6 +3634,27 @@ class Epoch(InitFitter):
         self.df_epoch.columns = self.func.columns
 
 class GLM(InitFitter):
+
+    """GLM
+
+    Class to run a GLM for all subjects, tasks, and runs in a dataframe. 
+
+    Parameters
+    ----------
+    func: pd.DataFrame
+        Dataframe as per the output of :func:`linescanning.dataset.Datasets.fetch_fmri()`, containing the fMRI data indexed on subject, run, and t.
+    onsets: pd.DataFrame
+        Dataframe as per the output of :func:`linescanning.dataset.Datasets.fetch_onsets()`, containing the onset timings data indexed on subject, run, and event_type.
+    TR: float, optional
+        Repetition time, by default 0.105. Use to calculate the sampling frequency (1/TR)
+    interval: list, optional
+        Interval to fit the regressors over, by default [0,12]
+    merge: bool, optional
+        Concatenate the runs before extracting the epochs
+
+    Example
+    ----------
+    """
 
     def __init__(
         self, 
