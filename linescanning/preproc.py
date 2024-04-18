@@ -703,7 +703,7 @@ class Segmentations():
 
         """plot_regressor_voxels
 
-        Make an image of where the white matter/CSF voxels from :func:`linescanning.segmentations.Segmentations.wm_csf_voxels_for_regressors` are located along the line. 
+        Make an image of where the white matter/CSF voxels from :func:`linescanning.preproc.Segmentations.wm_csf_voxels_for_regressors` are located along the line. 
 
         Parameters
         ----------
@@ -906,8 +906,8 @@ class Align():
             try:
                 obj.segmentations_to_beam()
             except:
-                allowed_types = ["linescanning.dataset.Dataset", "linescanning.segmentations.Segmentations", "linescanning.preproc.aCompCor"]
-                raise TypeError(f"Input must be one of {allowed_types}, or linescanning.segmentations.Segmentations, not '{type(obj)}'")
+                allowed_types = ["linescanning.dataset.Dataset", "linescanning.preproc.Segmentations", "linescanning.preproc.aCompCor"]
+                raise TypeError(f"Input must be one of {allowed_types}, or linescanning.preproc.Segmentations, not '{type(obj)}'")
 
         # get the CRUISE segmentation
         self.moving_cortex  = self.moving_object.segmentations_in_beam[self.moving_object.subject]['cortex']
@@ -1147,9 +1147,9 @@ class aCompCor(Segmentations):
     subject: str, optional
         Full subject identifier (e.g., 'sub-001'), by default None
     wm_voxels: list, optional
-        List of voxel IDs that are classified as white matter, by default None. Can be specified if you don't have a line-scanning session and, therefore, no :class:`linescanning.segmentations.Segmentation` object
+        List of voxel IDs that are classified as white matter, by default None. Can be specified if you don't have a line-scanning session and, therefore, no :class:`linescanning.preproc.Segmentation` object
     csf_voxels: list, optional
-        List of voxel IDs that are classified as CSF, by default None. Can be specified if you don't have a line-scanning session and, therefore, no :class:`linescanning.segmentations.Segmentations` object
+        List of voxel IDs that are classified as CSF, by default None. Can be specified if you don't have a line-scanning session and, therefore, no :class:`linescanning.preproc.Segmentations` object
     n_components: int, optional
         Number of PCA-components to extract for each of the WM/CSF voxels, by default 5
     select_component: int, optional
@@ -1173,7 +1173,7 @@ class aCompCor(Segmentations):
     trafo_list: str, list, optional
         List or string representing transformation files that need to be applied, by default None.
     foldover: str, optional
-        Foldover direction during the line-scanning acquisition, by default "FH". This is to make sure the line is specified correctly when initializing :class:`linescanning.segmentations.Segmentations`
+        Foldover direction during the line-scanning acquisition, by default "FH". This is to make sure the line is specified correctly when initializing :class:`linescanning.preproc.Segmentations`
     shift: float, optional
         how many mm the line needs to be shifted in the `foldover` direction.  This may be required if you had a bad shim and you had to move the slice in a particular direction to target the spot you intended. Default = 0
 

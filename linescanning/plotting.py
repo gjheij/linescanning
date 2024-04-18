@@ -66,10 +66,11 @@ class Defaults():
     title: str, dict, optional
         String of dictionary collecting the following keys representing information about the title:
 
->>> title = {
->>>     'title' "some title",       # title text
->>>     'color': 'k',               # color (default = 'k')
->>>     'fontweight': "bold"}       # fontweight (default = 'normal'), can be any of the matplotib fontweight options (e.g., 'italic', 'bold', 'normal' etc.)    
+    >>> title = {
+    >>>     'title' "some title",   # title text
+    >>>     'color': 'k',           # color (default = 'k')
+    >>>     'fontweight': "bold"    # fontweight (default = 'normal'), can be any of the matplotib fontweight options (e.g., 'italic', 'bold', 'normal' etc.)
+    >>> }
 
     color: str, list, optional
         String (if 1 timeseries) or list (with the length of `ts`) of colors, by default None. If nothing is specified, we'll use `cmap` to create a color palette         
@@ -86,11 +87,12 @@ class Defaults():
     add_hline: dict, optional
         Dictionary for a horizontal line through the plot, by default None. Collects the following items:
 
->>> add_hline = {
->>>     'pos' 0,       # position
->>>     'color': 'k',  # color
->>>     'lw': 1,       # linewidth
->>>     'ls': '--'}    # linestyle
+    >>> add_hline = {
+    >>>     'pos' 0,        # position
+    >>>     'color': 'k',   # color
+    >>>     'lw': 1,        # linewidth
+    >>>     'ls': '--'      # linestyle
+    >>> }
 
         You can get the settings above by specifying *add_hline='default'*. Now also accepts *add_hline='mean'* for single inputs
     add_vline: dict, optional
@@ -1188,9 +1190,9 @@ class LazyCorr(Defaults):
 
     def __init__(
         self,
-        x, 
-        y, 
         data: pd.DataFrame=None,
+        x: Union[str,np.ndarray]=None, 
+        y: Union[str,np.ndarray]=None, 
         color: str="#cccccc", 
         figsize: tuple=(7,7),      
         points: bool=True,
