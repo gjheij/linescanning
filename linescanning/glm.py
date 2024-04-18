@@ -101,24 +101,6 @@ class GenericGLM():
     ----------
     For `FirstLevelModel` to work with our type of data, I had to add the following to `https://github.com/nilearn/nilearn/blob/main/nilearn/glm/first_level/first_level.py#L683`:
 
-    ```python
-    for output_type_ in output_types:
-        estimate_ = getattr(contrast, output_type_)()
-        
-        if return_type == "imgs":
-            # Prepare the returned images
-            output = self.masker_.inverse_transform(estimate_)
-            contrast_name = str(con_vals)
-            output.header['descrip'] = (
-                '%s of contrast %s' % (output_type_, contrast_name))
-            outputs[output_type_] = output
-        else:
-            output = estimate_
-            outputs[output_type_] = output
-
-    ```
-
-    This ensures we're getting an array back, rather than a nifti-image for our statistics
     """
     
     def __init__(
