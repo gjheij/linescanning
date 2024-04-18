@@ -1826,13 +1826,13 @@ class ICA():
         
     """ICA
 
-    Wrapper around scikit-learn's FastICA, with a few visualization options. The basic input needs to be a `pandas.DataFrame` or `numpy.ndarray` describing a 2D dataset (e.g., the output of :class:`linescanning.dataset.Dataset` or :class:`linescanning.dataset.ParseFuncFile`).
+    Wrapper around scikit-learn's FastICA, with a few visualization options. The basic input needs to be a ``pandas.DataFrame`` or ``numpy.ndarray`` describing a 2D dataset (e.g., the output of :class:`linescanning.dataset.Dataset` or :class:`linescanning.dataset.ParseFuncFile`).
 
     Parameters
     ----------
     subject: str, optional
         Subject ID to use when saving figures (e.g., ``sub-001``)
-    data: Union[pd.DataFrame,np.ndarray]
+    data: pd.DataFrame, np.ndarray
         Dataset to be ICA'd in the format if ``<time,voxels>``
     n_components: int, optional
         Number of components to use, by default 10
@@ -2098,7 +2098,7 @@ class ICA():
 
         Parameters
         ----------
-        color: Union[str,tuple], optional
+        color: str, tuple, optional
             Color for all subplots, by default "#6495ED"
         zoom_freq: bool, optional
             Add a zoomed in version of the power spectrum, by default False
