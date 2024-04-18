@@ -208,6 +208,7 @@ MOCK_MODULES = [
     'niworkflows',
     'niworkflows.reports',
     'shapely',
+    'alive_progress',
     'mkl',
     'mkl-service']
                 
