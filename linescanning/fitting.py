@@ -25,11 +25,11 @@ class CurveFitter():
     y_data: np.ndarray
         Data-points to perform fitting on
     x: np.ndarray, optional
-        Array describing the x-axis, by default None. If ``None``, we'll take ``np.arange`` of ``y_data.shape[0]``. 
-    func: <function> object, optional
-        Use custom function describing the behavior of the fit, by default None. If ``none``, we'll assume either a linear or polynomial fit (up to 3rd order)
+        Array describing the x-axis, by default None.
+    func: function-object, optional
+        Use custom function describing the behavior of the fit, by default None. If ``None``, we'll assume either a linear or polynomial fit (up to 3rd order)
     order: str, int, optional
-        Order of polynomial fit, by default "3rd". Can either be '1st'|1, '2nd'|2, or '3rd'|3
+        Order of polynomial fit, by default 1 (linear).
     verbose: bool, optional
         Print summary of fit, by default True
     interpolate: str, optional

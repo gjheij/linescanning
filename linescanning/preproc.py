@@ -495,11 +495,11 @@ class Segmentations():
 
         Example
         ----------
-        >>> from linescanning import segmentations
+        >>> from linescanning import preproc
         >>> ff = "<some_path>/segmentations.pkl"
         >>> ref = "<some_path>/ref_slice.nii.gz"
-        >>> segs = segmentations.Segmentations(<subject>, pickle_file=ff, reference_slice=ref)
-        >>> segmentations.plot_line_segmentations(segs.segmentation_df, figsize=(15, 5), layout="horizontal") # plot horizontal beams
+        >>> segs = preproc.Segmentations(<subject>, pickle_file=ff, reference_slice=ref)
+        >>> segs.plot_line_segmentations(figsize=(15, 5), layout="horizontal") # plot horizontal beams
         {'ref': array([[14.288, 14.288, 14.288, ..., 42.863, 57.151, 57.151],
         [ 0.   ,  0.   ,  0.   , ..., 14.288, 14.288, 14.288],
         [28.576, 42.863, 42.863, ..., 14.288, 14.288,  0.   ],
@@ -512,7 +512,7 @@ class Segmentations():
                 [0., 0., 0., ..., 0., 0., 0.],
                 ...,
         }
-        >>> segmentations.plot_line_segmentations(segs.segmentation_df, layout="vertical", figsize=(15,10)) # plot vertical beams
+        >>> segs.plot_line_segmentations(layout="vertical", figsize=(15,10)) # plot vertical beams
 
         Notes
         ----------
@@ -1826,7 +1826,7 @@ class ICA():
         
     """ICA
 
-    Wrapper around :class:`sklearn.decomposition.FastICA`, with a few visualization options. The basic input needs to be a `pandas.DataFrame` or `numpy.ndarray` describing a 2D dataset (e.g., the output of :class:`linescanning.dataset.Dataset` or :class:`linescanning.dataset.ParseFuncFile`). :func:`linescanning.preproc.ICA.summary()` outputs a figure describing the effects of ICA denoising on the input data (similar to :func:`linescanning.preproc.aCompCor.summary()`). 
+    Wrapper around scikit-learn's FastICA, with a few visualization options. The basic input needs to be a `pandas.DataFrame` or `numpy.ndarray` describing a 2D dataset (e.g., the output of :class:`linescanning.dataset.Dataset` or :class:`linescanning.dataset.ParseFuncFile`).
 
     Parameters
     ----------
