@@ -1845,17 +1845,17 @@ class ICA():
     TR: float, optional
         Repetition time or sampling rate, by default 0.105
     save_as: str, optional
-        Path pointing to the location where to save the figures. `sub-<subject>_run-{self.run}_desc-ica.{self.save_ext}"), by default None
+        Path pointing to the location where to save the figures. ``sub-<subject>_run-{self.run}_desc-ica.{self.save_ext}``), by default None
     session: int, optional
-        Session ID to use when saving figures (e.g., ``1``), by default 1
+        Session ID to use when saving figures (e.g., 1), by default 1
     run: int, optional
-        Run ID to use when saving figures (e.g., ``1``), by default 1
+        Run ID to use when saving figures (e.g., 1), by default 1
     summary_plot: bool, optional
         Make a figure regarding the efficacy of the ICA denoising, by default False
     melodic_plot: bool, optional
         Make a figure regarding the information about the components themselves, by default False
     ribbon: tuple, optional
-        Range of gray matter voxels. If ``None``, we'll check the efficacy of ICA denoising over the average across the data, by default None
+        Range of gray matter voxels. If None, we'll check the efficacy of ICA denoising over the average across the data, by default None
     save_ext: str, optional
         Extension to use when saving figures, by default "svg"
 
@@ -2094,7 +2094,7 @@ class ICA():
 
         """melodic
 
-        Plot information about the components from the ICA. For each component until `plot_comps`, plot the 2D spatial profile of the component, its timecourse, and its power spectrum. If `zoom_freq=True`, we'll add an extra subplot next to the power spectrum which contains a zoomed in version of the power spectrum with `zoom_lim` as limits.
+        Plot information about the components from the ICA. For each component until ``plot_comps``, plot the 2D spatial profile of the component, its timecourse, and its power spectrum. If ``zoom_freq=True``, we'll add an extra subplot next to the power spectrum which contains a zoomed in version of the power spectrum with ``zoom_lim`` as limits.
 
         Parameters
         ----------
@@ -2103,7 +2103,7 @@ class ICA():
         zoom_freq: bool, optional
             Add a zoomed in version of the power spectrum, by default False
         task_freq: float, optional
-            If `zoom_freq=True`, add a vertical line where the *task-frequency* (`task_freq`) should be, by default 0.05
+            If ``zoom_freq=True``, add a vertical line where the *task-frequency* (``task_freq``) should be, by default 0.05
         zoom_lim: list, optional
             Limits for the zoomed in power spectrum, by default [0,0.5]
         plot_comps: int, optional
