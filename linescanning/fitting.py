@@ -446,6 +446,38 @@ class InitFitter():
         self.avg_pars_subjects = df_avg.set_index(avg_idx)
 
 class ParameterFitter(InitFitter):
+    """ParameterFitter
+
+    Wrapper class around :class:`linescanning.fitting.FitHRFparams` to estimate HRF shapes using an optimizer procedure. We insert the double gamma HRF with 8 parameters as starting point, and let the optimizer find the best parameters. To check whether the HRF is actually negative, it tries both positive and negative HRFs and compares the variance explained. The sign with the highest variance explained is chosen as the final HRF shape. See :class:`linescanning.fitting.FitHRFparams` for more available flags that can be used. The final output will have the same format at :class:`linescanning.fitting.NideconvFitter` to promote exchangeability.
+
+    Parameters
+    ----------
+    func: pd.DataFrame
+        Dataframe as per the output of :func:`linescanning.dataset.Datasets.fetch_fmri()`, containing the fMRI data indexed on subject, run, and t.
+    onsets: pd.DataFrame
+        Dataframe as per the output of :func:`linescanning.dataset.Datasets.fetch_onsets()`, containing the onset timings data indexed on subject, run, and event_type.
+    TR: float, optional
+        Repetition time, by default 0.105. Use to calculate the sampling frequency (1/TR)
+    merge: bool, optional
+        Concatenate the runs before parameter estimation
+
+    Example
+    ----------
+    >>> from linescanning import fitting
+    >>> # initialize the fitter
+    >>> nd_fit = fitting.ParameterFitter(
+    >>>     func,
+    >>>     onsets,
+    >>>     *args,
+    >>>     **kwargs
+    >>> )
+
+    >>> # run the fitter
+    >>> nd_fit.fit(n_jobs=None)
+
+    >>> # fetch the parameters as usual
+    >>> nd_fit.parameters_for_tc_subjects(nan_policy=True, **par_kw)
+    """
 
     def __init__(
         self, 
@@ -2331,7 +2363,7 @@ class HRFMetrics():
         hrf,
         TR: float=None,
         force_pos: Union[list,bool]=False,
-        force_neg=Union[list,bool]=False,
+        force_neg: Union[list,bool]=False,
         plot: bool=False,
         nan_policy: bool=True,
         debug: bool=False,
@@ -3100,41 +3132,36 @@ def iterative_search(
     ftol=1e-4):
     """iterative_search
 
-    Im actually using this function..
+    Iterative search function to find the best set of parameters that describe the HRF across a full timeseries. During the optimization, each parameter is adjusted and a new prediction is formed until the variance explained of this prediction is maximized.
 
     Parameters
     ----------
     data: np.ndarray
-        Input data to the fitted
-    onsets: _type_
-        _description_
-    starting_params: list, optional
-        _description_, by default [6,12,0.9,0.9,0.35,5.4,10.8]
-    bounds: _type_, optional
-        _description_, by default None
-    constraints: _type_, optional
-        _description_, by default None
-    cov_as_ampl: _type_, optional
-        _description_, by default None
+        Input must be an array (voxels,timepoints)
+    onsets: pd.DataFrame
+        Dataframe indexed on subject, run, and event_type (as per :class:`linescanning.dataset.ParseExpToolsFile`)
+    verbose: bool, optional
+        Print progress to the terminal, by default False
     TR: float, optional
-        _description_, by default 1.32
+        Repetition time, by default 1.32
     osf: int, optional
-        _description_, by default 100
+        Oversampling factor to account for decimals in onset times, by default 100
+    starting_params: list, optional
+        Starting parameters of the HRF, by default [6,12,0.9,0.9,0.35,5.4,10.8]. This is generally a good start.
+    n_jobs: int, optional
+        Number of jobs to use, by default 1
+    bounds: list, optional
+        Specific bounds for each parameter, by default None
+    resample_to_shape: int, optional
+        Resample the final profiles to a certain shape, by default None
+    xtol: float, optional
+        x-tolerance of the fitter, by default 1e-4
+    ftol: float, optional
+        f-tolerance of the fitter, by default 1e-4
     interval: list, optional
-        _description_, by default [0,25]
-    xtol: _type_, optional
-        _description_, by default 1e-4
-    ftol: _type_, optional
-        _description_, by default 1e-4
-
-    Returns
-    ----------
-    _type_
-        _description_
-
-    Example
-    ----------
-    >>> 
+        Interval used to define the full HRF profile, by default [0,30]
+    read_index: bool, optional
+        Copy the index from the input dataframe, by default False
     """
     # data = (voxels,time)
     if data.ndim > 1:
@@ -3189,6 +3216,39 @@ def iterative_search(
     # return starting_params, "pos"
     
 class FitHRFparams():
+    """FitHRFparams
+
+    Similar to Marco's pRF modeling, we can also estimate the best set of parameters that describe the HRF. This has slightly more degrees of freedom compared to using basis sets, but is not as unconstrained as FIR. 
+
+    Parameters
+    ----------
+    data: np.ndarray
+        Input must be an array (voxels,timepoints)
+    onsets: pd.DataFrame
+        Dataframe indexed on subject, run, and event_type (as per :class:`linescanning.dataset.ParseExpToolsFile`)
+    verbose: bool, optional
+        Print progress to the terminal, by default False
+    TR: float, optional
+        Repetition time, by default 1.32
+    osf: int, optional
+        Oversampling factor to account for decimals in onset times, by default 100
+    starting_params: list, optional
+        Starting parameters of the HRF, by default [6,12,0.9,0.9,0.35,5.4,10.8]
+    n_jobs: int, optional
+        Number of jobs to use, by default 1
+    bounds: list, optional
+        Specific bounds for each parameter, by default None
+    resample_to_shape: int, optional
+        Resample the final profiles to a certain shape, by default None
+    xtol: float, optional
+        x-tolerance of the fitter, by default 1e-4
+    ftol: float, optional
+        f-tolerance of the fitter, by default 1e-4
+    interval: list, optional
+        Interval used to define the full HRF profile, by default [0,30]
+    read_index: bool, optional
+        Copy the index from the input dataframe, by default False    
+    """
 
     def __init__(
         self,
@@ -3200,7 +3260,6 @@ class FitHRFparams():
         starting_params=[6,12,0.9,0.9,0.35,5.4,10.8],
         n_jobs=1,
         bounds=None,
-        constraints=None,
         resample_to_shape=None,
         xtol=1e-4,
         ftol=1e-4,
@@ -3218,7 +3277,6 @@ class FitHRFparams():
         self.starting_params = starting_params
         self.n_jobs = n_jobs
         self.bounds = bounds
-        self.constraints = constraints
         self.xtol = xtol
         self.ftol = ftol
         self.cov_as_ampl = cov_as_ampl
@@ -3256,7 +3314,6 @@ class FitHRFparams():
                 starting_params=self.starting_params,
                 TR=self.TR,
                 bounds=self.bounds,
-                constraints=self.constraints,
                 xtol=self.xtol,
                 ftol=self.ftol,
                 cov_as_ampl=self.cov_as_ampl
@@ -3390,6 +3447,15 @@ class Epoch(InitFitter):
 
     Example
     ----------
+    >>> from linescanning import fitting
+    >>> sub_ep = fitting.Epoch(
+    >>>     func,
+    >>>     onsets,
+    >>>     TR=0.105,
+    >>>     interval=[-2,14]
+    >>> )
+    >>> sub_df = sub_ep.df_epoch.copy()
+    >>> sub_df
     """
 
     def __init__(
