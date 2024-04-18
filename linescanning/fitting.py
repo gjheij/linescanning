@@ -374,6 +374,7 @@ class InitFitter():
         if not hasattr(self, "tc_subjects"):
             raise ValueError(f"{self} does not have 'tc_subjects' attribute, run fitter first")
 
+        utils.verbose(f"Deriving parameters from {self} with 'HRFMetrics'", self.verbose)
         subj_ids = utils.get_unique_ids(self.tc_subjects, id="subject")
 
         subjs = []
@@ -1026,7 +1027,9 @@ class NideconvFitter(InitFitter):
 
         if not isinstance(self.covariates, str):
             self.covariates = "intercept"
-            
+        
+        utils.verbose(f"Fetching subject/condition-wise time courses from {self.model}", self.verbose)
+
         # get the condition-wise timecourses
         if self.fit_type == "ols":
             # averaged runs
@@ -1339,7 +1342,7 @@ class NideconvFitter(InitFitter):
         if self.fit_type.lower() == "ols":
             self.model.fit(type=self.fit_type)
         
-        utils.verbose("Done", self.verbose)
+        utils.verbose("Fitting completed", self.verbose)
 
     def plot_average_per_event(
         self, 
@@ -2302,8 +2305,10 @@ class HRFMetrics():
         plot=False,
         nan_policy=True,
         debug=False,
+        progress=False,
         thr_var=0,
-        shift=0):
+        shift=0
+        ):
 
         self.hrf = hrf
         self.TR = TR
@@ -2314,6 +2319,7 @@ class HRFMetrics():
         self.nan_policy = nan_policy
         self.debug = debug
         self.thr_var = thr_var
+        self.progress = progress
 
         # get metrics
         self._get_metrics(
@@ -2389,7 +2395,26 @@ class HRFMetrics():
         # initialize empty dataframe
         self.metrics = pd.DataFrame(np.zeros((len(orig_cols),len(incl))), columns=incl)
 
-        with alive_bar(filtered_df.shape[1], force_tty=True) as bar:
+        # separate loop for fancy progress bar
+        if self.progress:
+            with alive_bar(filtered_df.shape[1], force_tty=True) as bar:
+                for ix,col in enumerate(filtered_df):
+                    pars,fwhm_ = self._get_single_hrf_metrics(
+                        filtered_df[col],
+                        TR=self.TR,
+                        force_pos=force_pos[ix],
+                        force_neg=force_neg[ix],
+                        plot=self.plot,
+                        nan_policy=nan_policy,
+                        shift=self.shift
+                    )
+
+                    # progress
+                    bar()
+                
+                    self.col_metrics.append(pars)
+                    self.col_fwhm.append(fwhm_)
+        else:
             for ix,col in enumerate(filtered_df):
                 pars,fwhm_ = self._get_single_hrf_metrics(
                     filtered_df[col],
@@ -2400,9 +2425,6 @@ class HRFMetrics():
                     nan_policy=nan_policy,
                     shift=self.shift
                 )
-
-                # progress
-                bar()
             
                 self.col_metrics.append(pars)
                 self.col_fwhm.append(fwhm_)
