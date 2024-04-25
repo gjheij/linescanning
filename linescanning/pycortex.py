@@ -335,7 +335,7 @@ class SavePycortexViews():
 
     def __init__(
         self,
-        data_dict: Union[dict, cortex.Vertex,cortex.VertexRGB,cortex.Vertex2D],
+        data_dict,
         subject: str=None,
         fig_dir: str=None,
         specularity: int=0,
