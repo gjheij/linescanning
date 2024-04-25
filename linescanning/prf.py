@@ -2572,7 +2572,6 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
                 x_label = kwargs["x_label"]
                 kwargs.pop("x_label")
             
-            print(self.prediction.shape[0])
             # add additional timecourse
             if isinstance(add_tc, np.ndarray):
                 add_tc = {"tc": add_tc}
@@ -2600,7 +2599,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
 
             x_ticks = np.linspace(
                 x_axis[0],
-                x_axis.shape[0], 
+                x_axis[-1], 
                 num=n_time, 
                 endpoint=True
             )
