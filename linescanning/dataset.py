@@ -3300,7 +3300,11 @@ class Dataset(ParseFuncFile,SetAttributes):
             else:
                 raise ValueError("No output file specified")
         else:
-            self.h5_file = output_file
+            self.h5_file = os.path.abspath(output_file)
+
+        # make the directory
+        if not os.path.exists(os.path.dirname(self.h5_file)):
+            os.makedirs(os.path.dirname(self.h5_file))
 
         if overwrite:
             if os.path.exists(self.h5_file):
