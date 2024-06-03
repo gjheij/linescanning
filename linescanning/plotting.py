@@ -122,6 +122,7 @@ class Defaults():
             "sns_bottom",
             "sns_ori",
             "sns_rot",
+            "sns_despine",
             "xkcd",
             "ylim_bottom",
             "ylim_top",
@@ -185,6 +186,7 @@ class Defaults():
         self.figure_background_color = "white"
         self.bbox_inches = "tight"
         self.fontname = None
+        self.sns_despine = True
         self.legend_kwargs = {}
 
         for i in ["label","lim","ticks","ticklabels","dec"]:
@@ -367,11 +369,14 @@ class Defaults():
 
     def _despine(self, ax, **kwargs):
         """despine plot"""
-        sns.despine(
-            ax=ax, 
-            offset=self.sns_offset, 
-            trim=self.sns_trim,
-            **kwargs)
+
+        if self.sns_despine:
+            sns.despine(
+                ax=ax, 
+                offset=self.sns_offset, 
+                trim=self.sns_trim,
+                **kwargs
+            )
 
     @staticmethod
     def _set_ticker(ax, dec, axis="x"):
@@ -2470,7 +2475,7 @@ class LazyColorbar(Defaults):
         # fix ticks
         self._set_tick_params(
             self.axs, 
-            labelcolor=ft_color
+            labelcolor=ft_color,
         ) 
 
         # set tick labels?
