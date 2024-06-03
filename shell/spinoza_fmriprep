@@ -368,6 +368,8 @@ for subID in ${search}; do
           done
         else
           echo "Removing workflow folders with \"run-*\" in \"${wf_folder}/single_subject_${sub_id}_wf\""
+          ddir=(`find ${wf_folder}/single_subject_${sub_id}_wf -type d -name "*run-" | sort`)
+          for d in ${ddir[@]}; do echo " ${d}"; done
           rm -r ${wf_folder}/single_subject_${sub_id}_wf/*run_* 2>/dev/null
         fi
       fi
