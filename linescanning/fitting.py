@@ -4177,7 +4177,15 @@ class GLM(InitFitter):
                 markers.append(None)
                 linewidth.append(3)
 
-            colors = [*colors, *sns.color_palette(cmap, len(evs))]
+            if isinstance(cmap, str):
+                add_colors = sns.color_palette(cmap, len(evs))
+            else:
+                if isinstance(cmap, np.ndarray):
+                    add_colors = list(cmap.squeeze())
+                else:
+                    add_colors = cmap
+            
+            colors = [*colors, *add_colors]
         else:
             full = True
 
@@ -4189,21 +4197,26 @@ class GLM(InitFitter):
             linewidth.append(2)
             colors.append(full_color)
 
-        if not "title" in list(kwargs.keys()):
+        # set defaults
+        kw_dict = {
+            "y_label": "activity (au)",
+            "x_label": "volumes",
+            "labels": labels,
+            "title": f"model fit vox {vox_nr+1}/{data.shape[1]} (r2={round(r2_val,r2_dec)})",
+            "line_width": linewidth
+        }
+
+        for key,val in kw_dict.items():
             kwargs = utils.update_kwargs(
                 kwargs,
-                "title",
-                f"model fit vox {vox_nr+1}/{data.shape[1]} (r2={round(r2_val,r2_dec)})",
+                key,
+                val
             )
 
         pl = plotting.LazyPlot(
             signals,
-            y_label="Activity (a.u.)",
-            x_label="volumes",
-            labels=labels,
             axs=axs,
             markers=markers,
             color=colors,
-            line_width=linewidth,
             **kwargs
         )
