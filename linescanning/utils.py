@@ -1104,7 +1104,7 @@ def percent_change(
         
         return psc
 
-def unique_combinations(elements: list[str], l: int=2) -> list[tuple[str, str]]:
+def unique_combinations(elements, l=2):
     """
     Precondition: `elements` does not contain duplicates.
     Postcondition: Returns unique combinations of length 2 from `elements`.
