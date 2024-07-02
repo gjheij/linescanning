@@ -11,6 +11,7 @@ import pandas as pd
 import seaborn as sns
 from typing import Union
 from scipy.optimize import minimize
+from scipy import signal
 from joblib import Parallel, delayed
 from sklearn import metrics
 from alive_progress import alive_bar
@@ -364,7 +365,146 @@ class InitFitter():
             sub_dfs[key] = pd.concat(val)
 
         return sub_dfs
-    
+
+    def parameters_for_basis_sets(
+        self, 
+        *args,
+        **kwargs
+        ):
+
+        if not hasattr(self, "sub_basis"):
+            self.get_basisset_timecourses()
+
+        utils.verbose(f"Deriving parameters from basis sets with 'HRFMetrics'", self.verbose)
+        subj_ids = utils.get_unique_ids(self.sub_basis, id="subject")
+
+        subjs = []
+        subjs_avg_run = []
+        for sub in subj_ids:
+            
+            # get subject specific dataframe
+            sub_df = utils.select_from_df(self.sub_basis, expression=f"subject = {sub}")
+
+            # get basis sets
+            basis_ids = utils.get_unique_ids(sub_df, id="covariate")
+            basis = []
+            basis_avg = []
+            for bs in basis_ids:
+
+                basis_df = utils.select_from_df(sub_df, expression=f"covariate = {bs}")
+                ev_ids = utils.get_unique_ids(basis_df, id="event_type")
+
+                # loop through evs
+                evs = []
+                evs_avg = []
+                for ev in ev_ids:
+                    
+                    # get event-specific dataframe
+                    ev_df = utils.select_from_df(basis_df, expression=f"event_type = {ev}")
+                    run_ids = utils.get_unique_ids(ev_df, id="run")
+
+                    # loop through runs
+                    runs = []
+                    for run in run_ids:
+                        
+                        # get run-specific dataframe
+                        run_df = utils.select_from_df(ev_df, expression=f"run = {run}")
+                        pars = HRFMetrics(
+                            run_df,
+                            TR=self.TR,
+                            *args,
+                            **kwargs
+                        ).return_metrics()
+
+                        pars["event_type"],pars["run"] = ev,run
+                        runs.append(pars)
+                    
+                    # also get parameters of average across runs
+                    avg_df = ev_df.groupby(["covariate","t"]).mean()
+                    avg_pars = HRFMetrics(
+                        avg_df, 
+                        TR=self.TR,
+                        *args,
+                        **kwargs
+                    ).return_metrics()
+
+                    # save average
+                    avg_pars["event_type"] = ev
+                    evs_avg.append(avg_pars)
+
+                    # save single runs
+                    runs = pd.concat(runs)
+                    evs.append(runs)
+
+                # avg
+                evs_avg = pd.concat(evs_avg)
+                evs_avg["covariate"] = bs
+                basis_avg.append(evs_avg)
+
+                # single runs
+                evs = pd.concat(evs)
+                evs["covariate"] = bs
+                basis.append(evs)
+
+            # avg
+            basis_avg = pd.concat(basis_avg)
+            basis_avg["subject"] = sub
+            subjs_avg_run.append(basis_avg)
+
+            # single runs
+            basis = pd.concat(basis)
+            basis["subject"] = sub
+            subjs.append(basis)
+
+        df_conc = pd.concat(subjs)
+        df_avg = pd.concat(subjs_avg_run)
+        avg_idx = ["subject","event_type","covariate"]
+        idx = avg_idx+["run"]
+        
+        add_idx = self.find_pars_index(df_conc)
+        if isinstance(add_idx, str):
+            idx += [add_idx]
+            avg_idx += [add_idx]
+        
+        self.pars_basissets = df_conc.set_index(idx)
+        self.avg_pars_basissets = df_avg.set_index(avg_idx)
+
+    @staticmethod
+    def find_pars_index(df):
+        default_indices = ["subject","event_type","covariate","run"]
+        parameters = [
+            "magnitude",
+            "magnitude_ix",
+            "fwhm",
+            "fwhm_obj",
+            "time_to_peak",
+            "half_rise_time",
+            "half_max",
+            "rise_slope",
+            "rise_slope_t",
+            "positive_area",
+            "undershoot"
+        ]
+
+        combined = default_indices+parameters
+        df.reset_index(inplace=True)
+        if "index" in list(df.columns):
+            df.drop(["index"], axis=1, inplace=True)
+
+        columns = list(df.columns)
+        not_shared = []
+        for i in columns:
+            if i not in combined:
+                not_shared.append(i)
+
+        if len(not_shared)>0:
+            if len(not_shared)>1:
+                raise ValueError(f"Found multiple ({len(not_shared)}) column names in the dataframe, but I'm expecting only 1 to not match.. These column names are extra: {not_shared}")
+            else:
+                return not_shared[0]
+        else:
+            return []
+            
     def parameters_for_tc_subjects(
         self, 
         *args,
@@ -401,6 +541,7 @@ class InitFitter():
                     run_df = utils.select_from_df(ev_df, expression=f"run = {run}")
                     pars = HRFMetrics(
                         run_df, 
+                        TR=self.TR,
                         *args,
                         **kwargs
                     ).return_metrics()
@@ -412,6 +553,7 @@ class InitFitter():
                 avg_df = ev_df.groupby(["subject","event_type","time"]).mean()
                 avg_pars = HRFMetrics(
                     avg_df, 
+                    TR=self.TR,
                     *args,
                     **kwargs
                 ).return_metrics()
@@ -438,9 +580,11 @@ class InitFitter():
         df_avg = pd.concat(subjs_avg_run)
         avg_idx = ["subject","event_type"]
         idx = avg_idx+["run"]
-        if "vox" in list(df_conc.columns):
-            idx += ["vox"]
-            avg_idx += ["vox"]
+
+        add_idx = self.find_pars_index(df_conc)
+        if isinstance(add_idx, str):
+            idx += [add_idx]
+            avg_idx += [add_idx]
         
         self.pars_subjects = df_conc.set_index(idx)
         self.avg_pars_subjects = df_avg.set_index(avg_idx)
@@ -998,6 +1142,100 @@ class NideconvFitter(InitFitter):
             self.fitters = pd.DataFrame(self.fitters)
 
         self.fitters = self.check_for_run_index(self.fitters)
+
+    @staticmethod
+    def get_curves_from_fitter(
+        fitter, 
+        index=True,
+        skip_intercept=True):
+        
+        betas = fitter.betas
+        basis = fitter.get_basis_functions()
+        regr = utils.get_unique_ids(betas, id="regressor")
+        regr.pop(regr.index("intercept"))
+
+        ev_df = []
+        evs = utils.get_unique_ids(betas, id="event type")
+
+        evs.pop(evs.index("confounds"))
+
+        for ev in evs:
+            # print(f"{ev}")
+            expr = f"event type = {ev}"
+            ev_beta = utils.select_from_df(betas, expression=expr)
+            ev_basis = utils.select_from_df(basis, expression=expr)
+
+            basis_sets = []
+            for i in ev_basis.columns:
+                basis_sets.append(i[-1])
+
+            basis_curves = []
+            for reg in regr:
+                # print(f" {reg}")
+
+                reg1 = utils.select_from_df(ev_beta, expression=f"regressor = {reg}")
+                reg_in_beta = basis_sets.index(reg)
+                bet1 = pd.DataFrame(ev_basis.iloc[:,reg_in_beta])
+                tmp = bet1.dot(reg1)
+
+                tmp.reset_index(inplace=True)
+                tmp.rename(
+                    columns={
+                        "event type": "event_type",
+                        "time": "t"
+                    },
+                    inplace=True
+                )
+
+                tmp["covariate"] = reg
+                tmp.set_index(["event_type","covariate","t"], inplace=True)
+                basis_curves.append(tmp)
+
+            basis_curves = pd.concat(basis_curves)
+            ev_df.append(basis_curves)
+
+        ev_df = pd.concat(ev_df)
+        if not index:
+            ev_df.reset_index(inplace=True)
+
+        return ev_df
+
+    def get_basisset_timecourses(self):
+        
+        # also get the predictions
+        if self.fit_type == "ols":
+            if not hasattr(self, "fitters"):
+                self.fitters = self.model._get_response_fitters()
+                self.format_fitters()
+
+        sub_ids = utils.get_unique_ids(self.fitters, id="subject")
+        sub_basis = []
+        for sub in sub_ids:
+            
+            sub_fitters = utils.select_from_df(self.fitters, expression=f"subject = {sub}")
+
+            # loop through runs
+            self.sub_basis = []
+            run_ids = utils.get_unique_ids(sub_fitters, id="run")
+            for run in run_ids:
+
+                # full model predictions
+                run_fitter = utils.select_from_df(self.fitters, expression=f"run = {run}").iloc[0][0]
+                curves = self.get_curves_from_fitter(run_fitter, index=False)
+
+                # append
+                curves["run"] = run
+                self.sub_basis.append(curves)
+
+            # concatenate and index
+            self.sub_basis = pd.concat(self.sub_basis)
+            self.sub_basis["subject"] = sub
+
+            sub_basis.append(self.sub_basis)
+
+        # event-specific events
+        self.sub_basis = pd.concat(sub_basis, ignore_index=True)
+        self.sub_basis.set_index(["subject","event_type","run","covariate","t"], inplace=True)
 
     def get_predictions_per_event(self):
         
@@ -1644,7 +1882,11 @@ class NideconvFitter(InitFitter):
             x_lbl = "vox"
             x_data = list(df.columns)
 
-        self.df_pars = HRFMetrics(df, **par_kw).return_metrics()
+        self.df_pars = HRFMetrics(
+            df, 
+            TR=self.TR, 
+            **par_kw
+        ).return_metrics()
         self.df_pars[x_lbl] = x_data
 
         # decide on color based on split
@@ -1714,7 +1956,11 @@ class NideconvFitter(InitFitter):
             x_lbl = "vox"
             x_data = list(df.columns)
 
-        self.df_pars = HRFMetrics(df, **par_kw).return_metrics()
+        self.df_pars = HRFMetrics(
+            df, 
+            TR=self.TR, 
+            **par_kw
+        ).return_metrics()
         self.df_pars[x_lbl] = x_data
 
         # decide on color based on split
@@ -2361,16 +2607,9 @@ class HRFMetrics():
     def __init__(
         self,
         hrf,
-        TR: float=None,
-        force_pos: Union[list,bool]=False,
-        force_neg: Union[list,bool]=False,
-        plot: bool=False,
-        nan_policy: bool=True,
-        debug: bool=False,
-        progress: bool=False,
-        thr_var: Union[int,float]=0,
-        shift: Union[int,float]=0
+        **kwargs
         ):
+
         """HRFMetrics
 
         Main class for extracting various parameters from a given profiles. Optimized for the hemodynamic response function (HRF) but is agnostic to the type of input. It will therefore try to extract parameters from any shape of profile. Input can be a `pd.DataFrame` or `numpy.array`. Internally, a DataFrame will be created to facilitate usage across various operations. By default, parameters will be derived from the largest peak in the profile. This can be positive or negative. If you want to force the parameters to reflect a positive response, use the `force_pos` flag. Conversely, if you want to enfore negative values, use `force_neg`. This can be set for each column in the dataframe using lists.
@@ -2410,6 +2649,12 @@ class HRFMetrics():
             Specify a variance threshold the input profiles must adhere to, by default 0. This avoids that flat timecourses are entered into the extraction
         shift: int, float, optional
             Sometimes profiles contain negative parts. This flag shifts the profile to a certain value first before parameter extraction, by default 0
+        vox_as_index: bool, optional
+            If a 2D-dataframe is supplied, the columns can either denote ROIs or voxels. Setting this flag to False will use the original column names, otherwise indices will be used. Default = False.
+        col_name: str, optional
+            If a 2D-dataframe is supplied, an extra index is added. This flag sets the name of that index. Default = "vox". This can be for instance "roi", if you're dealing with ROIs
+        peak: int, optional
+            Define which peak you want to use as reference. This flag requires an integer value from 1 to N. :function:`scipy.signal.find_peaks` is then used to extract peaks from the curve. By default, it will look for the largest peak, whether that's positive or negative. 
 
         Example
         ----------
@@ -2417,24 +2662,9 @@ class HRFMetrics():
         >>> metrics_kws = {} # extra parameters
         >>> metrics = fitting.HRFMetrics(some_profile).return_metrics()
         """
-        self.hrf = hrf
-        self.TR = TR
-        self.force_pos = force_pos
-        self.force_neg = force_neg
-        self.plot = plot
-        self.shift = shift
-        self.nan_policy = nan_policy
-        self.debug = debug
-        self.thr_var = thr_var
-        self.progress = progress
 
         # get metrics
-        self._get_metrics(
-            TR=self.TR, 
-            force_pos=self.force_pos,
-            force_neg=self.force_neg,
-            nan_policy=self.nan_policy
-        )
+        self.metrics = self._get_metrics(hrf, **kwargs)
 
     def return_metrics(self):
         return self.metrics.reset_index(drop=True)
@@ -2456,32 +2686,19 @@ class HRFMetrics():
     
     def _get_metrics(
         self, 
-        TR=None,
-        force_pos=False,
-        force_neg=False,
-        nan_policy=False):
-
-        # set shift to None because this doesn't deal with 2D arrays; just get the format right
-        hrf = self._verify_input(self.hrf, TR=TR, shift=None)
-
-        orig_cols = list(hrf.columns)
-
-        # find columns abs(var)>0
-        filtered_variance = (hrf.var(axis=0)>self.thr_var).values
-        filtered_df = hrf.iloc[:,filtered_variance]
-        cols = list(filtered_df.columns)
-        utils.verbose(f" {filtered_df.shape[1]}/{hrf.shape[1]}\tvertices survived variance threshold of {self.thr_var}", self.debug)
-        if len(cols) == 0:
-            raise ValueError(f"Variance threshold of {self.thr_var} is too strict; no vertices survived")
-        
-        if not isinstance(force_neg, list):
-            force_neg = [force_neg for _ in cols]
-
-        if not isinstance(force_pos, list):
-            force_pos = [force_pos for _ in cols]
-
-        # initiate output
-        incl = [
+        hrf,
+        TR: float=None,
+        force_pos: Union[list,bool]=False,
+        force_neg: Union[list,bool]=False,
+        plot: bool=False,
+        nan_policy: bool=True,
+        debug: bool=False,
+        progress: bool=False,
+        thr_var: Union[int,float]=0,
+        shift: Union[int,float]=0,
+        vox_as_index: bool=False,
+        col_name: str="vox",
+        incl: Union[str,list]=[
             "magnitude",
             "magnitude_ix",
             "fwhm",
@@ -2493,62 +2710,100 @@ class HRFMetrics():
             "rise_slope_t",
             "positive_area",
             "undershoot"
-        ]
+        ],
+        peak=None
+        ):
+
+        # force into list for iterability
+        if isinstance(incl, str):
+            incl = [incl]
+
+        # set shift to None because this doesn't deal with 2D arrays; just get the format right
+        hrf = self._verify_input(
+            hrf, 
+            TR=TR, 
+            shift=None
+        )
+
+        orig_cols = list(hrf.columns)
+
+        # find columns abs(var)>0
+        filtered_variance = (hrf.var(axis=0)>thr_var).values
+        filtered_df = hrf.iloc[:,filtered_variance]
+        cols = list(filtered_df.columns)
+        utils.verbose(f" {filtered_df.shape[1]}/{hrf.shape[1]}\tvertices survived variance threshold of {thr_var}", debug)
+        if len(cols) == 0:
+            raise ValueError(f"Variance threshold of {thr_var} is too strict; no vertices survived")
+        
+        if not isinstance(force_neg, list):
+            force_neg = [force_neg for _ in cols]
+
+        if not isinstance(force_pos, list):
+            force_pos = [force_pos for _ in cols]
 
         # print(force_pos)
-        self.col_metrics = []
-        self.col_fwhm = []
+        col_metrics = []
+        col_fwhm = []
 
         # initialize empty dataframe
-        self.metrics = pd.DataFrame(np.zeros((len(orig_cols),len(incl))), columns=incl)
+        metrics = pd.DataFrame(np.zeros((len(orig_cols),len(incl))), columns=incl)
 
         # separate loop for fancy progress bar
-        if self.progress:
+        if progress:
             with alive_bar(filtered_df.shape[1], force_tty=True) as bar:
                 for ix,col in enumerate(filtered_df):
                     pars,fwhm_ = self._get_single_hrf_metrics(
                         filtered_df[col],
-                        TR=self.TR,
+                        TR=TR,
                         force_pos=force_pos[ix],
                         force_neg=force_neg[ix],
-                        plot=self.plot,
+                        plot=plot,
                         nan_policy=nan_policy,
-                        shift=self.shift
+                        shift=shift,
+                        peak=peak
                     )
 
                     # progress
                     bar()
                 
-                    self.col_metrics.append(pars)
-                    self.col_fwhm.append(fwhm_)
+                    col_metrics.append(pars)
+                    col_fwhm.append(fwhm_)
         else:
             for ix,col in enumerate(filtered_df):
                 pars,fwhm_ = self._get_single_hrf_metrics(
                     filtered_df[col],
-                    TR=self.TR,
+                    TR=TR,
                     force_pos=force_pos[ix],
                     force_neg=force_neg[ix],
-                    plot=self.plot,
+                    plot=plot,
                     nan_policy=nan_policy,
-                    shift=self.shift
+                    shift=shift,
+                    peak=peak
                 )
             
-                self.col_metrics.append(pars)
-                self.col_fwhm.append(fwhm_)
+                col_metrics.append(pars)
+                col_fwhm.append(fwhm_)
 
-        if len(self.col_metrics) > 0:
-            self.col_metrics = pd.concat(self.col_metrics)
+        if len(col_metrics) > 0:
+            col_metrics = pd.concat(col_metrics)
         
         # insert into empty dataframe
-        self.metrics.iloc[filtered_variance,:] = self.col_metrics.values.copy()
+        metrics.iloc[filtered_variance,:] = col_metrics.values.copy()
 
         if len(orig_cols)>1:
-            self.metrics["vox"] = np.arange(0,len(orig_cols))
+            if vox_as_index:
+                set_as = np.arange(0,len(orig_cols), dtype=int)
+            else:
+                set_as = orig_cols
+
+            metrics[col_name] = set_as
 
         # set to integer
-        if "magnitude_ix" in list(self.metrics.columns):
-            self.metrics["magnitude_ix"] = self.metrics["magnitude_ix"].astype(int)
+        if "magnitude_ix" in list(metrics.columns):
+            metrics["magnitude_ix"] = metrics["magnitude_ix"].astype(int)
 
+        return metrics
+    
     @staticmethod
     def _get_time(hrf):
         try:
@@ -2565,7 +2820,12 @@ class HRFMetrics():
                 raise ValueError("Could not find time dimension. Dataframe should contain 't' or 'time' column..")
     
     @classmethod
-    def _verify_input(self, hrf, TR=None, shift=None):
+    def _verify_input(
+        self, 
+        hrf, 
+        TR=None, 
+        shift=None
+        ):
         if isinstance(hrf, np.ndarray):
             if hrf.ndim > 1:
                 hrf = hrf.squeeze()
@@ -2624,22 +2884,24 @@ class HRFMetrics():
         hrf, 
         force_pos=False, 
         force_neg=False,
-        nan_policy=False):
+        nan_policy=False,
+        peak=None
+        ):
 
         # fetch time stamps
         time = self._get_time(hrf)
-
-        # check negative:
-        negative = self._check_negative(
-            hrf, 
-            force_neg=force_neg,
-            force_pos=force_pos)
 
         # find slope corresponding to amplitude
         mag = self._get_amplitude(
             hrf, 
             force_pos=force_pos,
-            force_neg=force_neg)
+            force_neg=force_neg,
+            peak=peak
+        )
+
+        negative = False
+        if mag["amplitude"]<0:
+            negative = True
 
         # limit search to where index of highest amplitude
         diff = np.diff(hrf.values.squeeze()[:mag["t_ix"]])/np.diff(time[:mag["t_ix"]])
@@ -2648,14 +2910,14 @@ class HRFMetrics():
         try:
             if not force_pos:
                 if negative:
-                    val = np.array([np.amin(diff)])
+                    val = np.array([np.amin(diff[:mag["t_ix"]])])
                 else:
-                    val = np.array([np.amax(diff)])
+                    val = np.array([np.amax(diff[:mag["t_ix"]])])
             else:
-                val = np.array([np.amax(diff)])
+                val = np.array([np.amax(diff[:mag["t_ix"]])])
             
             final_val = val[0]
-            val_ix = utils.find_nearest(diff,final_val)[0]
+            val_ix = utils.find_nearest(diff[:mag["t_ix"]],final_val)[0]
             val_t = time[val_ix]
 
         except Exception as e:
@@ -2668,33 +2930,62 @@ class HRFMetrics():
         return final_val,val_t
 
     @classmethod
-    def _get_amplitude(self, hrf, force_pos=False, force_neg=False):
+    def _get_amplitude(
+        self, 
+        hrf, 
+        force_pos=False, 
+        force_neg=False,
+        peak=None
+        ):
 
         # fetch time stamps
         time = self._get_time(hrf)
 
-        # check negative:
-        negative = self._check_negative(
-            hrf, 
-            force_neg=force_neg,
-            force_pos=force_pos
-        )
+        # use scipy.signal.find_peaks to find n'th peak
+        if isinstance(peak, int):
+            
+            ref = hrf.values.squeeze()
+            pos = list(signal.find_peaks(ref, prominence=0.05*ref.max())[0])
+            neg = list(signal.find_peaks(-ref, prominence=0.05*ref.max())[0])
+            ppeaks = sorted(pos+neg)
 
-        if not force_pos:
-            if negative:
-                mag_tmp = hrf.min(axis=0).values
+            if len(ppeaks) > peak-1:
+                mag_ix = ppeaks[peak-1]
+                ddict = {
+                    "amplitude": hrf.values.squeeze()[mag_ix],
+                    "t": time[mag_ix],
+                    "t_ix": mag_ix
+                }
+                
+            else:
+                raise ValueError(f"Peak #{peak} was requested, but only {len(ppeaks)} peak(s) were found..")
+
+        else:
+
+            # check negative:
+            negative = self._check_negative(
+                hrf, 
+                force_neg=force_neg,
+                force_pos=force_pos
+            )
+
+            if not force_pos:
+                if negative:
+                    mag_tmp = hrf.min(axis=0).values
+                else:
+                    mag_tmp = hrf.max(axis=0).values
             else:
                 mag_tmp = hrf.max(axis=0).values
-        else:
-            mag_tmp = hrf.max(axis=0).values
 
-        mag_ix = utils.find_nearest(hrf.values.squeeze(), mag_tmp)[0]
+            mag_ix = utils.find_nearest(hrf.values.squeeze(), mag_tmp)[0]
 
-        return {
-            "amplitude": mag_tmp[0],
-            "t": time[mag_ix],
-            "t_ix": mag_ix
-        }
+            ddict = {
+                "amplitude": mag_tmp[0],
+                "t": time[mag_ix],
+                "t_ix": mag_ix
+            }
+            
+        return ddict
     
     @classmethod
     def _get_auc(
@@ -2702,7 +2993,9 @@ class HRFMetrics():
         hrf, 
         force_pos=False, 
         force_neg=False,
-        nan_policy=False):
+        nan_policy=False,
+        peak=None
+        ):
 
         # get time 
         time = self._get_time(hrf)
@@ -2712,7 +3005,8 @@ class HRFMetrics():
         mag = self._get_amplitude(
             hrf, 
             force_pos=force_pos,
-            force_neg=force_neg
+            force_neg=force_neg,
+            peak=peak
         )
 
         # first check if the period before the peak has zero crossings
@@ -2839,26 +3133,28 @@ class HRFMetrics():
         force_pos=False, 
         force_neg=False,
         nan_policy=False,
-        add_fct=0.5):
+        add_fct=0.5,
+        peak=None
+        ):
 
         # fetch time stamps
         time = self._get_time(hrf)
 
-        # check negative:
-        negative = self._check_negative(
-            hrf, 
-            force_neg=force_neg,
-            force_pos=force_pos)
-
-        # check time stamps
-        if time.shape[0] != hrf.values.shape[0]:
-            raise ValueError(f"Shape of time dimension ({time.shape[0]}) does not match dimension of HRF ({hrf.values.shape[0]})")
-        
         # get amplitude of HRF
         mag = self._get_amplitude(
             hrf, 
             force_pos=force_pos,
-            force_neg=force_neg)
+            force_neg=force_neg,
+            peak=peak
+        )
+
+        negative = False
+        if mag["amplitude"]<0:
+            negative = True
+
+        # check time stamps
+        if time.shape[0] != hrf.values.shape[0]:
+            raise ValueError(f"Shape of time dimension ({time.shape[0]}) does not match dimension of HRF ({hrf.values.shape[0]})")
 
         # define index period around magnitude; add 20% to avoid FWHM errors
         end_ix = mag["t_ix"]+mag["t_ix"]
@@ -2869,7 +3165,8 @@ class HRFMetrics():
             fwhm_val = FWHM(
                 time, 
                 hrf.values, 
-                negative=negative)
+                negative=negative
+            )
             
             fwhm_dict = {
                 "fwhm": fwhm_val.fwhm,
@@ -2877,6 +3174,7 @@ class HRFMetrics():
                 "half_max": fwhm_val.half_max,
                 "obj": fwhm_val
             }
+
         except Exception as e:
             if not nan_policy:
                 self.plot_profile_for_debugging(hrf)
@@ -2902,6 +3200,7 @@ class HRFMetrics():
         nan_policy=False,
         debug=False,
         shift=None,
+        peak=None,
         **kwargs):
 
         # verify input type
@@ -2915,28 +3214,35 @@ class HRFMetrics():
         mag = self._get_amplitude(
             hrf, 
             force_pos=force_pos, 
-            force_neg=force_neg)
+            force_neg=force_neg,
+            peak=peak
+        )
 
         # fwhm
         fwhm_obj = self._get_fwhm(
             hrf, 
             force_pos=force_pos, 
             force_neg=force_neg,
-            nan_policy=nan_policy)
+            nan_policy=nan_policy,
+            peak=peak
+        )
 
         # rise slope
         rise_tmp, rise_t = self._get_riseslope(
             hrf, 
             force_pos=force_pos, 
             force_neg=force_neg,
-            nan_policy=nan_policy)
+            nan_policy=nan_policy,
+            peak=peak
+        )
 
         # positive area + undershoot
         auc = self._get_auc(
             hrf,
             force_pos=force_pos,
             force_neg=force_neg,
-            nan_policy=nan_policy
+            nan_policy=nan_policy,
+            peak=peak
         )
 
         ddict =  {
