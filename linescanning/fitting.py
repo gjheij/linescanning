@@ -1146,8 +1146,8 @@ class NideconvFitter(InitFitter):
     @staticmethod
     def get_curves_from_fitter(
         fitter, 
-        index=True,
-        skip_intercept=True):
+        index=True
+        ):
         
         betas = fitter.betas
         basis = fitter.get_basis_functions()
@@ -1163,7 +1163,7 @@ class NideconvFitter(InitFitter):
             # print(f"{ev}")
             expr = f"event type = {ev}"
             ev_beta = utils.select_from_df(betas, expression=expr)
-            ev_basis = utils.select_from_df(basis, expression=expr)
+            ev_basis = utils.select_from_df(basis, expression=expr).loc[:,ev]
 
             basis_sets = []
             for i in ev_basis.columns:
@@ -1171,22 +1171,20 @@ class NideconvFitter(InitFitter):
 
             basis_curves = []
             for reg in regr:
-                # print(f" {reg}")
 
-                reg1 = utils.select_from_df(ev_beta, expression=f"regressor = {reg}")
-                reg_in_beta = basis_sets.index(reg)
-                bet1 = pd.DataFrame(ev_basis.iloc[:,reg_in_beta])
-                tmp = bet1.dot(reg1)
+                reg1 = ev_basis.loc[:,"intercept"].loc[:,reg].values[...,np.newaxis]
+                bet1 = utils.select_from_df(ev_beta, expression=f"regressor = {reg}")
+                tmp = reg1.dot(bet1.values)
 
+                tmp = pd.DataFrame(tmp, columns=bet1.columns, index=ev_basis.index)
                 tmp.reset_index(inplace=True)
                 tmp.rename(
                     columns={
-                        "event type": "event_type",
-                        "time": "t"
-                    },
+                        "time": "t",
+                        "event type": "event_type"
+                    }, 
                     inplace=True
                 )
-
                 tmp["covariate"] = reg
                 tmp.set_index(["event_type","covariate","t"], inplace=True)
                 basis_curves.append(tmp)
@@ -2445,7 +2443,6 @@ class CVDeconv(InitFitter):
         self.func = func
         self.onsets = onsets
         self.TR = TR
-        self.merge = merge
 
         # format functional data and onset dataframes
         super().__init__(
