@@ -366,6 +366,68 @@ class InitFitter():
 
         return sub_dfs
 
+    @staticmethod
+    def merge_dfs(
+        src, 
+        trg, 
+        name="full HRF",
+        first="basissets"
+        ):
+
+        tm = trg.copy().reset_index()
+        tm["covariate"] = name
+        tm.set_index(list(src.index.names), inplace=True)
+
+        if "basis" in first:
+            order = [src,tm]
+        else:
+            order = [tm,trg]
+
+        return pd.concat(order)
+    
+    def merge_basissets_with_full_hrf(self, **kwargs):
+
+        for pars in ["avg_pars","pars"]:
+
+            if hasattr(self, f"{pars}_basissets") and hasattr(self, f"{pars}_subjects"):
+                
+                df1 = getattr(self, f"{pars}_basissets")
+                df2 = getattr(self, f"{pars}_subjects")
+                df3 = self.merge_dfs(
+                    df1,
+                    df2,
+                    **kwargs
+                )
+                setattr(self, f"{pars}_merged", df3)
+
+        if hasattr(self, "sub_basis") and hasattr(self, "tc_subjects"):
+            df1 = self.sub_basis.copy()
+            df2 = self.tc_subjects.copy().reset_index()
+            df2.rename(columns={"time": "t"}, inplace=True)
+            df2.set_index(["subject","run","event_type","covariate","t"], inplace=True)
+
+            df3 = self.merge_dfs(
+                df1,
+                df2,
+                **kwargs
+            )
+
+            setattr(self, "sub_tc_merged", df3)
+
+        if hasattr(self, "sub_basis") and hasattr(self, "tc_subjects"):
+            df1 = self.sub_basis.copy()
+            df2 = self.tc_subjects.copy().reset_index()
+            df2.rename(columns={"time": "t"}, inplace=True)
+            df2.set_index(["subject","run","event_type","covariate","t"], inplace=True)
+
+            df3 = self.merge_dfs(
+                df1,
+                df2,
+                **kwargs
+            )
+
+            setattr(self, "sub_tc_merged", df3)
+
     def parameters_for_basis_sets(
         self, 
         *args,
