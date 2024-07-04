@@ -1208,35 +1208,52 @@ class NideconvFitter(InitFitter):
     @staticmethod
     def get_curves_from_fitter(
         fitter, 
-        index=True
+        index=True,
+        icpt=False,
         ):
         
         betas = fitter.betas
         basis = fitter.get_basis_functions()
         regr = utils.get_unique_ids(betas, id="regressor")
-        regr.pop(regr.index("intercept"))
 
         ev_df = []
         evs = utils.get_unique_ids(betas, id="event type")
 
-        evs.pop(evs.index("confounds"))
+        # full intercept was fitted
+        if icpt:
+            regr.pop(regr.index("intercept"))
+            evs.pop(evs.index("confounds"))
 
         for ev in evs:
             # print(f"{ev}")
             expr = f"event type = {ev}"
             ev_beta = utils.select_from_df(betas, expression=expr)
-            ev_basis = utils.select_from_df(basis, expression=expr).loc[:,ev]
-
-            basis_sets = []
-            for i in ev_basis.columns:
-                basis_sets.append(i[-1])
+            ev_basis = utils.select_from_df(basis, expression=expr)
 
             basis_curves = []
             for reg in regr:
+                
+                # if intercept was fitted, we need to extract the beta/basis set for that too
+                if icpt:
 
-                reg1 = ev_basis.loc[:,"intercept"].loc[:,reg].values[...,np.newaxis]
-                bet1 = utils.select_from_df(ev_beta, expression=f"regressor = {reg}")
-                tmp = reg1.dot(bet1.values)
+                    # basis sets
+                    reg_basis = ev_basis.loc[:,["confounds",ev]]
+                    b1 = pd.DataFrame(reg_basis.loc[:,ev].loc[:,"intercept"].loc[:,reg])
+                    b2 = pd.DataFrame(reg_basis.loc[:,"confounds"].loc[:,"intercept"])
+                    reg1 = pd.concat([b2,b1], axis=1)
+
+                    # betas
+                    b1 = utils.select_from_df(betas, expression=f"event type = confounds")
+                    b2 = utils.select_from_df(ev_beta, expression=f"regressor = {reg}")
+                    bet1 = pd.concat([b1,b2])
+
+                else:
+
+                    reg1 = pd.DataFrame(ev_basis.loc[:,ev].loc[:,"intercept"].loc[:,reg])
+                    bet1 = utils.select_from_df(ev_beta, expression=f"regressor = {reg}")
+
+                # dot product
+                tmp = reg1.values.dot(bet1.values)
 
                 tmp = pd.DataFrame(tmp, columns=bet1.columns, index=ev_basis.index)
                 tmp.reset_index(inplace=True)
@@ -1281,7 +1298,11 @@ class NideconvFitter(InitFitter):
 
                 # full model predictions
                 run_fitter = utils.select_from_df(self.fitters, expression=f"run = {run}").iloc[0][0]
-                curves = self.get_curves_from_fitter(run_fitter, index=False)
+                curves = self.get_curves_from_fitter(
+                    run_fitter, 
+                    index=False,
+                    icpt=self.conf_icpt
+                )
 
                 # append
                 curves["run"] = run
