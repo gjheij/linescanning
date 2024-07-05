@@ -2789,7 +2789,11 @@ class HRFMetrics():
             "rise_slope",
             "rise_slope_t",
             "positive_area",
-            "undershoot"
+            "undershoot",
+            "1st_deriv_magnitude",
+            "1st_deriv_time_to_peak",
+            "2nd_deriv_magnitude",
+            "2nd_deriv_time_to_peak",
         ],
         peak=None
         ):
@@ -3068,6 +3072,39 @@ class HRFMetrics():
         return ddict
     
     @classmethod
+    def _get_derivatives(
+        self, 
+        hrf, 
+        **kwargs
+        ):
+
+        # fetch time stamps
+        time = self._get_time(hrf)
+
+        kwargs = utils.update_kwargs(
+            kwargs,
+            "peak",
+            1
+        )
+
+        # get derivatives
+        first_derivative = np.gradient(hrf.values.squeeze(), time)[...,np.newaxis]
+        second_derivative = np.gradient(first_derivative.squeeze(), time)[...,np.newaxis]
+
+        # deriv
+        ddict = {}
+        for key,val in zip(["1st_deriv","2nd_deriv"],[first_derivative,second_derivative]):
+            df = pd.DataFrame(val)
+            df["t"] = time
+            df.set_index(["t"], inplace=True)
+            res = self._get_amplitude(df, **kwargs)
+
+            for i,e in res.items():
+                ddict[f"{key}_{i}"] = e
+            
+        return ddict
+
+    @classmethod
     def _get_auc(
         self, 
         hrf, 
@@ -3205,7 +3242,6 @@ class HRFMetrics():
             "undershoot": ac_area
         }
 
-
     @classmethod    
     def _get_fwhm(
         self,
@@ -3325,6 +3361,17 @@ class HRFMetrics():
             peak=peak
         )
 
+        # positive area + undershoot
+        if not isinstance(peak, int):
+            peak = 1
+            
+        deriv = self._get_derivatives(
+            hrf,
+            force_pos=force_pos,
+            force_neg=force_neg,
+            peak=peak
+        )
+
         ddict =  {
             "magnitude": [mag["amplitude"]], 
             "magnitude_ix": [mag["t_ix"]], 
@@ -3336,7 +3383,11 @@ class HRFMetrics():
             "rise_slope": [rise_tmp],
             "rise_slope_t": [rise_t],
             "positive_area": [auc["pos_area"]],
-            "undershoot": [auc["undershoot"]]
+            "undershoot": [auc["undershoot"]],
+            "1st_deriv_magnitude": [deriv["1st_deriv_amplitude"]],
+            "1st_deriv_time_to_peak": [deriv["1st_deriv_t"]],
+            "2nd_deriv_magnitude": [deriv["2nd_deriv_amplitude"]],
+            "2nd_deriv_time_to_peak": [deriv["1st_deriv_t"]],
         }
 
         df = pd.DataFrame(ddict)
@@ -4604,5 +4655,4 @@ class GLM(InitFitter):
             axs=axs,
             markers=markers,
             color=colors,
-            **kwargs
         )
