@@ -545,7 +545,11 @@ class InitFitter():
             "rise_slope",
             "rise_slope_t",
             "positive_area",
-            "undershoot"
+            "undershoot",
+            '1st_deriv_magnitude',
+            '1st_deriv_time_to_peak',
+            '2nd_deriv_magnitude',
+            '2nd_deriv_time_to_peak',            
         ]
 
         combined = default_indices+parameters
