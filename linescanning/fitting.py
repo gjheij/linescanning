@@ -440,6 +440,8 @@ class InitFitter():
         utils.verbose(f"Deriving parameters from basis sets with 'HRFMetrics'", self.verbose)
         subj_ids = utils.get_unique_ids(self.sub_basis, id="subject")
 
+        self.avg_tcs_subjects = self.tc_subjects.groupby(["subject","event_type","time"]).mean()
+
         subjs = []
         subjs_avg_run = []
         for sub in subj_ids:
@@ -482,9 +484,14 @@ class InitFitter():
                         runs.append(pars)
                     
                     # also get parameters of average across runs
-                    avg_df = ev_df.groupby(["covariate","t"]).mean()
                     avg_pars = HRFMetrics(
-                        avg_df, 
+                        utils.multiselect_from_df(
+                            self.avg_tcs_subjects,
+                            expression=[
+                                f"subject = {sub}",
+                                f"event_type = {ev}"
+                            ]
+                        ), 
                         TR=self.TR,
                         *args,
                         **kwargs
@@ -654,6 +661,47 @@ class InitFitter():
         
         self.pars_subjects = df_conc.set_index(idx)
         self.avg_pars_subjects = df_avg.set_index(avg_idx)
+
+    def parameters_for_tc_condition(
+        self, 
+        *args,
+        **kwargs
+        ):
+
+        if not hasattr(self, "tc_condition"):
+            raise ValueError(f"{self} does not have 'tc_condition' attribute, run fitter first")
+
+        utils.verbose(f"Deriving condition-wise parameters from {self} with 'HRFMetrics'", self.verbose)
+        ev_ids = utils.get_unique_ids(self.tc_condition, id="event_type")
+
+        # loop through evs
+        evs = []
+        for ev in ev_ids:
+            
+            # get event-specific dataframe
+            ev_df = utils.select_from_df(self.tc_condition, expression=f"event_type = {ev}")
+            
+            ev_pars = HRFMetrics(
+                ev_df, 
+                TR=self.TR,
+                *args,
+                **kwargs
+            ).return_metrics()
+
+            ev_pars["event_type"] = ev
+            evs.append(ev_pars)
+
+        # concatenate
+        df_conc = pd.concat(evs)
+        df_conc["subject"] = "avg"
+        
+        # add indices
+        idx = ["subject", "event_type"]
+        add_idx = self.find_pars_index(df_conc)
+        if isinstance(add_idx, str):
+            idx += [add_idx]
+        
+        self.pars_condition = df_conc.set_index(idx)
 
 class ParameterFitter(InitFitter):
     """ParameterFitter
@@ -3391,7 +3439,7 @@ class HRFMetrics():
             "1st_deriv_magnitude": [deriv["1st_deriv_amplitude"]],
             "1st_deriv_time_to_peak": [deriv["1st_deriv_t"]],
             "2nd_deriv_magnitude": [deriv["2nd_deriv_amplitude"]],
-            "2nd_deriv_time_to_peak": [deriv["1st_deriv_t"]],
+            "2nd_deriv_time_to_peak": [deriv["2nd_deriv_t"]],
         }
 
         df = pd.DataFrame(ddict)
