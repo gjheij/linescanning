@@ -1114,18 +1114,14 @@ class CalcBestVertex():
         if hasattr(self, 'prf'):
             
             # set thresholds
-            self.y_thresh       = y_thresh or self.prf.y.r2.max()
-            self.r2_thresh      = r2_thresh or self.prf.df_prf.r2.min()
-            self.size_thresh    = size_thresh or self.prf.df_prf.prf_size.max()
-            self.ecc_thresh     = ecc_thresh or self.prf.df_prf.ecc.max()
+            self.r2_thresh = r2_thresh or self.prf.df_prf.r2.min()
+            self.size_thresh = size_thresh or self.prf.df_prf.prf_size.max()
+            self.ecc_thresh = ecc_thresh or self.prf.df_prf.ecc.max()
+            self.y_thresh = y_thresh or (self.prf.df_prf.y.min(),self.prf.df_prf.y.max())
             
             # set default size range if 1 value was specified
-            if not isinstance(self.size_thresh, list):
+            if not isinstance(self.size_thresh, (list,tuple)):
                 self.size_thresh = [self.size_thresh, self.prf.df_prf.prf_size.max()]
-
-            # set default y range if 1 value was specified
-            if not isinstance(self.y_thresh, list):
-                self.y_thresh = [self.y_thresh, self.prf.df_prf.y.max()]
 
             # parse out polar angle
             self.polar_array    = self.prf.df_prf.polar.values
@@ -1135,33 +1131,59 @@ class CalcBestVertex():
             rh_polar = self.polar_array[self.surface.lh_surf_data[0].shape[0]:] >= self.polar_thresh[1]
             polar = np.concatenate((lh_polar,rh_polar))
 
-            # parse out polar angle
-            self.x_array    = self.prf.df_prf.x.values
-            self.x_thresh   = x_thresh or [0,0]
+            # parse out x-position
+            self.x_array = self.prf.df_prf.x.values
+            self.x_thresh = x_thresh or [0,0]
 
             lh_x = self.x_array[:self.surface.lh_surf_data[0].shape[0]] >= self.x_thresh[0]
             rh_x = self.x_array[self.surface.lh_surf_data[0].shape[0]:] <= self.x_thresh[1]
-            x_pos = np.concatenate((lh_x,rh_x))            
+            x_idx = np.concatenate((lh_x,rh_x))
 
+            x_pos = np.full_like(polar, True)
+            x_pos[x_idx] = 1
+            
+            print(f"X-pos: {np.count_nonzero(x_pos)}")
+            print(f" lh: {np.count_nonzero(lh_x)}")
+            print(f" rh: {np.count_nonzero(rh_x)}")
+            
             # compile mask
             df = self.prf.df_prf.copy()
             self.prf_mask = np.zeros(df.shape[0], dtype=bool)
 
             # check if ecc was list or not
+            # prf_idc = list(
+            #     utils.multiselect_from_df(
+            #         df,
+            #         expression=[
+            #             f"r2 >= {self.r2_thresh}",
+            #             f"prf_size >= {self.size_thresh[0]}",
+            #             f"prf_size <= {self.size_thresh[1]}",
+            #             f"ecc >= {self.ecc_thresh[0]}",
+            #             f"ecc <= {self.ecc_thresh[1]}", 
+            #             f"y >= {self.y_thresh[0]}", 
+            #             f"y <= {self.y_thresh[1]}",                    
+            #         ]
+            #     ).index
+            # )
+            
             prf_idc = list(
                 df.loc[
-                    (df.y <= self.y_thresh[1]) &
-                    (df.y >= self.y_thresh[0])
+                    (df.y <= self.y_thresh[1]) 
+                    & (df.y >= self.y_thresh[0])
                     & (df.r2 >= self.r2_thresh)
                     & (df.ecc >= self.ecc_thresh[0])
                     & (df.ecc <= self.ecc_thresh[1])
                     & (df.prf_size >= self.size_thresh[0])
                     & (df.prf_size <= self.size_thresh[1])                
-                ].index)
+                ].index
+            )
+            print(f"pRF: {len(prf_idc)}")
 
             # sort out polar angle
             self.prf_mask[prf_idc] = True
-            self.prf_mask = (self.prf_mask * polar * x_pos)
+            self.prf_mask = (self.prf_mask * x_pos)
+
+            print(f"pRF x pos: {np.count_nonzero(self.prf_mask)}")
 
             utils.verbose(f" x-position:    >={self.x_thresh[0]}/<={self.x_thresh[1]}", True)
             utils.verbose(f" y-position:    {round(self.y_thresh[0],4)}-{round(self.y_thresh[1],4)}", True)
@@ -1198,12 +1220,26 @@ class CalcBestVertex():
                     self.criteria[par] = float(val)
 
                 # find indices where conditions hold
-                norm_idc = list(df.loc[
-                    (df.A >= self.a_thresh)
-                    & (df.B >= self.b_thresh)
-                    & (df.C >= self.c_thresh)
-                    & (df.D >= self.d_thresh)
-                ].index)
+                norm_idc = list(
+                    utils.multiselect_from_df(
+                        df,
+                        expression=[
+                            f"A >= {self.a_thresh}",
+                            f"B >= {self.b_thresh}",
+                            f"C >= {self.c_thresh}",
+                            f"D >= {self.d_thresh}",                  
+                        ]
+                    ).index
+                )
+
+                print(f"DN: {len(norm_idc)}")
+
+                # norm_idc = list(df.loc[
+                #     (df.A >= self.a_thresh)
+                #     & (df.B >= self.b_thresh)
+                #     & (df.C >= self.c_thresh)
+                #     & (df.D >= self.d_thresh)
+                # ].index)
                 
                 # make mask
                 norm_mask = np.zeros_like(self.prf_mask, dtype=bool)
@@ -1211,6 +1247,8 @@ class CalcBestVertex():
 
                 # apply mask to existing prf_mask
                 self.prf_mask = self.prf_mask * norm_mask
+
+                print(f"pRF x DN: {np.count_nonzero(self.prf_mask)}")
 
         # include epi intensity mask
         if hasattr(self, 'epi'):
@@ -1251,8 +1289,9 @@ class CalcBestVertex():
                 self.df_struct.loc[
                     (self.df_struct.thickness <= self.thick_thresh)
                     & (self.df_struct.depth >= self.depth_thresh)
-                ].index)                    
-            
+                ].index)      
+
+            print(f"structural: {len(struct_idc)}")
             if isinstance(self.curv_thresh, list):
                 utils.verbose(f" curvature:     {self.curv_thresh}", True)
                 struct_idc += list(
@@ -1278,6 +1317,7 @@ class CalcBestVertex():
         # and structural mask
         if hasattr(self, 'struct_mask'):
             self.joint_mask = (self.struct_mask * self.joint_mask)
+            print(f"V1 x struct: {np.count_nonzero(self.joint_mask)}")
         
             self.struct_mask = pycortex.Vertex2D_fix(
                 self.struct_mask,
@@ -1289,7 +1329,7 @@ class CalcBestVertex():
         # and EPI mask
         if hasattr(self, "epi_mask"):
             self.joint_mask = (self.epi_mask * self.joint_mask)
-
+            print(f"V1 x EPI: {np.count_nonzero(self.joint_mask)}")
             self.epi_mask_v = pycortex.Vertex2D_fix(
                 self.epi_mask,
                 self.epi_mask,
@@ -1300,7 +1340,7 @@ class CalcBestVertex():
         # apply pRF mask
         if hasattr(self, 'prf_mask'):
             self.joint_mask = (self.prf_mask * self.joint_mask)
-
+            print(f"V1 x pRF: {np.count_nonzero(self.joint_mask)}")
             self.prf_mask_v = pycortex.Vertex2D_fix(
                 self.prf_mask,
                 self.prf_mask,
@@ -1308,9 +1348,8 @@ class CalcBestVertex():
                     
             self.data_dict["prf_mask"] = self.prf_mask_v
 
-        self.n_vertices = np.count_nonzero(self.joint_mask.astype(int))
-        utils.verbose(f"Mask contains {self.n_vertices} vertices", True)
         self.surviving_vertices = list(np.where(self.joint_mask > 0)[0])
+        utils.verbose(f"Mask contains {len(self.surviving_vertices)} vertices", True)
 
         # initialize dataframe with whole-brain dimensions, but only with surviving_vertices' pRF estimates
         if hasattr(self, 'prf'):
@@ -1464,6 +1503,9 @@ class CalcBestVertex():
         # save prf information
         self.lh_prf = self.joint_mask[:self.surface.lh_surf_data[0].shape[0]]
         self.rh_prf = self.joint_mask[self.surface.lh_surf_data[0].shape[0]:]
+
+        print(f"lh: {np.count_nonzero(self.lh_prf)}")
+        print(f"rh: {np.count_nonzero(self.rh_prf)}")
         
         # if not "V1_" in self.fs_label:
         #     self.joint_mask[self.joint_mask < 1] = np.nan
@@ -2241,13 +2283,15 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
                         self.x_val_lh = set_threshold(
                             name="x-position (lh)", 
                             borders=(0,10), 
-                            set_default=0)
+                            set_default=0
+                        )
                         
                         # polar angle left hemi
                         self.x_val_rh = set_threshold(
                             name="x-position (rh)", 
                             borders=(-10,0), 
-                            set_default=0)
+                            set_default=0
+                        )
 
                         # combine polar
                         self.x_val = [self.x_val_lh,self.x_val_rh]
@@ -2256,37 +2300,45 @@ class TargetVertex(CalcBestVertex,utils.VertexInfo):
                         self.y_val = set_threshold(
                             name="y-position", 
                             borders=(-6,6), 
-                            set_default=(round(self.prf.df_prf.y.min(),2),round(self.prf.df_prf.y.max(),2)))           
+                            set_default=(
+                                round(self.prf.df_prf.y.min(),2),
+                                round(self.prf.df_prf.y.max(),2)
+                            )
+                        )           
 
                         # pRF size
                         self.size_val = set_threshold(
                             name="pRF size (beta)", 
-                            borders=(0,5), 
+                            borders=(0,self.prf.df_prf.prf_size.max()*1.1), 
                             set_default=(0,round(self.prf.df_prf.prf_size.max(),2)))
                         
                         # r2
                         self.r2_val = set_threshold(
                             name="r2 (variance)", 
                             borders=(0,1), 
-                            set_default=round(self.prf.df_prf.r2.min(),2))
+                            set_default=0
+                        )
                         
                         # eccentricity
                         self.ecc_val = set_threshold(
                             name="ecc band", 
                             borders=(0,15), 
-                            set_default=(0,round(self.prf.df_prf.ecc.max(),2)))
+                            set_default=(0,round(self.prf.df_prf.ecc.max(),2))
+                        )
 
                         # polar angle left hemi
                         self.pol_val_lh = set_threshold(
                             name="polar angle lh", 
                             borders=(0,np.pi), 
-                            set_default=round(np.pi,2))
+                            set_default=round(np.pi,2)
+                        )
                         
                         # polar angle left hemi
                         self.pol_val_rh = set_threshold(
                             name="polar angle rh", 
                             borders=(-np.pi,0), 
-                            set_default=round(-np.pi,2))
+                            set_default=round(-np.pi,2)
+                        )
 
                         # combine polar
                         self.pol_val = [self.pol_val_lh,self.pol_val_rh]
