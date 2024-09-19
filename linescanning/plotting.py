@@ -1420,7 +1420,11 @@ class LazyCorr(Defaults):
                 self._set_tick_params(self.cbar.ax)
                 self._set_spine_width(self.cbar.ax)
 
-                self._set_ticker(self.cbar.ax, self.y_dec, x="y")
+                self._set_ticker(
+                    self.cbar.ax, 
+                    self.y_dec, 
+                    axis="y"
+                )
 
                 # remove outside edge from colorbar
                 self.cbar.ax.set_frame_on(False)
@@ -1576,6 +1580,8 @@ class LazyBar():
         bar_legend: bool=False,
         lbl_legend: list=None,
         strip_kw: dict={},
+        connect: bool=False,
+        connect_kw: dict={},
         **kwargs):
 
         self.data               = data
@@ -1604,6 +1610,8 @@ class LazyBar():
         self.fancy_denom        = fancy_denom
         self.figsize            = figsize
         self.strip_kw           = strip_kw
+        self.connect            = connect
+        self.connect_kw         = connect_kw
         self.kw_defaults = Defaults()
 
         # avoid that these kwargs are passed down to matplotlib.bar.. Throws errors
@@ -1622,7 +1630,10 @@ class LazyBar():
             "bar_legend",
             "labels"
             "strip_kw",
-            "fontname"
+            "fontname",
+            "add_legend",
+            "connect",
+            "connect_kw"
         ]
 
         kw_sns = {}
@@ -1651,6 +1662,94 @@ class LazyBar():
         
         # save
         self.kw_defaults._save_figure(self.save_as)
+
+    def connect_hue_pairs(self, **kwargs):
+
+        n_xs = utils.get_unique_ids(self.data, id=self.xx, sort=False)
+        for i,x in enumerate(n_xs):
+            hue_data = self.data.loc[(self.data[self.xx] == x)]
+            self.connect_pairs(
+                hue_data,
+                self.hue,
+                hue_id=i,
+                **kwargs
+            )
+
+
+    def connect_pairs(
+        self, 
+        data, 
+        x,
+        hue_id=None,
+        **kwargs):
+
+        # first assess which elements on the x-axis we have
+        x_inputs = utils.get_unique_ids(
+            data, 
+            id=x, 
+            sort=False
+        )
+
+        # find subsequent pairs
+        pairs = utils.pairwise(x_inputs)
+
+        connect_kws = {
+            "color": "black",
+            "alpha": 0.1
+        }
+
+        for key,val in connect_kws.items():
+            kwargs = utils.update_kwargs(
+                kwargs,
+                key,
+                val
+            )
+
+        # get children of the axis
+        children = self.ff.get_children()
+
+        # make all strings so we can regex the "collections"
+        child_str_list = [str(i) for i in children]
+        str_collection = utils.get_file_from_substring("collections", child_str_list)
+
+        # then index in actual children list
+        real_collection = [children[child_str_list.index(i)] for i in str_collection]
+        
+        # get correct collections based on hue_id
+        if isinstance(hue_id, int):
+            start_idx = hue_id*len(x_inputs)
+            real_collection = real_collection[start_idx:start_idx+len(x_inputs)]
+
+        # find collections
+        collections = utils.pairwise(real_collection)
+
+        for pair,coll in zip(pairs,collections):
+
+            # find starting index of pair list        
+            locs1 = coll[0].get_offsets()
+            locs2 = coll[1].get_offsets()
+
+            # find subdatasets
+            sets = [data.loc[data[x] == i][self.yy].values for i in pair]
+            
+            # before plotting, we need to sort so that the data points correspond to each other
+            sort_idxs1 = np.argsort(sets[0])
+            sort_idxs2 = np.argsort(sets[1])
+
+            # revert "ascending sort" through sort_idxs2.argsort(),
+            # and then sort into order corresponding with set1
+            locs2_sorted = locs2[sort_idxs2.argsort()][sort_idxs1]
+
+            for i in range(locs1.shape[0]):
+
+                if self.sns_ori == "v":
+                    x_idx,y_idx = 0,1
+                else:
+                    x_idx,y_idx = 1,0
+                    
+                x1 = [locs1[i, x_idx], locs2_sorted[i, x_idx]]
+                y1 = [locs1[i, y_idx], locs2_sorted[i, y_idx]]
+                self.ff.plot(x1, y1, **kwargs)
 
     def plot(self, **kw_sns):
 
@@ -1681,7 +1780,11 @@ class LazyBar():
             if len(self.data[self.x])>len(self.labels):
                 
                 # get unique values
-                unique_x = utils.get_unique_ids(self.data, id=self.x)
+                unique_x = utils.get_unique_ids(
+                    self.data, 
+                    id=self.x, 
+                    sort=False
+                )
 
                 # new xw
                 new_x = []
@@ -1697,13 +1800,13 @@ class LazyBar():
                 self.data[self.x] = self.labels
 
         if self.sns_ori == "h":
-            xx = self.y
-            yy = self.x
+            self.xx = self.y
+            self.yy = self.x
             self.trim_bottom = False
             self.trim_left   = True
         elif self.sns_ori == "v":
-            xx = self.x 
-            yy = self.y
+            self.xx = self.x 
+            self.yy = self.y
             self.trim_bottom = True
             self.trim_left   = False            
         else:
@@ -1734,8 +1837,8 @@ class LazyBar():
         
         self.ff = sns.barplot(
             data=self.data,
-            x=xx, 
-            y=yy, 
+            x=self.xx, 
+            y=self.yy, 
             ax=self.axs, 
             orient=self.sns_ori,
             errorbar=self.error,
@@ -1778,8 +1881,8 @@ class LazyBar():
                             df_per_it = self.data[self.data[self.points_hue] == it]
                             sns.stripplot(
                                 data=df_per_it, 
-                                x=xx, 
-                                y=yy, 
+                                x=self.xx, 
+                                y=self.yy, 
                                 hue=self.hue,
                                 dodge=False, 
                                 palette=[color] * 2,
@@ -1790,8 +1893,8 @@ class LazyBar():
                     multi_strip = True
                     sns.stripplot(
                         data=self.data, 
-                        x=xx, 
-                        y=yy, 
+                        x=self.xx, 
+                        y=self.yy, 
                         hue=self.hue,
                         dodge=True, 
                         ax=self.ff,
@@ -1803,8 +1906,8 @@ class LazyBar():
             else:
                 sns.stripplot(
                     data=self.data, 
-                    x=xx, 
-                    y=yy, 
+                    x=self.xx, 
+                    y=self.yy, 
                     hue=self.points_hue,
                     dodge=False, 
                     ax=self.ff,
@@ -1813,6 +1916,17 @@ class LazyBar():
                     alpha=self.points_alpha,
                     **self.strip_kw
                 )
+
+            # connect dots
+            if self.connect:
+                if isinstance(self.hue, str):
+                    self.connect_hue_pairs(**self.connect_kw)
+                else:
+                    self.connect_pairs(
+                        self.data, 
+                        self.xx, 
+                        **self.connect_kw
+                    )
 
         # sort out legend
         if self.bar_legend or self.points_legend:
