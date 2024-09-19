@@ -550,7 +550,7 @@ class InitFitter():
             "half_rise_time",
             "half_max",
             "rise_slope",
-            "rise_slope_t",
+            "onset_time",
             "positive_area",
             "undershoot",
             '1st_deriv_magnitude',
@@ -2755,7 +2755,7 @@ class HRFMetrics():
             - half_rise_time:   time to reach half maximum
             - half_max:         half maximum
             - rise_slope:       steepness of the rising edge towards the maximum response
-            - rise_slope_t:     onset of rising edge
+            - onset_time:       onset of rising edge
             - positive_area:    area-under-curve of the positive response
             - undershoot:       area-under-curve of negative undershoot
 
@@ -2796,7 +2796,7 @@ class HRFMetrics():
         """
 
         # get metrics
-        self.metrics = self._get_metrics(hrf, **kwargs)
+        self.metrics, self.final_hrf = self._get_metrics(hrf, **kwargs)
 
     def return_metrics(self):
         return self.metrics.reset_index(drop=True)
@@ -2839,7 +2839,7 @@ class HRFMetrics():
             "half_rise_time",
             "half_max",
             "rise_slope",
-            "rise_slope_t",
+            "onset_time",
             "positive_area",
             "undershoot",
             "1st_deriv_magnitude",
@@ -2888,7 +2888,7 @@ class HRFMetrics():
         if progress:
             with alive_bar(filtered_df.shape[1], force_tty=True) as bar:
                 for ix,col in enumerate(filtered_df):
-                    pars,fwhm_ = self._get_single_hrf_metrics(
+                    pars,fwhm_,final_hrf = self._get_single_hrf_metrics(
                         filtered_df[col],
                         TR=TR,
                         force_pos=force_pos[ix],
@@ -2906,7 +2906,7 @@ class HRFMetrics():
                     col_fwhm.append(fwhm_)
         else:
             for ix,col in enumerate(filtered_df):
-                pars,fwhm_ = self._get_single_hrf_metrics(
+                pars,fwhm_,final_hrf = self._get_single_hrf_metrics(
                     filtered_df[col],
                     TR=TR,
                     force_pos=force_pos[ix],
@@ -2938,7 +2938,7 @@ class HRFMetrics():
         if "magnitude_ix" in list(metrics.columns):
             metrics["magnitude_ix"] = metrics["magnitude_ix"].astype(int)
 
-        return metrics
+        return metrics,final_hrf
     
     @staticmethod
     def _get_time(hrf):
@@ -2948,10 +2948,10 @@ class HRFMetrics():
             tmp_df = hrf.copy()
 
         try:
-            return tmp_df["time"].values
+            return tmp_df["time"].values,"time"
         except:
             try:
-                return tmp_df["t"].values
+                return tmp_df["t"].values,"t"
             except:
                 raise ValueError("Could not find time dimension. Dataframe should contain 't' or 'time' column..")
     
@@ -3002,7 +3002,7 @@ class HRFMetrics():
         if not isinstance(axs, mpl.axes._axes.Axes):
             _,axs = plt.subplots(figsize=figsize)
 
-        time = self._get_time(hrf)
+        time,time_col = self._get_time(hrf)
         plotting.LazyPlot(
             hrf.values.squeeze(),
             xx=list(time),
@@ -3025,7 +3025,7 @@ class HRFMetrics():
         ):
 
         # fetch time stamps
-        time = self._get_time(hrf)
+        time,time_col = self._get_time(hrf)
 
         # find slope corresponding to amplitude
         mag = self._get_amplitude(
@@ -3063,7 +3063,133 @@ class HRFMetrics():
             else:
                 val_t = final_val = np.nan 
         
-        return final_val,val_t
+        return final_val,val_t,np.nan
+
+    @classmethod
+    def _get_riseslope_siero(
+        self, 
+        hrf, 
+        force_pos=False, 
+        force_neg=False,
+        nan_policy=False,
+        window=[0.2,0.8],
+        reference="mag",
+        peak=None
+        ):
+
+        # fetch time stamps
+        time,time_col = self._get_time(hrf)
+
+        # find slope based on fwhm
+        if reference not in ["magnitude","mag"]:
+            fwhm_obj = self._get_fwhm(
+                hrf, 
+                force_pos=force_pos, 
+                force_neg=force_neg,
+                nan_policy=nan_policy,
+                peak=peak
+            )
+
+            # get interval around fwhm
+            if isinstance(fwhm_obj["obj"], float):
+                if nan_policy:
+                    slope_val = fwhm_t0 = np.nan
+                else:
+                    raise TypeError(f"Could not extract fwhm from profile, so rise slope could not be determined")
+            else:
+                fwhm_t0 = fwhm_obj["obj"].t0_
+                t0 = fwhm_t0*window[0]
+                t1 = fwhm_t0*window[1]
+
+        else:
+            # use Siero/Tian method (fit between 20-80% of max)
+            mag = self._get_amplitude(
+                hrf, 
+                force_pos=force_pos,
+                force_neg=force_neg,
+                peak=peak
+            )
+
+            negative = False
+            if mag["amplitude"]<0:
+                negative = True
+                ffunc = np.amin
+            else:
+                ffunc = np.amax
+
+            rf = hrf.values.squeeze()
+            mag_ix = mag["t_ix"]
+            idcs = sorted([utils.find_nearest(rf[:mag_ix], ffunc(rf)*i)[0] for i in window])
+            t0 = time[idcs[0]]
+            t1 = time[idcs[1]]
+
+        df_for_slope = None
+        intsc = None
+        try:
+            df_for_slope = utils.select_from_df(
+                hrf,
+                expression=(
+                    f"{time_col} >= {t0}",
+                    "&",
+                    f"{time_col} < {t1}"
+                )
+            )
+        except:
+            if not nan_policy:
+                self.plot_profile_for_debugging(hrf)
+                raise ValueError(f"Could not extract rise-slope from this profile: {e}")
+            else:
+                slope_val = np.nan            
+
+        if isinstance(df_for_slope, pd.DataFrame):
+            # get time window for fitter
+            t_ = np.array(utils.get_unique_ids(df_for_slope, id=time_col))
+
+            # run fitter
+            cv = None
+            try:
+                cv = CurveFitter(
+                    df_for_slope.values.squeeze(), 
+                    x=t_, 
+                    verbose=False
+                )
+
+                slope_val = cv.params.get("slope").value
+            except Exception as e:
+                if not nan_policy:
+                    self.plot_profile_for_debugging(hrf)
+                    raise ValueError(f"Could not extract rise-slope from this profile: {e}")
+                else:
+                    slope_val = np.nan
+
+            if cv != None:
+                # extrapolate function to get intercept with 0
+                y = np.full_like(rf, np.nan)
+                y[idcs[0]:idcs[1]] = cv.y_pred
+                a,b = cv.params.get("slope").value,cv.params.get("intercept").value
+                x = np.arange(0,len(t_))
+                y_hat = cv.result.eval(x=time)
+                y_hat[mag_ix:] = np.nan
+
+                try:
+
+                    # for some reason shapely needs positive arrays?
+                    if negative:
+                        y_hat = -y_hat
+
+                    intsc = utils.find_intersection(
+                        time,
+                        np.zeros_like(y_hat),
+                        y_hat
+                    )[0][0][0]
+                except Exception as e:
+                    if not nan_policy:
+                        self.plot_profile_for_debugging(hrf)
+                        raise ValueError(f"Could not extract onset-time from this profile: {e}")
+                    else:
+                        intsc = np.nan
+
+        return slope_val,intsc
 
     @classmethod
     def _get_amplitude(
@@ -3071,11 +3197,11 @@ class HRFMetrics():
         hrf, 
         force_pos=False, 
         force_neg=False,
-        peak=None
+        peak=None,
         ):
 
         # fetch time stamps
-        time = self._get_time(hrf)
+        time,time_col = self._get_time(hrf)
 
         # use scipy.signal.find_peaks to find n'th peak
         if isinstance(peak, int):
@@ -3097,7 +3223,7 @@ class HRFMetrics():
                 raise ValueError(f"Peak #{peak} was requested, but only {len(ppeaks)} peak(s) were found..")
 
         else:
-
+            
             # check negative:
             negative = self._check_negative(
                 hrf, 
@@ -3131,7 +3257,7 @@ class HRFMetrics():
         ):
 
         # fetch time stamps
-        time = self._get_time(hrf)
+        time,time_col = self._get_time(hrf)
 
         kwargs = utils.update_kwargs(
             kwargs,
@@ -3167,7 +3293,7 @@ class HRFMetrics():
         ):
 
         # get time 
-        time = self._get_time(hrf)
+        time,time_col = self._get_time(hrf)
         dx = np.diff(time)[0]
 
         # get amplitude of HRF
@@ -3306,7 +3432,7 @@ class HRFMetrics():
         ):
 
         # fetch time stamps
-        time = self._get_time(hrf)
+        time,time_col = self._get_time(hrf)
 
         # get amplitude of HRF
         mag = self._get_amplitude(
@@ -3396,7 +3522,7 @@ class HRFMetrics():
         )
 
         # rise slope
-        rise_tmp, rise_t = self._get_riseslope(
+        rise_slope = self._get_riseslope_siero(
             hrf, 
             force_pos=force_pos, 
             force_neg=force_neg,
@@ -3432,8 +3558,8 @@ class HRFMetrics():
             "time_to_peak": [mag["t"]],
             "half_rise_time": [fwhm_obj["half_rise"]],
             "half_max": [fwhm_obj["half_max"]],
-            "rise_slope": [rise_tmp],
-            "rise_slope_t": [rise_t],
+            "rise_slope": [rise_slope[0]],
+            "onset_time": [rise_slope[1]],
             "positive_area": [auc["pos_area"]],
             "undershoot": [auc["undershoot"]],
             "1st_deriv_magnitude": [deriv["1st_deriv_amplitude"]],
@@ -3444,7 +3570,7 @@ class HRFMetrics():
 
         df = pd.DataFrame(ddict)
 
-        return df,fwhm_obj
+        return df,fwhm_obj,hrf
 
 class FWHM():
     def __init__(
