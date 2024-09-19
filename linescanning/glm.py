@@ -1001,28 +1001,16 @@ def fit_first_level(
     preds = X_conv@betas_conv
 
     # calculate r2
-    tse = (data.shape[0]-1) * np.var(data, axis=0, ddof=1)
-    r2 = 1-(sse/tse)
+    r2 = calculate_r2(data, sse=sse)
 
     # loop through contrasts
-    tstat = []
-    for co_ix in range(C.shape[0]):
-        
-        # contrast-specific vector
-        cope_c = C[co_ix,:]
-
-        # calculate some other relevant parameters
-        cope        = cope_c @ betas_conv
-        dof         = X_conv.shape[0] - rank
-        sigma_hat   = sse/dof
-        varcope     = sigma_hat*design_variance(X_conv, which_predictor=cope_c)
-
-        # calculate t-stats
-        t_ = cope / np.sqrt(varcope)
-        tstat.append(t_)
-
-    if len(tstat) > 0:
-        tstat = np.array(tstat)
+    tstat = calculate_tstats(
+        dm=X_conv,
+        C=C,
+        betas=betas_conv,
+        sse=sse,
+        rank=rank
+    )
 
     if verbose:
         for co_ix in range(C.shape[0]):
@@ -1115,6 +1103,44 @@ def fit_first_level(
         'copes': C,
         'dm': X_matrix
     }
+
+def calculate_r2(
+        data,
+        sse
+    ):
+
+    tse = (data.shape[0]-1) * np.var(data, axis=0, ddof=1)
+    r2 = 1-(sse/tse)
+    return r2
+
+def calculate_tstats(
+    dm=None,
+    C=None,
+    betas=None,
+    sse=None,
+    rank=None
+    ):
+
+    tstat = []
+    for co_ix in range(C.shape[0]):
+        
+        # contrast-specific vector
+        cope_c = C[co_ix,:]
+
+        # calculate some other relevant parameters
+        cope        = cope_c @ betas
+        dof         = dm.shape[0] - rank
+        sigma_hat   = sse/dof
+        varcope     = sigma_hat*design_variance(dm, which_predictor=cope_c)
+
+        # calculate t-stats
+        t_ = cope / np.sqrt(varcope)
+        tstat.append(t_)
+
+    if len(tstat) > 0:
+        tstat = np.array(tstat)
+    
+    return tstat
 
 def design_variance(X, which_predictor=1):
     ''' Returns the design variance of a predictor (or contrast) in X.
@@ -1254,9 +1280,10 @@ class Posthoc(Defaults):
             If pingouin cannot by imported
         """
         self.test = test
-
-        if "within" in list(kwargs.keys()):
-            raise ValueError(f"Drawing significance bars gets too complicated with 'within' variable")
+        success = True
+        if "within" in list(kwargs.keys()) or "subject" in list(kwargs.keys()):
+            print(f"Drawing significance bars gets too complicated with 'within' or 'subject' variable")
+            success = False
             
         # internalize data
         if "data" in list(kwargs.keys()):
@@ -1284,14 +1311,15 @@ class Posthoc(Defaults):
             else:
                 self.p_tag = "p-unc"
     
-        if self.test == "inherit":
-            if len(ano)>0:
-                if kwargs['between'] in list(ano.keys()):
-                    self.posthoc[self.p_tag] = ano[kwargs['between']]
+        if success:
+            if self.test == "inherit":
+                if len(ano)>0:
+                    if kwargs['between'] in list(ano.keys()):
+                        self.posthoc[self.p_tag] = ano[kwargs['between']]
 
-        # internalize all kwargs
-        self.__dict__.update(kwargs)
-        self.conditions = utils.get_unique_ids(self.data, id=self.between, sort=False)
+            # internalize all kwargs
+            self.__dict__.update(kwargs)
+            self.conditions = utils.get_unique_ids(self.data, id=self.between, sort=False)
 
     def plot_bars(
         self, 
