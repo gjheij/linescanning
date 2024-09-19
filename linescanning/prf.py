@@ -1613,12 +1613,14 @@ class GaussianModel():
         # fetch bounds
         self.gauss_bounds = self.fetch_bounds(model='gauss')
 
-        if isinstance(self.fix_parameters, list):
+        if isinstance(self.fix_parameters, (list,int)):
             utils.verbose(f"Fixing parameters (idx): {self.fix_parameters}", self.verbose)
-            for el in self.fix_parameters:
-                self.gauss_bounds[el] = tuple(
-                    [self.gaussian_fitter.gridsearch_params[0,el],
-                    self.gaussian_fitter.gridsearch_params[0,el]])
+
+            self.gauss_bounds = self.unitwise_bounds(
+                self.fix_parameters,
+                model="gauss",
+                ref_pars=self.gaussian_fitter.gridsearch_params
+            )
 
         # fit
         if self.constraints[0] == "tc":
@@ -1771,12 +1773,14 @@ class ExtendedModel():
 
         # fetch bounds from settings > HRF bounds are automatically appended if fit_hrf=True
         self.tmp_bounds = self.fetch_bounds(model=self.model)
-        if isinstance(self.fix_parameters, list):
+        if isinstance(self.fix_parameters, (list,int)):
             utils.verbose(f"Fixing parameters (idx): {self.fix_parameters}", self.verbose)
-            for el in self.fix_parameters:
-                self.tmp_bounds[el] = tuple(
-                    [self.gaussian_fitter.iterative_search_params[0,el],
-                    self.gaussian_fitter.iterative_search_params[0,el]])
+
+            self.tmp_bounds = self.unitwise_bounds(
+                self.fix_parameters,
+                model=self.model,
+                ref_pars=self.previous_gaussian_fitter.iterative_search_params
+            )
 
         setattr(self, f"{self.model}_bounds", self.tmp_bounds)        
         
@@ -2177,6 +2181,31 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
             if "iter" in self.stage:
                 ExtendedModel.iterfit(self)
 
+    def unitwise_bounds(
+        self,
+        idx_list,
+        model=None,
+        ref_pars=None
+        ):
+
+        if isinstance(idx_list, int):
+            idx_list = [idx_list]
+        
+        if not isinstance(model, str):
+            raise ValueError(f"Please specify a model from {self.allowed_models}")
+        
+        if not isinstance(ref_pars, np.ndarray):
+            raise ValueError(f"Please specify an array representing parameters whose values need to be used to fix")
+        
+        new_bounds = []
+        for b in range(ref_pars.shape[0]):
+            tmp = np.array(self.fetch_bounds(model=model))
+            for idx in idx_list:
+                tmp[idx,:] = ref_pars[b,idx]
+            new_bounds.append(tmp)
+
+        return new_bounds
+    
     def fetch_bounds(self, model=None):
         
         bounds = [
