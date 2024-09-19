@@ -22,6 +22,25 @@ opj = os.path.join
 pd.options.mode.chained_assignment = None # disable warning thrown by string2float
 warnings.filterwarnings("ignore")
 
+# Define a function 'pairwise' that iterates over all pairs of consecutive items in a list
+def pairwise(l1):
+    # Create an empty list 'temp' to store the pairs
+    temp = []
+
+    # Iterate through the list elements up to the second-to-last element
+    for i in range(len(l1) - 1):
+        # Get the current element and the next element in the list
+        current_element, next_element = l1[i], l1[i + 1]
+
+        # Create a tuple 'x' containing the current and next elements
+        x = (current_element, next_element)
+
+        # Append the tuple 'x' to the 'temp' list
+        temp.append(x)
+
+    # Return the list of pairs
+    return temp
+
 def normalize(data):
     return (data-np.min(data))/(np.max(data)-np.min(data))
 
@@ -1114,7 +1133,13 @@ def unique_combinations(elements, l=2):
     """
     return list(itertools.combinations(elements, l))
 
-def select_from_df(df, expression="run = 1", index=True, indices=None, match_exact=True):
+def select_from_df(
+    df, 
+    expression=None, 
+    index=True, 
+    indices=None, 
+    match_exact=True
+    ):
     """select_from_df
 
     Select a subset of a dataframe based on an expression. Dataframe should be indexed by the variable you want to select on or have the variable specified in the expression argument as column name. If index is True, the dataframe will be indexed by the selected variable. If indices is specified, the dataframe will be indexed by the indices specified through a list (only select the elements in the list) or a `range`-object (select within range).
@@ -1124,7 +1149,7 @@ def select_from_df(df, expression="run = 1", index=True, indices=None, match_exa
     df: pandas.DataFrame
         input dataframe
     expression: str, optional
-        what subject of the dataframe to select, by default "run = 1". The expression must consist of a variable name and an operator. The operator can be any of the following: '=', '>', '<', '>=', '<=', '!=', separated by spaces. You can also change 2 operations by specifying the `&`-operator between the two expressions. If you want to use `indices`, specify `expression="ribbon"`. 
+        what subject of the dataframe to select, by default None. The expression must consist of a variable name and an operator. The operator can be any of the following: '=', '>', '<', '>=', '<=', '!=', separated by spaces. You can also change 2 operations by specifying the `&`-operator between the two expressions. If you want to use `indices`, specify `expression="ribbon"`. 
     index: bool, optional
         return output dataframe with the same indexing as `df`, by default True
     indices: list, range, numpy.ndarray, optional
@@ -1149,7 +1174,7 @@ def select_from_df(df, expression="run = 1", index=True, indices=None, match_exa
 
     # not the biggest fan of a function within a function, but this allows easier translation of expressions/operators
     def sort_expressions(expression):
-        expr_ = expression.split()
+        expr_ = expression.split(" ")
         if len(expr_)>3:
             for ix,i in enumerate(expr_):
                 try:
@@ -1165,6 +1190,9 @@ def select_from_df(df, expression="run = 1", index=True, indices=None, match_exa
             col1,operator1,val1 = expr_
 
         return col1,operator1,val1
+    
+    if not isinstance(expression, (str,tuple,list)):
+        raise ValueError(f"Please specify expressions to apply to the dataframe. Input is '{expression}' of type ({type(expression)})")
     
     if expression == "ribbon":
         
@@ -1242,6 +1270,9 @@ def select_from_df(df, expression="run = 1", index=True, indices=None, match_exa
                 if idc[0] != None:
                     sub_df = sub_df.set_index(idc)
 
+        if sub_df.shape[0] == 0:
+            raise ValueError(f"The following expression(s) resulted in an empty dataframe: {expression}")
+        
         return sub_df
 
 def multiselect_from_df(df, expression=[]):
