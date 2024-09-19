@@ -315,7 +315,7 @@ for subID in ${search}; do
   else
     if [[ ${OW} -eq 1 ]]; then
       if [[ -f ${line_orientation_file} ]]; then
-        nr=`find $(dirname ${line_orientation_file}) -type f -name "${base}*" -and -name "*desc-coords.csv" | wc -w`
+        nr=`find -L $(dirname ${line_orientation_file}) -type f -name "${base}*" -and -name "*desc-coords.csv" | wc -w`
         fname=$(dirname ${line_orientation_file})/${base}_backup-${nr}_desc-coords.csv
         mv ${line_orientation_file} ${fname}
       fi
