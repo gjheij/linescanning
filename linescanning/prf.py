@@ -646,7 +646,7 @@ def pix2deg(
     pixels, 
     prf_object=None, 
     scrSizePix=[270, 270],
-    scrWidthCm=39.8,
+    scrWidthCm=39.3,
     scrDist=196
     ):
     """Convert size in pixels to size in degrees for a given Monitor object""" 
@@ -661,15 +661,22 @@ def pix2deg(
 
 
 # Adapted from psychopy
-def deg2pix(degrees, prf_object, scrSizePix=[270, 270]):
-    """Convert size in degrees to size in pixels for a given pRF object"""
+def deg2pix(
+    degrees, 
+    prf_object=None, 
+    scrSizePix=[270, 270],
+    scrWidthCm=39.3,
+    scrDist=196
+    ):
+    """Convert size in degrees to size in pixels for a given Monitor object""" 
 
     # get monitor params and raise error if necess
-    scrWidthCm = prf_object.screen_size_cm
-    dist = prf_object.screen_distance_cm
+    if not isinstance(scrWidthCm, (int,float)) and not isinstance(scrDist, (int,float)):
+        scrWidthCm = prf_object.screen_size_cm
+        scrDist = prf_object.screen_distance_cm
 
-    cmSize = np.array(degrees) * dist * 0.017455
-    return round(cmSize * scrSizePix[0] / float(scrWidthCm), 0)
+    cmSize = np.array(degrees) * scrDist * 0.017455
+    return int(round(cmSize * scrSizePix[0] / float(scrWidthCm), 0))
 
 
 # get onset times from select_stims
@@ -2786,7 +2793,7 @@ class SizeResponse():
     screen_distance_cm: int, optional
         Distance from viewer to screen. Default is the MRI-scanner value of 196 cm
     screen_size_cm: float, tuple, list, optional
-        Dimensions of the screen in **centimeters**. Default is the BOLD screen: [70,39.8]. Specify a single value to create square stimuli
+        Dimensions of the screen in **centimeters**. Default is the BOLD screen: [70,39.3]. Specify a single value to create square stimuli
     screen_size_px: float, tuple, list, optional
         Dimensions of the screen in **pixels**. Default is the BOLD screen: [1920,1080]. Specify a single value to create square stimuli
 
@@ -2804,7 +2811,7 @@ class SizeResponse():
     >>>     params=df_for_srfs, 
     >>>     model="norm",
     >>>     screen_distance_cm=196,
-    >>>     screen_size_cm=[70,39.8],
+    >>>     screen_size_cm=[70,39.3],
     >>>     screen_size_px=[1920,1080])
 
     >>> from linescanning import utils
@@ -2865,7 +2872,7 @@ class SizeResponse():
         downsample_factor=6,
         n_pix=100,
         screen_distance_cm=196,
-        screen_size_cm=[70,39.8],
+        screen_size_cm=[70,39.3],
         screen_size_px=[1920,1080],
         verbose=False):
 
@@ -3851,6 +3858,9 @@ class Profile1D(pRFmodelFitting):
         center=True,
         plot_kws={},
         metrics_kws={},
+        dm_kws={},
+        model="norm",
+        first_cross=True,
         **kwargs
         ):
 
@@ -3859,10 +3869,21 @@ class Profile1D(pRFmodelFitting):
         self.center = center
         self.plot_kws = plot_kws
         self.metrics_kws = metrics_kws
+        self.dm_kws = dm_kws
+        self.model = model
+        self.first_cross = first_cross
+
+        if isinstance(self.pars, pd.DataFrame):
+            self.pars = Parameters(self.pars, model=self.model).to_array().squeeze()
+
+        if self.center:
+            self.pars[:2] = 0
 
         self.dm = self.create_dm(
             n_pix=self.n_pix,
-            center=self.center
+            center=self.center,
+            pars=self.pars,
+            **self.dm_kws
         )
 
         super().__init__(
@@ -3870,14 +3891,9 @@ class Profile1D(pRFmodelFitting):
             design_matrix=self.dm,
             TR=1,
             hrf="direct",
+            model=self.model,
             **kwargs
         )
-
-        if isinstance(self.pars, pd.DataFrame):
-            self.pars = Parameters(self.pars, model=self.model).to_array().squeeze()
-
-        if self.center:
-            self.pars[:2] = 0
 
         # skip plot by default
         ddict = {
@@ -3896,8 +3912,11 @@ class Profile1D(pRFmodelFitting):
         _,self.prf_o,_,self.prof_1d = self.plot_vox(
             vox_nr=0, 
             model=self.model, 
+            resize_pix=self.n_pix,
             **plot_kws
         )
+
+        self.prof_1d = fitting.Epoch.correct_baseline(self.prof_1d, bsl=1)
 
         # find fwhm in pixels
         self.metrics = fitting.HRFMetrics(
@@ -3922,8 +3941,14 @@ class Profile1D(pRFmodelFitting):
             print(f'Could not find zero-crossings of 1d profile..')
 
         if hasattr(self, "zero_cross"):
+
+            # sometimes the outer borders of the image are counted as crossing; this flag dictates to only take the first crossings
             self.zero_cross_pix = [i[0][0] for i in self.zero_cross]
-            self.zero_diff = self.zero_cross_pix[-1]-self.zero_cross_pix[0]
+            if self.first_cross:
+                if len(self.zero_cross_pix)>2:
+                    self.zero_cross_pix = self.zero_cross_pix[1:3]
+                    
+            self.zero_diff = np.diff(sorted(self.zero_cross_pix))[0]
             self.zero_deg = pix2deg(
                 self.zero_diff,
                 scrSizePix=(self.n_pix,self.n_pix),
@@ -3935,18 +3960,27 @@ class Profile1D(pRFmodelFitting):
     def create_dm(
         self, 
         n_pix=100,
-        center=True
+        center=True,
+        pars=None,
+        **kwargs
         ):
 
         # create impulse design matrix (single pixel traversing left-to-right)
         if center:
             y_pos = n_pix//2
         else:
-            raise NotImplementedError(f"Still need to implement translating a position in DVA to pixel")
+            y_pos = int(deg2pix(
+                pars[1],
+                scrSizePix=[n_pix,n_pix],
+                **kwargs
+            ))
+
+            y_pos += n_pix//2
+            # raise NotImplementedError(f"Still need to implement translating a position in DVA to pixel")
 
         tiny_dm = np.zeros((n_pix,n_pix,n_pix))
         for ii in range(tiny_dm.shape[-1]):
-            tiny_dm[y_pos,ii,ii] = 1
+            tiny_dm[y_pos-1,ii,ii] = 1
 
         return tiny_dm
 
