@@ -1262,6 +1262,7 @@ class Posthoc(Defaults):
         self, 
         test: str="tukey",
         ano: dict=None,
+        paired=False,
         *args, 
         **kwargs):
         
@@ -1280,10 +1281,6 @@ class Posthoc(Defaults):
             If pingouin cannot by imported
         """
         self.test = test
-        success = True
-        if "within" in list(kwargs.keys()) or "subject" in list(kwargs.keys()):
-            print(f"Drawing significance bars gets too complicated with 'within' or 'subject' variable")
-            success = False
             
         # internalize data
         if "data" in list(kwargs.keys()):
@@ -1294,7 +1291,22 @@ class Posthoc(Defaults):
         except:
             raise ImportError(f"Could not import 'pingouin'")
 
-        # FDR-corrected post hocs with Cohen's D effect size
+        # FDR-corrected post hocs
+        nonparam = False
+        kwargs["parametric"] = True
+        if "within" in list(kwargs.keys()):
+            nonparam = True
+            kwargs["parametric"] = False
+
+
+        if paired:
+            if "between" in list(kwargs.keys()):
+                kwargs["within"] = kwargs["between"]
+                kwargs.pop("between")
+
+        if paired or nonparam:
+            self.test = "test"
+
         if self.test == "tukey":
             self.posthoc = pg.pairwise_tukey(
                 *args,
@@ -1310,16 +1322,20 @@ class Posthoc(Defaults):
                 self.p_tag = "p-corr"
             else:
                 self.p_tag = "p-unc"
-    
-        if success:
-            if self.test == "inherit":
-                if len(ano)>0:
-                    if kwargs['between'] in list(ano.keys()):
-                        self.posthoc[self.p_tag] = ano[kwargs['between']]
 
-            # internalize all kwargs
-            self.__dict__.update(kwargs)
-            self.conditions = utils.get_unique_ids(self.data, id=self.between, sort=False)
+        tagger = "between"
+        if paired or nonparam:
+            tagger = "within"
+
+        if self.test == "inherit":
+            if len(ano)>0:
+                if kwargs[tagger] in list(ano.keys()):
+                    self.posthoc[self.p_tag] = ano[kwargs[tagger]]
+
+        # internalize all kwargs
+        self.__dict__.update(kwargs)
+
+        self.conditions = utils.get_unique_ids(self.data, id=getattr(self, tagger), sort=False)
 
     def plot_bars(
         self, 
@@ -1522,6 +1538,7 @@ class ANOVA(Posthoc):
         self, 
         alpha: float=0.05,
         axs: mpl.axes._axes.Axes=None,
+        parametric="auto",
         posthoc_kw={},
         plot_kw={},
         bar_kw={},
@@ -1535,10 +1552,33 @@ class ANOVA(Posthoc):
             raise ImportError(f"Could not import 'pingouin'")
         
         # do stats
-        self.ano = pg.anova(
-            *args,
-            **kwargs
-        )
+        if parametric == "auto":
+            data,dv = kwargs["data"],kwargs["dv"]
+
+            try:
+                data.reset_index(inplace=True)
+            except:
+                pass
+            
+            # test if all groups are equal
+            if "between" in list(kwargs.keys()):
+                between = kwargs['between']
+                self.norm_test = pg.normality(data, dv=dv, group=between)
+                parametric = all(self.norm_test["normal"].values)
+            else:
+                self.norm_test = pg.normality(data, dv=dv)
+                parametric = self.norm_test.iloc[0]
+
+        if parametric:
+            self.ano = pg.anova(
+                *args,
+                **kwargs
+            )
+        else:
+            self.ano = pg.friedman(
+                *args,
+                **kwargs
+            )
 
         # check if there's signifcant results
         self.results = self._get_results(self.ano, alpha=self.alpha)
