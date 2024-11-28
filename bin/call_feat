@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
-#$ -S /bin/bash
-#$ -N fprep_005
-#$ -m ea
-#$ -cwd
-#$ -j Y
-#$ -V
+
+#---------------------------------------------------------------------------------------------------------
+# check if there's is a setup file containing the major paths and source it if it exists
+call_loadsetup
 
 #---------------------------------------------------------------------------------------------------------
 # Create help text
@@ -14,17 +12,24 @@ function Usage {
 ---------------------------------------------------------------------------------------------------
 call_feat
 
-NOT IMPLEMENTED> DOESNT DO ANYTHING..
+Simple wrapper to submit an *fsf-file to the cluster. It generates a new .sh-file that will be run
+according to your input. If '--sge' is specified, the job will be submitted to the cluster with a 
+specified number of cores (default = 1) to a specific queue (default = long.q, check your setup file).
 
 Usage:
-call_fslbet.sh <input file>
-               <output root>
+  call_feat [options] <fsf file>
+
+Args:
+  -n <name>   custom name for job (default = 'feat')
+  -j <cpus>   number of cores to use (default is 1)
+  -q <queue>  submit jobs to a specific queue. Defaults to SGE_QUEUE_LONG in spinoza_setup
+              must be used with '--sge', otherwise it'll run locally still
+  --sge       submit the script to a cluster using a template script
 
 Example:
-  call_fslfast.sh /path/to/inputfile.nii.gz /path/to/outputroot
-
-Notes:
-  - suffixes will be added by FAST itself
+  call_feat design.fsf # standard implementation
+  call_feat -j 10 design.fsf # run locally with more cores
+  call_feat --sge -j 10 -q short.q design.fsf # submit to cluster
   
 ---------------------------------------------------------------------------------------------------
 
@@ -32,7 +37,63 @@ USAGE
     exit 1
 }
 
+# Check for subject & session flags
+submit=0
+n_cpus=1
+SGE_QUEUE=${SGE_QUEUE_LONG}
+job_name="feat"
+while getopts :-:j:q:n: argument
+do
+  case ${argument} in
+    -)
+      case "${OPTARG}" in
+        sge)
+          submit=1
+          ;;
+    *)
+      if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
+        echo "Unknown option --${OPTARG}. Did you mean \"--full\"?"
+        exit 1
+      fi
+      ;;
+      esac;;    
+    q)  SGE_QUEUE=${OPTARG}
+          ;;  
+    j)  n_cpus=${OPTARG}
+          ;; 
+    n)  job_name=${OPTARG}
+          ;;           
+  esac
+done
+
+fsf_file=${@:$OPTIND:1}
 if [[ $# -lt 2 ]] ; then
   Usage >&2
   exit 1
 fi
+
+# delete previously existing file
+base_name=$(dirname ${tmp_design})/$(basename ${tmp_design} .fsf)
+fsf_script=${base_name}.sh
+if [[ -f ${fsf_script} ]]; then
+  rm -r ${fsf_script}
+fi
+
+(
+echo "#!/bin/bash"
+echo "#$ -S /bin/bash"
+echo "#$ -N ${job_name}"
+echo "#$ -o ${base_name}.log"
+echo "#$ -j Y"
+echo "#$ -q ${SGE_QUEUE}"
+echo "#$ -V"
+echo "feat ${tmp_design}"
+) > ${fsf_script}
+
+if [[ ${submit} -eq 1 ]]; then
+  job="qsub"
+else
+  job="bash"
+fi
+
+${job} ${fsf_script}
