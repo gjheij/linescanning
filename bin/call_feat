@@ -73,7 +73,7 @@ if [[ $# -lt 2 ]] ; then
 fi
 
 # delete previously existing file
-base_name=$(dirname ${tmp_design})/$(basename ${tmp_design} .fsf)
+base_name=$(dirname ${fsf_file})/$(basename ${fsf_file} .fsf)
 fsf_script=${base_name}.sh
 if [[ -f ${fsf_script} ]]; then
   rm -r ${fsf_script}
@@ -87,7 +87,7 @@ echo "#$ -o ${base_name}.log"
 echo "#$ -j Y"
 echo "#$ -q ${SGE_QUEUE}"
 echo "#$ -V"
-echo "feat ${tmp_design}"
+echo "feat ${fsf_file}"
 ) > ${fsf_script}
 
 if [[ ${submit} -eq 1 ]]; then
