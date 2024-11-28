@@ -91,7 +91,7 @@ echo "feat ${tmp_design}"
 ) > ${fsf_script}
 
 if [[ ${submit} -eq 1 ]]; then
-  job="qsub"
+  job="qsub -pe smp ${n_cpus}"
 else
   job="bash"
 fi
