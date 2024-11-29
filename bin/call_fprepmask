@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------------------------------------------
+# check if there's is a setup file containing the major paths and source it if it exists
+call_loadsetup
+
+#---------------------------------------------------------------------------------------------------------
+# Create help text
+function Usage {
+    cat <<USAGE
+
+---------------------------------------------------------------------------------------------------
+call_fprepmask
+
+Apply the masks to the corresponding BOLD files given an fMRIprep directory. You can do something 
+similar with pybest, but this script exists in case you don't want to use that.
+
+Usage:
+  call_fprepmask <fprep dir>
+
+Example:
+  call_fprepmask # runs the script for all BOLD files in DIR_DATA_DERIV/fmriprep
+  call_fprepmask DIR_DATA_DERIV/fmriprep/sub-01 # runs the script for a single subject
+  
+---------------------------------------------------------------------------------------------------
+
+USAGE
+    exit 1
+}
+
+# set default
+if [[ ${#@} -eq 0 ]]; then
+  fprep_dir=${DIR_DATA_DERIV}/fmriprep
+else
+  fprep_dir=${1}
+fi
+
+funcs=(`find ${fprep_dir} -type f -name "*preproc_bold.nii.gz" | sort`)
+if [ ${#funcs[@]} -eq 0 ]; then
+  echo "Could not find files with \"*preproc_bold.nii.gz\" in \"${fprep_dir}\""
+  exit 1
+fi
+
+echo "Input directory = \"${fprep_dir}\" (${#funcs[@]} files)"
+ct=1
+for f in ${funcs[@]}; do
+  base_name=$(dirname ${f})/$(basename ${f} preproc_bold.nii.gz)
+  mask_file=${base_name}brain_mask.nii.gz
+  if [ -f ${mask_file} ]; then
+    out=${base_name}masked_bold.nii.gz
+    cmd="fslmaths ${f} -mas ${mask_file} ${out}"
+    echo $cmd
+
+    if [ $? -ne 0 ]; then
+      echo "fslmaths exited with non-zero status"
+      exit 1
+    else
+      echo "(${ct}/${#funcs[@]}) done"
+    fi
+  else
+    echo "mask file (\"${mask_file}\") does not exist"
+  fi
+done
