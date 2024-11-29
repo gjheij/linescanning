@@ -54,13 +54,13 @@ for f in ${funcs[@]}; do
   if [ -f ${mask_file} ]; then
     out=${base_name}masked_bold.nii.gz
     cmd="fslmaths ${f} -mas ${mask_file} ${out}"
-    echo $cmd
+    $cmd
 
     if [ $? -ne 0 ]; then
       echo "fslmaths exited with non-zero status"
       exit 1
     else
-      echo "(${ct}/${#funcs[@]}) done"
+      echo "(${ct}/${#funcs[@]}): wrote ${out}"
       ((ct++))
     fi
   else
