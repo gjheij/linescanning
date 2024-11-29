@@ -21,6 +21,7 @@ Usage:
 Example:
   call_fprepmask # runs the script for all BOLD files in DIR_DATA_DERIV/fmriprep
   call_fprepmask DIR_DATA_DERIV/fmriprep/sub-01 # runs the script for a single subject
+  call_fprepmask help # bring up this help 
   
 ---------------------------------------------------------------------------------------------------
 
@@ -33,6 +34,10 @@ if [[ ${#@} -eq 0 ]]; then
   fprep_dir=${DIR_DATA_DERIV}/fmriprep
 else
   fprep_dir=${1}
+  if [[ ${fprep_dir} == "help" || ${fprep_dir} == "--help" ]]; then
+    Usage >&2
+    exit 1
+  fi
 fi
 
 funcs=(`find ${fprep_dir} -type f -name "*preproc_bold.nii.gz" | sort`)
@@ -56,6 +61,7 @@ for f in ${funcs[@]}; do
       exit 1
     else
       echo "(${ct}/${#funcs[@]}) done"
+      ((ct++))
     fi
   else
     echo "mask file (\"${mask_file}\") does not exist"
