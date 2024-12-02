@@ -52,6 +52,7 @@ for f in ${funcs[@]}; do
   base_name=$(dirname ${f})/$(basename ${f} preproc_bold.nii.gz)
   mask_file=${base_name}brain_mask.nii.gz
   if [ -f ${mask_file} ]; then
+    echo "(${ct}/${#funcs[@]}): processing ${f}"
     out=${base_name}masked_bold.nii.gz
     cmd="fslmaths ${f} -mas ${mask_file} ${out}"
     $cmd
@@ -60,7 +61,6 @@ for f in ${funcs[@]}; do
       echo "fslmaths exited with non-zero status"
       exit 1
     else
-      echo "(${ct}/${#funcs[@]}): wrote ${out}"
       ((ct++))
     fi
   else
