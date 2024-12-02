@@ -614,9 +614,6 @@ if [[ ${PHYS_ONLY} -eq 0 ]]; then
         # compile filename
         ff=${bids_dir}/${image}/${base}_task-${task}_run-${run}${add_acq}${ext}
         if [[ ! -f ${ff} || ${OW} -eq 1 ]]; then
-          if [[ ! -d ${ff} ]]; then
-            mkdir -p $(dirname ${ff})
-          fi
 
           txt=""
           if [[ ${reorient} -eq 1 ]]; then
@@ -624,6 +621,12 @@ if [[ ${PHYS_ONLY} -eq 0 ]]; then
           fi
 
           if [[ -f ${orig} ]]; then
+
+            # only create directory if orig file exists
+            if [[ ! -d ${ff} ]]; then
+              mkdir -p $(dirname ${ff})
+            fi
+
             echo "  renaming ${image}-file to `basename ${ff}`${txt}"
             cp ${orig} ${ff}
 
