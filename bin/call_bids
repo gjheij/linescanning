@@ -654,7 +654,7 @@ if [[ ${PHYS_ONLY} -eq 0 ]]; then
                   # add IntendedFor
                   call_json ${json_bids} IntendedFor ${base_path}/func/$(basename ${json_bids} _epi.json)_bold.nii.gz
                 fi
-              fi
+              fi         
 
               # add other information that call_parrec2nii would've added by reading the ParFile key that should've been added by call_dcm2niix
               par_f=`read_json ${json_bids} ParFile`
@@ -685,6 +685,25 @@ if [[ ${PHYS_ONLY} -eq 0 ]]; then
                     fi
                   fi
                 fi
+
+                # check if json file has RepetitionTime
+                rep_time=`cat ${json_bids} | grep "RepetitionTime"`
+                if [[ -z ${rep_time} ]]; then
+
+                  tr=`tr_from_par ${par_f}`
+                  if [[ ! -z ${tr} ]]; then
+
+                    # add RepetitionTime
+                    call_json ${json_bids} RepetitionTime ${tr}
+
+                    # check if fmri-files have TR (pixdim4)
+                    tr_hd=`fslval ${ff} pixdim4`
+                    if [ ${tr_hd} = "0.000000" ] ; then 
+                      echo "  TR=0 in file header.. Setting to ${tr}"
+                      call_settr ${ff} ${tr}
+                    fi
+                  fi
+                fi     
               fi
 
               # overwrite PhaseEncoding if --ap|--pa|--lr|--rl flag
