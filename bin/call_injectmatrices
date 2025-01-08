@@ -84,6 +84,9 @@ function fix_reg_dir {
     # echo " Renaming mean_func to standard to prevent interpolation"
     cp ${feat_dir}/mean_func.nii.gz ${feat_dir}/reg/standard.nii.gz
 
+    # updatefeatreg
+    updatefeatreg ${feat_dir}
+    
   else
     echo "Feat directory does not exists"
   fi
