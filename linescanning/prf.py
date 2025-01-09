@@ -2161,15 +2161,7 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
             ExtendedModel.__init__(self)
 
             # if existing parameters already have more than the usual parameters given a model, we assume that the HRF has been fitted
-            if self.model == "dog":
-                max_shape = 8
-            elif self.model == "css":
-                max_shape = 7
-            elif self.model in ["norm","abc","abd"]:
-                max_shape = 10
-            else:
-                raise ValueError(f"Model must be one of 'dog', 'css', or 'norm', not '{self.model}'")
-
+            max_shape = self.get_max_parameter_shape(self.model)
             if self.previous_gaussian_fitter.gridsearch_params.shape[-1] > max_shape:
 
                 # HRF already fitted, so set to false and update settings
@@ -2181,6 +2173,18 @@ class pRFmodelFitting(GaussianModel, ExtendedModel):
             if "iter" in self.stage:
                 ExtendedModel.iterfit(self)
 
+    def get_max_parameter_shape(self, model):
+        if model == "dog":
+            max_shape = 8
+        elif model == "css":
+            max_shape = 7
+        elif model in ["norm","abc","abd"]:
+            max_shape = 10
+        else:
+            raise ValueError(f"Model must be one of {self.allowed_models}, not '{model}'")
+
+        return max_shape
+    
     def unitwise_bounds(
         self,
         idx_list,
