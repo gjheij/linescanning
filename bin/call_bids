@@ -662,6 +662,25 @@ if [[ ${PHYS_ONLY} -eq 0 ]]; then
                 echo "  Storing information from `basename ${par_f}` in json file"
                 pars_for_json --merge ${par_f} ${json_bids}
 
+                # check if json file has RepetitionTime
+                rep_time=`cat ${json_bids} | grep "RepetitionTime"`
+                if [[ -z ${rep_time} ]]; then
+
+                  tr=`tr_from_par ${par_f}`
+                  if [[ ! -z ${tr} ]]; then
+
+                    # add RepetitionTime
+                    call_json ${json_bids} RepetitionTime ${tr}
+
+                    # check if fmri-files have TR (pixdim4)
+                    tr_hd=`fslval ${ff} pixdim4`
+                    if [ ${tr_hd} = "0.000000" ] ; then 
+                      echo "  TR=0 in file header.. Setting to ${tr}"
+                      call_settr ${ff} ${tr}
+                    fi
+                  fi
+                fi     
+
                 # check if we can add slicetimings
                 if [[ ${image} != "phase" ]]; then
                   scan_mode=`read_par ${par_f} "Scan mode"`
@@ -685,25 +704,6 @@ if [[ ${PHYS_ONLY} -eq 0 ]]; then
                     fi
                   fi
                 fi
-
-                # check if json file has RepetitionTime
-                rep_time=`cat ${json_bids} | grep "RepetitionTime"`
-                if [[ -z ${rep_time} ]]; then
-
-                  tr=`tr_from_par ${par_f}`
-                  if [[ ! -z ${tr} ]]; then
-
-                    # add RepetitionTime
-                    call_json ${json_bids} RepetitionTime ${tr}
-
-                    # check if fmri-files have TR (pixdim4)
-                    tr_hd=`fslval ${ff} pixdim4`
-                    if [ ${tr_hd} = "0.000000" ] ; then 
-                      echo "  TR=0 in file header.. Setting to ${tr}"
-                      call_settr ${ff} ${tr}
-                    fi
-                  fi
-                fi     
               fi
 
               # overwrite PhaseEncoding if --ap|--pa|--lr|--rl flag
