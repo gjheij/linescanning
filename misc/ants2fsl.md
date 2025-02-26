@@ -18,7 +18,7 @@ fi
 We can use `c3d_affine_tool` to tranlate the ANTs matrices to something that FSL understands. We start with the linear part, something that will be called `_0GenericAffine.mat` if you've used ANTs without fancy renaming.
 
 ### ANTs outside fMRIprep
-If you've run module `05b` from the line-scanning repository, you'll have these files below. If you want to use the composite transform from fmriprep, scroll one section down :
+If you've run module `05b` from the line-scanning repository, you'll have these files below. If you want to use the composite transform from fmriprep, scroll one section down:
 
 ```bash
 src="${DIR_DATA_DERIV}/cat12/sub-${subID}/ses-${anatSes}/sub-${subID}_ses-${anatSes}_acq-MP2RAGE_T1w.nii.gz"
@@ -29,10 +29,17 @@ wrp="${DIR_DATA_DERIV}/ants/sub-${subID}/ses-${anatSes}/sub-${subID}_ses-${anatS
 We can also decompose the composite transform from fmriprep using `CompositeTransformUtil` (see also [this post](https://neurostars.org/t/extracting-individual-transforms-from-composite-h5-files-fmriprep/2215/12)):
 
 ```bash
+# define anatomical file
+src=`find ${DIR_DATA_DERIV}/fmriprep/sub-${subID}/ses-${anatSes} -type f -name "*desc-preproc_T1w.nii.gz" -and -not -name "*space-*"`
+
+# fetch h5 file
 h5_file=`find -L ${DIR_DATA_DERIV}/fmriprep/sub-${subID}/ses-${anatSes}/anat -type f -name "*from-T1w_to-MNI152NLin6Asym*" -and -name "*.h5"`
 
+# extract .mat/.nii.gz file
 out_base=${out_dir}/t1_to_mni
 CompositeTransformUtil --disassemble ${h5_file} ${out_base}
+
+# set new warp files
 nlin_wrp=`find $out_dir -type f -name "*$(basename ${out_base})*" -and -name "*.nii.gz"`
 wrp=`find $out_dir -type f -name "*$(basename ${out_base})*" -and -name "*.mat"`
 ``` 
